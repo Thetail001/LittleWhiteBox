@@ -2,6 +2,7 @@
 // 次元壁模块 - 主控制器
 // ════════════════════════════════════════════════════════════════════════════
 import { extension_settings, getContext, saveMetadataDebounced } from "../../../../../extensions.js";
+import { oai_settings } from "../../../../../openai.js";
 import { saveSettingsDebounced, chat_metadata, default_user_avatar, default_avatar } from "../../../../../../script.js";
 import { EXT_ID, extensionFolderPath } from "../../core/constants.js";
 import { createModuleEvents, event_types } from "../../core/event-manager.js";
@@ -472,12 +473,23 @@ async function startGeneration(data) {
         { role: 'user', content: msg3 },
     ];
 
+    const s = oai_settings;
+    const extraParams = {
+        temperature: s?.temp_openai,
+        top_p: s?.top_p_openai,
+        top_k: s?.top_k_openai,
+        frequency_penalty: s?.freq_pen_openai,
+        presence_penalty: s?.pres_pen_openai,
+        max_tokens: s?.openai_max_tokens,
+    };
+
     await gen.xbgenrawCommand({
         id: STREAM_SESSION_ID,
         top64: b64UrlEncode(JSON.stringify(topMessages)),
         bottomassistant: msg4,
         nonstream: data.settings.stream ? 'false' : 'true',
         as: 'user',
+        ...extraParams
     }, '');
     
     if (data.settings.stream) {

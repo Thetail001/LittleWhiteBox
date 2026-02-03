@@ -28,7 +28,7 @@ import { streamingGeneration } from "../streaming-generation.js";
 import { EXT_ID, extensionFolderPath } from "../../core/constants.js";
 import { createModuleEvents, event_types } from "../../core/event-manager.js";
 import { StoryOutlineStorage } from "../../core/server-storage.js";
-import { promptManager } from "../../../../../openai.js";
+import { promptManager, oai_settings } from "../../../../../openai.js";
 import {
     buildSmsMessages, buildSummaryMessages, buildSmsHistoryContent, buildExistingSummaryContent,
     buildNpcGenerationMessages, formatNpcToWorldbookContent, buildExtractStrangersMessages,
@@ -308,6 +308,18 @@ async function callLLM(promptOrMsgs, useRaw = false) {
     };
 
     const baseOpts = { lock: 'on' };
+    const s = oai_settings;
+    if (s) {
+        Object.assign(baseOpts, {
+            temperature: s.temp_openai,
+            top_p: s.top_p_openai,
+            top_k: s.top_k_openai,
+            frequency_penalty: s.freq_pen_openai,
+            presence_penalty: s.pres_pen_openai,
+            max_tokens: s.openai_max_tokens,
+        });
+    }
+
     if (!useStream) baseOpts.nonstream = 'true';
     if (apiUrl?.trim()) Object.assign(baseOpts, { api: 'openai', apiurl: apiUrl.trim(), ...(apiKey && { apipassword: apiKey }), ...(model && { model }) });
 
