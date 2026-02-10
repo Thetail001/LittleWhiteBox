@@ -511,25 +511,55 @@ function handleFrameMessage(event) {
         case "FETCH_MODELS":
             (async () => {
                 const { baseUrl, apiKey } = data;
-                const tryFetch = async (url) => {
+                
+                // 如果 provider 是 'st'，直接获取 ST 当前后端的模型列表
+                if (!baseUrl && !apiKey) {
                     try {
-                        const response = await fetch('/api/proxy', {
+                        const response = await fetch('/api/backends/chat-completions/models', {
                             method: 'POST',
                             headers: getRequestHeaders(),
                             body: JSON.stringify({
-                                url,
-                                method: 'GET',
-                                headers: {
-                                    'Authorization': `Bearer ${apiKey}`,
-                                    'Accept': 'application/json'
-                                }
+                                // 留空则使用当前活动的后端
                             })
                         });
-                        if (!response.ok) return null;
-                        const result = await response.json();
-                        // 兼容多种返回格式
-                        const models = result?.data || result;
-                        return Array.isArray(models) ? models.map(m => m?.id || m).filter(Boolean) : null;
+                        if (response.ok) {
+                            const result = await response.json();
+                            const models = Array.isArray(result) ? result.map(m => m?.id || m) : null;
+                            if (models) {
+                                postToFrame({ type: "MODELS_RESULT", models });
+                                return;
+                            }
+                        }
+                    } catch (e) {}
+                }
+
+                // 对于自定义 URL，尝试通过 ST 代理转发
+                const tryFetch = async (url) => {
+                    try {
+                        // 尝试几种常见的代理路径
+                        const proxyPaths = ['/api/backends/chat-completions/models', '/api/proxies/any'];
+                        for (const path of proxyPaths) {
+                            const response = await fetch(path, {
+                                method: 'POST',
+                                headers: getRequestHeaders(),
+                                body: JSON.stringify({
+                                    url,
+                                    method: 'GET',
+                                    headers: {
+                                        'Authorization': `Bearer ${apiKey}`,
+                                        'Accept': 'application/json'
+                                    }
+                                })
+                            });
+                            if (response.ok) {
+                                const result = await response.json();
+                                const models = result?.data || (Array.isArray(result) ? result : null);
+                                if (Array.isArray(models)) {
+                                    return models.map(m => m?.id || m).filter(Boolean);
+                                }
+                            }
+                        }
+                        return null;
                     } catch (e) {
                         return null;
                     }
@@ -541,7 +571,7 @@ function handleFrameMessage(event) {
                 if (models) {
                     postToFrame({ type: "MODELS_RESULT", models });
                 } else {
-                    postToFrame({ type: "MODELS_RESULT", error: "未获取到模型列表，请检查网络或配置" });
+                    postToFrame({ type: "MODELS_RESULT", error: "未获取到模型列表。原因：代理请求失败 (404/500) 或 URL/Key 不正确。" });
                 }
             })();
             break;
