@@ -8,6 +8,7 @@ import {
     extension_prompts,
     extension_prompt_types,
     extension_prompt_roles,
+    getRequestHeaders,
 } from "../../../../../../script.js";
 import { EXT_ID, extensionFolderPath } from "../../core/constants.js";
 import { createModuleEvents, event_types } from "../../core/event-manager.js";
@@ -505,6 +506,44 @@ function handleFrameMessage(event) {
 
         case "REQUEST_PANEL_CONFIG":
             sendSavedConfigToFrame();
+            break;
+
+        case "FETCH_MODELS":
+            (async () => {
+                const { baseUrl, apiKey } = data;
+                const tryFetch = async (url) => {
+                    try {
+                        const response = await fetch('/api/proxy', {
+                            method: 'POST',
+                            headers: getRequestHeaders(),
+                            body: JSON.stringify({
+                                url,
+                                method: 'GET',
+                                headers: {
+                                    'Authorization': `Bearer ${apiKey}`,
+                                    'Accept': 'application/json'
+                                }
+                            })
+                        });
+                        if (!response.ok) return null;
+                        const result = await response.json();
+                        // 兼容多种返回格式
+                        const models = result?.data || result;
+                        return Array.isArray(models) ? models.map(m => m?.id || m).filter(Boolean) : null;
+                    } catch (e) {
+                        return null;
+                    }
+                };
+
+                let models = await tryFetch(`${baseUrl}/v1/models`);
+                if (!models) models = await tryFetch(`${baseUrl}/models`);
+
+                if (models) {
+                    postToFrame({ type: "MODELS_RESULT", models });
+                } else {
+                    postToFrame({ type: "MODELS_RESULT", error: "未获取到模型列表，请检查网络或配置" });
+                }
+            })();
             break;
     }
 }

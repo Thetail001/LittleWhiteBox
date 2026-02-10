@@ -1706,7 +1706,49 @@
         function updateProviderUI(provider) { const pv = providerDefaults[provider] || providerDefaults.custom, isSt = provider === 'st'; $('api-url-row').classList.toggle('hidden', isSt); $('api-key-row').classList.toggle('hidden', !pv.needKey); $('api-model-manual-row').classList.toggle('hidden', isSt || !pv.needManualModel); $('api-model-select-row').classList.toggle('hidden', isSt || pv.needManualModel || !config.api.modelCache.length); $('api-connect-row').classList.toggle('hidden', isSt || !pv.canFetch); const urlInput = $('api-url'); if (!urlInput.value && pv.url) urlInput.value = pv.url }
         function openSettings() { const pn = id => { const v = $(id).value; return v === '' ? null : parseFloat(v) }; $('api-provider').value = config.api.provider; $('api-url').value = config.api.url; $('api-key').value = config.api.key; $('api-model-text').value = config.api.model; $('gen-temp').value = config.gen.temperature ?? ''; $('gen-top-p').value = config.gen.top_p ?? ''; $('gen-top-k').value = config.gen.top_k ?? ''; $('gen-presence').value = config.gen.presence_penalty ?? ''; $('gen-frequency').value = config.gen.frequency_penalty ?? ''; $('trigger-enabled').checked = config.trigger.enabled; $('trigger-interval').value = config.trigger.interval; $('trigger-timing').value = config.trigger.timing; $('trigger-stream').checked = config.trigger.useStream !== false; $('trigger-max-per-run').value = config.trigger.maxPerRun || 100; $('trigger-wrapper-head').value = config.trigger.wrapperHead || ''; $('trigger-wrapper-tail').value = config.trigger.wrapperTail || ''; $('trigger-insert-at-end').checked = !!config.trigger.forceInsertAtEnd; const en = $('trigger-enabled'); if (config.trigger.timing === 'manual') { en.checked = false; en.disabled = true; en.parentElement.style.opacity = '.5' } else { en.disabled = false; en.parentElement.style.opacity = '1' } if (config.api.modelCache.length) { $('api-model-select').innerHTML = config.api.modelCache.map(m => `<option value="${m}"${m === config.api.model ? ' selected' : ''}>${m}</option>`).join('') } updateProviderUI(config.api.provider); $('settings-modal').classList.add('active'); postMsg('SETTINGS_OPENED') }
         function closeSettings(save) { if (save) { const pn = id => { const v = $(id).value; return v === '' ? null : parseFloat(v) }; const provider = $('api-provider').value, pv = providerDefaults[provider] || providerDefaults.custom; config.api.provider = provider; config.api.url = $('api-url').value; config.api.key = $('api-key').value; config.api.model = provider === 'st' ? '' : pv.needManualModel ? $('api-model-text').value : $('api-model-select').value; config.gen.temperature = pn('gen-temp'); config.gen.top_p = pn('gen-top-p'); config.gen.top_k = pn('gen-top-k'); config.gen.presence_penalty = pn('gen-presence'); config.gen.frequency_penalty = pn('gen-frequency'); const timing = $('trigger-timing').value; config.trigger.timing = timing; config.trigger.enabled = timing === 'manual' ? false : $('trigger-enabled').checked; config.trigger.interval = parseInt($('trigger-interval').value) || 20; config.trigger.useStream = $('trigger-stream').checked; config.trigger.maxPerRun = parseInt($('trigger-max-per-run').value) || 100; config.trigger.wrapperHead = $('trigger-wrapper-head').value; config.trigger.wrapperTail = $('trigger-wrapper-tail').value; config.trigger.forceInsertAtEnd = $('trigger-insert-at-end').checked; saveConfig() } $('settings-modal').classList.remove('active'); postMsg('SETTINGS_CLOSED') }
-        async function fetchModels() { const btn = $('btn-connect'), provider = $('api-provider').value; if (!providerDefaults[provider]?.canFetch) { alert('当前渠道不支持自动拉取模型'); return } let baseUrl = $('api-url').value.trim().replace(/\/+$/, ''); const apiKey = $('api-key').value.trim(); if (!apiKey) { alert('请先填写 API KEY'); return } btn.disabled = true; btn.textContent = '连接中...'; try { const tryFetch = async url => { const res = await fetch(url, { headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' } }); return res.ok ? (await res.json())?.data?.map(m => m?.id).filter(Boolean) || null : null }; if (baseUrl.endsWith('/v1')) baseUrl = baseUrl.slice(0, -3); let models = await tryFetch(`${baseUrl}/v1/models`); if (!models) models = await tryFetch(`${baseUrl}/models`); if (!models?.length) throw new Error('未获取到模型列表'); config.api.modelCache = [...new Set(models)]; const sel = $('api-model-select'); sel.innerHTML = config.api.modelCache.map(m => `<option value="${m}">${m}</option>`).join(''); $('api-model-select-row').classList.remove('hidden'); if (!config.api.model && models.length) { config.api.model = models[0]; sel.value = models[0] } else if (config.api.model) sel.value = config.api.model; saveConfig(); alert(`成功获取 ${models.length} 个模型`) } catch (e) { alert('连接失败：' + (e.message || '请检查 URL 和 KEY')) } finally { btn.disabled = false; btn.textContent = '连接 / 拉取模型列表' } }
+        async function fetchModels() {
+            const btn = $('btn-connect'), provider = $('api-provider').value;
+            if (!providerDefaults[provider]?.canFetch) { alert('当前渠道不支持自动拉取模型'); return }
+            let baseUrl = $('api-url').value.trim().replace(/\/+$/, '');
+            const apiKey = $('api-key').value.trim();
+            if (!apiKey) { alert('请先填写 API KEY'); return }
+            btn.disabled = true;
+            btn.textContent = '连接中...';
+            if (baseUrl.endsWith('/v1')) baseUrl = baseUrl.slice(0, -3);
+            
+            // 发送请求给父窗口处理
+            postMsg('FETCH_MODELS', { baseUrl, apiKey });
+        }
+
+        function handleModelsResult(data) {
+            const btn = $('btn-connect');
+            btn.disabled = false;
+            btn.textContent = '连接 / 拉取模型列表';
+            
+            if (data.error) {
+                alert('连接失败：' + (data.error || '请检查 URL 和 KEY'));
+                return;
+            }
+            
+            const models = data.models;
+            if (!models?.length) {
+                alert('未获取到模型列表');
+                return;
+            }
+            
+            config.api.modelCache = [...new Set(models)];
+            const sel = $('api-model-select');
+            sel.innerHTML = config.api.modelCache.map(m => `<option value="${m}">${m}</option>`).join('');
+            $('api-model-select-row').classList.remove('hidden');
+            if (!config.api.model && models.length) {
+                config.api.model = models[0];
+                sel.value = models[0];
+            } else if (config.api.model) {
+                sel.value = config.api.model;
+            }
+            saveConfig();
+            alert(`成功获取 ${models.length} 个模型`);
+        }
 
         $$('.sec-btn[data-section]').forEach(b => b.onclick = () => openEditor(b.dataset.section));
         $('editor-backdrop').onclick = $('editor-close').onclick = $('editor-cancel').onclick = closeEditor;
@@ -1729,7 +1771,7 @@
         window.onresize = () => { relationChart?.resize(); relationChartFullscreen?.resize() };
 
         // Guarded by origin/source check.
-        window.onmessage = e => { if (e.origin !== PARENT_ORIGIN || e.source !== window.parent) return; const d = e.data; if (!d || d.source !== 'LittleWhiteBox') return; const btn = $('btn-generate'); switch (d.type) { case 'GENERATION_STATE': localGenerating = !!d.isGenerating; btn.textContent = localGenerating ? '停止' : '总结'; break; case 'SUMMARY_BASE_DATA': if (d.stats) { updateStats(d.stats); $('summarized-count').textContent = d.stats.hiddenCount ?? 0 } if (d.hideSummarized !== undefined) $('hide-summarized').checked = d.hideSummarized; if (d.keepVisibleCount !== undefined) $('keep-visible-count').value = d.keepVisibleCount; break; case 'SUMMARY_FULL_DATA': if (d.payload) { const p = d.payload; if (p.keywords) renderKeywords(p.keywords); if (p.events) renderTimeline(p.events); if (p.characters) renderRelations(p.characters); if (p.arcs) renderArcs(p.arcs); $('stat-events').textContent = p.events?.length || 0; if (p.lastSummarizedMesId != null) $('stat-summarized').textContent = p.lastSummarizedMesId + 1; if (p.stats) updateStats(p.stats) } break; case 'SUMMARY_ERROR': console.error('Summary error:', d.message); break; case 'SUMMARY_CLEARED': const t = d.payload?.totalFloors || 0; $('stat-events').textContent = 0; $('stat-summarized').textContent = 0; $('stat-pending').textContent = t; $('summarized-count').textContent = 0; summaryData = { keywords: [], events: [], characters: { main: [], relationships: [] }, arcs: [] }; renderKeywords([]); renderTimeline([]); renderRelations(null); renderArcs([]); break; case 'LOAD_PANEL_CONFIG': if (d.config) { applyConfig(d.config); } break } };
+        window.onmessage = e => { if (e.origin !== PARENT_ORIGIN || e.source !== window.parent) return; const d = e.data; if (!d || d.source !== 'LittleWhiteBox') return; const btn = $('btn-generate'); switch (d.type) { case 'MODELS_RESULT': handleModelsResult(d); break; case 'GENERATION_STATE': localGenerating = !!d.isGenerating; btn.textContent = localGenerating ? '停止' : '总结'; break; case 'SUMMARY_BASE_DATA': if (d.stats) { updateStats(d.stats); $('summarized-count').textContent = d.stats.hiddenCount ?? 0 } if (d.hideSummarized !== undefined) $('hide-summarized').checked = d.hideSummarized; if (d.keepVisibleCount !== undefined) $('keep-visible-count').value = d.keepVisibleCount; break; case 'SUMMARY_FULL_DATA': if (d.payload) { const p = d.payload; if (p.keywords) renderKeywords(p.keywords); if (p.events) renderTimeline(p.events); if (p.characters) renderRelations(p.characters); if (p.arcs) renderArcs(p.arcs); $('stat-events').textContent = p.events?.length || 0; if (p.lastSummarizedMesId != null) $('stat-summarized').textContent = p.lastSummarizedMesId + 1; if (p.stats) updateStats(p.stats) } break; case 'SUMMARY_ERROR': console.error('Summary error:', d.message); break; case 'SUMMARY_CLEARED': const t = d.payload?.totalFloors || 0; $('stat-events').textContent = 0; $('stat-summarized').textContent = 0; $('stat-pending').textContent = t; $('summarized-count').textContent = 0; summaryData = { keywords: [], events: [], characters: { main: [], relationships: [] }, arcs: [] }; renderKeywords([]); renderTimeline([]); renderRelations(null); renderArcs([]); break; case 'LOAD_PANEL_CONFIG': if (d.config) { applyConfig(d.config); } break } };
 
         document.addEventListener('DOMContentLoaded', () => { loadConfig(); $('stat-events').textContent = '—'; $('stat-summarized').textContent = '—'; $('stat-pending').textContent = '—'; $('summarized-count').textContent = '0'; renderKeywords([]); renderTimeline([]); renderArcs([]); postMsg('FRAME_READY') });
     </script>
