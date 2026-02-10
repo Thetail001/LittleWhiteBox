@@ -516,61 +516,70 @@ function handleFrameMessage(event) {
                 headers['Accept'] = 'application/json';
                 headers['Content-Type'] = 'application/json';
 
-                // 1. 如果是 'st' 源，尝试直接从 ST 获取
-                if (!baseUrl && !apiKey) {
-                    const stPaths = ['/api/backends/chat-completions/models', '/api/models'];
-                    for (const path of stPaths) {
-                        try {
-                            // 优先尝试 GET
-                            let res = await fetch(path, { method: 'GET', headers });
-                            if (!res.ok) {
-                                // 尝试 POST
-                                res = await fetch(path, { method: 'POST', headers, body: JSON.stringify({}) });
-                            }
-                            if (res.ok) {
-                                const result = await res.json();
-                                const models = (Array.isArray(result) ? result : result?.data)?.map(m => m?.id || m).filter(Boolean);
-                                if (models?.length) {
-                                    postToFrame({ type: "MODELS_RESULT", models });
-                                    return;
-                                }
-                            }
-                        } catch (e) {}
+                // 尝试路径列表
+                const tryPaths = [
+                    {
+                        // 标准 ChatCompletion 代理路径
+                        path: '/api/backends/chat-completions/models',
+                        method: 'POST',
+                        body: (url) => JSON.stringify({
+                            chat_completion_source: 'openai',
+                            openai_api_key: apiKey,
+                            reverse_proxy: url,
+                            proxy_password: ''
+                        })
+                    },
+                    {
+                        // 某些环境下的直接代理路径
+                        path: '/api/proxies/openai/models',
+                        method: 'POST',
+                        body: (url) => JSON.stringify({ url, key: apiKey })
+                    },
+                    {
+                        // 通用转发路径
+                        path: '/api/proxies/any',
+                        method: 'POST',
+                        body: (url) => JSON.stringify({
+                            url: url.endsWith('/models') ? url : `${url}/models`,
+                            method: 'GET',
+                            headers: { 'Authorization': `Bearer ${apiKey}` }
+                        })
+                    },
+                    {
+                        // 最后的兜底：尝试 GET
+                        path: '/api/models',
+                        method: 'GET'
                     }
-                }
-
-                // 2. 尝试多种代理路径获取自定义模型列表
-                const proxyPaths = [
-                    '/api/backends/chat-completions/models',
-                    '/api/backends/openai/models',
-                    '/api/proxies/any',
-                    '/api/proxy'
                 ];
 
-                for (const path of proxyPaths) {
+                for (const entry of tryPaths) {
                     try {
-                        const res = await fetch(path, {
-                            method: 'POST',
-                            headers,
-                            body: JSON.stringify({
-                                url: baseUrl,
-                                method: 'GET',
-                                headers: { 'Authorization': `Bearer ${apiKey}` },
-                                source: 'openai' // 某些后端需要此字段
-                            })
-                        });
+                        const fetchOptions = {
+                            method: entry.method,
+                            headers: headers
+                        };
+                        if (entry.method === 'POST' && entry.body) {
+                            fetchOptions.body = entry.body(baseUrl);
+                        }
+
+                        const res = await fetch(entry.path, fetchOptions);
                         if (res.ok) {
                             const result = await res.json();
-                            const models = (Array.isArray(result) ? result : result?.data)?.map(m => m?.id || m).filter(Boolean);
+                            const models = (Array.isArray(result) ? result : (result?.data || result?.models))
+                                ?.map(m => m?.id || m)
+                                .filter(m => typeof m === 'string');
+                            
                             if (models?.length) {
                                 postToFrame({ type: "MODELS_RESULT", models });
                                 return;
                             }
                         }
-                    } catch (e) {}
+                    } catch (e) {
+                        console.warn(`[StorySummary] Failed to fetch from ${entry.path}:`, e);
+                    }
                 }
 
-                postToFrame({ type: "MODELS_RESULT", error: "未获取到模型列表。请检查：1. API URL 是否正确（需包含 http:// 且以 /v1 结尾）；2. API KEY 是否有效；3. 该 ST 环境可能限制了跨域请求。" });
+                postToFrame({ type: "MODELS_RESULT", error: "无法自动拉取模型列表。原因：当前 ST 环境屏蔽了列表接口或 URL/Key 不正确。建议：请在模型输入框手动填写模型名称（如 gpt-4o, kimi-k2.5 等）。" });
             })();
             break;
     }
