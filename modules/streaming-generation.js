@@ -18,7 +18,7 @@ const EVT_DONE = 'xiaobaix_streaming_completed';
 const PROXY_SUPPORTED = new Set([
     chat_completion_sources.OPENAI, chat_completion_sources.CLAUDE,
     chat_completion_sources.MAKERSUITE, chat_completion_sources.COHERE,
-    chat_completion_sources.DEEPSEEK,
+    chat_completion_sources.DEEPSEEK, chat_completion_sources.MOONSHOT,
 ]);
 
 class StreamingGeneration {
@@ -113,6 +113,7 @@ class StreamingGeneration {
             [chat_completion_sources.MAKERSUITE]: 'gemini',
             [chat_completion_sources.COHERE]: 'cohere',
             [chat_completion_sources.DEEPSEEK]: 'deepseek',
+            [chat_completion_sources.MOONSHOT]: 'moonshot',
             [chat_completion_sources.CUSTOM]: 'custom',
         };
         const api = map[source] || 'openai';
@@ -147,6 +148,7 @@ class StreamingGeneration {
             google: chat_completion_sources.MAKERSUITE,
             cohere: chat_completion_sources.COHERE,
             deepseek: chat_completion_sources.DEEPSEEK,
+            moonshot: chat_completion_sources.MOONSHOT,
             custom: chat_completion_sources.CUSTOM,
         }[String(opts.api || '').toLowerCase()];
 

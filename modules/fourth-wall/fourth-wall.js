@@ -2,7 +2,7 @@
 // 次元壁模块 - 主控制器
 // ════════════════════════════════════════════════════════════════════════════
 import { extension_settings, getContext, saveMetadataDebounced } from "../../../../../extensions.js";
-import { oai_settings, getChatCompletionModel } from "../../../../../openai.js";
+import { oai_settings, getChatCompletionModel, chat_completion_sources } from "../../../../../openai.js";
 import { saveSettingsDebounced, chat_metadata, default_user_avatar, default_avatar } from "../../../../../../script.js";
 import { EXT_ID, extensionFolderPath } from "../../core/constants.js";
 import { createModuleEvents, event_types } from "../../core/event-manager.js";
@@ -487,12 +487,25 @@ async function startGeneration(data) {
     let model;
     try { model = getChatCompletionModel(); } catch {}
 
+    const source = oai_settings?.chat_completion_source;
+    const apiMap = {
+        [chat_completion_sources.OPENAI]: 'openai',
+        [chat_completion_sources.CLAUDE]: 'claude',
+        [chat_completion_sources.MAKERSUITE]: 'gemini',
+        [chat_completion_sources.COHERE]: 'cohere',
+        [chat_completion_sources.DEEPSEEK]: 'deepseek',
+        [chat_completion_sources.MOONSHOT]: 'moonshot',
+        [chat_completion_sources.CUSTOM]: 'custom',
+    };
+    const api = apiMap[source] || 'openai';
+
     await gen.xbgenrawCommand({
         id: STREAM_SESSION_ID,
         top64: b64UrlEncode(JSON.stringify(topMessages)),
         bottomassistant: msg4,
         nonstream: data.settings.stream ? 'false' : 'true',
         as: 'user',
+        api,
         model,
         ...extraParams
     }, '');
@@ -661,6 +674,18 @@ async function generateCommentary(targetText, type) {
     let model;
     try { model = getChatCompletionModel(); } catch {}
 
+    const source = oai_settings?.chat_completion_source;
+    const apiMap = {
+        [chat_completion_sources.OPENAI]: 'openai',
+        [chat_completion_sources.CLAUDE]: 'claude',
+        [chat_completion_sources.MAKERSUITE]: 'gemini',
+        [chat_completion_sources.COHERE]: 'cohere',
+        [chat_completion_sources.DEEPSEEK]: 'deepseek',
+        [chat_completion_sources.MOONSHOT]: 'moonshot',
+        [chat_completion_sources.CUSTOM]: 'custom',
+    };
+    const api = apiMap[source] || 'openai';
+
     try {
         const result = await gen.xbgenrawCommand({
             id: 'xb8',
@@ -668,6 +693,7 @@ async function generateCommentary(targetText, type) {
             bottomassistant: msg4,
             nonstream: 'true',
             as: 'user',
+            api,
             model,
         }, '');
         return extractMsg(result) || null;
