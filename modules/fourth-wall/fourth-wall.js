@@ -2,7 +2,7 @@
 // 次元壁模块 - 主控制器
 // ════════════════════════════════════════════════════════════════════════════
 import { extension_settings, getContext, saveMetadataDebounced } from "../../../../../extensions.js";
-import { oai_settings } from "../../../../../openai.js";
+import { oai_settings, getChatCompletionModel } from "../../../../../openai.js";
 import { saveSettingsDebounced, chat_metadata, default_user_avatar, default_avatar } from "../../../../../../script.js";
 import { EXT_ID, extensionFolderPath } from "../../core/constants.js";
 import { createModuleEvents, event_types } from "../../core/event-manager.js";
@@ -474,14 +474,18 @@ async function startGeneration(data) {
     ];
 
     const s = oai_settings;
-    const extraParams = {
-        temperature: s?.temp_openai,
-        top_p: s?.top_p_openai,
-        top_k: s?.top_k_openai,
-        frequency_penalty: s?.freq_pen_openai,
-        presence_penalty: s?.pres_pen_openai,
-        max_tokens: s?.openai_max_tokens,
-    };
+    const extraParams = {};
+    if (s) {
+        if (s.temp_openai !== undefined) extraParams.temperature = s.temp_openai;
+        if (s.top_p_openai !== undefined) extraParams.top_p = s.top_p_openai;
+        if (s.top_k_openai !== undefined) extraParams.top_k = s.top_k_openai;
+        if (s.freq_pen_openai !== undefined) extraParams.frequency_penalty = s.freq_pen_openai;
+        if (s.pres_pen_openai !== undefined) extraParams.presence_penalty = s.pres_pen_openai;
+        if (s.openai_max_tokens !== undefined && s.openai_max_tokens !== 0) extraParams.max_tokens = s.openai_max_tokens;
+    }
+
+    let model;
+    try { model = getChatCompletionModel(); } catch {}
 
     await gen.xbgenrawCommand({
         id: STREAM_SESSION_ID,
@@ -489,6 +493,7 @@ async function startGeneration(data) {
         bottomassistant: msg4,
         nonstream: data.settings.stream ? 'false' : 'true',
         as: 'user',
+        model,
         ...extraParams
     }, '');
     
@@ -653,6 +658,9 @@ async function generateCommentary(targetText, type) {
         { role: 'user', content: msg3 },
     ];
 
+    let model;
+    try { model = getChatCompletionModel(); } catch {}
+
     try {
         const result = await gen.xbgenrawCommand({
             id: 'xb8',
@@ -660,6 +668,7 @@ async function generateCommentary(targetText, type) {
             bottomassistant: msg4,
             nonstream: 'true',
             as: 'user',
+            model,
         }, '');
         return extractMsg(result) || null;
     } catch {
