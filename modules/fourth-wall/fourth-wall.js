@@ -591,7 +591,7 @@ async function startGeneration(data) {
     };
 
     // API 选择逻辑
-    const fwApi = data.settings.fourthWallApi;
+    const fwApi = data.apiSettings || data.settings?.fourthWallApi;
     let api, apiUrl, apiKey, forcedModel;
 
     if (fwApi?.enabled) {

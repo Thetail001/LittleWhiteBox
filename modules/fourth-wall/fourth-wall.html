@@ -1770,7 +1770,7 @@
             textarea.style.height = 'auto';
             renderMessages();
             updateSendButton();
-            postToParent({ type: 'SEND_MESSAGE', userInput: text, history: state.history, settings: state.settings, imgSettings: state.imgSettings, voiceSettings: state.voiceSettings });
+            postToParent({ type: 'SEND_MESSAGE', userInput: text, history: state.history, settings: state.settings, imgSettings: state.imgSettings, voiceSettings: state.voiceSettings, apiSettings: state.apiSettings });
         }
 
         function regenerate() {
@@ -1784,7 +1784,7 @@
             state.isStreaming = true;
             renderMessages();
             updateSendButton();
-            postToParent({ type: 'REGENERATE', userInput: lastUserText, history: state.history, settings: state.settings, imgSettings: state.imgSettings, voiceSettings: state.voiceSettings });
+            postToParent({ type: 'REGENERATE', userInput: lastUserText, history: state.history, settings: state.settings, imgSettings: state.imgSettings, voiceSettings: state.voiceSettings, apiSettings: state.apiSettings });
         }
 
         /* ══════════════════════════════════════════════════════════════════════════════

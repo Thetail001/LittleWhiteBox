@@ -848,13 +848,40 @@ async function handleFetchModels({ apiUrl, apiKey }) {
     try {
         let models = [];
         if (!apiUrl) {
-            for (const ep of ['/api/backends/chat-completions/models', '/api/openai/models']) {
-                try { const r = await fetch(ep, { headers: { 'Content-Type': 'application/json' } }); if (r.ok) { const j = await r.json(); models = (j.data || j || []).map(m => m.id || m.name || m).filter(m => typeof m === 'string'); if (models.length) break; } } catch { }
+            // 尝试常用端点（均通过后端代理或本地API）
+            const tryPaths = [
+                '/api/backends/chat-completions/models',
+                '/api/openai/models',
+                '/api/proxies/openai/models' // 尝试通过 TextGen 代理
+            ];
+
+            for (const ep of tryPaths) {
+                try {
+                    const r = await fetch(ep, {
+                        method: 'GET', // 或 POST，视端点而定，ST 内部 API 通常 GET
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                    if (r.ok) {
+                        const j = await r.json();
+                        models = (j.data || j || []).map(m => m.id || m.name || m).filter(m => typeof m === 'string');
+                        if (models.length) break;
+                    }
+                } catch { }
             }
             if (!models.length) throw new Error('无法从酒馆获取模型列表');
         } else {
-            const h = { 'Content-Type': 'application/json', ...(apiKey && { Authorization: `Bearer ${apiKey}` }) };
-            const r = await fetch(apiUrl.replace(/\/$/, '') + '/models', { headers: h });
+            // 使用 proxy/any 绕过 Mixed Content
+            const targetUrl = apiUrl.replace(/\/$/, '') + '/models';
+            const r = await fetch('/api/proxies/any', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    url: targetUrl,
+                    method: 'GET',
+                    headers: apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {}
+                })
+            });
+
             if (!r.ok) throw new Error(`HTTP ${r.status}`);
             const j = await r.json();
             models = (j.data || j || []).map(m => m.id || m.name || m).filter(m => typeof m === 'string');
@@ -865,9 +892,31 @@ async function handleFetchModels({ apiUrl, apiKey }) {
 
 async function handleTestConn({ apiUrl, apiKey, model }) {
     try {
-        if (!apiUrl) { for (const ep of ['/api/backends/chat-completions/status', '/api/openai/models', '/api/backends/chat-completions/models']) { try { if ((await fetch(ep, { headers: { 'Content-Type': 'application/json' } })).ok) { postFrame({ type: "TEST_CONN_RESULT", success: true, message: `连接成功${model ? ` (模型: ${model})` : ''}` }); return; } } catch { } } throw new Error('无法连接到酒馆API'); }
-        const h = { 'Content-Type': 'application/json', ...(apiKey && { Authorization: `Bearer ${apiKey}` }) };
-        if (!(await fetch(apiUrl.replace(/\/$/, '') + '/models', { headers: h })).ok) throw new Error('连接失败');
+        if (!apiUrl) {
+            for (const ep of ['/api/backends/chat-completions/status', '/api/openai/models', '/api/backends/chat-completions/models']) {
+                try {
+                    if ((await fetch(ep, { headers: { 'Content-Type': 'application/json' } })).ok) {
+                        postFrame({ type: "TEST_CONN_RESULT", success: true, message: `连接成功${model ? ` (模型: ${model})` : ''}` });
+                        return;
+                    }
+                } catch { }
+            }
+            throw new Error('无法连接到酒馆API');
+        }
+
+        // 使用 proxy/any 绕过 Mixed Content
+        const targetUrl = apiUrl.replace(/\/$/, '') + '/models';
+        const r = await fetch('/api/proxies/any', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                url: targetUrl,
+                method: 'GET',
+                headers: apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {}
+            })
+        });
+
+        if (!r.ok) throw new Error(`连接失败 HTTP ${r.status}`);
         postFrame({ type: "TEST_CONN_RESULT", success: true, message: `连接成功${model ? ` (模型: ${model})` : ''}` });
     } catch (e) { postFrame({ type: "TEST_CONN_RESULT", success: false, message: `连接失败: ${e.message}` }); }
 }
