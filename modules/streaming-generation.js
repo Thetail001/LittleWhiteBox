@@ -266,6 +266,26 @@ class StreamingGeneration {
         }
 
 
+        // ──── 诊断日志：捕获发送到 API 的完整 payload ────
+        console.groupCollapsed('[xbgen:callAPI] 📋 请求诊断');
+        console.log('chat_completion_source:', body.chat_completion_source);
+        console.log('model:', body.model);
+        console.log('stream:', body.stream);
+        console.log('reverse_proxy:', body.reverse_proxy ?? '(未设置)');
+        console.log('proxy_password:', body.proxy_password ? '(已设置)' : '(未设置)');
+        console.log('temperature:', body.temperature, '| top_p:', body.top_p, '| top_k:', body.top_k);
+        console.log('max_tokens:', body.max_tokens, '| presence_penalty:', body.presence_penalty, '| frequency_penalty:', body.frequency_penalty);
+        console.log('messages count:', Array.isArray(body.messages) ? body.messages.length : 'N/A');
+        if (Array.isArray(body.messages)) {
+            body.messages.forEach((m, i) => {
+                const preview = typeof m.content === 'string' ? m.content.slice(0, 80) : JSON.stringify(m.content).slice(0, 80);
+                console.log(`  [${i}] role=${m.role} content="${preview}..." ${Object.keys(m).filter(k => k !== 'role' && k !== 'content').map(k => `${k}=${JSON.stringify(m[k])}`).join(' ')}`);
+            });
+        }
+        console.log('完整 body keys:', Object.keys(body).join(', '));
+        console.groupEnd();
+        // ──── 诊断日志结束 ────
+
         if (stream) {
             const payload = ChatCompletionService.createRequestData(body);
 
