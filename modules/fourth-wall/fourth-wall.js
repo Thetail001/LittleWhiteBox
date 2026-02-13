@@ -49,6 +49,9 @@ let commentaryBubbleTimer = null;
 // ═══════════════════════════════ 新增 ═══════════════════════════════
 let visibilityHandler = null;
 let pendingPingId = null;
+let lastSentStreamText = '';
+let lastSentThinkingText = '';
+const REGEX_MSG_TAG = /<msg\b[^>]*>([\s\S]*?)<\/msg>/gi;
 // ════════════════════════════════════════════════════════════════════
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -97,10 +100,10 @@ function b64UrlEncode(str) {
 
 function extractMsg(text) {
     const src = String(text || '');
-    const re = /<msg\b[^>]*>([\s\S]*?)<\/msg>/gi;
     const parts = [];
     let m;
-    while ((m = re.exec(src)) !== null) {
+    REGEX_MSG_TAG.lastIndex = 0;
+    while ((m = REGEX_MSG_TAG.exec(src)) !== null) {
         const inner = String(m[1] || '').trim();
         if (inner) parts.push(inner);
     }
@@ -631,6 +634,8 @@ async function startGeneration(data) {
 async function handleSendMessage(data) {
     if (isStreaming) return;
     isStreaming = true;
+    lastSentStreamText = '';
+    lastSentThinkingText = '';
 
     const session = getActiveSession();
     if (session) {
@@ -650,6 +655,8 @@ async function handleSendMessage(data) {
 async function handleRegenerate(data) {
     if (isStreaming) return;
     isStreaming = true;
+    lastSentStreamText = '';
+    lastSentThinkingText = '';
 
     const session = getActiveSession();
     if (session) {
@@ -675,7 +682,12 @@ function startStreamingPoll() {
         const raw = gen.getLastGeneration(STREAM_SESSION_ID) || '...';
         const thinking = extractThinkingPartial(raw);
         const msg = extractMsg(raw) || extractMsgPartial(raw);
-        postToFrame({ type: 'STREAM_UPDATE', text: msg || '...', thinking: thinking || undefined });
+        
+        if (msg !== lastSentStreamText || thinking !== lastSentThinkingText) {
+            lastSentStreamText = msg;
+            lastSentThinkingText = thinking;
+            postToFrame({ type: 'STREAM_UPDATE', text: msg || '...', thinking: thinking || undefined });
+        }
 
         const st = gen.getStatus?.(STREAM_SESSION_ID);
         if (st && st.isStreaming === false) finalizeGeneration();

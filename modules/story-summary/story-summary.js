@@ -144,13 +144,16 @@ function addSummarySnapshot(store, endMesId) {
 }
 
 function mergeNewData(oldJson, parsed, endMesId) {
-    const merged = structuredClone(oldJson || {});
-    merged.keywords ||= [];
-    merged.events ||= [];
-    merged.characters ||= {};
-    merged.characters.main ||= [];
-    merged.characters.relationships ||= [];
-    merged.arcs ||= [];
+    const old = oldJson || {};
+    const merged = {
+        keywords: Array.isArray(old.keywords) ? [...old.keywords] : [],
+        events: Array.isArray(old.events) ? [...old.events] : [],
+        characters: {
+            main: Array.isArray(old.characters?.main) ? [...old.characters.main] : [],
+            relationships: Array.isArray(old.characters?.relationships) ? [...old.characters.relationships] : [],
+        },
+        arcs: Array.isArray(old.arcs) ? [...old.arcs] : [],
+    };
 
     // 关键词：完全替换（全局关键词）
     if (parsed.keywords?.length) {
@@ -159,13 +162,12 @@ function mergeNewData(oldJson, parsed, endMesId) {
 
     // 事件：追加
     (parsed.events || []).forEach(e => {
-        e._addedAt = endMesId;
-        merged.events.push(e);
+        merged.events.push({ ...e, _addedAt: endMesId });
     });
 
     // 新角色：追加不重复
     const existingMain = new Set(
-        (merged.characters.main || []).map(m => typeof m === 'string' ? m : m.name)
+        merged.characters.main.map(m => typeof m === 'string' ? m : m.name)
     );
     (parsed.newCharacters || []).forEach(name => {
         if (!existingMain.has(name)) {
@@ -175,30 +177,28 @@ function mergeNewData(oldJson, parsed, endMesId) {
 
     // 关系：更新或追加
     const relMap = new Map(
-        (merged.characters.relationships || []).map(r => [`${r.from}->${r.to}`, r])
+        merged.characters.relationships.map(r => [`${r.from}->${r.to}`, r])
     );
     (parsed.newRelationships || []).forEach(r => {
         const key = `${r.from}->${r.to}`;
         const existing = relMap.get(key);
         if (existing) {
-            existing.label = r.label;
-            existing.trend = r.trend;
+            Object.assign(existing, { label: r.label, trend: r.trend });
         } else {
-            r._addedAt = endMesId;
-            relMap.set(key, r);
+            relMap.set(key, { ...r, _addedAt: endMesId });
         }
     });
     merged.characters.relationships = Array.from(relMap.values());
 
     // 弧光：更新或追加
-    const arcMap = new Map((merged.arcs || []).map(a => [a.name, a]));
+    const arcMap = new Map(merged.arcs.map(a => [a.name, a]));
     (parsed.arcUpdates || []).forEach(update => {
         const existing = arcMap.get(update.name);
         if (existing) {
             existing.trajectory = update.trajectory;
             existing.progress = update.progress;
             if (update.newMoment) {
-                existing.moments = existing.moments || [];
+                existing.moments = Array.isArray(existing.moments) ? [...existing.moments] : [];
                 existing.moments.push({ text: update.newMoment, _addedAt: endMesId });
             }
         } else {

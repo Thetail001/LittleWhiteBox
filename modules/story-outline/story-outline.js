@@ -185,107 +185,68 @@ function fixJson(s) {
 }
 
 /**
- * 从输入中提取 JSON（非破坏性扫描版）
- * 策略：
- * 1. 直接在原始字符串中扫描所有 {...} 结构
- * 2. 对每个候选单独清洗和解析
- * 3. 按有效属性评分，返回最佳结果
+ * 从输入中提取 JSON
+ * 优化方案：直接寻找最外层的 {} 或 []，避免 O(N^2) 复杂度的全量扫描
  */
 function extractJson(input, isArray = false) {
     if (!input) return null;
 
-    // 处理已经是对象的输入
     if (typeof input === 'object' && input !== null) {
         if (isArray && Array.isArray(input)) return input;
-        if (!isArray && !Array.isArray(input)) {
-            const content = input.choices?.[0]?.message?.content
-                ?? input.choices?.[0]?.message?.reasoning_content
-                ?? input.content ?? input.reasoning_content;
-            if (content != null) return extractJson(String(content).trim(), isArray);
-            if (!input.choices) return input;
-        }
+        if (!isArray && !Array.isArray(input)) return input;
         return null;
     }
 
-    // 预处理：只做最基本的清理
-    const str = String(input).trim()
-        .replace(/^\uFEFF/, '')
-        .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
-        .replace(/\r\n?/g, '\n');
-    if (!str) return null;
+    let str = String(input).trim();
+    
+    // 快速清理 Markdown 代码块
+    if (str.includes('```')) {
+        str = str.replace(/```(?:json)?([\s\S]*?)```/gi, '$1').trim();
+    }
 
-    const tryParse = s => { try { return JSON.parse(s); } catch { return null; } };
-    const ok = (o, arr) => o != null && (arr ? Array.isArray(o) : typeof o === 'object' && !Array.isArray(o));
+    const startChar = isArray ? '[' : '{';
+    const endChar = isArray ? ']' : '}';
+    
+    const firstIdx = str.indexOf(startChar);
+    const lastIdx = str.lastIndexOf(endChar);
 
-    // 评分函数：meta=10, world/maps=5, 其他=3
-    const score = o => (o?.meta ? 10 : 0) + (o?.world ? 5 : 0) + (o?.maps ? 5 : 0) +
-        (o?.truth ? 3 : 0) + (o?.onion_layers ? 3 : 0) + (o?.atmosphere ? 3 : 0) + (o?.trajectory ? 3 : 0) + (o?.user_guide ? 3 : 0);
+    if (firstIdx === -1 || lastIdx === -1 || firstIdx >= lastIdx) {
+        return null;
+    }
 
-    // 1. 直接尝试解析（最理想情况）
-    let r = tryParse(str);
-    if (ok(r, isArray) && score(r) > 0) return r;
+    const candidate = str.slice(firstIdx, lastIdx + 1);
+    
+    const tryParse = (s) => {
+        try {
+            return JSON.parse(s);
+        } catch (e) {
+            // 尝试修复常见 JSON 错误（如尾随逗号）
+            try {
+                const fixed = s.replace(/,(\s*[}\]])/g, '$1');
+                return JSON.parse(fixed);
+            } catch {
+                return null;
+            }
+        }
+    };
 
-    // 2. 扫描所有 {...} 或 [...] 结构
-    const open = isArray ? '[' : '{';
-    const candidates = [];
-
-    for (let i = 0; i < str.length; i++) {
-        if (str[i] !== open) continue;
-
-        // 括号匹配找闭合位置
-        let depth = 0, inStr = false, esc = false;
-        for (let j = i; j < str.length; j++) {
-            const c = str[j];
-            if (esc) { esc = false; continue; }
-            if (c === '\\' && inStr) { esc = true; continue; }
-            if (c === '"') { inStr = !inStr; continue; }
-            if (inStr) continue;
-            if (c === '{' || c === '[') depth++;
-            else if (c === '}' || c === ']') depth--;
-            if (depth === 0) {
-                candidates.push({ start: i, end: j, text: str.slice(i, j + 1) });
-                i = j; // 跳过已处理的部分
-                break;
+    let result = tryParse(candidate);
+    
+    // 如果简单截取失败，再尝试稍微复杂的提取（但依然避免原来的全量候选排序逻辑）
+    if (!result) {
+        // 只有在首尾不匹配时才尝试更深层的搜索
+        const matches = isArray ? str.match(/\[[\s\S]*\]/g) : str.match(/\{[\s\S]*\}/g);
+        if (matches) {
+            for (const m of matches.sort((a, b) => b.length - a.length)) {
+                result = tryParse(m);
+                if (result) break;
             }
         }
     }
 
-    // 3. 按长度排序（大的优先，更可能是完整对象）
-    candidates.sort((a, b) => b.text.length - a.text.length);
-
-    // 4. 尝试解析每个候选，记录最佳结果
-    let best = null, bestScore = -1;
-
-    for (const { text } of candidates) {
-        // 直接解析
-        r = tryParse(text);
-        if (ok(r, isArray)) {
-            const s = score(r);
-            if (s > bestScore) { best = r; bestScore = s; }
-            if (s >= 10) return r; // 有 meta 就直接返回
-            continue;
-        }
-
-        // 修复后解析
-        const fixed = fixJson(text);
-        r = tryParse(fixed);
-        if (ok(r, isArray)) {
-            const s = score(r);
-            if (s > bestScore) { best = r; bestScore = s; }
-            if (s >= 10) return r;
-        }
-    }
-
-    // 5. 返回最佳结果
-    if (best) return best;
-
-    // 6. 最后尝试：取第一个 { 到最后一个 } 之间的内容
-    const firstBrace = str.indexOf('{');
-    const lastBrace = str.lastIndexOf('}');
-    if (!isArray && firstBrace !== -1 && lastBrace > firstBrace) {
-        const chunk = str.slice(firstBrace, lastBrace + 1);
-        r = tryParse(chunk) || tryParse(fixJson(chunk));
-        if (ok(r, isArray)) return r;
+    if (result) {
+        const ok = isArray ? Array.isArray(result) : (typeof result === 'object' && !Array.isArray(result));
+        return ok ? result : null;
     }
 
     return null;
@@ -1491,7 +1452,8 @@ function showOverlay() { if (!overlayCreated) createOverlay(); frameReady = fals
 function hideOverlay() { $("#xiaobaix-story-outline-overlay").hide(); }
 
 let lastIsMobile = isMobile();
-window.addEventListener('resize', () => { const nowIsMobile = isMobile(); if (nowIsMobile !== lastIsMobile) { lastIsMobile = nowIsMobile; updateLayout(); } });
+const resizeHandler = () => { const nowIsMobile = isMobile(); if (nowIsMobile !== lastIsMobile) { lastIsMobile = nowIsMobile; updateLayout(); } };
+window.addEventListener('resize', resizeHandler);
 
 
 // ==================== 11. 事件与初始化 ====================
@@ -1550,6 +1512,7 @@ function cleanup() {
     hideOverlay();
     overlayCreated = false; frameReady = false; pendingMsgs = [];
     window.removeEventListener("message", handleMsg);
+    window.removeEventListener("resize", resizeHandler);
     document.getElementById("xiaobaix-story-outline-overlay")?.remove();
     removePrompt();
     if (presetCleanup) { presetCleanup(); presetCleanup = null; }

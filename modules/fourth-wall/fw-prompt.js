@@ -112,26 +112,38 @@ const COMMENTARY_PROTOCOL = `
 </meta_protocol>`;
 
 // ════════════════════════════════════════════════════════════════════════════
+// 常量
+// ════════════════════════════════════════════════════════════════════════════
+
+const REGEX_THINK = /<think>[\s\S]*?<\/think>\s*/gi;
+const REGEX_THINKING = /<thinking>[\s\S]*?<\/thinking>\s*/gi;
+const REGEX_SYSTEM = /<system>[\s\S]*?<\/system>\s*/gi;
+const REGEX_META = /<meta[\s\S]*?<\/meta>\s*/gi;
+const REGEX_INSTRUCTIONS = /<instructions>[\s\S]*?<\/instructions>\s*/gi;
+const REGEX_MULTI_NEWLINE = /\n{3,}/g;
+const REGEX_PIPE = /\|/g;
+
+// ════════════════════════════════════════════════════════════════════════════
 // 工具函数
 // ════════════════════════════════════════════════════════════════════════════
 
 function cleanChatHistory(raw) {
     return String(raw || '')
-        .replace(/\|/g, '｜')
-        .replace(/<think>[\s\S]*?<\/think>\s*/gi, '')
-        .replace(/<thinking>[\s\S]*?<\/thinking>\s*/gi, '')
-        .replace(/<system>[\s\S]*?<\/system>\s*/gi, '')
-        .replace(/<meta[\s\S]*?<\/meta>\s*/gi, '')
-        .replace(/<instructions>[\s\S]*?<\/instructions>\s*/gi, '')
-        .replace(/\n{3,}/g, '\n\n')
+        .replace(REGEX_PIPE, '｜')
+        .replace(REGEX_THINK, '')
+        .replace(REGEX_THINKING, '')
+        .replace(REGEX_SYSTEM, '')
+        .replace(REGEX_META, '')
+        .replace(REGEX_INSTRUCTIONS, '')
+        .replace(REGEX_MULTI_NEWLINE, '\n\n')
         .trim();
 }
 
 function cleanMetaContent(content) {
     return String(content || '')
-        .replace(/<think>[\s\S]*?<\/think>\s*/gi, '')
-        .replace(/<thinking>[\s\S]*?<\/thinking>\s*/gi, '')
-        .replace(/\|/g, '｜')
+        .replace(REGEX_THINK, '')
+        .replace(REGEX_THINKING, '')
+        .replace(REGEX_PIPE, '｜')
         .trim();
 }
 

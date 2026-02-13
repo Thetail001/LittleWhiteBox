@@ -23,6 +23,10 @@ import {
 const events = createModuleEvents('messageEnhancer');
 const CSS_INJECTED_KEY = 'xb-me-css-injected';
 
+const REGEX_IMG = /\[(?:img|图片)\s*:\s*([^\]]+)\]/gi;
+const REGEX_VOICE_EMO = /\[(?:voice|语音)\s*:([^:]*):([^\]]+)\]/gi;
+const REGEX_VOICE = /\[(?:voice|语音)\s*:\s*([^\]:]+)\]/gi;
+
 let currentAudio = null;
 let imageObserver = null;
 let novelDrawObserver = null;
@@ -44,14 +48,14 @@ export async function initMessageEnhancer() {
     
     events.on(event_types.CHAT_CHANGED, () => {
         clearQueue();
-        setTimeout(processAllMessages, 150);
+        setTimeout(() => processAllMessages(true), 150);
     });
     
     events.on(event_types.MESSAGE_RECEIVED, handleMessageChange);
     events.on(event_types.USER_MESSAGE_RENDERED, handleMessageChange);
-    events.on(event_types.MESSAGE_EDITED, handleMessageChange);
-    events.on(event_types.MESSAGE_UPDATED, handleMessageChange);
-    events.on(event_types.MESSAGE_SWIPED, handleMessageChange);
+    events.on(event_types.MESSAGE_EDITED, (data) => handleMessageChange(data, true)); // 编辑时强制重刷
+    events.on(event_types.MESSAGE_UPDATED, (data) => handleMessageChange(data, true));
+    events.on(event_types.MESSAGE_SWIPED, (data) => handleMessageChange(data, true));
     
     events.on(event_types.GENERATION_STOPPED, () => setTimeout(processAllMessages, 150));
     events.on(event_types.GENERATION_ENDED, () => setTimeout(processAllMessages, 150));
@@ -118,7 +122,7 @@ function initNovelDrawObserver() {
         if (pendingTexts.size > 0 && !debounceTimer) {
             debounceTimer = setTimeout(() => {
                 pendingTexts.forEach(mesText => {
-                    if (document.contains(mesText)) enhanceMessageContent(mesText);
+                    if (document.contains(mesText)) enhanceMessageContent(mesText, true); // NovelDraw 触发通常需要重刷
                 });
                 pendingTexts.clear();
                 debounceTimer = null;
@@ -138,7 +142,7 @@ function hasUnrenderedVoice(mesText) {
 // 事件处理
 // ════════════════════════════════════════════════════════════════════════════
 
-function handleMessageChange(data) {
+function handleMessageChange(data, force = false) {
     setTimeout(() => {
         const messageId = typeof data === 'object' 
             ? (data.messageId ?? data.id ?? data.index ?? data.mesId) 
@@ -146,17 +150,17 @@ function handleMessageChange(data) {
         
         if (Number.isFinite(messageId)) {
             const mesText = document.querySelector(`#chat .mes[mesid="${messageId}"] .mes_text`);
-            if (mesText) enhanceMessageContent(mesText);
+            if (mesText) enhanceMessageContent(mesText, force);
         } else {
-            processAllMessages();
+            processAllMessages(force);
         }
     }, 100);
 }
 
-function processAllMessages() {
+function processAllMessages(force = false) {
     const settings = extension_settings[EXT_ID];
     if (!settings?.fourthWall?.enabled) return;
-    document.querySelectorAll('#chat .mes .mes_text').forEach(enhanceMessageContent);
+    document.querySelectorAll('#chat .mes .mes_text').forEach(el => enhanceMessageContent(el, force));
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -255,8 +259,9 @@ function injectStyles() {
 // 内容增强
 // ════════════════════════════════════════════════════════════════════════════
 
-function enhanceMessageContent(container) {
+function enhanceMessageContent(container, force = false) {
     if (!container) return;
+    if (!force && container.dataset.xbEnhanced === '1') return;
     
     // Rewrites already-rendered message HTML; no new HTML source is introduced here.
     // eslint-disable-next-line no-unsanitized/property
@@ -264,21 +269,21 @@ function enhanceMessageContent(container) {
     let enhanced = html;
     let hasChanges = false;
     
-    enhanced = enhanced.replace(/\[(?:img|图片)\s*:\s*([^\]]+)\]/gi, (match, inner) => {
+    enhanced = enhanced.replace(REGEX_IMG, (match, inner) => {
         const tags = parseImageToken(inner);
         if (!tags) return match;
         hasChanges = true;
         return `<div class="xb-img-slot" data-tags="${encodeURIComponent(tags)}"></div>`;
     });
     
-    enhanced = enhanced.replace(/\[(?:voice|语音)\s*:([^:]*):([^\]]+)\]/gi, (match, emotionRaw, voiceText) => {
+    enhanced = enhanced.replace(REGEX_VOICE_EMO, (match, emotionRaw, voiceText) => {
         const txt = voiceText.trim();
         if (!txt) return match;
         hasChanges = true;
         return createVoiceBubbleHTML(txt, (emotionRaw || '').trim().toLowerCase());
     });
     
-    enhanced = enhanced.replace(/\[(?:voice|语音)\s*:\s*([^\]:]+)\]/gi, (match, voiceText) => {
+    enhanced = enhanced.replace(REGEX_VOICE, (match, voiceText) => {
         const txt = voiceText.trim();
         if (!txt) return match;
         hasChanges = true;
@@ -291,6 +296,7 @@ function enhanceMessageContent(container) {
         container.innerHTML = enhanced;
     }
     
+    container.dataset.xbEnhanced = '1';
     hydrateImageSlots(container);
     hydrateVoiceSlots(container);
 }

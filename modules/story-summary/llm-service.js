@@ -1,6 +1,4 @@
-// ═══════════════════════════════════════════════════════════════════════════
-// Story Summary - LLM Service
-// ═══════════════════════════════════════════════════════════════════════════
+import { eventSource } from "../../../../../../script.js";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 常量
@@ -221,14 +219,24 @@ function getStreamingModule() {
 
 function waitForStreamingComplete(sessionId, streamingMod, timeout = 120000) {
     return new Promise((resolve, reject) => {
-        const start = Date.now();
-        const poll = () => {
-            const { isStreaming, text } = streamingMod.getStatus(sessionId);
-            if (!isStreaming) return resolve(text || '');
-            if (Date.now() - start > timeout) return reject(new Error('生成超时'));
-            setTimeout(poll, 300);
+        let done = false;
+        const timer = setTimeout(() => {
+            if (done) return;
+            done = true;
+            eventSource.removeListener('xiaobaix_streaming_completed', handler);
+            reject(new Error('生成超时'));
+        }, timeout);
+
+        const handler = (payload) => {
+            if (!payload || payload.sessionId !== sessionId) return;
+            if (done) return;
+            done = true;
+            clearTimeout(timer);
+            eventSource.removeListener('xiaobaix_streaming_completed', handler);
+            resolve(String(payload.finalText ?? ''));
         };
-        poll();
+
+        eventSource.on('xiaobaix_streaming_completed', handler);
     });
 }
 

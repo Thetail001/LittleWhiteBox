@@ -13,6 +13,20 @@ export const EMOTION_ICONS = {
 
 let voiceListCache = null;
 let defaultVoiceKey = DEFAULT_VOICE;
+const speechCache = new Map();
+
+/**
+ * 获取文本哈希
+ */
+function getHash(text, options) {
+    const str = `${text}_${options.voiceKey}_${options.speed}_${options.emotion || 'none'}`;
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        hash = ((hash << 5) - hash) + str.charCodeAt(i);
+        hash |= 0;
+    }
+    return hash.toString(36);
+}
 
 // ════════════════════════════════════════════════════════════════════════════
 // 声音列表管理
@@ -71,6 +85,9 @@ export async function synthesizeSpeech(text, options = {}) {
         emotion = null
     } = options;
 
+    const cacheKey = getHash(text, { voiceKey, speed, emotion });
+    if (speechCache.has(cacheKey)) return speechCache.get(cacheKey);
+
     const requestBody = {
         voiceKey,
         text: String(text || ''),
@@ -95,6 +112,7 @@ export async function synthesizeSpeech(text, options = {}) {
     const data = await res.json();
     if (data.code !== 3000) throw new Error(data.message || 'TTS 合成失败');
 
+    speechCache.set(cacheKey, data.data);
     return data.data; // base64 音频
 }
 

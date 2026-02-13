@@ -1228,6 +1228,16 @@
             happy: '😄', sad: '😢', angry: '😠', surprise: '😮', scare: '😨', hate: '🤢'
         };
 
+        // 预编译正则，避免高频调用时重复编译
+        const REGEX_IMG = /\[(?:img|图片)\s*:\s*([^\]]+)\]/gi;
+        const REGEX_VOICE_EMO = /\[(?:voice|语音)\s*:([^:]*):([^\]]+)\]/gi;
+        const REGEX_VOICE = /\[(?:voice|语音)\s*:\s*([^\]]+)\]/gi;
+        const REGEX_BOLD = /\*\*([^*]+)\*\*/g;
+        const REGEX_ITALIC = /\*([^*]+)\*/g;
+        const REGEX_CODE = /`([^`]+)`/g;
+        const REGEX_NEWLINE = /\n/g;
+        const REGEX_THINK_LIST = /^[\\*\\-]\\s+/gm;
+
         // 动态加载的声音列表
         let voiceList = [];
         let defaultVoiceKey = 'female_1';
@@ -1237,7 +1247,7 @@
            ══════════════════════════════════════════════════════════════════════════════ */
 
         function escapeHtml(text) {
-            return escapeHtmlText(text).replace(/\n/g, '<br>');
+            return escapeHtmlText(text).replace(REGEX_NEWLINE, '<br>');
         }
 
         function escapeHtmlText(text) {
@@ -1246,7 +1256,7 @@
 
         function renderThinking(text) {
             return escapeHtmlText(text)
-                .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/^[\\*\\-]\\s+/gm, '• ').replace(/\n/g, '<br>');
+                .replace(REGEX_BOLD, '<strong>$1</strong>').replace(REGEX_THINK_LIST, '• ').replace(REGEX_NEWLINE, '<br>');
         }
 
         function formatTimeDisplay(ts) {
@@ -1570,108 +1580,153 @@
         }
 
 
-        function renderMessages() {
+        function renderMessages(forceFull = false) {
             const container = document.getElementById('messages');
             const { history, isStreaming, editingIndex } = state;
 
             if (!history.length && !isStreaming) {
                 container.innerHTML = '<div class="fw-empty">开始与TA皮下交流吧~</div>';
+                container.dataset.renderedCount = '0';
                 return;
             }
 
-            let html = history.map((msg, idx) => {
-                const isUser = msg.role === 'user';
-                const isEditing = editingIndex === idx;
-                const timeStr = formatTimeDisplay(msg.ts);
-                const bubbleContent = isEditing
-                    ? `<textarea class="fw-edit-area" data-index="${idx}">${escapeHtmlText(msg.content || '')}</textarea>`
-                    : renderContent(msg.content);
-                const actions = isEditing
-                    ? `<div class="fw-bubble-actions" style="display:flex;"><button class="fw-bubble-btn fw-save-btn" data-index="${idx}" title="保存"><i class="fa-solid fa-check"></i></button><button class="fw-bubble-btn fw-cancel-btn" data-index="${idx}" title="取消"><i class="fa-solid fa-xmark"></i></button></div>`
-                    : `<div class="fw-bubble-actions"><button class="fw-bubble-btn fw-edit-btn" data-index="${idx}" title="编辑"><i class="fa-solid fa-pen"></i></button><button class="fw-bubble-btn fw-delete-btn" data-index="${idx}" title="删除"><i class="fa-solid fa-trash"></i></button></div>`;
+            // 移除空状态提示
+            const emptyHint = container.querySelector('.fw-empty');
+            if (emptyHint) emptyHint.remove();
 
-                let thinkingHtml = '';
-                if (!isUser && msg.thinking) {
-                    thinkingHtml = `<div class="fw-thinking-card"><div class="fw-thinking-header" data-index="${idx}"><i class="fa-solid fa-chevron-right chevron"></i><span>思考过程</span></div><div class="fw-thinking-body" data-index="${idx}">${renderThinking(msg.thinking)}</div></div>`;
+            const renderedCount = parseInt(container.dataset.renderedCount || '0');
+            
+            // 如果需要全量刷新（例如编辑状态改变、历史重置、会话切换）
+            if (forceFull || editingIndex !== null || history.length < renderedCount) {
+                let html = history.map((msg, idx) => createMessageHTML(msg, idx)).join('');
+                container.innerHTML = html;
+                container.dataset.renderedCount = history.length;
+                hydrateImageSlots(container);
+                hydrateVoiceSlots(container);
+            } else {
+                // 增量追加
+                if (history.length > renderedCount) {
+                    const fragment = document.createElement('div');
+                    let newHtml = '';
+                    for (let i = renderedCount; i < history.length; i++) {
+                        newHtml += createMessageHTML(history[i], i);
+                    }
+                    fragment.innerHTML = newHtml;
+                    
+                    // 逐个移动子节点到容器
+                    while (fragment.firstChild) {
+                        const node = fragment.firstChild;
+                        container.appendChild(node);
+                        if (node.nodeType === 1) { // 元素节点
+                            hydrateImageSlots(node);
+                            hydrateVoiceSlots(node);
+                        }
+                    }
+                    container.dataset.renderedCount = history.length;
                 }
-
-                return `<div class="fw-row ${isUser ? 'user' : 'assistant'}${isEditing ? ' editing' : ''}">
-            <div class="fw-avatar ${isUser ? 'user-avatar' : 'char-avatar'}"></div>
-            <div style="display:flex;flex-direction:column;align-items:${isUser ? 'flex-end' : 'flex-start'};">
-                ${thinkingHtml}
-                <div class="fw-bubble ${isUser ? 'user' : 'assistant'}">${actions}${bubbleContent}</div>
-                ${timeStr ? `<div class="fw-bubble-time">${timeStr}</div>` : ''}
-            </div>
-        </div>`;
-            }).join('');
-
-            if (isStreaming) {
-                html += `<div class="fw-row assistant">
-            <div class="fw-avatar char-avatar"></div>
-            <div style="display:flex;flex-direction:column;align-items:flex-start;">
-                <div class="fw-thinking-card" id="streaming-thinking-card" style="display:none;">
-                    <div class="fw-thinking-header expanded streaming"><i class="fa-solid fa-chevron-right chevron"></i><span>思考中</span></div>
-                    <div class="fw-thinking-body expanded" id="streaming-thinking"></div>
-                </div>
-                <div class="fw-bubble assistant fw-streaming" id="streaming-bubble">(等待回应...)</div>
-            </div>
-        </div>`;
             }
 
-            container.innerHTML = html;
-            hydrateImageSlots(container);
-            hydrateVoiceSlots(container);
+            // 处理流式生成占位符
+            let streamingRow = document.getElementById('streaming-row');
+            if (isStreaming) {
+                if (!streamingRow) {
+                    const temp = document.createElement('div');
+                    temp.innerHTML = `<div class="fw-row assistant" id="streaming-row">
+                        <div class="fw-avatar char-avatar"></div>
+                        <div style="display:flex;flex-direction:column;align-items:flex-start;">
+                            <div class="fw-thinking-card" id="streaming-thinking-card" style="display:none;">
+                                <div class="fw-thinking-header expanded streaming"><i class="fa-solid fa-chevron-right chevron"></i><span>思考中</span></div>
+                                <div class="fw-thinking-body expanded" id="streaming-thinking"></div>
+                            </div>
+                            <div class="fw-bubble assistant fw-streaming" id="streaming-bubble">(等待回应...)</div>
+                        </div>
+                    </div>`;
+                    streamingRow = temp.firstElementChild;
+                    container.appendChild(streamingRow);
+                }
+            } else if (streamingRow) {
+                streamingRow.remove();
+            }
+
             container.scrollTop = container.scrollHeight;
-            bindMessageEvents(container);
+        }
+
+        function createMessageHTML(msg, idx) {
+            const isUser = msg.role === 'user';
+            const isEditing = state.editingIndex === idx;
+            const timeStr = formatTimeDisplay(msg.ts);
+            const bubbleContent = isEditing
+                ? `<textarea class="fw-edit-area" data-index="${idx}">${escapeHtmlText(msg.content || '')}</textarea>`
+                : renderContent(msg.content);
+            const actions = isEditing
+                ? `<div class="fw-bubble-actions" style="display:flex;"><button class="fw-bubble-btn fw-save-btn" data-index="${idx}" title="保存"><i class="fa-solid fa-check"></i></button><button class="fw-bubble-btn fw-cancel-btn" data-index="${idx}" title="取消"><i class="fa-solid fa-xmark"></i></button></div>`
+                : `<div class="fw-bubble-actions"><button class="fw-bubble-btn fw-edit-btn" data-index="${idx}" title="编辑"><i class="fa-solid fa-pen"></i></button><button class="fw-bubble-btn fw-delete-btn" data-index="${idx}" title="删除"><i class="fa-solid fa-trash"></i></button></div>`;
+
+            let thinkingHtml = '';
+            if (!isUser && msg.thinking) {
+                thinkingHtml = `<div class="fw-thinking-card"><div class="fw-thinking-header" data-index="${idx}"><i class="fa-solid fa-chevron-right chevron"></i><span>思考过程</span></div><div class="fw-thinking-body" data-index="${idx}">${renderThinking(msg.thinking)}</div></div>`;
+            }
+
+            return `<div class="fw-row ${isUser ? 'user' : 'assistant'}${isEditing ? ' editing' : ''}" data-index="${idx}">
+                <div class="fw-avatar ${isUser ? 'user-avatar' : 'char-avatar'}"></div>
+                <div style="display:flex;flex-direction:column;align-items:${isUser ? 'flex-end' : 'flex-start'};">
+                    ${thinkingHtml}
+                    <div class="fw-bubble ${isUser ? 'user' : 'assistant'}">${actions}${bubbleContent}</div>
+                    ${timeStr ? `<div class="fw-bubble-time">${timeStr}</div>` : ''}
+                </div>
+            </div>`;
         }
 
         function bindMessageEvents(container) {
-            container.querySelectorAll('.fw-thinking-header:not(.streaming)').forEach(header => {
-                header.onclick = () => {
-                    const idx = header.dataset.index;
-                    header.classList.toggle('expanded');
+            // 使用事件委托，避免为每个消息单独绑定事件
+            container.onclick = (e) => {
+                const target = e.target.closest('button, .fw-thinking-header');
+                if (!target) return;
+
+                const row = target.closest('.fw-row');
+                const idx = parseInt(target.dataset.index ?? row?.dataset.index);
+                if (isNaN(idx)) return;
+
+                if (target.classList.contains('fw-thinking-header')) {
+                    if (target.classList.contains('streaming')) return;
+                    target.classList.toggle('expanded');
                     container.querySelector(`.fw-thinking-body[data-index="${idx}"]`)?.classList.toggle('expanded');
-                };
-            });
-
-            container.querySelectorAll('.fw-edit-btn').forEach(btn => {
-                btn.onclick = () => {
-                    state.editingIndex = parseInt(btn.dataset.index);
-                    renderMessages();
-                    const ta = container.querySelector('.fw-edit-area');
-                    if (ta) { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; ta.focus(); }
-                };
-            });
-
-            container.querySelectorAll('.fw-save-btn').forEach(btn => {
-                btn.onclick = () => {
-                    const idx = parseInt(btn.dataset.index);
+                } else if (target.classList.contains('fw-edit-btn')) {
+                    state.editingIndex = idx;
+                    renderMessages(true);
+                    const ta = container.querySelector(`.fw-edit-area[data-index="${idx}"]`);
+                    if (ta) { 
+                        ta.style.height = 'auto'; 
+                        ta.style.height = ta.scrollHeight + 'px'; 
+                        ta.focus(); 
+                    }
+                } else if (target.classList.contains('fw-save-btn')) {
                     const ta = container.querySelector(`.fw-edit-area[data-index="${idx}"]`);
                     if (ta) state.history[idx].content = ta.value;
                     state.editingIndex = null;
-                    renderMessages();
+                    renderMessages(true);
                     postToParent({ type: 'SAVE_HISTORY', history: state.history });
-                };
-            });
-
-            container.querySelectorAll('.fw-cancel-btn').forEach(btn => {
-                btn.onclick = () => { state.editingIndex = null; renderMessages(); };
-            });
-
-            container.querySelectorAll('.fw-delete-btn').forEach(btn => {
-                btn.onclick = () => {
+                } else if (target.classList.contains('fw-cancel-btn')) {
+                    state.editingIndex = null;
+                    renderMessages(true);
+                } else if (target.classList.contains('fw-delete-btn')) {
                     if (confirm('确定要删除这条消息吗？')) {
-                        state.history.splice(parseInt(btn.dataset.index), 1);
-                        renderMessages();
+                        state.history.splice(idx, 1);
+                        renderMessages(true);
                         postToParent({ type: 'SAVE_HISTORY', history: state.history });
                     }
-                };
-            });
+                }
+            };
 
-            container.querySelectorAll('.fw-edit-area').forEach(ta => {
-                ta.oninput = function () { this.style.height = 'auto'; this.style.height = this.scrollHeight + 'px'; };
-            });
+            container.oninput = (e) => {
+                if (e.target.classList.contains('fw-edit-area')) {
+                    const ta = e.target;
+                    ta.style.height = 'auto';
+                    ta.style.height = ta.scrollHeight + 'px';
+                }
+            };
         }
+
 
         /* ══════════════════════════════════════════════════════════════════════════════
            UI 更新
@@ -1864,8 +1919,9 @@
                             thinkingBody.innerHTML = renderThinking(data.thinking);
                         }
                         bubble.innerHTML = renderContent(data.text);
-                        hydrateVoiceSlots(bubble.closest('.fw-messages'));
-                        bubble.closest('.fw-messages').scrollTop = bubble.closest('.fw-messages').scrollHeight;
+                        // 只扫描当前正在生成的泡泡，别去扫整个聊天历史
+                        hydrateVoiceSlots(bubble);
+                        document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
                     }
                     break;
 
