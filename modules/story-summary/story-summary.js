@@ -2258,6 +2258,7 @@ async function handleGenerationStarted(type, _params, isDryRun) {
 
     const excludeLastAi = type === "swipe" || type === "regenerate";
     const vectorCfg = getVectorConfig();
+    const cfg = getSummaryPanelConfig();
 
     clearExtensionPrompt();
 
@@ -2310,8 +2311,14 @@ async function handleGenerationStarted(type, _params, isDryRun) {
     }
 
     // 计算深度：倒序插入，从末尾往前数
-    // 最小为 MIN_INJECTION_DEPTH，避免插入太靠近底部
-    const depth = Math.max(MIN_INJECTION_DEPTH, chatLen - boundary - 1);
+    // 最小为 MIN_INJECTION_DEPTH，避免插入太靠近底部。
+    // 若开启 forceInsertAtEnd（缓存友好模式），固定压在底部，避免动态位置破坏前缀缓存。
+    let depth;
+    if (cfg.trigger?.forceInsertAtEnd) {
+        depth = MIN_INJECTION_DEPTH;
+    } else {
+        depth = Math.max(MIN_INJECTION_DEPTH, chatLen - boundary - 1);
+    }
     if (depth < 0) {
         logTiming('invalid_depth');
         return;
@@ -2342,7 +2349,6 @@ async function handleGenerationStarted(type, _params, isDryRun) {
     }
 
     // 获取用户配置的 role
-    const cfg = getSummaryPanelConfig();
     const roleKey = cfg.trigger?.role || 'system';
     const role = ROLE_MAP[roleKey] || extension_prompt_roles.SYSTEM;
 
