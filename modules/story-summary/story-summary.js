@@ -1483,8 +1483,8 @@ function openPanelForMessage(mesId) {
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Hide/Unhide
-// - 非向量：boundary = lastSummarizedMesId
-// - 向量：boundary = meta.lastChunkFloor（若为 -1 则回退到 lastSummarizedMesId）
+// 隐藏边界始终基于 lastSummarizedMesId（已总结进度），与向量模式无关。
+// lastChunkFloor 仅用于 prompt injection 的向量检索范围，不用于 UI 隐藏。
 // ═══════════════════════════════════════════════════════════════════════════
 
 async function getHideBoundaryFloor(store) {
@@ -1493,18 +1493,10 @@ async function getHideBoundaryFloor(store) {
         return -1;
     }
 
-    const vectorCfg = getVectorConfig();
-    if (!vectorCfg?.enabled) {
-        return store?.lastSummarizedMesId ?? -1;
-    }
-
-    const { chatId } = getContext();
-    if (!chatId) return store?.lastSummarizedMesId ?? -1;
-
-    const meta = await getMeta(chatId);
-    const v = meta?.lastChunkFloor ?? -1;
-    if (v >= 0) return v;
-    return store?.lastSummarizedMesId ?? -1;
+    // 隐藏边界始终基于"已总结的最后一条消息"，与向量模式无关。
+    // lastChunkFloor 跟踪的是分块进度（用于 prompt injection 的向量检索范围），
+    // 不是总结进度，不能用于决定 UI 隐藏范围。
+    return store.lastSummarizedMesId;
 }
 
 async function applyHideState() {
