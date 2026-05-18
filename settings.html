@@ -31,6 +31,9 @@
               </button>
             </div>
           </div>
+          <div class="section-divider">渲染模式
+            <hr class="sysHR" />
+          </div>
           <div class="flex-container alignItemsCenter" style="gap:8px;flex-wrap:wrap;">
             <input type="checkbox" id="xiaobaix_render_enabled" />
             <label for="xiaobaix_render_enabled" class="has-tooltip" data-tooltip="控制代码块转换为iframe渲染的功能
@@ -42,20 +45,9 @@
                    min="1" max="9999" step="1"
                    style="width:5rem;margin-left:4px;" />
           </div>
-          <div class="section-divider">渲染模式
-            <hr class="sysHR" />
-          </div>
           <div class="flex-container">
             <input type="checkbox" id="xiaobaix_use_blob" />
             <label for="xiaobaix_use_blob" class="has-tooltip" data-tooltip="大型html适用">启用Blob渲染</label>
-          </div>
-          <div class="flex-container">
-            <input type="checkbox" id="Wrapperiframe" />
-            <label for="Wrapperiframe" class="has-tooltip" data-tooltip="按需在 iframe 中注入 Wrapperiframe.js">启用封装函数</label>
-          </div>
-          <div class="flex-container alignItemsCenter" style="gap:8px;flex-wrap:wrap;">
-            <input type="checkbox" id="xiaobaix_audio_enabled" />
-            <label for="xiaobaix_audio_enabled" style="margin-top:0;">启用音频</label>
           </div>
           <br>
           <div class="section-divider">流式，非基础的渲染
@@ -595,18 +587,16 @@
 	      fourthWall: 'xiaobaix_fourth_wall_enabled',
 	      variablesPanel: 'xiaobaix_variables_panel_enabled',
 	      variablesCore: 'xiaobaix_variables_core_enabled',
-	      audio: 'xiaobaix_audio_enabled',
 	      storySummary: 'xiaobaix_story_summary_enabled',
 	      tts: 'xiaobaix_tts_enabled',
       enaPlanner: 'xiaobaix_ena_planner_enabled',
       storyOutline: 'xiaobaix_story_outline_enabled',
       useBlob: 'xiaobaix_use_blob',
-	      wrapperIframe: 'Wrapperiframe',
 	      renderEnabled: 'xiaobaix_render_enabled',
 	    };
-	    const DEFAULTS_ON = ['templateEditor', 'tasks', 'variablesCore', 'audio', 'storySummary', 'recorded'];
+	    const DEFAULTS_ON = ['templateEditor', 'tasks', 'variablesCore', 'storySummary', 'recorded'];
 	    const DEFAULTS_OFF = ['preview', 'scriptAssistant', 'immersive', 'variablesPanel', 'fourthWall', 'storyOutline', 'tts', 'enaPlanner'];
-	    const MODULE_KEYS = ['templateEditor', 'tasks', 'fourthWall', 'variablesCore', 'recorded', 'preview', 'scriptAssistant', 'immersive', 'variablesPanel', 'audio', 'storySummary', 'storyOutline', 'tts', 'enaPlanner'];
+	    const MODULE_KEYS = ['templateEditor', 'tasks', 'fourthWall', 'variablesCore', 'recorded', 'preview', 'scriptAssistant', 'immersive', 'variablesPanel', 'storySummary', 'storyOutline', 'tts', 'enaPlanner'];
 	    const DRAW_PROVIDER_VALUES = new Set(['disabled', 'novelai', 'sdwebui']);
 	    function normalizeDrawProvider(provider) {
 	      return DRAW_PROVIDER_VALUES.has(provider) ? provider : 'disabled';
@@ -620,11 +610,10 @@
       if (el) { el.checked = !!enabled; try { $(el).trigger('change'); } catch (e) { } }
     }
     function captureStates() {
-      const out = { modules: {}, drawProvider: 'disabled', useBlob: false, wrapperIframe: false, renderEnabled: true };
+      const out = { modules: {}, drawProvider: 'disabled', useBlob: false, renderEnabled: true };
       try { MODULE_KEYS.forEach(k => { out.modules[k] = !!(extension_settings[EXT_ID][k] && extension_settings[EXT_ID][k].enabled); }); } catch (e) { }
       try { out.drawProvider = normalizeDrawProvider(extension_settings[EXT_ID].drawProvider); } catch (e) { }
       try { out.useBlob = !!extension_settings[EXT_ID].useBlob; } catch (e) { }
-      try { out.wrapperIframe = !!extension_settings[EXT_ID].wrapperIframe; } catch (e) { }
       try { out.renderEnabled = extension_settings[EXT_ID].renderEnabled !== false; } catch (e) { }
       return out;
     }
@@ -643,10 +632,7 @@
         extension_settings[EXT_ID].useBlob = !!st.useBlob;
         const el = $id('xiaobaix_use_blob'); if (el) { el.checked = !!st.useBlob; if (window.isXiaobaixEnabled) try { $(el).trigger('change'); } catch (e) { } }
       } catch (e) { }
-      try {
-        extension_settings[EXT_ID].wrapperIframe = !!st.wrapperIframe;
-        const el = $id('Wrapperiframe'); if (el) { el.checked = !!st.wrapperIframe; if (window.isXiaobaixEnabled) try { $(el).trigger('change'); } catch (e) { } }
-      } catch (e) { }
+      try { extension_settings[EXT_ID].wrapperIframe = true; } catch (e) { }
       try {
         extension_settings[EXT_ID].renderEnabled = st.renderEnabled !== false;
         const el = $id('xiaobaix_render_enabled'); if (el) { el.checked = st.renderEnabled !== false; if (window.isXiaobaixEnabled) try { $(el).trigger('change'); } catch (e) { } }
@@ -665,10 +651,7 @@
         extension_settings[EXT_ID].useBlob = false; const bl = $id(KEY_TO_CHECKBOX.useBlob);
         if (bl) { bl.checked = false; try { $(bl).trigger('change'); } catch (e) { } }
       } catch (e) { }
-      try {
-        extension_settings[EXT_ID].wrapperIframe = true; const wp = $id(KEY_TO_CHECKBOX.wrapperIframe);
-        if (wp) { wp.checked = true; try { $(wp).trigger('change'); } catch (e) { } }
-      } catch (e) { }
+      try { extension_settings[EXT_ID].wrapperIframe = true; } catch (e) { }
       try {
         extension_settings[EXT_ID].renderEnabled = true; const re = $id(KEY_TO_CHECKBOX.renderEnabled);
         if (re) { re.checked = true; try { $(re).trigger('change'); } catch (e) { } }

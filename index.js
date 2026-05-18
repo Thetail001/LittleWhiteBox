@@ -60,6 +60,9 @@ extension_settings[EXT_ID] = extension_settings[EXT_ID] || {
 
 const settings = extension_settings[EXT_ID];
 if (settings.dynamicPrompt && !settings.fourthWall) settings.fourthWall = settings.dynamicPrompt;
+settings.audio ||= {};
+settings.audio.enabled = true;
+settings.wrapperIframe = true;
 
 const DRAW_PROVIDER_VALUES = new Set(['disabled', 'novelai', 'sdwebui', 'comfyui']);
 
@@ -490,8 +493,8 @@ function toggleSettingsControls(enabled) {
         'xiaobaix_recorded_enabled', 'xiaobaix_preview_enabled',
         'scheduled_tasks_enabled', 'xiaobaix_template_enabled',
         'xiaobaix_immersive_enabled', 'xiaobaix_fourth_wall_enabled',
-        'xiaobaix_audio_enabled', 'xiaobaix_variables_panel_enabled',
-        'xiaobaix_use_blob', 'xiaobaix_variables_core_enabled', 'xiaobaix_variables_mode', 'Wrapperiframe', 'xiaobaix_render_enabled',
+        'xiaobaix_variables_panel_enabled',
+        'xiaobaix_use_blob', 'xiaobaix_variables_core_enabled', 'xiaobaix_variables_mode', 'xiaobaix_render_enabled',
         'xiaobaix_max_rendered', 'xiaobaix_story_outline_enabled', 'xiaobaix_story_summary_enabled',
         'xiaobaix_draw_provider', 'xiaobaix_draw_open_settings',
         'xiaobaix_tts_enabled', 'xiaobaix_tts_open_settings',
@@ -544,7 +547,7 @@ async function toggleAllFeatures(enabled) {
             { condition: extension_settings[EXT_ID].immersive?.enabled, init: initImmersiveMode },
             { condition: extension_settings[EXT_ID].templateEditor?.enabled, init: initTemplateEditor },
             { condition: extension_settings[EXT_ID].fourthWall?.enabled, init: initFourthWall },
-            { condition: extension_settings[EXT_ID].audio?.enabled, init: initControlAudio },
+            { condition: true, init: initControlAudio },
             { condition: extension_settings[EXT_ID].variablesPanel?.enabled, init: initVariablesPanel },
             { condition: extension_settings[EXT_ID].variablesCore?.enabled, init: initVariablesCore },
             { condition: extension_settings[EXT_ID].tts?.enabled, init: initTts },
@@ -568,7 +571,7 @@ async function toggleAllFeatures(enabled) {
         if (extension_settings[EXT_ID].recorded?.enabled)
             setTimeout(() => addHistoryButtonsDebounced(), 600);
         try {
-            if (isXiaobaixEnabled && settings.wrapperIframe && !document.getElementById('xb-callgen'))
+            if (isXiaobaixEnabled && !document.getElementById('xb-callgen'))
                 document.head.appendChild(Object.assign(document.createElement('script'), { id: 'xb-callgen', type: 'module', src: `${extensionFolderPath}/bridges/call-generate-service.js` }));
         } catch (e) { }
         try {
@@ -636,7 +639,6 @@ async function setupSettings() {
             { id: 'scheduled_tasks_enabled', key: 'tasks', init: initTasks },
             { id: 'xiaobaix_template_enabled', key: 'templateEditor', init: initTemplateEditor },
             { id: 'xiaobaix_fourth_wall_enabled', key: 'fourthWall', init: initFourthWall },
-            { id: 'xiaobaix_audio_enabled', key: 'audio', init: initControlAudio },
             { id: 'xiaobaix_variables_panel_enabled', key: 'variablesPanel', init: initVariablesPanel },
             { id: 'xiaobaix_variables_core_enabled', key: 'variablesCore', init: initVariablesCore },
             { id: 'xiaobaix_story_summary_enabled', key: 'storySummary' },
@@ -757,17 +759,6 @@ async function setupSettings() {
             saveSettingsDebounced();
         });
 
-        $("#Wrapperiframe").prop("checked", !!settings.wrapperIframe).on("change", async function () {
-            if (!isXiaobaixEnabled) return;
-            settings.wrapperIframe = $(this).prop("checked");
-            saveSettingsDebounced();
-            try {
-                settings.wrapperIframe
-                    ? (!document.getElementById('xb-callgen') && document.head.appendChild(Object.assign(document.createElement('script'), { id: 'xb-callgen', type: 'module', src: `${extensionFolderPath}/bridges/call-generate-service.js` })))
-                    : (window.cleanupCallGenerateHostBridge && window.cleanupCallGenerateHostBridge(), document.getElementById('xb-callgen')?.remove());
-            } catch (e) { }
-        });
-
         $("#xiaobaix_render_enabled").prop("checked", settings.renderEnabled !== false).on("change", async function () {
             if (!isXiaobaixEnabled) return;
             const wasEnabled = settings.renderEnabled !== false;
@@ -815,7 +806,7 @@ async function setupSettings() {
                 tts: 'xiaobaix_tts_enabled',
                 enaPlanner: 'xiaobaix_ena_planner_enabled'
             };
-            const ON = ['templateEditor', 'tasks', 'variablesCore', 'audio', 'storySummary', 'recorded'];
+            const ON = ['templateEditor', 'tasks', 'variablesCore', 'storySummary', 'recorded'];
             const OFF = ['preview', 'immersive', 'variablesPanel', 'fourthWall', 'storyOutline', 'tts', 'enaPlanner'];
             function setChecked(id, val) {
                 const el = document.getElementById(id);
@@ -832,7 +823,9 @@ async function setupSettings() {
             $('#xiaobaix_draw_provider').val('disabled');
             syncFeatureActionButtons();
             setChecked('xiaobaix_use_blob', false);
-            setChecked('Wrapperiframe', true);
+            settings.wrapperIframe = true;
+            settings.audio ||= {};
+            settings.audio.enabled = true;
             try { saveSettingsDebounced(); } catch (e) { }
         });
     } catch (err) { }
@@ -922,7 +915,7 @@ jQuery(async () => {
         }
 
         try {
-            if (isXiaobaixEnabled && settings.wrapperIframe && !document.getElementById('xb-callgen'))
+            if (isXiaobaixEnabled && !document.getElementById('xb-callgen'))
                 document.head.appendChild(Object.assign(document.createElement('script'), { id: 'xb-callgen', type: 'module', src: `${extensionFolderPath}/bridges/call-generate-service.js` }));
         } catch (e) { }
 

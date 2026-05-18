@@ -215,16 +215,13 @@ async function loadExternalUrl(iframe, url, settings) {
 
 function buildWrappedHtml(html) {
     const settings = getSettings();
-    const wrapperToggle = settings.wrapperIframe ?? true;
     const origin = typeof location !== 'undefined' && location.origin ? location.origin : '';
     const baseTag = settings.useBlob ? `<base href="${origin}/">` : "";
     const headHints = buildResourceHints(html);
     const vhFix = `<style>html,body{height:auto!important;min-height:0!important;max-height:none!important}.profile-container,[style*="100vh"]{height:auto!important;min-height:600px!important}[style*="height:100%"]{height:auto!important;min-height:100%!important}</style>`;
     
     // 内联脚本，按顺序：wrapper(callGenerate) -> base(高度+STscript)
-    const scripts = wrapperToggle 
-        ? `<script>${getWrapperScript()}${getIframeBaseScript()}</script>`
-        : `<script>${getIframeBaseScript()}</script>`;
+    const scripts = `<script>${getWrapperScript()}${getIframeBaseScript()}</script>`;
     
     if (html.includes('<html') && html.includes('</html')) {
         if (html.includes('<head>')) 
