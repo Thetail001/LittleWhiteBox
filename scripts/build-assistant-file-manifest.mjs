@@ -12,9 +12,7 @@ const INCLUDED_BINARY_TEXT_RESOURCES = new Set([
 ]);
 const EXCLUDED_DIR_NAMES = new Set(['.git', 'node_modules', 'dist', 'coverage']);
 const EXCLUDED_PUBLIC_SUBTREES = ['scripts/extensions/third-party/LittleWhiteBox'];
-const EXCLUDED_PATH_PARTS = [`${path.sep}libs${path.sep}`, `${path.sep}vendor${path.sep}`];
 const EXCLUDED_FILE_NAMES = new Set(['context-api-map.json', 'extract-output.txt', 'extract-output2.txt']);
-const MAX_FILE_SIZE = 200 * 1024;
 
 function toPosix(value) {
     return value.split(path.sep).join('/');
@@ -30,12 +28,10 @@ function shouldIncludeFile(fullPath, rootPath) {
     if (fileName.endsWith('.min.js')) return false;
     if (fileName === 'package-lock.json') return false;
     if (EXCLUDED_FILE_NAMES.has(fileName)) return false;
-    if (EXCLUDED_PATH_PARTS.some((part) => fullPath.includes(part))) return false;
 
     try {
         const stat = fs.statSync(fullPath);
         if (!stat.isFile()) return false;
-        if (!forceIncludedResource && stat.size > MAX_FILE_SIZE) return false;
     } catch {
         return false;
     }
@@ -68,11 +64,13 @@ function buildPluginEntries() {
         .filter((fullPath) => !toPosix(path.relative(pluginRoot, fullPath)).startsWith('modules/assistant/dist/'))
         .map((fullPath) => {
             const relativePath = toPosix(path.relative(pluginRoot, fullPath));
+            const stat = fs.statSync(fullPath);
             return {
                 source: 'littlewhitebox',
                 publicPath: `scripts/extensions/third-party/LittleWhiteBox/${relativePath}`,
                 relativePath,
                 extension: path.extname(fullPath).toLowerCase(),
+                sizeBytes: stat.size,
             };
         });
 }
@@ -81,17 +79,22 @@ function buildPublicEntries() {
     return walkDirectory(publicRoot)
         .map((fullPath) => toPosix(path.relative(publicRoot, fullPath)))
         .filter((relativePath) => !EXCLUDED_PUBLIC_SUBTREES.some((excluded) => relativePath.startsWith(excluded)))
-        .map((relativePath) => ({
-            source: 'sillytavern-public',
-            publicPath: relativePath,
-            relativePath,
-            extension: path.extname(relativePath).toLowerCase(),
-        }));
+        .map((relativePath) => {
+            const fullPath = path.join(publicRoot, relativePath);
+            const stat = fs.statSync(fullPath);
+            return {
+                source: 'sillytavern-public',
+                publicPath: relativePath,
+                relativePath,
+                extension: path.extname(relativePath).toLowerCase(),
+                sizeBytes: stat.size,
+            };
+        });
 }
 
 const manifest = {
     generatedAt: new Date().toISOString(),
-    version: 1,
+    version: 2,
     files: [...buildPluginEntries(), ...buildPublicEntries()],
 };
 

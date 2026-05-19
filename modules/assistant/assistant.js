@@ -87,7 +87,6 @@ const EMPTY_SKILLS_CATALOG = Object.freeze({
     skills: [],
 });
 const MAX_SKILL_PROMPT_ITEMS = 20;
-const MAX_CONTENT_CACHE_ENTRIES = 48;
 const MAX_READ_FILE_BYTES = 100 * 1024;
 const MAX_READ_RETURN_CHARS = 50 * 1024;
 const MAX_JSAPI_RETURN_CHARS = 50 * 1024;
@@ -95,6 +94,8 @@ const DEFAULT_AUTO_READ_LINES = 2000;
 const MAX_READ_RANGE_LINES = 2000;
 const MAX_READ_LINE_CHARS = 2000;
 const READ_LINE_TRUNCATION_SUFFIX = `... (line truncated to ${MAX_READ_LINE_CHARS} chars)`;
+const READ_STREAM_HEAD_EXTRA_LINES = 8;
+const READ_STREAM_HEAD_EXTRA_CHARS = MAX_READ_LINE_CHARS * 2;
 const MAX_PATH_SUGGESTIONS = 3;
 const SERVER_FILE_KEY = 'settings';
 const CONFIG_VERSION = 1;
@@ -103,7 +104,6 @@ let hostWindow = null;
 let manifestCache = null;
 let jsApiManifestCache = null;
 let jsApiRuntimeModulePromise = null;
-const contentCache = new Map();
 const activeToolControllers = new Map();
 const activeSkillProposalTokens = new Map();
 let settingsCache = null;
@@ -307,26 +307,6 @@ async function buildAssistantRuntimePayload(signal) {
         },
         ...skillsRuntime,
     };
-}
-
-function getCachedContent(cacheKey) {
-    if (!contentCache.has(cacheKey)) return null;
-    const cached = contentCache.get(cacheKey);
-    contentCache.delete(cacheKey);
-    contentCache.set(cacheKey, cached);
-    return cached;
-}
-
-function setCachedContent(cacheKey, text) {
-    if (contentCache.has(cacheKey)) {
-        contentCache.delete(cacheKey);
-    }
-    contentCache.set(cacheKey, text);
-    while (contentCache.size > MAX_CONTENT_CACHE_ENTRIES) {
-        const oldestKey = contentCache.keys().next().value;
-        if (!oldestKey) break;
-        contentCache.delete(oldestKey);
-    }
 }
 
 function normalizeLocalSourcesSnapshot(localSources) {
@@ -951,6 +931,156 @@ function ensureNotAborted(signal) {
     }
 }
 
+function countNewlines(text = '') {
+    let count = 0;
+    for (let index = 0; index < text.length; index += 1) {
+        if (text.charCodeAt(index) === 10) count += 1;
+    }
+    return count;
+}
+
+function getResponseSizeBytes(response) {
+    const headerSize = Number.parseInt(response.headers.get('content-length') || '', 10);
+    return Number.isFinite(headerSize) && headerSize >= 0
+        ? headerSize
+        : null;
+}
+
+async function fetchTextResponse(publicPath, options = {}) {
+    const cacheKey = String(publicPath || '').trim();
+    if (!cacheKey) throw new Error('empty_path');
+
+    const response = await fetch(`/${cacheKey}`, {
+        cache: 'no-cache',
+        signal: options.signal,
+    });
+    if (!response.ok) {
+        throw new Error(`file_read_failed:${response.status}`);
+    }
+    return response;
+}
+
+async function readRemoteTextHead(publicPath, options = {}, lineLimit = DEFAULT_AUTO_READ_LINES) {
+    const response = await fetchTextResponse(publicPath, options);
+    const reportedSizeBytes = getResponseSizeBytes(response);
+    const reader = response.body?.getReader?.();
+    if (!reader || typeof TextDecoder !== 'function') {
+        const text = await response.text();
+        return {
+            text,
+            truncated: false,
+            sizeBytes: reportedSizeBytes ?? new TextEncoder().encode(text).length,
+        };
+    }
+
+    const decoder = new TextDecoder();
+    const chunks = [];
+    let truncated = false;
+    let decodedChars = 0;
+    let decodedLines = 0;
+    let streamedBytes = 0;
+    const safeLineLimit = Math.max(1, Math.min(Math.trunc(Number(lineLimit) || DEFAULT_AUTO_READ_LINES), DEFAULT_AUTO_READ_LINES));
+    const previewLineBudget = safeLineLimit + READ_STREAM_HEAD_EXTRA_LINES;
+    const previewCharBudget = MAX_READ_RETURN_CHARS + READ_STREAM_HEAD_EXTRA_CHARS;
+
+    while (true) {
+        ensureNotAborted(options.signal);
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (!value) continue;
+
+        streamedBytes += value.byteLength || 0;
+        const chunkText = decoder.decode(value, { stream: true });
+        if (!chunkText) continue;
+
+        chunks.push(chunkText);
+        decodedChars += chunkText.length;
+        decodedLines += countNewlines(chunkText);
+
+        if (decodedLines >= previewLineBudget || decodedChars >= previewCharBudget) {
+            truncated = true;
+            try {
+                await reader.cancel('preview_complete');
+            } catch {}
+            break;
+        }
+    }
+
+    if (!truncated) {
+        const tail = decoder.decode();
+        if (tail) {
+            chunks.push(tail);
+        }
+    }
+
+    return {
+        text: chunks.join(''),
+        truncated,
+        sizeBytes: reportedSizeBytes ?? (truncated ? null : streamedBytes),
+    };
+}
+
+async function readRemoteTextTail(publicPath, options = {}, lineLimit = DEFAULT_AUTO_READ_LINES) {
+    const response = await fetchTextResponse(publicPath, options);
+    const reportedSizeBytes = getResponseSizeBytes(response);
+    const reader = response.body?.getReader?.();
+    if (!reader || typeof TextDecoder !== 'function') {
+        const text = await response.text();
+        return {
+            text,
+            truncated: false,
+            sizeBytes: reportedSizeBytes ?? new TextEncoder().encode(text).length,
+        };
+    }
+
+    const decoder = new TextDecoder();
+    const safeLineLimit = Math.max(1, Math.min(Math.trunc(Number(lineLimit) || DEFAULT_AUTO_READ_LINES), DEFAULT_AUTO_READ_LINES));
+    const tailBudget = safeLineLimit + READ_STREAM_HEAD_EXTRA_LINES;
+    let tailText = '';
+    let streamedBytes = 0;
+    let truncated = false;
+    let totalNewlinesSeen = 0;
+
+    while (true) {
+        ensureNotAborted(options.signal);
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (!value) continue;
+
+        streamedBytes += value.byteLength || 0;
+        const chunkText = decoder.decode(value, { stream: true });
+        if (!chunkText) continue;
+
+        tailText += chunkText;
+        totalNewlinesSeen += countNewlines(chunkText);
+        if (countNewlines(tailText) > tailBudget || tailText.length > MAX_READ_RETURN_CHARS + READ_STREAM_HEAD_EXTRA_CHARS) {
+            const lines = tailText.split('\n');
+            tailText = lines.slice(-tailBudget).join('\n');
+            if (tailText.length > MAX_READ_RETURN_CHARS + READ_STREAM_HEAD_EXTRA_CHARS) {
+                tailText = tailText.slice(-(MAX_READ_RETURN_CHARS + READ_STREAM_HEAD_EXTRA_CHARS));
+            }
+            truncated = true;
+        }
+    }
+
+    const tail = decoder.decode();
+    if (tail) {
+        tailText += tail;
+        totalNewlinesSeen += countNewlines(tail);
+    }
+    if (countNewlines(tailText) > tailBudget) {
+        tailText = tailText.split('\n').slice(-tailBudget).join('\n');
+        truncated = true;
+    }
+
+    return {
+        text: tailText,
+        truncated,
+        hasMoreBefore: totalNewlinesSeen >= safeLineLimit,
+        sizeBytes: reportedSizeBytes ?? streamedBytes,
+    };
+}
+
 async function readTextFile(publicPath, options = {}) {
     const cacheKey = String(publicPath || '').trim();
     if (!cacheKey) throw new Error('empty_path');
@@ -965,15 +1095,8 @@ async function readTextFile(publicPath, options = {}) {
     if (cacheKey.startsWith('local/')) {
         throw new Error('local_file_not_found');
     }
-    const cached = getCachedContent(cacheKey);
-    if (cached !== null) {
-        console.info('[Assistant][Read] readTextFile:content-cache-hit', {
-            path: cacheKey,
-        });
-        return cached;
-    }
 
-    console.info('[Assistant][Read] readTextFile:fetch-fallback', {
+    console.info('[Assistant][Read] readTextFile:fetch', {
         path: cacheKey,
         snapshot: summarizeLocalSourcesForDebug(options.localSources),
     });
@@ -985,7 +1108,6 @@ async function readTextFile(publicPath, options = {}) {
         throw new Error(`file_read_failed:${response.status}`);
     }
     const text = await response.text();
-    setCachedContent(cacheKey, text);
     return text;
 }
 
@@ -1310,6 +1432,12 @@ function resolveReadLimit(value, fallback = DEFAULT_AUTO_READ_LINES) {
     return Math.max(1, Math.min(Math.trunc(numeric), DEFAULT_AUTO_READ_LINES));
 }
 
+function resolveReadTail(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return null;
+    return Math.max(1, Math.min(Math.trunc(numeric), DEFAULT_AUTO_READ_LINES));
+}
+
 async function globFiles(args = {}, options = {}) {
     const manifest = await loadManifest(options.signal);
     const scope = normalizeLookupScope(args.scope);
@@ -1395,19 +1523,23 @@ function clampLineNumber(value, fallback, totalLines) {
 }
 
 function formatLineNumberedContent(lines, startLine, totalLines) {
+    if (!Number.isFinite(Number(startLine))) {
+        return lines.map((line) => truncateReadLine(line));
+    }
     const width = String(Math.max(totalLines, startLine)).length;
     return lines.map((line, index) => `${String(startLine + index).padStart(width, ' ')}\t${truncateReadLine(line)}`);
 }
 
 function sliceLinesWithBudget(lines, startLine, requestedEndLine, maxChars) {
     const totalLines = lines.length;
-    const safeEndLine = Math.min(Math.max(startLine, requestedEndLine), Math.max(totalLines, 1));
+    const safeStartLine = Math.max(1, Math.trunc(Number(startLine) || 1));
+    const safeEndLine = Math.min(Math.max(safeStartLine, requestedEndLine), Math.max(totalLines, 1));
     const selected = [];
     let totalChars = 0;
-    let endLine = startLine - 1;
+    let endLine = safeStartLine - 1;
     let charLimited = false;
 
-    for (let lineNumber = startLine; lineNumber <= safeEndLine; lineNumber += 1) {
+    for (let lineNumber = safeStartLine; lineNumber <= safeEndLine; lineNumber += 1) {
         const line = lines[lineNumber - 1] ?? '';
         const numberedLine = formatLineNumberedContent([line], lineNumber, totalLines)[0];
         const addition = selected.length ? numberedLine.length + 1 : numberedLine.length;
@@ -1442,6 +1574,35 @@ function sliceLinesWithBudget(lines, startLine, requestedEndLine, maxChars) {
     };
 }
 
+function sliceTailLinesWithBudget(lines, maxChars) {
+    const selected = [];
+    let totalChars = 0;
+    let charLimited = false;
+
+    for (const line of lines) {
+        const formattedLine = truncateReadLine(line);
+        const addition = selected.length ? formattedLine.length + 1 : formattedLine.length;
+        if (selected.length && totalChars + addition > maxChars) {
+            charLimited = true;
+            break;
+        }
+        if (!selected.length && addition > maxChars) {
+            selected.push(formattedLine.slice(0, maxChars));
+            totalChars = maxChars;
+            charLimited = true;
+            break;
+        }
+        selected.push(formattedLine);
+        totalChars += addition;
+    }
+
+    return {
+        content: selected.join('\n'),
+        returnedLines: selected.length,
+        charLimited,
+    };
+}
+
 async function readFile(args = {}, options = {}) {
     const manifest = await loadManifest(options.signal);
     const scope = normalizeLookupScope(args.scope);
@@ -1457,6 +1618,7 @@ async function readFile(args = {}, options = {}) {
     const directoryExists = directoryExistsAtPath(directoryPath || targetPath, indexedFiles, options.localSources);
     const requestedOffset = Math.max(1, Math.trunc(Number(args.offset ?? args.startLine) || 1));
     const requestedLimit = resolveReadLimit(args.limit);
+    const requestedTail = resolveReadTail(args.tail);
     const entry = indexedFiles.find((item) => item.publicPath === targetPath)
         || (directReadablePath
             ? {
@@ -1466,7 +1628,22 @@ async function readFile(args = {}, options = {}) {
                 extension: pathExtension(directReadablePath),
             }
             : null);
+    const requestedEndAlias = Number(args.endLine);
+    const hasTailConflictRange = Number.isFinite(Number(args.offset))
+        || Number.isFinite(Number(args.limit))
+        || Number.isFinite(Number(args.startLine))
+        || Number.isFinite(requestedEndAlias);
+    if (requestedTail !== null && hasTailConflictRange) {
+        return buildReadErrorResult('read_tail_range_conflict', targetPath, {
+            message: 'tail 只能单独用于读取文件末尾，不能和 offset/limit/startLine/endLine 同时使用。',
+        });
+    }
     if (!entry && directoryExists) {
+        if (requestedTail !== null) {
+            return buildReadErrorResult('read_tail_not_supported_for_directory', directoryPath || normalizeIndexedDirectoryPath(targetPath), {
+                message: 'tail 只支持文件，不支持目录；目录请继续使用 offset/limit 翻页。',
+            });
+        }
         if ((directoryItems.length ? requestedOffset > directoryItems.length : requestedOffset > 1)) {
             return buildReadErrorResult('read_offset_out_of_range', directoryPath || normalizeIndexedDirectoryPath(targetPath), {
                 message: `offset ${requestedOffset} 超出目录范围；当前目录共有 ${directoryItems.length} 项。`,
@@ -1511,15 +1688,127 @@ async function readFile(args = {}, options = {}) {
             suggestions,
         });
     }
+    const hasExplicitOffsetRange = Number.isFinite(Number(args.offset))
+        || Number.isFinite(Number(args.startLine))
+        || Number.isFinite(requestedEndAlias);
+    const indexedSizeBytes = Number.isFinite(Number(entry?.sizeBytes))
+        ? Number(entry.sizeBytes)
+        : null;
+    const shouldUseLightRead = scope !== LOOKUP_SCOPE_LOCAL
+        && !String(entry.publicPath || '').startsWith('local/')
+        && (indexedSizeBytes === null || indexedSizeBytes > MAX_READ_FILE_BYTES);
+    const shouldStreamHeadPreview = shouldUseLightRead
+        && requestedTail === null
+        && !hasExplicitOffsetRange
+        && requestedOffset <= 1;
+    const shouldStreamTailPreview = shouldUseLightRead
+        && requestedTail !== null;
+
+    if (shouldStreamHeadPreview) {
+        const preview = await readRemoteTextHead(entry.publicPath, options, requestedLimit);
+        const previewLines = preview.text === '' ? [] : preview.text.split('\n');
+        const previewSizeBytes = indexedSizeBytes ?? preview.sizeBytes;
+
+        if (previewLines.length === 0) {
+            return {
+                path: entry.publicPath,
+                scope,
+                source: entry.source,
+                ...(Number.isFinite(previewSizeBytes) ? { sizeBytes: previewSizeBytes } : {}),
+                totalLines: 0,
+                totalLinesKnown: !preview.truncated,
+                startLine: 1,
+                endLine: 0,
+                returnedLines: 0,
+                hasMoreBefore: false,
+                hasMoreAfter: false,
+                nextOffset: null,
+                truncated: false,
+                autoChunked: false,
+                charLimited: false,
+                limitReason: null,
+                contentFormat: 'numbered_lines',
+                content: '',
+            };
+        }
+
+        const previewRequestedEndLine = Math.min(previewLines.length, requestedLimit);
+        const slice = sliceLinesWithBudget(previewLines, 1, previewRequestedEndLine, MAX_READ_RETURN_CHARS);
+        const endLine = slice.endLine || previewRequestedEndLine;
+        const totalLines = preview.truncated ? null : previewLines.length;
+        const hasMoreAfter = preview.truncated || endLine < previewLines.length;
+        const autoChunked = hasMoreAfter || (!preview.truncated && previewLines.length > requestedLimit);
+
+        return {
+            path: entry.publicPath,
+            scope,
+            source: entry.source,
+            ...(Number.isFinite(previewSizeBytes) ? { sizeBytes: previewSizeBytes } : {}),
+            ...(Number.isFinite(totalLines) ? { totalLines } : {}),
+            totalLinesKnown: !preview.truncated,
+            startLine: 1,
+            endLine,
+            returnedLines: endLine >= 1 ? endLine : 0,
+            hasMoreBefore: false,
+            hasMoreAfter,
+            nextOffset: hasMoreAfter ? endLine + 1 : null,
+            truncated: hasMoreAfter || slice.charLimited,
+            autoChunked,
+            charLimited: slice.charLimited,
+            limitReason: autoChunked
+                ? 'auto_chunked'
+                : slice.charLimited
+                    ? 'output_budget'
+                    : null,
+            contentFormat: 'numbered_lines',
+            content: slice.content,
+        };
+    }
+
+    if (shouldStreamTailPreview) {
+        const preview = await readRemoteTextTail(entry.publicPath, options, requestedTail);
+        const tailLines = preview.text === '' ? [] : preview.text.split('\n').slice(-requestedTail);
+        const previewSizeBytes = indexedSizeBytes ?? preview.sizeBytes;
+        const slice = tailLines.length
+            ? sliceTailLinesWithBudget(tailLines, MAX_READ_RETURN_CHARS)
+            : { content: '', returnedLines: 0, charLimited: false };
+
+        return {
+            path: entry.publicPath,
+            scope,
+            source: entry.source,
+            ...(Number.isFinite(previewSizeBytes) ? { sizeBytes: previewSizeBytes } : {}),
+            totalLinesKnown: false,
+            tailLines: requestedTail,
+            startLine: null,
+            endLine: null,
+            returnedLines: slice.returnedLines,
+            hasMoreBefore: preview.hasMoreBefore === true,
+            hasMoreAfter: false,
+            nextOffset: null,
+            truncated: preview.truncated || slice.charLimited,
+            autoChunked: preview.truncated,
+            charLimited: slice.charLimited,
+            limitReason: preview.truncated
+                ? 'tail_window'
+                : slice.charLimited
+                    ? 'output_budget'
+                    : 'tail',
+            contentFormat: 'numbered_lines',
+            content: slice.content,
+        };
+    }
+
+    const hasExplicitRange = Number.isFinite(Number(args.offset))
+        || Number.isFinite(Number(args.limit))
+        || Number.isFinite(Number(args.startLine))
+        || Number.isFinite(requestedEndAlias)
+        || requestedTail !== null;
+
     const content = await readTextFile(entry.publicPath, options);
     const lines = content === '' ? [] : content.split('\n');
     const totalLines = lines.length;
     const sizeBytes = new TextEncoder().encode(content).length;
-    const requestedEndAlias = Number(args.endLine);
-    const hasExplicitRange = Number.isFinite(Number(args.offset))
-        || Number.isFinite(Number(args.limit))
-        || Number.isFinite(Number(args.startLine))
-        || Number.isFinite(requestedEndAlias);
 
     if (totalLines === 0) {
         return {
@@ -1551,11 +1840,15 @@ async function readFile(args = {}, options = {}) {
         });
     }
 
-    const startLine = clampLineNumber(args.offset ?? args.startLine, 1, totalLines);
+    const startLine = requestedTail !== null
+        ? Math.max(1, totalLines - requestedTail + 1)
+        : clampLineNumber(args.offset ?? args.startLine, 1, totalLines);
     const explicitLimit = resolveReadLimit(args.limit);
-    const requestedEndLine = Number.isFinite(requestedEndAlias)
-        ? clampLineNumber(requestedEndAlias, Math.min(totalLines, startLine + explicitLimit - 1), totalLines)
-        : Math.min(totalLines, startLine + explicitLimit - 1, startLine + MAX_READ_RANGE_LINES - 1);
+    const requestedEndLine = requestedTail !== null
+        ? totalLines
+        : Number.isFinite(requestedEndAlias)
+            ? clampLineNumber(requestedEndAlias, Math.min(totalLines, startLine + explicitLimit - 1), totalLines)
+            : Math.min(totalLines, startLine + explicitLimit - 1, startLine + MAX_READ_RANGE_LINES - 1);
     const slice = sliceLinesWithBudget(lines, startLine, requestedEndLine, MAX_READ_RETURN_CHARS);
     const endLine = slice.endLine || requestedEndLine;
     const hasMoreBefore = startLine > 1;

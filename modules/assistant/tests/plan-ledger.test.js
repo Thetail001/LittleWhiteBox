@@ -120,6 +120,103 @@ test('PlanLedger accepts single string blockedBy from loose tool callers', async
     assert.equal(blocked.blockers[0].id, blocker.plan.id);
 });
 
+test('PlanLedger rejects missing blockedBy ids before writing', async () => {
+    await resetDb();
+    const ledger = createDeterministicLedger();
+
+    const missingCreate = await ledger.createPlan('session-a', {
+        title: '依赖不存在的计划',
+        blockedBy: ['plan-missing'],
+    });
+    assert.equal(missingCreate.ok, false);
+    assert.equal(missingCreate.error, 'plan_blocked_by_not_found');
+    assert.deepEqual(missingCreate.missing, ['plan-missing']);
+
+    const emptyList = await ledger.listPlans('session-a');
+    assert.equal(emptyList.count, 0);
+
+    const created = await ledger.createPlan('session-a', {
+        title: '原计划',
+    });
+    const missingUpdate = await ledger.updatePlan('session-a', {
+        id: created.plan.id,
+        blockedBy: ['plan-stale'],
+    });
+    assert.equal(missingUpdate.ok, false);
+    assert.equal(missingUpdate.error, 'plan_blocked_by_not_found');
+    assert.deepEqual(missingUpdate.missing, ['plan-stale']);
+
+    const unchanged = await ledger.getPlan('session-a', {
+        id: created.plan.id,
+    });
+    assert.deepEqual(unchanged.plan.blockedBy, []);
+    assert.equal(unchanged.plan.status, 'pending');
+});
+
+test('PlanLedger rejects transitive blockedBy cycles before writing', async () => {
+    await resetDb();
+    const ledger = createDeterministicLedger();
+
+    const first = await ledger.createPlan('session-a', {
+        title: '第一步',
+    });
+    const second = await ledger.createPlan('session-a', {
+        title: '第二步',
+        blockedBy: [first.plan.id],
+    });
+    const third = await ledger.createPlan('session-a', {
+        title: '第三步',
+        blockedBy: [second.plan.id],
+    });
+
+    const cycle = await ledger.updatePlan('session-a', {
+        id: first.plan.id,
+        blockedBy: [third.plan.id],
+    });
+    assert.equal(cycle.ok, false);
+    assert.equal(cycle.error, 'plan_blocked_by_cycle');
+    assert.equal(cycle.id, first.plan.id);
+    assert.deepEqual(cycle.blockedBy, [third.plan.id]);
+
+    const unchanged = await ledger.getPlan('session-a', {
+        id: first.plan.id,
+    });
+    assert.deepEqual(unchanged.plan.blockedBy, []);
+    assert.equal(unchanged.plan.status, 'pending');
+});
+
+test('PlanLedger does not keep in_progress when unfinished blockers are added', async () => {
+    await resetDb();
+    const ledger = createDeterministicLedger();
+
+    const blocker = await ledger.createPlan('session-a', {
+        title: '未完成依赖',
+    });
+    const active = await ledger.createPlan('session-a', {
+        title: '正在执行项',
+    });
+    await ledger.updatePlan('session-a', {
+        id: active.plan.id,
+        status: 'in_progress',
+    });
+
+    const reblocked = await ledger.updatePlan('session-a', {
+        id: active.plan.id,
+        blockedBy: [blocker.plan.id],
+    });
+    assert.equal(reblocked.ok, true);
+    assert.equal(reblocked.plan.status, 'blocked');
+    assert.equal(reblocked.blockers[0].id, blocker.plan.id);
+
+    const rejectedStart = await ledger.updatePlan('session-a', {
+        id: active.plan.id,
+        status: 'in_progress',
+    });
+    assert.equal(rejectedStart.ok, false);
+    assert.equal(rejectedStart.error, 'plan_blocked');
+    assert.equal(rejectedStart.blockers[0].id, blocker.plan.id);
+});
+
 test('PlanLedger rejects invalid status and priority instead of pretending success', async () => {
     await resetDb();
     const ledger = createDeterministicLedger();

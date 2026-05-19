@@ -32,29 +32,40 @@ export function createHistoryCompactionController(deps) {
         DEFAULT_PRESERVED_TURNS,
         MIN_PRESERVED_TURNS,
         SUMMARY_TRIGGER_TOKENS,
+        HISTORY_SUMMARY_MAX_TOKENS,
         buildContextMeterLabel,
         forceUpdateContextStats,
         toProviderMessages,
     } = deps;
+
+    function normalizeSummarySourceText(text) {
+        return String(text || '').replace(/\r\n/g, '\n').trim();
+    }
 
     function getMessageTextForSummary(message) {
         if (message?.approvalRequest) {
             return '';
         }
         if (message.role === 'tool') {
-            return trimForSummary(formatToolResultDisplay(message).summary || message.content || '', 1400);
+            const display = formatToolResultDisplay(message);
+            const lines = [
+                display?.summary ? `工具摘要:\n${display.summary}` : '',
+                display?.details ? `工具输出详情:\n${display.details}` : '',
+                !display?.summary && !display?.details ? `工具原始结果:\n${message.content || ''}` : '',
+            ].filter(Boolean);
+            return normalizeSummarySourceText(lines.join('\n\n'));
         }
         if (message.role === 'assistant' && Array.isArray(message.toolCalls) && message.toolCalls.length) {
             const toolLines = message.toolCalls.map((toolCall) => `工具: ${toolCall.name} ${toolCall.arguments || '{}'}`.trim());
-            return trimForSummary([message.content || '', ...toolLines].filter(Boolean).join('\n'), 1600);
+            return normalizeSummarySourceText([message.content || '', ...toolLines].filter(Boolean).join('\n'));
         }
-        return trimForSummary(buildTextWithAttachmentSummary(message.content || '', message.attachments), 1600);
+        return normalizeSummarySourceText(buildTextWithAttachmentSummary(message.content || '', message.attachments));
     }
 
     function buildSummarySource(turns, existingSummary = '') {
         const lines = [];
         if (existingSummary?.trim()) {
-            lines.push('已有历史摘要:');
+            lines.push('已有历史摘要（当前记忆底稿，除非新增历史明确纠正，否则需要合并保留）:');
             lines.push(existingSummary.trim());
             lines.push('');
         }
@@ -73,6 +84,14 @@ export function createHistoryCompactionController(deps) {
         });
 
         return lines.join('\n').trim();
+    }
+
+    function resolveHistorySummaryMaxTokens(providerConfig = {}) {
+        const configuredMaxTokens = Number(providerConfig?.maxTokens);
+        if (Number.isFinite(configuredMaxTokens) && configuredMaxTokens > 0) {
+            return Math.min(Math.floor(configuredMaxTokens), HISTORY_SUMMARY_MAX_TOKENS);
+        }
+        return HISTORY_SUMMARY_MAX_TOKENS;
     }
 
     function buildFallbackSummary(turns, existingSummary = '') {
@@ -125,7 +144,7 @@ export function createHistoryCompactionController(deps) {
                 tools: [],
                 toolChoice: 'none',
                 temperature: Math.min(providerConfig.temperature ?? 0.2, 0.2),
-                maxTokens: null,
+                maxTokens: resolveHistorySummaryMaxTokens(providerConfig),
                 signal,
             });
             state.historySummary = String(result.text || '').trim() || fallbackSummary;

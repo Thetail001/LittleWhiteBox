@@ -293,8 +293,8 @@ LittleWhiteBox/
 │       ├── st-jsapi-manifest.json          # 助手 JS API 清单（构建产物）
 │       ├── app-src/                       # 助手前端源码
 │       │   ├── attachments.js              # 附件规范化与消息附件辅助
-│       │   ├── main.js                     # 助手前端装配入口：状态、渲染、runtime 组装
-│       │   ├── runtime.js                  # runtime 对外装配入口与主循环
+│       │   ├── main.js                     # 助手前端装配入口：状态、session、context prefix、runtime 组装
+│       │   ├── runtime.js                  # runtime 主循环：tool calling、审批、压缩、DelegateRun 接线
 │       │   ├── slash-command-policy.js     # slash 命令规范化与审批策略
 │       │   ├── styles.js                   # 全局 iframe 样式
 │       │   ├── tooling.js                  # 工具定义、schema 与使用规则
@@ -305,8 +305,8 @@ LittleWhiteBox/
 │       │   │   ├── openai-responses.js     # OpenAI Responses 适配器
 │       │   │   └── sillytavern-openai-compatible.js # 酒馆原生 OpenAI-Compatible 适配器
 │       │   ├── context/                   # 当前上下文与临时注入相关
-│       │   │   ├── current-context.js      # 工作区/外部编辑器上下文构造
-│       │   │   └── current-plans.js        # 当前会话未完成计划上下文构造
+│       │   │   ├── current-context.js      # `[Current context]` 构造：工作区/外部编辑器焦点
+│       │   │   └── current-plans.js        # `[Current plans]` 构造：当前会话未完成计划
 │       │   ├── memory/                    # 记忆区文件建模与显示语义
 │       │   │   └── memory-files.js         # skill / identity / worklog 文件规范化
 │       │   ├── prompts/                   # 助手提示词模板
@@ -314,12 +314,13 @@ LittleWhiteBox/
 │       │   ├── runtime/                   # runtime 内部子模块
 │       │   │   ├── approvals.js            # 审批请求与审批面板 promise 链
 │       │   │   ├── context-stats.js        # token 估算与上下文统计
+│       │   │   ├── delegate-runner.js      # `DelegateRun` 子任务执行器
 │       │   │   ├── history-compaction.js   # 历史摘要与 context budget 压缩
 │       │   │   ├── host-tool-requests.js   # host tool 请求、超时、中止、失败整形
 │       │   │   └── streaming-messages.js   # 流式 assistant message 维护
 │       │   ├── state/                     # 会话持久化与状态存储
-│       │   │   ├── session-db.js           # IndexedDB schema
-│       │   │   └── session-store.js        # 会话持久化与恢复
+│       │   │   ├── session-db.js           # shared/session-db.js 的前端 re-export
+│       │   │   └── session-store.js        # 助手 session 持久化、恢复与清空后切 session
 │       │   ├── ui/                        # 纯前端界面渲染层
 │       │   │   ├── app-chrome.js           # 顶层 chrome、toolbar、上下文提示
 │       │   │   ├── app-shell.js            # 顶层应用壳 markup
@@ -334,10 +335,20 @@ LittleWhiteBox/
 │       │   └── assistant-app.js            # 构建产物（Vite 打包）
 │       ├── runtime-src/                   # 助手 JS API 运行时代码生成源
 │       │   └── jsapi-runtime.js            # JS API 分析 / 校验运行时源文件
-│       ├── shared/                        # 助手模块内部共享配置与标准化逻辑
-│       │   └── config.js                   # 助手配置标准化、预设与默认值
+│       ├── shared/                        # 助手模块内部共享配置、持久化 schema、workspace kernel 与 plan 账本
+│       │   ├── apply-patch.js              # `local/` 补丁解析与文本级应用
+│       │   ├── apply-patch-execution.js    # 补丁验证/执行与失败结果整形
+│       │   ├── config.js                   # 助手配置标准化、预设与默认值
+│       │   ├── local-sources-tool-runtime.js # `local/` 工具运行时与 workspace 同步
+│       │   ├── local-workspace-kernel.js   # workspace 文件树/移动/删除等核心逻辑
+│       │   ├── lookup-scope.js             # project vs local 检索范围规则
+│       │   ├── plan-ledger.js              # 当前 session 的计划账本与 `Plan*` 规则
+│       │   ├── public-text-file-types.js   # 可读文本类型判断
+│       │   ├── session-db.js               # Dexie schema：sessions/messages/meta/plans
+│       │   ├── workspace-mutation-policy.js # workspace 变更策略
+│       │   └── workspace-protocol.js       # host/iframe workspace 消息协议
 │       ├── tests/                         # 助手模块测试
-│       │   └── *.test.js                   # workspace / tooling / adapter / jsapi 相关测试
+│       │   └── *.test.js                   # workspace / tooling / adapter / jsapi / plan / delegate 相关测试
 │       └── references/                    # 助手排查时优先读取的参考资料
 │           ├── project-structure.md        # 项目结构参考（本文档）
 │           ├── sillytavern-javascript-api-reference.md  # SillyTavern JS API 参考
@@ -350,6 +361,24 @@ LittleWhiteBox/
 
 ## 快速定位建议
 
+### 小白助手架构速记
+
+- `assistant.js` + `assistant-host-window.js`
+  宿主壳。负责窗口、iframe、宿主消息桥接、工具派发和设置加载。
+- `app-src/main.js` + `ui/*`
+  iframe 应用装配层。负责 state、render、workspace 面板和上下文提示拼装。
+- `app-src/state/session-store.js` + `shared/session-db.js`
+  真实助手 session 持久化。清空对话时会切到新 `assistantSessionId`，计划账本也跟着切。
+- `app-src/context/current-context.js` + `current-plans.js`
+  提示词前缀构造层，分别负责 `[Current context]` 和 `[Current plans]`。
+- `shared/plan-ledger.js`
+  `PlanCreate / PlanUpdate / PlanList / PlanGet` 的统一账本规则；只管状态，不管执行。
+- `app-src/runtime.js` + `app-src/runtime/delegate-runner.js`
+  工具主循环与子任务执行层。`DelegateRun` 在这里同步跑子会话，不是 host 普通工具。
+- `app-src/adapters/*`
+  provider 适配层。把统一 runtime 请求翻译成 OpenAI / Anthropic / Google / ST 后端等不同通道。
+
 ### 参考资料
 - 问 STscript 语法、参数系统、转义规则、具体命令：看 `modules/assistant/references/stscript-reference.md`
 - 问 SillyTavern 前端 API：看 `modules/assistant/references/sillytavern-javascript-api-reference.md`
+- 问小白助手当前分层、session、`[Current context]` / `[Current plans]`、`Plan*` / `DelegateRun`：看 `modules/assistant/ARCHITECTURE.md`

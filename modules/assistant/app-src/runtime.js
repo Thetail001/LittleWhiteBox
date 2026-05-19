@@ -1,6 +1,7 @@
 import { analyzeJavaScriptApiRequest } from '../runtime-src/jsapi-runtime.js';
 import { createApprovalController } from './runtime/approvals.js';
 import { createContextStatsController } from './runtime/context-stats.js';
+import { createDelegateRunner } from './runtime/delegate-runner.js';
 import { createHostToolRequestController } from './runtime/host-tool-requests.js';
 import { createHistoryCompactionController, splitMessagesIntoTurns } from './runtime/history-compaction.js';
 import { createStreamingMessageController } from './runtime/streaming-messages.js';
@@ -78,6 +79,7 @@ export function createAssistantRuntime(deps) {
         HISTORY_SUMMARY_PREFIX,
         MAX_CONTEXT_TOKENS,
         SUMMARY_TRIGGER_TOKENS,
+        HISTORY_SUMMARY_MAX_TOKENS,
         DEFAULT_PRESERVED_TURNS,
         MIN_PRESERVED_TURNS,
         MAX_TOOL_ROUNDS,
@@ -182,6 +184,15 @@ export function createAssistantRuntime(deps) {
         const normalized = String(text || '').replace(/\s+/g, ' ').trim();
         if (normalized.length <= limit) return normalized;
         return `${normalized.slice(0, limit)}…`;
+    }
+
+    function buildToolResultMessage({ toolCallId, toolName, toolResult }) {
+        return {
+            role: 'tool',
+            toolCallId,
+            toolName,
+            content: JSON.stringify(toolResult, null, 2),
+        };
     }
 
     function getCurrentTurnMessages() {
@@ -360,6 +371,7 @@ export function createAssistantRuntime(deps) {
         DEFAULT_PRESERVED_TURNS,
         MIN_PRESERVED_TURNS,
         SUMMARY_TRIGGER_TOKENS,
+        HISTORY_SUMMARY_MAX_TOKENS,
         buildContextMeterLabel,
         forceUpdateContextStats,
         toProviderMessages,
@@ -444,12 +456,11 @@ export function createAssistantRuntime(deps) {
             toolResult = buildToolFailureResult(TOOL_NAMES.READ_SKILL, { id: matchedSkill.id }, error);
         }
 
-        pushMessage({
-            role: 'tool',
+        pushMessage(buildToolResultMessage({
             toolCallId,
             toolName: TOOL_NAMES.READ_SKILL,
-            content: JSON.stringify(toolResult, null, 2),
-        });
+            toolResult,
+        }));
         render();
 
         if (toolResult?.ok === false) {
@@ -458,6 +469,188 @@ export function createAssistantRuntime(deps) {
         }
 
         return toolResult;
+    }
+
+    let delegateRunner = null;
+
+    function getDelegateRunner() {
+        if (!delegateRunner) {
+            delegateRunner = createDelegateRunner({
+                createAdapter,
+                getActiveProviderConfig,
+                getSystemPrompt: resolveSystemPrompt,
+                resolveToolDefinitions,
+                safeJsonParse,
+                isAbortError,
+                TOOL_NAMES,
+                executeToolCall: async (toolCall, parsedArguments, run) => await executeAssistantToolCall(toolCall, parsedArguments, run, {
+                    allowDelegate: false,
+                    trackToolErrors: false,
+                }),
+            });
+        }
+        return delegateRunner;
+    }
+
+    async function runDelegateTool(args, run) {
+        return await getDelegateRunner().runDelegate(args, run);
+    }
+
+    async function executeAssistantToolCall(toolCall, parsedArguments, run, options = {}) {
+        const slashCommand = toolCall.name === TOOL_NAMES.RUN_SLASH_COMMAND
+            ? normalizeSlashCommand(parsedArguments.command)
+            : '';
+        const isJsApiRun = toolCall.name === TOOL_NAMES.RUN_JAVASCRIPT_API;
+        const trackToolErrors = options.trackToolErrors !== false;
+        let jsApiAnalysis = null;
+        let toolResult = null;
+
+        try {
+            if (toolCall.name === TOOL_NAMES.RUN_SLASH_COMMAND && shouldRequireSlashCommandApproval(slashCommand)) {
+                state.progressLabel = '确认中';
+                render();
+                const approved = await requestSlashCommandApproval(slashCommand, {
+                    runId: run.id,
+                    signal: run.controller.signal,
+                });
+                if (!approved) {
+                    toolResult = buildSlashApprovalResult(slashCommand, false);
+                }
+            }
+
+            if (isJsApiRun && !toolResult) {
+                if (!isJsApiToolEnabled()) {
+                    toolResult = buildJsApiPermissionDeniedResult();
+                }
+            }
+
+            if (isJsApiRun && !toolResult) {
+                try {
+                    const manifest = await loadJsApiManifest();
+                    jsApiAnalysis = analyzeJavaScriptApiRequest({
+                        code: parsedArguments.code,
+                        apiPaths: Array.isArray(parsedArguments.apiPaths) ? parsedArguments.apiPaths : [],
+                        manifest,
+                    });
+                } catch (error) {
+                    console.warn('[Assistant] JS API 请求预分析失败:', error);
+                    jsApiAnalysis = buildJsApiAnalysisFallback(error);
+                }
+
+                const jsApiNeedsApproval = !(
+                    jsApiAnalysis
+                    && Array.isArray(jsApiAnalysis.validationErrors)
+                    && jsApiAnalysis.validationErrors.length > 0
+                ) && shouldRequireJsApiApproval(jsApiAnalysis?.requestKind || 'unknown');
+
+                if (jsApiNeedsApproval) {
+                    state.progressLabel = '确认中';
+                    render();
+                    const approved = await requestJsApiApproval(parsedArguments, jsApiAnalysis || {}, {
+                        runId: run.id,
+                        signal: run.controller.signal,
+                    });
+                    if (!approved) {
+                        toolResult = buildJsApiApprovalResult(
+                            parsedArguments,
+                            false,
+                            jsApiAnalysis?.requestKind || 'unknown',
+                        );
+                    }
+                }
+            }
+
+            if (toolCall.name === TOOL_NAMES.GENERATE_SKILL && String(parsedArguments.action || '').trim() === 'propose') {
+                state.progressLabel = '确认中';
+                render();
+                const approved = await requestSkillGenerationApproval(parsedArguments, {
+                    runId: run.id,
+                    signal: run.controller.signal,
+                });
+                if (!approved) {
+                    toolResult = {
+                        ok: true,
+                        action: 'propose',
+                        approved: false,
+                        skipped: true,
+                        title: String(parsedArguments.title || '').trim(),
+                        note: '用户未同意生成 skill，本次已跳过。',
+                    };
+                }
+            }
+
+            if (!toolResult) {
+                if (toolCall.name === TOOL_NAMES.DELEGATE_RUN) {
+                    if (options.allowDelegate === false) {
+                        toolResult = {
+                            ok: false,
+                            error: 'delegate_recursion_disabled',
+                            message: '子任务不能继续调用 DelegateRun。',
+                        };
+                    } else {
+                        toolResult = await runDelegateTool(parsedArguments, run);
+                    }
+                } else {
+                    toolResult = await callHostTool(toolCall.name, parsedArguments, {
+                        runId: run.id,
+                        signal: run.controller.signal,
+                    });
+                }
+            }
+
+            if (toolCall.name === TOOL_NAMES.RUN_SLASH_COMMAND && slashCommand && toolResult?.ok !== false && shouldRequireSlashCommandApproval(slashCommand)) {
+                toolResult = {
+                    ...toolResult,
+                    approval: buildSlashApprovalResult(slashCommand, true),
+                };
+            }
+
+            if (
+                isJsApiRun
+                && toolResult?.ok !== false
+                && jsApiAnalysis
+                && Array.isArray(jsApiAnalysis.validationErrors)
+                && jsApiAnalysis.validationErrors.length === 0
+                && shouldRequireJsApiApproval(jsApiAnalysis.requestKind || 'unknown')
+            ) {
+                toolResult = {
+                    ...toolResult,
+                    approval: buildJsApiApprovalResult(
+                        parsedArguments,
+                        true,
+                        jsApiAnalysis?.requestKind || toolResult?.requestKind || 'unknown',
+                    ),
+                };
+            }
+
+            if (isJsApiRun && jsApiAnalysis?.analysisError) {
+                toolResult = {
+                    ...toolResult,
+                    preflightWarning: `JS API 请求预分析失败：${jsApiAnalysis.analysisError}`,
+                };
+            }
+
+            if (trackToolErrors) {
+                if (toolResult?.ok === false && toolResult?.skipped !== true) {
+                    const slashExecutionError = toolResult?.execution && typeof toolResult.execution === 'object'
+                        ? String(toolResult.execution.errorMessage || toolResult.execution.abortReason || '').trim()
+                        : '';
+                    recordToolErrorForLightBrake(run, toolCall.name, slashExecutionError || toolResult.error || 'tool_failed');
+                } else {
+                    resetToolErrorLightBrake(run);
+                }
+            }
+            return toolResult;
+        } catch (error) {
+            if (isAbortError(error)) {
+                throw error;
+            }
+            const failure = buildToolFailureResult(toolCall.name, parsedArguments, error);
+            if (trackToolErrors) {
+                recordToolErrorForLightBrake(run, toolCall.name, failure.error);
+            }
+            return failure;
+        }
     }
 
     async function runAssistantLoop(run) {
@@ -592,148 +785,14 @@ export function createAssistantRuntime(deps) {
                         throw new Error('assistant_aborted');
                     }
                     const parsedArguments = safeJsonParse(toolCall.arguments, {});
-                    const slashCommand = toolCall.name === TOOL_NAMES.RUN_SLASH_COMMAND
-                        ? normalizeSlashCommand(parsedArguments.command)
-                        : '';
-                    const isJsApiRun = toolCall.name === TOOL_NAMES.RUN_JAVASCRIPT_API;
-                    let jsApiAnalysis = null;
-                    let toolResult = null;
                     state.progressLabel = '工具中';
                     render();
-                    try {
-                        if (toolCall.name === TOOL_NAMES.RUN_SLASH_COMMAND && shouldRequireSlashCommandApproval(slashCommand)) {
-                            state.progressLabel = '确认中';
-                            render();
-                            const approved = await requestSlashCommandApproval(slashCommand, {
-                                runId: run.id,
-                                signal: run.controller.signal,
-                            });
-                            if (!approved) {
-                                toolResult = buildSlashApprovalResult(slashCommand, false);
-                            }
-                        }
-
-                        if (isJsApiRun && !toolResult) {
-                            if (!isJsApiToolEnabled()) {
-                                toolResult = buildJsApiPermissionDeniedResult();
-                            }
-                        }
-
-                        if (isJsApiRun && !toolResult) {
-                            try {
-                                const manifest = await loadJsApiManifest();
-                                jsApiAnalysis = analyzeJavaScriptApiRequest({
-                                    code: parsedArguments.code,
-                                    apiPaths: Array.isArray(parsedArguments.apiPaths) ? parsedArguments.apiPaths : [],
-                                    manifest,
-                                });
-                            } catch (error) {
-                                console.warn('[Assistant] JS API 请求预分析失败:', error);
-                                jsApiAnalysis = buildJsApiAnalysisFallback(error);
-                            }
-
-                            const jsApiNeedsApproval = !(
-                                jsApiAnalysis
-                                && Array.isArray(jsApiAnalysis.validationErrors)
-                                && jsApiAnalysis.validationErrors.length > 0
-                            ) && shouldRequireJsApiApproval(jsApiAnalysis?.requestKind || 'unknown');
-
-                            if (jsApiNeedsApproval) {
-                                state.progressLabel = '确认中';
-                                render();
-                                const approved = await requestJsApiApproval(parsedArguments, jsApiAnalysis || {}, {
-                                    runId: run.id,
-                                    signal: run.controller.signal,
-                                });
-                                if (!approved) {
-                                    toolResult = buildJsApiApprovalResult(
-                                        parsedArguments,
-                                        false,
-                                        jsApiAnalysis?.requestKind || 'unknown',
-                                    );
-                                }
-                            }
-                        }
-
-                        if (toolCall.name === TOOL_NAMES.GENERATE_SKILL && String(parsedArguments.action || '').trim() === 'propose') {
-                            state.progressLabel = '确认中';
-                            render();
-                            const approved = await requestSkillGenerationApproval(parsedArguments, {
-                                runId: run.id,
-                                signal: run.controller.signal,
-                            });
-                            if (!approved) {
-                                toolResult = {
-                                    ok: true,
-                                    action: 'propose',
-                                    approved: false,
-                                    skipped: true,
-                                    title: String(parsedArguments.title || '').trim(),
-                                    note: '用户未同意生成 skill，本次已跳过。',
-                                };
-                            }
-                        }
-
-                        if (!toolResult) {
-                            toolResult = await callHostTool(toolCall.name, parsedArguments, {
-                                runId: run.id,
-                                signal: run.controller.signal,
-                            });
-                        }
-
-                        if (toolCall.name === TOOL_NAMES.RUN_SLASH_COMMAND && slashCommand && toolResult?.ok !== false && shouldRequireSlashCommandApproval(slashCommand)) {
-                            toolResult = {
-                                ...toolResult,
-                                approval: buildSlashApprovalResult(slashCommand, true),
-                            };
-                        }
-
-                        if (
-                            isJsApiRun
-                            && toolResult?.ok !== false
-                            && jsApiAnalysis
-                            && Array.isArray(jsApiAnalysis.validationErrors)
-                            && jsApiAnalysis.validationErrors.length === 0
-                            && shouldRequireJsApiApproval(jsApiAnalysis.requestKind || 'unknown')
-                        ) {
-                            toolResult = {
-                                ...toolResult,
-                                approval: buildJsApiApprovalResult(
-                                    parsedArguments,
-                                    true,
-                                    jsApiAnalysis?.requestKind || toolResult?.requestKind || 'unknown',
-                                ),
-                            };
-                        }
-
-                        if (isJsApiRun && jsApiAnalysis?.analysisError) {
-                            toolResult = {
-                                ...toolResult,
-                                preflightWarning: `JS API 请求预分析失败：${jsApiAnalysis.analysisError}`,
-                            };
-                        }
-
-                        if (toolResult?.ok === false && toolResult?.skipped !== true) {
-                            const slashExecutionError = toolResult?.execution && typeof toolResult.execution === 'object'
-                                ? String(toolResult.execution.errorMessage || toolResult.execution.abortReason || '').trim()
-                                : '';
-                            recordToolErrorForLightBrake(run, toolCall.name, slashExecutionError || toolResult.error || 'tool_failed');
-                        } else {
-                            resetToolErrorLightBrake(run);
-                        }
-                    } catch (error) {
-                        if (isAbortError(error)) {
-                            throw error;
-                        }
-                        toolResult = buildToolFailureResult(toolCall.name, parsedArguments, error);
-                        recordToolErrorForLightBrake(run, toolCall.name, toolResult.error);
-                    }
-                    pushMessage({
-                        role: 'tool',
+                    const toolResult = await executeAssistantToolCall(toolCall, parsedArguments, run);
+                    pushMessage(buildToolResultMessage({
                         toolCallId: toolCall.id,
                         toolName: toolCall.name,
-                        content: JSON.stringify(toolResult, null, 2),
-                    });
+                        toolResult,
+                    }));
                     toolResponses.push({
                         id: toolCall.id,
                         name: toolCall.name,

@@ -11,7 +11,14 @@ export function createChatUi(deps) {
 
     let chatScrollTicking = false;
     let chatScrollHideTimer = null;
+    let markdownConverter = null;
+    let markdownConverterSource = null;
+    let renderCache = {
+        kind: '',
+        units: [],
+    };
     const openToolBatchKeys = new Set();
+    const toolDisplayPreviewCache = new WeakMap();
 
     function escapeHtml(text) {
         return String(text || '')
@@ -30,17 +37,20 @@ export function createChatUi(deps) {
             const showdownLib = globalThis.parent?.showdown || globalThis.showdown;
             const DOMPurifyLib = globalThis.parent?.DOMPurify || globalThis.DOMPurify;
             if (showdownLib?.Converter && DOMPurifyLib?.sanitize) {
-                const converter = new showdownLib.Converter({
-                    simpleLineBreaks: true,
-                    strikethrough: true,
-                    tables: true,
-                    tasklists: true,
-                    ghCodeBlocks: true,
-                    simplifiedAutoLink: true,
-                    openLinksInNewWindow: true,
-                    emoji: false,
-                });
-                const html = converter.makeHtml(raw);
+                if (!markdownConverter || markdownConverterSource !== showdownLib) {
+                    markdownConverterSource = showdownLib;
+                    markdownConverter = new showdownLib.Converter({
+                        simpleLineBreaks: true,
+                        strikethrough: true,
+                        tables: true,
+                        tasklists: true,
+                        ghCodeBlocks: true,
+                        simplifiedAutoLink: true,
+                        openLinksInNewWindow: true,
+                        emoji: false,
+                    });
+                }
+                const html = markdownConverter.makeHtml(raw);
                 return DOMPurifyLib.sanitize(html, {
                     USE_PROFILES: { html: true },
                     FORBID_TAGS: ['style', 'script'],
@@ -180,20 +190,70 @@ export function createChatUi(deps) {
         return pre;
     }
 
-    function getRenderableMessageSignature(message) {
+    function buildTextSignature(text) {
+        const value = String(text || '');
+        let hash = 2166136261;
+        for (let index = 0; index < value.length; index += 1) {
+            hash ^= value.charCodeAt(index);
+            hash = Math.imul(hash, 16777619);
+        }
+        return `${value.length}:${(hash >>> 0).toString(36)}`;
+    }
+
+    function getMessageContentSignature(message = {}) {
+        if (message.role === 'tool') {
+            return [
+                'tool',
+                String(message.toolCallId || ''),
+                String(message.toolName || ''),
+                String(message.content || '').length,
+            ].join(':');
+        }
+        const signature = buildTextSignature(message.content);
+        return signature;
+    }
+
+    function getToolDisplayPreview(message) {
+        const cached = toolDisplayPreviewCache.get(message);
+        if (cached) {
+            return cached;
+        }
+
+        const display = formatToolResultDisplay(message);
+        const preview = {
+            summary: String(display.summary || '') || '工具已返回结果。',
+            hasDetails: Boolean(display.details),
+        };
+        toolDisplayPreviewCache.set(message, preview);
+        return preview;
+    }
+
+    function getRenderableMessageSignature(message, messageIndex = -1) {
+        const feedbackKeyPrefix = Number.isInteger(messageIndex) && messageIndex >= 0
+            ? `:${messageIndex}`
+            : '';
+        const actionFeedback = feedbackKeyPrefix
+            ? Object.fromEntries(
+                Object.entries(state.messageActionFeedback || {})
+                    .filter(([key]) => key.endsWith(feedbackKeyPrefix)),
+            )
+            : {};
         return JSON.stringify({
             role: message.role,
-            content: String(message.content || ''),
+            content: getMessageContentSignature(message),
             toolCallId: String(message.toolCallId || ''),
             toolName: String(message.toolName || ''),
             toolCalls: Array.isArray(message.toolCalls)
                 ? message.toolCalls.map((toolCall) => ({
                     id: String(toolCall.id || ''),
                     name: String(toolCall.name || ''),
-                    arguments: String(toolCall.arguments || ''),
+                    arguments: buildTextSignature(toolCall.arguments),
                 }))
                 : [],
-            thoughts: normalizeThoughtBlocks(message.thoughts),
+            thoughts: normalizeThoughtBlocks(message.thoughts).map((item) => ({
+                label: item.label,
+                text: buildTextSignature(item.text),
+            })),
             attachments: normalizeAttachments(message.attachments).map((attachment) => ({
                 kind: attachment.kind,
                 name: attachment.name,
@@ -201,6 +261,12 @@ export function createChatUi(deps) {
                 size: attachment.size,
             })),
             streaming: Boolean(message.streaming),
+            ui: Number.isInteger(messageIndex) && messageIndex >= 0
+                ? {
+                    editing: state.editingMessageIndex === messageIndex,
+                    actionFeedback,
+                }
+                : undefined,
         });
     }
 
@@ -293,13 +359,6 @@ export function createChatUi(deps) {
         if (openToolBatchKeys.has(batchKey)) {
             details.open = true;
         }
-        details.addEventListener('toggle', () => {
-            if (details.open) {
-                openToolBatchKeys.add(batchKey);
-            } else {
-                openToolBatchKeys.delete(batchKey);
-            }
-        });
 
         const summary = document.createElement('summary');
         summary.className = 'xb-assistant-tool-batch-summary';
@@ -309,13 +368,35 @@ export function createChatUi(deps) {
         const body = document.createElement('div');
         body.className = 'xb-assistant-tool-batch-body';
 
-        toolMessages.forEach((toolMessage) => {
-            const toolBubble = buildMessageBubble(toolMessage);
-            toolBubble.dataset.renderSignature = getRenderableMessageSignature(toolMessage);
-            body.appendChild(toolBubble);
+        let bodyBuilt = false;
+        const ensureBody = () => {
+            if (bodyBuilt) return;
+            bodyBuilt = true;
+            toolMessages.forEach((toolMessage) => {
+                const toolBubble = buildMessageBubble(toolMessage);
+                toolBubble.dataset.renderSignature = getRenderableMessageSignature(toolMessage);
+                body.appendChild(toolBubble);
+            });
+            details.appendChild(body);
+        };
+
+        details.addEventListener('toggle', () => {
+            if (details.open) {
+                openToolBatchKeys.add(batchKey);
+                ensureBody();
+            } else {
+                openToolBatchKeys.delete(batchKey);
+                if (bodyBuilt) {
+                    body.remove();
+                    body.replaceChildren();
+                    bodyBuilt = false;
+                }
+            }
         });
 
-        details.appendChild(body);
+        if (details.open) {
+            ensureBody();
+        }
         return details;
     }
 
@@ -506,9 +587,6 @@ export function createChatUi(deps) {
                 button.textContent = item.label;
                 button.title = item.title;
                 button.setAttribute('aria-label', item.title);
-                if (state.isBusy && item.action !== 'cancel-edit') {
-                    button.disabled = true;
-                }
                 actions.appendChild(button);
             });
 
@@ -518,17 +596,35 @@ export function createChatUi(deps) {
         bubble.appendChild(metaRow);
 
         if (message.role === 'tool') {
-            const display = formatToolResultDisplay(message);
+            const display = getToolDisplayPreview(message);
             const summary = buildInteractivePre(display.summary || '工具已返回结果。', 'xb-assistant-content tool-summary');
             bubble.append(summary);
 
-            if (display.details) {
+            if (display.hasDetails) {
                 const details = document.createElement('details');
                 details.className = 'xb-assistant-tool-details';
                 const summaryEl = document.createElement('summary');
                 summaryEl.textContent = message.toolName === toolNames.READ ? '展开文件内容' : '展开详细结果';
-                const detailPre = buildInteractivePre(display.details, 'xb-assistant-content tool-detail');
-                details.append(summaryEl, detailPre);
+                details.appendChild(summaryEl);
+
+                let detailPre = null;
+                const ensureDetail = () => {
+                    if (detailPre) return;
+                    const detailDisplay = formatToolResultDisplay(message);
+                    detailPre = buildInteractivePre(detailDisplay.details, 'xb-assistant-content tool-detail');
+                    details.appendChild(detailPre);
+                };
+                details.addEventListener('toggle', () => {
+                    if (details.open) {
+                        ensureDetail();
+                    } else if (detailPre) {
+                        detailPre.remove();
+                        detailPre = null;
+                    }
+                });
+                if (details.open) {
+                    ensureDetail();
+                }
                 bubble.appendChild(details);
             }
 
@@ -573,45 +669,123 @@ export function createChatUi(deps) {
         return bubble;
     }
 
+    function createMessageRenderUnit(message, messageIndex) {
+        const signature = JSON.stringify({
+            type: 'message',
+            messageIndex,
+            message: getRenderableMessageSignature(message, messageIndex),
+        });
+        return {
+            signature,
+            build: () => {
+                const node = buildMessageBubble(message, messageIndex);
+                node.dataset.renderSignature = signature;
+                return node;
+            },
+        };
+    }
+
+    function createToolRunRenderUnit(startIndex) {
+        const batches = [];
+        let index = startIndex;
+        while (index < state.messages.length && isAssistantToolCallMessage(state.messages[index])) {
+            const message = state.messages[index];
+            const toolMessages = [];
+            let nextIndex = index + 1;
+            while (nextIndex < state.messages.length && state.messages[nextIndex]?.role === 'tool') {
+                toolMessages.push(state.messages[nextIndex]);
+                nextIndex += 1;
+            }
+            batches.push({
+                message,
+                messageIndex: index,
+                toolMessages,
+            });
+            index = nextIndex;
+        }
+
+        const signature = JSON.stringify({
+            type: 'tool-run',
+            startIndex,
+            batches: batches.map((batch) => ({
+                messageIndex: batch.messageIndex,
+                message: getRenderableMessageSignature(batch.message, batch.messageIndex),
+                toolMessages: batch.toolMessages.map((toolMessage) => getRenderableMessageSignature(toolMessage)),
+            })),
+        });
+
+        return {
+            nextIndex: index,
+            signature,
+            build: () => {
+                const group = document.createElement('div');
+                group.className = 'xb-assistant-tool-run';
+                group.dataset.renderSignature = signature;
+                batches.forEach((batch) => {
+                    group.appendChild(buildToolBatch(batch.message, batch.toolMessages, batch.messageIndex));
+                });
+                return group;
+            },
+        };
+    }
+
+    function collectRenderUnits() {
+        const units = [];
+        for (let index = 0; index < state.messages.length; index += 1) {
+            const message = state.messages[index];
+            if (isAssistantToolCallMessage(message)) {
+                const unit = createToolRunRenderUnit(index);
+                units.push(unit);
+                index = unit.nextIndex - 1;
+                continue;
+            }
+            units.push(createMessageRenderUnit(message, index));
+        }
+        return units;
+    }
+
     function renderMessages(container) {
+        if (!container) return;
+        container.classList.toggle('is-busy', !!state.isBusy);
         if (!state.messages.length) {
-            container.innerHTML = '';
+            if (renderCache.kind === 'empty') return;
+            container.replaceChildren();
             const empty = document.createElement('div');
             empty.className = 'xb-assistant-empty';
             empty.innerHTML = '<h2>你好！我是小白助手</h2><p>我是 SillyTavern 中 LittleWhiteBox（小白X）插件的内置技术支持助手。</p><p>我可以帮你做很多事情，比如：</p><ul><li><strong>解答问题与排查报错</strong>：解答关于 SillyTavern 或小白X插件的代码、设置、模块行为等问题，帮你排查报错。</li><li><strong>编写与创作辅助</strong>：辅助你写角色卡、写插件、写 STscript 脚本、整理设定或构思剧情。</li><li><strong>查询实例状态</strong>：我可以执行斜杠命令，帮你查询当前酒馆的 API、模型、角色状态等实时信息。</li><li><strong>查阅文档与源码</strong>：我可以读取酒馆和插件的前端源码及参考文档，为你提供准确的技术支持。</li></ul><p>另外，如果你希望我以特定的性格、语气和你交流，或者有特定的工作习惯要求，你可以随时告诉我，我可以将这些设定保存到我的专属身份设定文件中跨会话记住；当前最大上下文约 188k，并会在 158k 附近自动总结，尽量减少频繁压缩又保持长期记忆。</p><p>今天有什么我可以帮你的吗？</p>';
             container.appendChild(empty);
+            renderCache = {
+                kind: 'empty',
+                units: [],
+            };
             return;
         }
 
-        container.innerHTML = '';
-        let toolRunGroup = null;
-        for (let index = 0; index < state.messages.length; index += 1) {
-            const message = state.messages[index];
-            if (isAssistantToolCallMessage(message)) {
-                const toolMessages = [];
-                let nextIndex = index + 1;
-                while (nextIndex < state.messages.length && state.messages[nextIndex]?.role === 'tool') {
-                    toolMessages.push(state.messages[nextIndex]);
-                    nextIndex += 1;
-                }
-
-                const toolBatch = buildToolBatch(message, toolMessages, index);
-                toolBatch.dataset.renderSignature = getRenderableMessageSignature(message);
-                if (!toolRunGroup) {
-                    toolRunGroup = document.createElement('div');
-                    toolRunGroup.className = 'xb-assistant-tool-run';
-                    container.appendChild(toolRunGroup);
-                }
-                toolRunGroup.appendChild(toolBatch);
-                index = nextIndex - 1;
-                continue;
-            }
-
-            toolRunGroup = null;
-            const nextBubble = buildMessageBubble(message, index);
-            nextBubble.dataset.renderSignature = getRenderableMessageSignature(message);
-            container.appendChild(nextBubble);
+        const unitSpecs = collectRenderUnits();
+        const previousUnits = renderCache.kind === 'messages' ? renderCache.units : [];
+        const canReuseAll = previousUnits.length === unitSpecs.length
+            && unitSpecs.every((unit, index) => previousUnits[index]?.signature === unit.signature);
+        if (canReuseAll) {
+            return;
         }
+
+        const fragment = document.createDocumentFragment();
+        const nextUnits = unitSpecs.map((unit, index) => {
+            const previousUnit = previousUnits[index];
+            const node = previousUnit?.signature === unit.signature
+                ? previousUnit.node
+                : unit.build();
+            fragment.appendChild(node);
+            return {
+                signature: unit.signature,
+                node,
+            };
+        });
+        container.replaceChildren(fragment);
+        renderCache = {
+            kind: 'messages',
+            units: nextUnits,
+        };
 
         if (state.autoScroll) {
             container.scrollTop = container.scrollHeight;

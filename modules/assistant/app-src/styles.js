@@ -848,6 +848,17 @@ export function injectAssistantStyles(rootId) {
             background: transparent;
             border: 1px dashed rgba(27, 55, 88, 0.18);
         }
+        @supports (content-visibility: auto) {
+            .xb-assistant-bubble,
+            .xb-assistant-tool-run {
+                content-visibility: auto;
+                contain-intrinsic-size: auto 180px;
+            }
+            .xb-assistant-bubble:last-child,
+            .xb-assistant-tool-run:last-child {
+                content-visibility: visible;
+            }
+        }
         .xb-assistant-meta-row {
             display: flex;
             align-items: flex-start;
@@ -889,6 +900,11 @@ export function injectAssistantStyles(rootId) {
             background: rgba(230, 238, 247, 0.98);
             border-color: rgba(27, 55, 88, 0.22);
             color: #203249;
+        }
+        .xb-assistant-chat.is-busy .xb-assistant-message-action:not([data-message-action="cancel-edit"]) {
+            opacity: 0.5;
+            cursor: not-allowed;
+            pointer-events: none;
         }
         .xb-assistant-message-action:disabled {
             opacity: 0.5;

@@ -35,7 +35,10 @@ import { createSettingsPanel } from './ui/settings-panel.js';
 import { setHostChatCompletionsRequestHeadersProvider } from '../../../shared/host-llm/chat-completions/client.js';
 import { createLocalSourcesManager } from './workspace/local-sources.js';
 import { buildWorkspaceTree } from './workspace/local-workspace-tree.js';
-import { renderWorkspace as renderWorkspaceUi } from './workspace/local-workspace-ui.js';
+import {
+    destroyWorkspaceEditorCache,
+    renderWorkspace as renderWorkspaceUi,
+} from './workspace/local-workspace-ui.js';
 import { injectAssistantStyles } from './styles.js';
 import {
     HISTORY_SUMMARY_PREFIX,
@@ -55,6 +58,7 @@ const REQUEST_TIMEOUT_MS = 180000;
 const MAX_TOOL_ROUNDS = 64;
 const MAX_CONTEXT_TOKENS = 188000;
 const SUMMARY_TRIGGER_TOKENS = 158000;
+const HISTORY_SUMMARY_MAX_TOKENS = 10000;
 const DEFAULT_PRESERVED_TURNS = 2;
 const MIN_PRESERVED_TURNS = 1;
 const MAX_IMAGE_ATTACHMENTS = 3;
@@ -65,6 +69,7 @@ const TOAST_DURATION_MIN_MS = 1800;
 const TOAST_DURATION_MAX_MS = 4200;
 const CONFIG_SAVE_TIMEOUT_MS = 3000;
 const CONFIG_SAVE_RESULT_MS = 1800;
+const CONTEXT_STATS_RENDER_THROTTLE_MS = 600;
 const currentPlanContextLedger = createPlanLedger();
 const TOOL_MODE_OPTIONS = [
     { value: 'native', label: '原生 Tool Calling' },
@@ -165,6 +170,8 @@ let configSaveResetTimer = null;
 let suppressNextIdentityUpdatedToast = false;
 let suppressNextMemoryRefreshToast = false;
 const messageActionFeedbackTimers = new Map();
+let contextStatsRenderTimer = null;
+let lastContextStatsRenderAt = 0;
 const workspaceToolBridge = {
     callHostTool: null,
     postHostToolCallWithoutResponse: null,
@@ -255,12 +262,20 @@ function renderWorkspaceOnly() {
     if (!root) return;
     const workspacePanel = root.querySelector('#xb-assistant-workspace-panel');
     if (!workspacePanel) return;
+    if (!state.isWorkspaceOpen) {
+        renderWorkspacePanelWhenOpen(workspacePanel, {
+            disabled: state.isBusy,
+            onEditorSelectionChange: handleWorkspaceEditorSelectionChange,
+        });
+        renderContextHint(root, state);
+        return;
+    }
     if (state.workspacePanelMode === 'memory') {
         ensureSkillSelection({ fallbackToFirst: false });
     } else {
         ensureWorkspaceSelection();
     }
-    renderWorkspacePanel(workspacePanel, {
+    renderWorkspacePanelWhenOpen(workspacePanel, {
         disabled: state.isBusy,
         onEditorSelectionChange: handleWorkspaceEditorSelectionChange,
     });
@@ -732,6 +747,18 @@ function renderWorkspacePanel(container, options = {}) {
         showDeleteButton: true,
         showSaveButton: false,
     });
+}
+
+function renderWorkspacePanelWhenOpen(container, options = {}) {
+    if (!container) return;
+    if (!state.isWorkspaceOpen) {
+        if (container.childNodes.length || container.__xbWorkspaceEditorCache) {
+            destroyWorkspaceEditorCache(container);
+            container.replaceChildren();
+        }
+        return;
+    }
+    renderWorkspacePanel(container, options);
 }
 
 function openWorkspacePanelTarget(targetPath = '') {
@@ -1456,6 +1483,7 @@ const runtime = createAssistantRuntime({
     HISTORY_SUMMARY_PREFIX,
     MAX_CONTEXT_TOKENS,
     SUMMARY_TRIGGER_TOKENS,
+    HISTORY_SUMMARY_MAX_TOKENS,
     DEFAULT_PRESERVED_TURNS,
     MIN_PRESERVED_TURNS,
     MAX_TOOL_ROUNDS,
@@ -1585,6 +1613,31 @@ function buildSanitizedHtmlFragment(html) {
     return fragment;
 }
 
+function runContextStatsUpdateForRender() {
+    contextStatsRenderTimer = null;
+    lastContextStatsRenderAt = Date.now();
+    updateContextStats(toProviderMessages(getActiveContextMessages()));
+}
+
+function scheduleContextStatsUpdateForRender() {
+    const elapsed = Date.now() - lastContextStatsRenderAt;
+    if (elapsed >= CONTEXT_STATS_RENDER_THROTTLE_MS) {
+        if (contextStatsRenderTimer) {
+            clearTimeout(contextStatsRenderTimer);
+            contextStatsRenderTimer = null;
+        }
+        runContextStatsUpdateForRender();
+        return;
+    }
+
+    if (!contextStatsRenderTimer) {
+        contextStatsRenderTimer = setTimeout(
+            runContextStatsUpdateForRender,
+            CONTEXT_STATS_RENDER_THROTTLE_MS - elapsed,
+        );
+    }
+}
+
 function render() {
     const root = document.getElementById(ROOT_ID);
     if (!root) {
@@ -1599,7 +1652,7 @@ function render() {
         syncConfigToForm(root);
         state.configFormSyncPending = false;
     }
-    updateContextStats(toProviderMessages(getActiveContextMessages()));
+    scheduleContextStatsUpdateForRender();
     ensureWorkspaceSelection();
     const chat = root.querySelector('#xb-assistant-chat');
     const approvalSlot = root.querySelector('#xb-assistant-approval-slot');
@@ -1615,7 +1668,7 @@ function render() {
         buildContextMeterLabel,
         getWorkspaceSummary,
         renderAttachmentGallery,
-        renderWorkspace: renderWorkspacePanel,
+        renderWorkspace: renderWorkspacePanelWhenOpen,
         onRemoveDraftAttachment: (index) => {
             state.draftAttachments = state.draftAttachments.filter((_, itemIndex) => itemIndex !== index);
             render();
@@ -1862,6 +1915,7 @@ function bindEvents(root) {
         const messageIndex = Number.parseInt(actionButton.dataset.messageIndex || '', 10);
         const action = String(actionButton.dataset.messageAction || '').trim();
         if (!Number.isInteger(messageIndex) || messageIndex < 0 || !action) return;
+        if (state.isBusy && action !== 'cancel-edit') return;
         const message = state.messages[messageIndex];
         if (!isEditableAssistantTextMessage(message)) return;
 

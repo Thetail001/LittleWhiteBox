@@ -59,6 +59,121 @@ function estimateConversationTokens({ messages = [], tools = [] } = {}) {
     return estimateTokenCount(JSON.stringify(buildTokenCounterPayload(messages, tools)));
 }
 
+function createSignatureHasher() {
+    let hashA = 2166136261;
+    let hashB = 2166136261 ^ 0x9e3779b9;
+    let charCount = 0;
+    let chunkCount = 0;
+
+    function addText(value = '') {
+        const text = String(value ?? '');
+        chunkCount += 1;
+        charCount += text.length;
+        for (let index = 0; index < text.length; index += 1) {
+            const code = text.charCodeAt(index);
+            hashA ^= code;
+            hashA = Math.imul(hashA, 16777619);
+            hashB ^= code + 0x9e3779b9 + (hashB << 6) + (hashB >>> 2);
+            hashB = Math.imul(hashB, 1597334677);
+        }
+    }
+
+    function addField(name, value = '') {
+        addText('\u001e');
+        addText(name);
+        addText('\u001f');
+        addText(value);
+    }
+
+    function digest() {
+        return [
+            charCount,
+            chunkCount,
+            (hashA >>> 0).toString(36),
+            (hashB >>> 0).toString(36),
+        ].join(':');
+    }
+
+    return {
+        addText,
+        addField,
+        digest,
+    };
+}
+
+function addContentToSignature(hasher, content) {
+    if (Array.isArray(content)) {
+        hasher.addField('content-kind', 'parts');
+        hasher.addField('part-count', content.length);
+        content.forEach((part, index) => {
+            if (!part || typeof part !== 'object') {
+                hasher.addField(`part:${index}:empty`, '');
+                return;
+            }
+            hasher.addField(`part:${index}:type`, part.type || '');
+            if (part.type === 'text') {
+                hasher.addField(`part:${index}:text`, part.text || '');
+                return;
+            }
+            if (part.type === 'image_url') {
+                hasher.addField(`part:${index}:image`, part.name || part.mimeType || 'image');
+            }
+        });
+        return;
+    }
+
+    hasher.addField('content-kind', 'text');
+    hasher.addField('content', content || '');
+}
+
+function addToolCallToSignature(hasher, toolCall = {}, index = 0) {
+    hasher.addField(`tool-call:${index}:id`, toolCall.id || '');
+    hasher.addField(`tool-call:${index}:name`, toolCall.function?.name || '');
+    hasher.addField(`tool-call:${index}:arguments`, toolCall.function?.arguments || '{}');
+}
+
+function addMessageToSignature(hasher, message = {}, index = 0) {
+    hasher.addField(`message:${index}:role`, message.role || '');
+    if (message.role === 'tool') {
+        hasher.addField(`message:${index}:tool-call-id`, message.tool_call_id || '');
+        hasher.addField(`message:${index}:tool-content`, message.content || '');
+        return;
+    }
+
+    addContentToSignature(hasher, message.content);
+    if (message.role === 'assistant' && Array.isArray(message.tool_calls) && message.tool_calls.length) {
+        hasher.addField(`message:${index}:tool-call-count`, message.tool_calls.length);
+        message.tool_calls.forEach((toolCall, toolCallIndex) => {
+            addToolCallToSignature(hasher, toolCall, `${index}:${toolCallIndex}`);
+        });
+    }
+}
+
+function addJsonValueToSignature(hasher, value, path = 'json') {
+    if (value === null) {
+        hasher.addField(path, 'null');
+        return;
+    }
+    if (Array.isArray(value)) {
+        hasher.addField(`${path}:type`, 'array');
+        hasher.addField(`${path}:length`, value.length);
+        value.forEach((item, index) => addJsonValueToSignature(hasher, item === undefined ? null : item, `${path}:${index}`));
+        return;
+    }
+    if (typeof value === 'object') {
+        hasher.addField(`${path}:type`, 'object');
+        Object.keys(value).forEach((key) => {
+            const item = value[key];
+            if (item === undefined || typeof item === 'function' || typeof item === 'symbol') return;
+            hasher.addField(`${path}:key`, key);
+            addJsonValueToSignature(hasher, item, `${path}:${key}`);
+        });
+        return;
+    }
+    hasher.addField(`${path}:type`, typeof value);
+    hasher.addField(path, String(value));
+}
+
 function normalizeDebugPreview(value, limit = CONTEXT_DEBUG_PREVIEW_CHARS) {
     const text = String(value || '').replace(/\s+/g, ' ').trim();
     if (!text) return '';
@@ -117,6 +232,14 @@ function summarizeContextPayload(messages = [], tools = []) {
     };
 }
 
+function isContextStatsDebugEnabled() {
+    try {
+        return localStorage.getItem('xiaobaix_assistant_context_stats_debug') === '1';
+    } catch {
+        return false;
+    }
+}
+
 function logContextStats(reason, {
     providerConfig,
     messages,
@@ -126,6 +249,7 @@ function logContextStats(reason, {
     cacheHit = false,
     source = 'estimated',
 } = {}) {
+    if (!isContextStatsDebugEnabled()) return;
     const payloadSummary = summarizeContextPayload(messages, tools);
     console.info('[Assistant][ContextStats]', {
         reason,
@@ -217,11 +341,15 @@ export function createContextStatsController(deps) {
     function buildContextStatsSignature(messages = [], tools = null) {
         const providerConfig = getActiveProviderConfig();
         const resolvedTools = resolveToolDefinitions(tools);
-        return JSON.stringify({
-            provider: String(providerConfig?.provider || ''),
-            model: String(providerConfig?.model || ''),
-            messages: buildTokenCounterPayload(messages, resolvedTools),
-        });
+        const toolDefinitions = Array.isArray(resolvedTools) ? resolvedTools : [];
+        const hasher = createSignatureHasher();
+        hasher.addField('provider', providerConfig?.provider || '');
+        hasher.addField('model', providerConfig?.model || '');
+        hasher.addField('message-count', messages.length);
+        messages.forEach((message, index) => addMessageToSignature(hasher, message, index));
+        hasher.addField('tool-count', toolDefinitions.length);
+        addJsonValueToSignature(hasher, toolDefinitions, 'tools');
+        return hasher.digest();
     }
 
     async function resolveConversationTokens({ messages = [], tools = null } = {}) {

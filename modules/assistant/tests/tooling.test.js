@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { formatToolResultDisplay, TOOL_DEFINITIONS, TOOL_NAMES } from '../app-src/tooling.js';
+import { describeToolCall, formatToolResultDisplay, TOOL_DEFINITIONS, TOOL_NAMES } from '../app-src/tooling.js';
 import {
     LOOKUP_SCOPE_LOCAL,
     LOOKUP_SCOPE_PROJECT,
@@ -18,6 +18,20 @@ test('lookup tools expose strict project/local scope parameters', () => {
         assert(definition);
         assert.deepEqual(definition.function.parameters.properties.scope.enum, ['project', 'local']);
     });
+});
+
+test('Read exposes tail as the only extra range shortcut', () => {
+    const definition = TOOL_DEFINITIONS.find((entry) => entry.function?.name === TOOL_NAMES.READ);
+    assert(definition);
+    assert.deepEqual(Object.keys(definition.function.parameters.properties), [
+        'filePath',
+        'scope',
+        'offset',
+        'limit',
+        'tail',
+    ]);
+    assert.match(definition.function.parameters.properties.tail.description, /cannot be combined with offset, limit/i);
+    assert.doesNotMatch(JSON.stringify(definition.function.parameters.properties), /mode|from/i);
 });
 
 test('plan tools expose strict state-only schemas', () => {
@@ -42,6 +56,16 @@ test('plan tools expose strict state-only schemas', () => {
         'failed',
         'cancelled',
     ]);
+});
+
+test('DelegateRun exposes a strict task-only schema', () => {
+    const definition = TOOL_DEFINITIONS.find((entry) => entry.function?.name === TOOL_NAMES.DELEGATE_RUN);
+    assert(definition);
+    assert.equal(definition.function.parameters.additionalProperties, false);
+    assert.deepEqual(Object.keys(definition.function.parameters.properties), ['task', 'context', 'deliverable']);
+    assert.deepEqual(definition.function.parameters.required, ['task']);
+    assert.doesNotMatch(JSON.stringify(definition.function.parameters), /sessionId/i);
+    assert.match(String(definition.function.description || ''), /only knows task\/context\/deliverable/i);
 });
 
 test('lookup tool descriptions explain that local scope still uses local-prefixed paths', () => {
@@ -157,4 +181,85 @@ test('formatToolResultDisplay summarizes plan tool results', () => {
 
     assert.match(display.summary, /计划已创建：检查 PLAN 工具/);
     assert.match(display.summary, /id：plan-1/);
+});
+
+test('formatToolResultDisplay summarizes delegate tool results', () => {
+    const display = formatToolResultDisplay({
+        toolName: TOOL_NAMES.DELEGATE_RUN,
+        content: JSON.stringify({
+            ok: true,
+            status: 'completed',
+            result: '完成检查，没有发现问题。',
+            summary: '完成检查',
+            rounds: 2,
+            toolCallCount: 1,
+            toolTrace: [
+                {
+                    name: TOOL_NAMES.READ,
+                    ok: true,
+                    args: 'filePath: local/a.txt',
+                    summary: '读取完成',
+                },
+            ],
+        }),
+    });
+
+    assert.match(display.summary, /子任务状态：completed/);
+    assert.match(display.summary, /工具调用：1/);
+    assert.match(display.details, /完成检查，没有发现问题/);
+    assert.match(display.details, /Read/);
+});
+
+test('formatToolResultDisplay summarizes streamed read previews without fake total lines', () => {
+    const display = formatToolResultDisplay({
+        toolName: TOOL_NAMES.READ,
+        content: JSON.stringify({
+            path: 'scripts/extensions/third-party/LittleWhiteBox/modules/assistant/assistant.js',
+            source: 'littlewhitebox',
+            startLine: 1,
+            endLine: 2000,
+            totalLinesKnown: false,
+            hasMoreAfter: true,
+            nextOffset: 2001,
+            autoChunked: true,
+            contentFormat: 'numbered_lines',
+            content: '1\tconst example = true;',
+        }),
+    });
+
+    assert.match(display.summary, /总行数未知（当前为首段预览）/);
+    assert.match(display.summary, /文件较大，当前自动返回首段/);
+    assert.match(display.summary, /后面还有内容；如需继续，可从第 2001 行继续读/);
+});
+
+test('describeToolCall shows Read tail requests without hiding the file path', () => {
+    const description = describeToolCall(TOOL_NAMES.READ, {
+        filePath: 'local/app.log',
+        tail: 300,
+    });
+
+    assert.equal(description, '读取文件 local/app.log tail:300');
+});
+
+test('formatToolResultDisplay summarizes Read tail windows as tail, not fake line numbers', () => {
+    const display = formatToolResultDisplay({
+        toolName: TOOL_NAMES.READ,
+        content: JSON.stringify({
+            path: 'scripts/extensions/third-party/LittleWhiteBox/app.log',
+            source: 'littlewhitebox',
+            totalLinesKnown: false,
+            tailLines: 300,
+            startLine: null,
+            endLine: null,
+            returnedLines: 2,
+            hasMoreBefore: true,
+            hasMoreAfter: false,
+            contentFormat: 'numbered_lines',
+            content: 'error one\nerror two',
+        }),
+    });
+
+    assert.match(display.summary, /范围：末尾 300 行/);
+    assert.doesNotMatch(display.summary, /第 1 行到第 0 行/);
+    assert.match(display.details, /error two/);
 });

@@ -20,6 +20,7 @@ export const TOOL_NAMES = {
     PLAN_UPDATE: 'PlanUpdate',
     PLAN_LIST: 'PlanList',
     PLAN_GET: 'PlanGet',
+    DELEGATE_RUN: 'DelegateRun',
     READ_SKILLS_CATALOG: 'ReadSkillsCatalog',
     READ_SKILL: 'ReadSkill',
     UPDATE_SKILL: 'UpdateSkill',
@@ -124,6 +125,7 @@ export const TOOL_DEFINITIONS = [
                 'When `scope: "local"` is used, `filePath` still needs the full `local/...` path.',
                 'For some explicit public file paths, direct live reads may still work even if the path is not in the index.',
                 'Returns numbered lines for files and plain entry names for directories; large reads include continuation hints.',
+                'Use `tail` only when you need the last N lines of a file.',
             ].join('\n'),
             parameters: {
                 type: 'object',
@@ -132,6 +134,7 @@ export const TOOL_DEFINITIONS = [
                     scope: { type: 'string', enum: ['project', 'local'], description: 'Lookup scope. Default is project. Use local to read only `local/` workspace files or directories.' },
                     offset: { type: 'number', description: 'Optional line offset (1-based). Default 1.' },
                     limit: { type: 'number', description: 'Optional maximum number of lines or directory entries to return. Default 2000.' },
+                    tail: { type: 'number', description: 'Optional number of final file lines to return. Use by itself; cannot be combined with offset, limit, startLine, or endLine.' },
                 },
                 required: ['filePath'],
                 additionalProperties: false,
@@ -332,16 +335,15 @@ export const TOOL_DEFINITIONS = [
         function: {
             name: TOOL_NAMES.PLAN_CREATE,
             description: [
-                'Create one tracked checklist item for the current assistant session.',
-                'Use when the work has multiple steps, blockers, follow-up decisions, or a result that may need to be resumed later.',
-                'Example: title "Check Comfy workflow mapping"; detail "Verify prompt node, SaveImage node, seed/size mapping, then report risks."',
-                'This only records the plan item; it does not run tools or delegate work.',
+                'Create one session-scoped checklist item in the current assistant session.',
+                'Use for multi-step work, long investigations, blockers, or resumable follow-up.',
+                'This records work state only; it does not execute tools, delegate work, or write long-term memory.',
             ].join('\n'),
             parameters: {
                 type: 'object',
                 properties: {
-                    title: { type: 'string', description: 'Short concrete item name, not a vague category.' },
-                    detail: { type: 'string', description: 'Useful context, done criteria, or the exact thing to check.' },
+                    title: { type: 'string', description: 'Short concrete outcome, not a vague category.' },
+                    detail: { type: 'string', description: 'Useful context, done criteria, or exact checks needed to finish.' },
                     priority: { type: 'string', enum: ['low', 'normal', 'high', 'urgent'], description: 'Use normal by default; raise only for real urgency.' },
                     owner: { type: 'string', description: 'Who is expected to move it forward. Default assistant; use user only for user-side actions.' },
                     blockedBy: {
@@ -361,9 +363,9 @@ export const TOOL_DEFINITIONS = [
         function: {
             name: TOOL_NAMES.PLAN_UPDATE,
             description: [
-                'Update one tracked checklist item after actual progress, a blocker, or a decision.',
+                'Update one session-scoped checklist item after actual progress, a status change, blocker, or decision.',
                 'Use status for progress state, note for a short progress note, and result/error for final outcome or failure cause.',
-                'Example: after tests pass, set status to "completed" and summarize the verified checks in result.',
+                'Only mark completed when the described work is actually done.',
                 'If blockedBy points to unfinished items, the item cannot move to in_progress.',
             ].join('\n'),
             parameters: {
@@ -398,8 +400,8 @@ export const TOOL_DEFINITIONS = [
         function: {
             name: TOOL_NAMES.PLAN_LIST,
             description: [
-                'List tracked checklist items for the current assistant session.',
-                'Use before resuming work, choosing the next step, or checking blockers.',
+                'List session-scoped checklist items for the current assistant session.',
+                'Use before resuming work, avoiding duplicate plans, choosing the next tracked step, or checking blockers.',
                 'Leave filters empty for the current checklist; add status, priority, or owner only when narrowing.',
             ].join('\n'),
             parameters: {
@@ -423,8 +425,8 @@ export const TOOL_DEFINITIONS = [
         function: {
             name: TOOL_NAMES.PLAN_GET,
             description: [
-                'Read the full record for one tracked checklist item.',
-                'Use when the next action depends on detail, blockers, notes, result, or error for a known plan id.',
+                'Read the full record for one session-scoped checklist item.',
+                'Use when the short current-plan snapshot is not enough and the next action depends on detail, blockers, notes, result, or error.',
             ].join('\n'),
             parameters: {
                 type: 'object',
@@ -432,6 +434,28 @@ export const TOOL_DEFINITIONS = [
                     id: { type: 'string', description: 'Plan id returned by PlanCreate or PlanList.' },
                 },
                 required: ['id'],
+                additionalProperties: false,
+            },
+        },
+    },
+    {
+        type: 'function',
+        function: {
+            name: TOOL_NAMES.DELEGATE_RUN,
+            description: [
+                'Run one clear, independent subtask in a separate assistant turn and wait for its result.',
+                'Use after you can state the subtask scope and how its result should be merged back into the main answer.',
+                'The delegate only knows task/context/deliverable plus its system prompt; include needed paths, facts, constraints, current context, and plan details explicitly.',
+                'The delegate can use normal execution tools, but it does not manage plans and cannot delegate again.',
+            ].join('\n'),
+            parameters: {
+                type: 'object',
+                properties: {
+                    task: { type: 'string', description: 'Concrete subtask goal. Include the exact question or work item.' },
+                    context: { type: 'string', description: 'Optional necessary background, paths, facts, constraints, current context, plan details, or prior findings.' },
+                    deliverable: { type: 'string', description: 'Optional expected result shape, checks, or evidence to return.' },
+                },
+                required: ['task'],
                 additionalProperties: false,
             },
         },
@@ -586,7 +610,7 @@ export function describeToolCall(name, args = {}) {
         case TOOL_NAMES.GREP:
             return `搜索内容 ${args.pattern || ''}${args.path ? ` @ ${args.path}` : ''}`.trim();
         case TOOL_NAMES.READ:
-            return `读取文件 ${(args.filePath || args.path || '')}${args.offset ? `:${args.offset}` : args.startLine ? `:${args.startLine}` : ''}`.trim();
+            return `读取文件 ${(args.filePath || args.path || '')}${args.tail ? ` tail:${args.tail}` : args.offset ? `:${args.offset}` : args.startLine ? `:${args.startLine}` : ''}`.trim();
         case TOOL_NAMES.WRITE:
             return `写入文件 ${args.path || args.filePath || ''}`.trim();
         case TOOL_NAMES.APPLY_PATCH:
@@ -615,6 +639,8 @@ export function describeToolCall(name, args = {}) {
             return '查看计划列表';
         case TOOL_NAMES.PLAN_GET:
             return `查看计划 ${args.id || ''}`.trim();
+        case TOOL_NAMES.DELEGATE_RUN:
+            return `委托子任务 ${args.task || ''}`.trim();
         case TOOL_NAMES.READ_SKILLS_CATALOG:
             return '读取技能目录';
         case TOOL_NAMES.READ_SKILL:
@@ -711,6 +737,32 @@ function formatPlanToolResult(message, parsed = {}) {
     return null;
 }
 
+function formatDelegateToolResult(message, parsed = {}) {
+    if (message.toolName !== TOOL_NAMES.DELEGATE_RUN) return null;
+    const trace = Array.isArray(parsed.toolTrace) ? parsed.toolTrace : [];
+    const lines = [
+        parsed.status ? `子任务状态：${parsed.status}` : '子任务已返回',
+        parsed.summary ? `摘要：${parsed.summary}` : '',
+        Number.isFinite(Number(parsed.rounds)) ? `轮次：${Number(parsed.rounds)}` : '',
+        Number.isFinite(Number(parsed.toolCallCount)) ? `工具调用：${Number(parsed.toolCallCount)}` : '',
+        parsed.error ? `错误：${parsed.error}` : '',
+    ].filter(Boolean);
+    const traceLines = trace.map((item) => [
+        `- ${item.name || 'tool'}`,
+        item.ok === false ? '失败' : '成功',
+        item.args ? `参数：${item.args}` : '',
+        item.error ? `错误：${item.error}` : '',
+        item.summary ? `摘要：${item.summary}` : '',
+    ].filter(Boolean).join('；'));
+    return {
+        summary: lines.join('\n'),
+        details: [
+            parsed.result ? `结果：\n${parsed.result}` : '',
+            traceLines.length ? `工具轨迹：\n${traceLines.join('\n')}` : '',
+        ].filter(Boolean).join('\n\n'),
+    };
+}
+
 export function formatToolResultDisplay(message) {
     const parsed = safeJsonParse(message.content, null);
     if (!parsed || typeof parsed !== 'object') {
@@ -719,6 +771,9 @@ export function formatToolResultDisplay(message) {
             details: '',
         };
     }
+
+    const delegateToolResult = formatDelegateToolResult(message, parsed);
+    if (delegateToolResult) return delegateToolResult;
 
     const planToolResult = formatPlanToolResult(message, parsed);
     if (planToolResult) return planToolResult;
@@ -873,6 +928,11 @@ export function formatToolResultDisplay(message) {
 
     if (message.toolName === TOOL_NAMES.READ) {
         const isDirectory = parsed.entryType === 'directory' || parsed.contentFormat === 'directory_entries';
+        const totalLinesLabel = Number.isFinite(parsed.totalLines)
+            ? `共 ${parsed.totalLines} 行`
+            : parsed.totalLinesKnown === false
+                ? '总行数未知（当前为首段预览）'
+                : '总行数未知';
         const lines = [
             `${isDirectory ? '已读取目录' : '已读取文件'}：${parsed.path || ''}`,
             parsed.source ? `来源：${parsed.source}` : '',
@@ -886,9 +946,15 @@ export function formatToolResultDisplay(message) {
                 lines.push('当前已是完整读取结果。');
             }
         } else {
-            lines.push(`范围：第 ${parsed.startLine || 1} 行到第 ${parsed.endLine || 0} 行 / 共 ${parsed.totalLines || 0} 行`);
+            if (Number.isFinite(Number(parsed.tailLines)) && parsed.tailLines > 0) {
+                lines.push(`范围：末尾 ${Number(parsed.tailLines)} 行 / ${totalLinesLabel}`);
+            } else {
+                lines.push(`范围：第 ${parsed.startLine || 1} 行到第 ${parsed.endLine || 0} 行 / ${totalLinesLabel}`);
+            }
             if (parsed.contentFormat === 'numbered_lines') {
-                lines.push('格式：带行号内容');
+                lines.push(Number.isFinite(Number(parsed.tailLines)) && parsed.tailLines > 0
+                    ? '格式：末尾内容'
+                    : '格式：带行号内容');
             }
             if (parsed.autoChunked) {
                 lines.push('文件较大，当前自动返回首段。');

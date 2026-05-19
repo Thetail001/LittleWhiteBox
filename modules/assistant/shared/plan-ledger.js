@@ -158,6 +158,39 @@ async function resolveBlockers(sessionId, blockedBy = []) {
         }));
 }
 
+async function validateBlockedByPlansExist(sessionId, blockedBy = []) {
+    const entries = await getPlansByIds(sessionId, blockedBy);
+    const missing = entries
+        .filter((entry) => !entry.plan)
+        .map((entry) => entry.id);
+    if (!missing.length) {
+        return {
+            ok: true,
+            entries,
+        };
+    }
+    return buildPlanError('plan_blocked_by_not_found', { missing });
+}
+
+async function wouldCreateBlockedByCycle(sessionId, planId, blockedBy = []) {
+    const targetId = normalizeText(planId, 160);
+    if (!targetId) return false;
+    const visited = new Set();
+    const stack = normalizeBlockedBy(blockedBy);
+
+    while (stack.length) {
+        const currentId = stack.pop();
+        if (!currentId || visited.has(currentId)) continue;
+        if (currentId === targetId) return true;
+        visited.add(currentId);
+        const plan = clonePlan(await plansTable.get([sessionId, currentId]));
+        normalizeBlockedBy(plan?.blockedBy).forEach((nextId) => {
+            if (!visited.has(nextId)) stack.push(nextId);
+        });
+    }
+    return false;
+}
+
 function normalizeCreateArgs(args = {}) {
     const title = normalizeText(args.title, 400);
     const detail = normalizeText(args.detail, 4000);
@@ -220,6 +253,8 @@ export function createPlanLedger(options = {}) {
         if (!normalized.ok) return buildPlanError(normalized.error, { value: normalized.value || '' });
         if (!normalized.title) return buildPlanError('plan_title_required');
 
+        const blockedByValidation = await validateBlockedByPlansExist(sessionId, normalized.blockedBy);
+        if (!blockedByValidation.ok) return blockedByValidation;
         const blockers = await resolveBlockers(sessionId, normalized.blockedBy);
         const createdAt = now();
         const plan = {
@@ -270,6 +305,11 @@ export function createPlanLedger(options = {}) {
             if (normalized.blockedBy.includes(next.id)) {
                 return buildPlanError('plan_self_blocked', { id: next.id });
             }
+            const blockedByValidation = await validateBlockedByPlansExist(sessionId, normalized.blockedBy);
+            if (!blockedByValidation.ok) return blockedByValidation;
+            if (await wouldCreateBlockedByCycle(sessionId, next.id, normalized.blockedBy)) {
+                return buildPlanError('plan_blocked_by_cycle', { id: next.id, blockedBy: normalized.blockedBy });
+            }
             next.blockedBy = normalized.blockedBy;
         }
         if (normalized.note) next.notes = [...normalizeNotes(next.notes), normalized.note];
@@ -286,8 +326,19 @@ export function createPlanLedger(options = {}) {
 
         if (normalized.status) {
             next.status = normalized.status;
-        } else if (normalized.blockedBy !== undefined && ['pending', 'blocked'].includes(next.status)) {
-            next.status = blockers.length ? 'blocked' : 'pending';
+        } else if (normalized.blockedBy !== undefined && !TERMINAL_STATUSES.has(next.status)) {
+            if (blockers.length) {
+                next.status = 'blocked';
+            } else if (next.status === 'blocked') {
+                next.status = 'pending';
+            }
+        }
+
+        if (next.status === 'in_progress' && blockers.length) {
+            return buildPlanError('plan_blocked', {
+                id: next.id,
+                blockers,
+            });
         }
 
         if (TERMINAL_STATUSES.has(next.status)) {

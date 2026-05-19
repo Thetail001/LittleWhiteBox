@@ -126,7 +126,7 @@ function mountWorkspaceEditor(container, options = {}) {
     return view;
 }
 
-function destroyWorkspaceEditorCache(container) {
+export function destroyWorkspaceEditorCache(container) {
     const cache = container?.__xbWorkspaceEditorCache;
     if (cache?.view) {
         cache.view.destroy();
