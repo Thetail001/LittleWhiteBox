@@ -404,7 +404,7 @@ export function createAgentSettingsPanel(deps = {}) {
             reasoningEffort: normalizeReasoningEffort(root.querySelector('#xb-assistant-reasoning-effort')?.value),
             toolMode: (root.querySelector('#xb-assistant-tool-mode')?.value || draft.toolMode || 'native'),
             tavilyApiKey: root.querySelector('#xb-assistant-tavily-api-key')?.value.trim() || '',
-            tavilyBaseUrl: normalizeTavilyBaseUrl(root.querySelector('#xb-assistant-tavily-base-url')?.value.trim() || draft.tavilyBaseUrl || DEFAULT_TAVILY_BASE_URL),
+            tavilyBaseUrl: normalizeTavilyBaseUrl(draft.tavilyBaseUrl || DEFAULT_TAVILY_BASE_URL),
             permissionMode: normalizePermissionMode(root.querySelector('#xb-assistant-permission-mode')?.value || draft.permissionMode),
             jsApiPermission: normalizeJsApiPermission(root.querySelector('#xb-assistant-jsapi-permission')?.value || draft.jsApiPermission),
             delegatePresetName: resolveExistingPresetName(root.querySelector('#xb-assistant-delegate-preset-select')?.value || draft.delegatePresetName, draft.currentPresetName),
@@ -417,7 +417,7 @@ export function createAgentSettingsPanel(deps = {}) {
             delegateReasoningEffort: normalizeReasoningEffort(root.querySelector('#xb-assistant-delegate-reasoning-effort')?.value || draft.delegateReasoningEffort),
             delegateToolMode: root.querySelector('#xb-assistant-delegate-tool-mode')?.value || draft.delegateToolMode || 'native',
             delegateTavilyApiKey: root.querySelector('#xb-assistant-delegate-tavily-api-key')?.value.trim() || '',
-            delegateTavilyBaseUrl: normalizeTavilyBaseUrl(root.querySelector('#xb-assistant-delegate-tavily-base-url')?.value.trim() || draft.delegateTavilyBaseUrl || DEFAULT_TAVILY_BASE_URL),
+            delegateTavilyBaseUrl: normalizeTavilyBaseUrl(draft.delegateTavilyBaseUrl || DEFAULT_TAVILY_BASE_URL),
         };
     }
 
@@ -578,9 +578,7 @@ export function createAgentSettingsPanel(deps = {}) {
         const delegateModelInput = root.querySelector('#xb-assistant-delegate-model');
         const delegateApiKeyInput = root.querySelector('#xb-assistant-delegate-api-key');
         const tavilyApiKeyInput = root.querySelector('#xb-assistant-tavily-api-key');
-        const tavilyBaseUrlInput = root.querySelector('#xb-assistant-tavily-base-url');
         const delegateTavilyApiKeyInput = root.querySelector('#xb-assistant-delegate-tavily-api-key');
-        const delegateTavilyBaseUrlInput = root.querySelector('#xb-assistant-delegate-tavily-base-url');
         const delegatePulledSelect = root.querySelector('#xb-assistant-delegate-model-pulled');
         const delegateToolModeWrap = root.querySelector('#xb-assistant-delegate-tool-mode-wrap');
         const delegateToolModeSelect = root.querySelector('#xb-assistant-delegate-tool-mode');
@@ -605,7 +603,6 @@ export function createAgentSettingsPanel(deps = {}) {
         root.querySelector('#xb-assistant-model').value = draft.model || '';
         root.querySelector('#xb-assistant-api-key').value = draft.apiKey || '';
         if (tavilyApiKeyInput) tavilyApiKeyInput.value = draft.tavilyApiKey || '';
-        if (tavilyBaseUrlInput) tavilyBaseUrlInput.value = draft.tavilyBaseUrl || DEFAULT_TAVILY_BASE_URL;
         toolModeWrap.style.display = (provider === 'openai-compatible' || provider === 'sillytavern-openai-compatible') ? '' : 'none';
         refillSelect(toolModeSelect, TOOL_MODE_OPTIONS);
         toolModeSelect.value = draft.toolMode || 'native';
@@ -628,7 +625,6 @@ export function createAgentSettingsPanel(deps = {}) {
         if (delegateModelInput) delegateModelInput.value = draft.delegateModel || '';
         if (delegateApiKeyInput) delegateApiKeyInput.value = draft.delegateApiKey || '';
         if (delegateTavilyApiKeyInput) delegateTavilyApiKeyInput.value = draft.delegateTavilyApiKey || '';
-        if (delegateTavilyBaseUrlInput) delegateTavilyBaseUrlInput.value = draft.delegateTavilyBaseUrl || DEFAULT_TAVILY_BASE_URL;
         if (delegateToolModeWrap) {
             delegateToolModeWrap.style.display = (delegateProvider === 'openai-compatible' || delegateProvider === 'sillytavern-openai-compatible') ? '' : 'none';
         }
@@ -817,10 +813,6 @@ export function createAgentSettingsPanel(deps = {}) {
             syncConfigDraft(root);
         });
 
-        root.querySelector('#xb-assistant-tavily-base-url')?.addEventListener('input', () => {
-            syncConfigDraft(root);
-        });
-
         root.querySelector('#xb-assistant-model-pulled').addEventListener('change', (event) => {
             const value = event.currentTarget.value;
             if (!value) return;
@@ -854,10 +846,6 @@ export function createAgentSettingsPanel(deps = {}) {
         });
 
         root.querySelector('#xb-assistant-delegate-tavily-api-key')?.addEventListener('input', () => {
-            syncConfigDraft(root);
-        });
-
-        root.querySelector('#xb-assistant-delegate-tavily-base-url')?.addEventListener('input', () => {
             syncConfigDraft(root);
         });
 

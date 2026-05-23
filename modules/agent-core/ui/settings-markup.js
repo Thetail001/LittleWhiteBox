@@ -119,10 +119,6 @@ export function buildAgentSettingsPanelMarkup(options = {}) {
                         <button id="xb-assistant-delegate-toggle-tavily-key" type="button" class="secondary ghost">显示</button>
                     </div>
                 </label>
-                <label>
-                    <span>Tavily Base URL</span>
-                    <input id="xb-assistant-delegate-tavily-base-url" type="text" />
-                </label>
                 <label id="xb-assistant-delegate-tool-mode-wrap">
                     <span>Tool 调用格式</span>
                     <select id="xb-assistant-delegate-tool-mode"></select>
@@ -196,10 +192,6 @@ export function buildAgentSettingsPanelMarkup(options = {}) {
                     <input id="xb-assistant-tavily-api-key" type="password" />
                     <button id="xb-assistant-toggle-tavily-key" type="button" class="secondary ghost">显示</button>
                 </div>
-            </label>
-            <label>
-                <span>Tavily Base URL</span>
-                <input id="xb-assistant-tavily-base-url" type="text" />
             </label>
             <label id="xb-assistant-tool-mode-wrap">
                 <span>Tool 调用格式</span>

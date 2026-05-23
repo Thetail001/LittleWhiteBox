@@ -68,6 +68,10 @@ export function injectEbookStyles(rootId = 'xb-ebook-root') {
             background: var(--xb-bg-deep);
             color: var(--xb-text-main);
         }
+        .xb-library-screen {
+            display: grid;
+            grid-template-rows: 150px minmax(0, 1fr);
+        }
         .xb-ebook-screen.theme-light,
         .xb-ebook-shell.theme-light {
             color-scheme: light;
@@ -196,7 +200,7 @@ export function injectEbookStyles(rootId = 'xb-ebook-root') {
         .xb-shelf-container {
             position: relative;
             z-index: 2;
-            height: calc(100vh - 150px);
+            min-height: 0;
             overflow: auto;
             padding: 18px 60px 96px;
         }
@@ -206,6 +210,7 @@ export function injectEbookStyles(rootId = 'xb-ebook-root') {
             gap: 34px;
         }
         .xb-library-empty {
+            grid-column: 1 / -1;
             min-height: 220px;
             display: grid;
             place-items: center;
@@ -1825,8 +1830,7 @@ export function injectEbookStyles(rootId = 'xb-ebook-root') {
         }
         .theme-dark .xb-workspace-controller,
         .theme-dark .xb-reader-edge,
-        .theme-dark .xb-reader-nav,
-        .theme-dark .xb-topbar {
+        .theme-dark .xb-reader-nav {
             backdrop-filter: none;
         }
         .theme-dark .xb-sidebar {
@@ -2167,62 +2171,58 @@ export function injectEbookStyles(rootId = 'xb-ebook-root') {
             text-shadow: none !important;
         }
 
-        /* Legacy shell pieces still used by tests or fallback markup */
-        .xb-topbar {
-            height: 88px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 18px;
-            padding: 20px 28px;
-            border-bottom: 1px solid var(--xb-line);
-            background: rgba(5, 5, 7, 0.82);
-            backdrop-filter: blur(18px);
-        }
-        .xb-topbar h1 {
-            color: var(--xb-text-main);
-            font-family: var(--xb-font-serif);
-            font-size: 28px;
-            font-weight: 400;
-        }
-        .xb-topbar p {
-            margin-top: 6px;
-            color: var(--xb-text-muted);
-            font-size: 13px;
-        }
-        .xb-library-main,
-        .xb-entry-main {
-            height: calc(100% - 88px);
-            overflow: auto;
-            padding: 28px;
-        }
-        .xb-back-link {
-            padding: 8px 12px;
-            border-radius: 999px;
-            color: var(--xb-text-muted);
-        }
-        .xb-book-cover { display: none; }
-
         @media (max-width: 980px) {
+            .xb-library-screen {
+                grid-template-rows: auto minmax(0, 1fr);
+            }
             .xb-archive-header {
-                height: 132px;
+                height: auto;
+                min-height: 0;
                 align-items: flex-start;
                 flex-direction: column;
-                padding: 34px 24px 16px;
+                padding: calc(24px + env(safe-area-inset-top, 0px)) 24px 14px;
             }
             .xb-global-actions { justify-content: flex-start; }
             .xb-shelf-container {
-                height: calc(100vh - 132px);
-                padding: 10px 24px 92px;
+                height: auto;
+                padding: 10px 24px calc(84px + env(safe-area-inset-bottom, 0px));
             }
             .xb-library-grid {
-                grid-template-columns: 1fr;
-                gap: 16px;
+                grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+                gap: 14px;
+                align-items: start;
             }
             .xb-library-book {
-                min-height: 170px;
-                aspect-ratio: auto;
-                border-radius: 16px;
+                min-height: 0;
+                aspect-ratio: 3 / 4;
+                border-radius: 12px;
+                padding: 18px 14px 14px;
+                box-shadow: 0 12px 28px rgba(0, 0, 0, 0.20);
+            }
+            .xb-library-book:hover:not(:disabled) {
+                transform: translateY(-3px);
+            }
+            .xb-library-book strong {
+                display: -webkit-box;
+                -webkit-line-clamp: 3;
+                -webkit-box-orient: vertical;
+                overflow: hidden;
+                font-size: 18px;
+                line-height: 1.2;
+            }
+            .xb-library-book small {
+                font-size: 11px;
+                line-height: 1.4;
+            }
+            .xb-library-book-foot {
+                gap: 8px;
+                padding-top: 10px;
+            }
+            .xb-library-book-foot small {
+                display: none;
+            }
+            .xb-library-empty {
+                min-height: 180px;
                 padding: 22px;
             }
             .xb-entry-actions {
@@ -2384,7 +2384,37 @@ export function injectEbookStyles(rootId = 'xb-ebook-root') {
             .xb-global-actions button {
                 width: 100%;
             }
-            .xb-library-book strong { font-size: 22px; }
+            .xb-library-grid {
+                grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+                gap: 10px;
+            }
+            .xb-library-book {
+                padding: 14px 10px 10px;
+                border-radius: 10px;
+            }
+            .xb-library-book strong { font-size: 15px; }
+            .xb-library-book-main {
+                gap: 7px;
+            }
+            .xb-book-spine {
+                top: 14px;
+                bottom: 14px;
+                width: 2px;
+            }
+            .xb-library-book-foot {
+                padding-top: 8px;
+            }
+            .xb-library-book-foot em {
+                padding: 4px 6px;
+                font-size: 8px;
+                letter-spacing: 0.05em;
+            }
+            .xb-library-empty {
+                min-height: 150px;
+                border-radius: 12px;
+                padding: 18px;
+                font-size: 13px;
+            }
             .xb-entry-action span {
                 max-width: 280px;
                 font-size: 11px;

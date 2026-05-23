@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-23T06:38:18.639Z",
+  "generatedAt": "2026-05-23T08:52:07.442Z",
   "version": 2,
   "files": [
     {
@@ -308,14 +308,14 @@
       "publicPath": "scripts/extensions/third-party/LittleWhiteBox/modules/agent-core/ui/settings-markup.js",
       "relativePath": "modules/agent-core/ui/settings-markup.js",
       "extension": ".js",
-      "sizeBytes": 11640
+      "sizeBytes": 11299
     },
     {
       "source": "littlewhitebox",
       "publicPath": "scripts/extensions/third-party/LittleWhiteBox/modules/agent-core/ui/settings-panel.js",
       "relativePath": "modules/agent-core/ui/settings-panel.js",
       "extension": ".js",
-      "sizeBytes": 45571
+      "sizeBytes": 44698
     },
     {
       "source": "littlewhitebox",
@@ -1183,7 +1183,7 @@
       "publicPath": "scripts/extensions/third-party/LittleWhiteBox/modules/ebook/app-src/styles.js",
       "relativePath": "modules/ebook/app-src/styles.js",
       "extension": ".js",
-      "sizeBytes": 80085
+      "sizeBytes": 78975
     },
     {
       "source": "littlewhitebox",
@@ -1239,7 +1239,7 @@
       "publicPath": "scripts/extensions/third-party/LittleWhiteBox/modules/ebook/shared/book-file-tools.js",
       "relativePath": "modules/ebook/shared/book-file-tools.js",
       "extension": ".js",
-      "sizeBytes": 17064
+      "sizeBytes": 17120
     },
     {
       "source": "littlewhitebox",
@@ -1267,21 +1267,21 @@
       "publicPath": "scripts/extensions/third-party/LittleWhiteBox/modules/ebook/shared/ebook-db.js",
       "relativePath": "modules/ebook/shared/ebook-db.js",
       "extension": ".js",
-      "sizeBytes": 7711
+      "sizeBytes": 8452
     },
     {
       "source": "littlewhitebox",
       "publicPath": "scripts/extensions/third-party/LittleWhiteBox/modules/ebook/shared/tool-definitions.js",
       "relativePath": "modules/ebook/shared/tool-definitions.js",
       "extension": ".js",
-      "sizeBytes": 21152
+      "sizeBytes": 20991
     },
     {
       "source": "littlewhitebox",
       "publicPath": "scripts/extensions/third-party/LittleWhiteBox/modules/ebook/tests/book-tools.test.js",
       "relativePath": "modules/ebook/tests/book-tools.test.js",
       "extension": ".js",
-      "sizeBytes": 93408
+      "sizeBytes": 96259
     },
     {
       "source": "littlewhitebox",

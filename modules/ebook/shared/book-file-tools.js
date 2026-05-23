@@ -278,8 +278,10 @@ export function createBookFileToolHandlers(options = {}) {
     }
 
     async function executeRead(args = {}) {
-        const path = normalizeBookPath(args.filePath || args.path);
-        if (!path) throw new Error(getBookPathError(args.filePath || args.path, { directory: true }) || 'book_path_required');
+        const rawPath = String(args.filePath || '').trim();
+        if (!rawPath) throw new Error('book_path_required');
+        const path = normalizeBookPath(rawPath);
+        if (!path) throw new Error(getBookPathError(rawPath, { directory: true }) || 'book_path_required');
         if (path.endsWith('/')) {
             return await executeLs({ path, offset: args.offset, limit: args.limit });
         }
@@ -312,7 +314,7 @@ export function createBookFileToolHandlers(options = {}) {
 
     async function executeWrite(args = {}) {
         assertWritable();
-        const path = assertBookFilePath(args.path || args.filePath);
+        const path = assertBookFilePath(args.path);
         const file = await upsertBookFile(await currentBookId(), path, typeof args.content === 'string' ? args.content : String(args.content ?? ''));
         await onFilesChanged?.();
         return {
@@ -354,16 +356,16 @@ export function createBookFileToolHandlers(options = {}) {
     async function executeDelete(args = {}) {
         assertWritable();
         const rawPath = String(args.path || '').trim();
-        const normalizedPath = rawPath.endsWith('/')
+        const path = rawPath.endsWith('/')
             ? assertBookDirectoryPath(rawPath)
             : assertBookFilePath(rawPath);
-        const deleted = await deleteBookPath(await currentBookId(), normalizedPath);
+        const deleted = await deleteBookPath(await currentBookId(), path);
         await onFilesChanged?.();
         return {
             ok: true,
-            path: normalizedPath,
-            deletedCount: deleted.length,
-            summary: `已删除 ${deleted.length} 个文件。`,
+            path: deleted.path,
+            deletedCount: deleted.deletedCount,
+            summary: `已删除 ${deleted.deletedCount} 个文件。`,
         };
     }
 

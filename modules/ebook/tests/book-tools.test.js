@@ -289,6 +289,7 @@ test('Delegate prompt gives the reviewer a stable book-specific tool model', () 
     assert.match(EBOOK_DELEGATE_PROMPT, /审稿规则没有覆盖的地方/);
     assert.match(EBOOK_DELEGATE_PROMPT, /不能写文件、不能管理计划、不能委派其他分身/);
     assert.match(EBOOK_DELEGATE_PROMPT, /最终结果给主助手/);
+    assert.doesNotMatch(EBOOK_DELEGATE_PROMPT, /web_search|Tavily|联网查资料/);
     assert.doesNotMatch(EBOOK_DELEGATE_PROMPT, /重点检查结构、人物动机、关系连续性、节奏、设定一致性、时间线、伏笔、视角和文风/);
 });
 
@@ -319,6 +320,17 @@ test('Delegate book tool profile is read-only and excludes orchestration tools',
     assert.equal(names.includes(EBOOK_TOOL_NAMES.APPLY_PATCH), false);
     assert.equal(names.includes(EBOOK_TOOL_NAMES.PLAN_CREATE), false);
     assert.equal(names.includes(EBOOK_TOOL_NAMES.DELEGATE_RUN), false);
+});
+
+test('Book tool definitions use the current Read/Write parameter names only', () => {
+    const definitions = getEbookToolDefinitions();
+    const readDefinition = definitions.find((definition) => definition.function.name === EBOOK_TOOL_NAMES.READ);
+    const writeDefinition = definitions.find((definition) => definition.function.name === EBOOK_TOOL_NAMES.WRITE);
+
+    assert.equal(Object.hasOwn(readDefinition.function.parameters.properties, 'filePath'), true);
+    assert.equal(Object.hasOwn(readDefinition.function.parameters.properties, 'path'), false);
+    assert.equal(Object.hasOwn(writeDefinition.function.parameters.properties, 'path'), true);
+    assert.equal(Object.hasOwn(writeDefinition.function.parameters.properties, 'filePath'), false);
 });
 
 test('Book agent automatically passes review context into DelegateRun', async () => {
@@ -582,6 +594,53 @@ test('Book apply_patch edits only book files', async () => {
     assert.equal(result.ok, true);
     const read = await runtime.execute(EBOOK_TOOL_NAMES.READ, { filePath: 'book/chapters/001.md' });
     assert.match(read.content, /新内容/);
+});
+
+test('Book Delete removes a single file and returns a deleted count', async () => {
+    await resetDb();
+    const book = await createBook('删除单文件测试');
+    await upsertBookFile(book.id, 'book/notes/temp.md', '待删内容');
+    const runtime = createBookToolRuntime({ bookId: book.id });
+
+    const result = await runtime.execute(EBOOK_TOOL_NAMES.DELETE, { path: 'book/notes/temp.md' });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.path, 'book/notes/temp.md');
+    assert.equal(result.deletedCount, 1);
+    assert.equal(await getBookFile(book.id, 'book/notes/temp.md'), null);
+    assert.notEqual(await getBookFile(book.id, 'book/outline.md'), null);
+});
+
+test('Book Delete removes a directory tree and returns a deleted count', async () => {
+    await resetDb();
+    const book = await createBook('删除目录测试');
+    await upsertBookFile(book.id, 'book/reviews/001.md', '第一条意见');
+    await upsertBookFile(book.id, 'book/reviews/archive/002.md', '第二条意见');
+    const runtime = createBookToolRuntime({ bookId: book.id });
+
+    const result = await runtime.execute(EBOOK_TOOL_NAMES.DELETE, { path: 'book/reviews/' });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.path, 'book/reviews/');
+    assert.equal(result.deletedCount, 2);
+    assert.equal(await getBookFile(book.id, 'book/reviews/001.md'), null);
+    assert.equal(await getBookFile(book.id, 'book/reviews/archive/002.md'), null);
+    assert.notEqual(await getBookFile(book.id, 'book/outline.md'), null);
+});
+
+test('Book Read and Write reject the removed legacy path aliases', async () => {
+    await resetDb();
+    const book = await createBook('工具字段测试');
+    const runtime = createBookToolRuntime({ bookId: book.id });
+
+    await assert.rejects(
+        () => runtime.execute(EBOOK_TOOL_NAMES.READ, { path: 'book/outline.md' }),
+        /book_path_required/,
+    );
+    await assert.rejects(
+        () => runtime.execute(EBOOK_TOOL_NAMES.WRITE, { filePath: 'book/notes/temp.md', content: 'x' }),
+        /book_path_required/,
+    );
 });
 
 test('Book Move rejects moving the book root or a directory into itself', async () => {
@@ -2010,16 +2069,16 @@ test('Ebook settings open as an in-app shared config panel instead of jumping to
     assert.match(html, /id="xb-assistant-preset-select"/);
     assert.match(html, /id="xb-assistant-provider"/);
     assert.match(html, /id="xb-assistant-tavily-api-key"/);
-    assert.match(html, /id="xb-assistant-tavily-base-url"/);
     assert.match(html, /id="xb-assistant-delegate-preset-select"/);
     assert.match(html, /id="xb-assistant-delegate-provider"/);
     assert.match(html, /id="xb-assistant-delegate-base-url"/);
     assert.match(html, /id="xb-assistant-delegate-model"/);
     assert.match(html, /id="xb-assistant-delegate-tavily-api-key"/);
-    assert.match(html, /id="xb-assistant-delegate-tavily-base-url"/);
     assert.match(html, /id="xb-assistant-delegate-tool-mode"/);
     assert.match(html, /id="xb-assistant-delegate-pull-models"/);
     assert.match(html, /id="xb-assistant-save"/);
+    assert.doesNotMatch(html, /id="xb-assistant-tavily-base-url"/);
+    assert.doesNotMatch(html, /id="xb-assistant-delegate-tavily-base-url"/);
     assert.doesNotMatch(html, /斜杠命令权限/);
     assert.doesNotMatch(html, /JavaScript API 权限/);
     assert.doesNotMatch(html, /先到小白助手配置当前模型预设/);
@@ -2636,6 +2695,7 @@ test('Book prompt keeps assistant-style tool layers and recovery rules', () => {
     assert.match(EBOOK_SYSTEM_PROMPT, /RenameBook/);
     assert.match(EBOOK_SYSTEM_PROMPT, /DelegateRun/);
     assert.match(EBOOK_SYSTEM_PROMPT, /\[ebook-image:slotId\]/);
+    assert.doesNotMatch(EBOOK_SYSTEM_PROMPT, /web_search|Tavily|联网查资料/);
     assert.doesNotMatch(EBOOK_SYSTEM_PROMPT, /不要尝试 `local/);
     assert.doesNotMatch(EBOOK_SYSTEM_PROMPT, /插件源码|JS API|斜杠命令/);
 
@@ -2647,4 +2707,14 @@ test('Book prompt keeps assistant-style tool layers and recovery rules', () => {
     const planCreate = getEbookToolDefinitions()
         .find((definition) => definition.function?.name === EBOOK_TOOL_NAMES.PLAN_CREATE);
     assert.equal(planCreate.function.parameters.properties.blockedBy.type, 'array');
+
+    const webSearchDefinitions = getEbookToolDefinitions({ webSearchEnabled: true });
+    const webSearch = webSearchDefinitions.find((definition) => definition.function?.name === EBOOK_TOOL_NAMES.WEB_SEARCH);
+    assert.match(String(webSearch.function.description), /当前书稿和资料区无法提供/);
+    assert.match(String(webSearch.function.description), /优先用 LS \/ Glob \/ Grep \/ Read/);
+    assert.equal(
+        getEbookToolDefinitions({ webSearchEnabled: false })
+            .some((definition) => definition.function?.name === EBOOK_TOOL_NAMES.WEB_SEARCH),
+        false,
+    );
 });

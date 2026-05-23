@@ -119,9 +119,9 @@ export function getEbookToolDefinitions(options = {}) {
             function: {
                 name: EBOOK_TOOL_NAMES.WEB_SEARCH,
                 description: [
-                    '用 Tavily 联网搜索现实资料、公开文档或时间敏感信息。',
-                    '适合查真实地点、历史背景、机构、职业细节、生活常识、年代事实、公开资料或外部参考，不适合替代对当前书稿文件的阅读。',
-                    '搜索词尽量具体，先查事实，再把结果用于写作、设定或审稿判断。',
+                    '用 Tavily 联网查证当前书稿和资料区无法提供的现实资料、公开文档或时间敏感信息。',
+                    '适合查真实地点、历史背景、机构、职业细节、生活常识、年代事实、公开资料或外部参考；书稿原文、导入资料、设定连续性仍优先用 LS / Glob / Grep / Read。',
+                    '搜索词要具体；先查事实，再把结果转化为写作、设定或审稿判断，不要把联网结果当成已导入资料。',
                 ].join('\n'),
                 parameters: {
                     type: 'object',
@@ -151,7 +151,6 @@ export function getEbookToolDefinitions(options = {}) {
                         type: 'object',
                         properties: {
                             path: { type: 'string', description: '目标文件路径，例如 `book/chapters/001.md`。' },
-                            filePath: { type: 'string', description: '`path` 的兼容别名；新调用优先使用 `path`。' },
                             content: { type: 'string', description: '要写入的完整文件内容。' },
                         },
                         required: ['path', 'content'],
@@ -367,11 +366,11 @@ export function describeEbookToolCall(name = '', args = {}) {
         case EBOOK_TOOL_NAMES.GREP:
             return `搜索作品 ${args.pattern || ''}`.trim();
         case EBOOK_TOOL_NAMES.READ:
-            return `读取 ${args.filePath || args.path || ''}`.trim();
+            return `读取 ${args.filePath || ''}`.trim();
         case EBOOK_TOOL_NAMES.WEB_SEARCH:
             return `联网查资料 ${args.query || ''}`.trim();
         case EBOOK_TOOL_NAMES.WRITE:
-            return `写入 ${args.path || args.filePath || ''}`.trim();
+            return `写入 ${args.path || ''}`.trim();
         case EBOOK_TOOL_NAMES.APPLY_PATCH:
             return '修订作品文件';
         case EBOOK_TOOL_NAMES.DELETE:

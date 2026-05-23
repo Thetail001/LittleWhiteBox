@@ -1,5 +1,5 @@
 import Dexie from '../../../libs/dexie.mjs';
-import { normalizeBookFilePath } from './book-paths.js';
+import { normalizeBookDirectoryPath, normalizeBookFilePath } from './book-paths.js';
 import { DEFAULT_BOOK_FILES } from './book-templates.js';
 
 const db = new Dexie('LittleWhiteBox_Ebook');
@@ -93,18 +93,6 @@ export async function createBook(title = '') {
     return cloneBook(book);
 }
 
-export async function ensureDefaultBook() {
-    const books = await listBooks();
-    const selectedBookId = await getSelectedBookId();
-    const selected = books.find((book) => book.id === selectedBookId);
-    if (selected) return selected;
-    if (books[0]) {
-        await setSelectedBookId(books[0].id);
-        return books[0];
-    }
-    return await createBook('未命名书稿');
-}
-
 export async function getBook(bookId = '') {
     const book = await booksTable.get(String(bookId || '').trim());
     return book ? cloneBook(book) : null;
@@ -170,10 +158,39 @@ export async function upsertBookFile(bookId = '', path = '', content = '', optio
 export async function deleteBookPath(bookId = '', path = '') {
     const id = String(bookId || '').trim();
     if (!id) throw new Error('bookId_required');
-    const normalizedPath = normalizeBookFilePath(path);
+    const rawPath = String(path || '').trim();
+    const isDirectory = rawPath.endsWith('/');
+    const normalizedPath = isDirectory
+        ? normalizeBookDirectoryPath(rawPath)
+        : normalizeBookFilePath(rawPath);
     if (!normalizedPath) throw new Error('invalid_path');
-    await filesTable.delete([id, normalizedPath]);
-    await touchBook(id);
+    if (normalizedPath === 'book/') throw new Error('book_root_delete_forbidden');
+
+    let deletedCount = 0;
+    await db.transaction('rw', filesTable, booksTable, async () => {
+        if (isDirectory) {
+            const keys = await filesTable
+                .where('bookId')
+                .equals(id)
+                .filter((file) => String(file?.path || '').startsWith(normalizedPath))
+                .primaryKeys();
+            if (!keys.length) throw new Error('book_path_not_found');
+            await filesTable.bulkDelete(keys);
+            deletedCount = keys.length;
+        } else {
+            const existing = await filesTable.get([id, normalizedPath]);
+            if (!existing) throw new Error('book_path_not_found');
+            await filesTable.delete([id, normalizedPath]);
+            deletedCount = 1;
+        }
+        await booksTable.update(id, { updatedAt: now() });
+    });
+
+    return {
+        path: normalizedPath,
+        deletedCount,
+        directory: isDirectory,
+    };
 }
 
 export async function deleteBook(bookId = '') {
