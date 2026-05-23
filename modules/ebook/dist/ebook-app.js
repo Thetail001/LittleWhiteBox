@@ -27589,7 +27589,7 @@ function ec(e = "") {
   return hD(String(e || "").trim());
 }
 function qD(e = {}) {
-  if (!e.books.length) return '<div class="xb-empty xb-library-empty">书架上还没有书。点“新建一本书”，先放上第一本书稿。</div>';
+  if (!e.books.length) return '<div class="xb-empty xb-library-empty">书架上还没有书。</div>';
   const t = !!e.isDeleteBookOpen;
   return e.books.map((n) => {
     const r = n.id === e.book?.id ? " is-active" : "";
@@ -27608,7 +27608,26 @@ function qD(e = {}) {
         `;
   }).join("");
 }
-function GD(e = {}) {
+function GD(e = {}, t = 0) {
+  const n = !!e.isDeleteBookOpen, r = t > 0 && !e.isBusy;
+  return `
+        <div class="xb-shelf-actions" aria-label="书架操作">
+            <button id="xb-library-new-book" class="xb-shelf-action" type="button" title="新建书稿" aria-label="新建书稿" ${e.isBusy ? "disabled" : ""}>
+                <span aria-hidden="true">+</span>
+            </button>
+            ${n ? `
+                <button id="xb-delete-book-close" class="xb-shelf-action xb-shelf-action-danger is-active" type="button" title="退出删除模式" aria-label="退出删除模式">
+                    <span aria-hidden="true">-</span>
+                </button>
+            ` : `
+                <button id="xb-library-delete-book" class="xb-shelf-action xb-shelf-action-danger" type="button" title="删除书稿" aria-label="删除书稿" ${r ? "" : "disabled"}>
+                    <span aria-hidden="true">-</span>
+                </button>
+            `}
+        </div>
+    `;
+}
+function HD(e = {}) {
   const t = e.state || {}, n = Array.isArray(t.books) ? t.books.length : 0, r = t.colorTheme === "light" ? "theme-light" : "theme-dark", o = t.colorTheme === "light" ? "☾" : "☀", i = t.colorTheme === "light" ? "切换为深色视觉" : "切换为白底黑字";
   return `
         <div class="xb-ebook-screen xb-library-screen ${K(r)}${t.isDeleteBookOpen ? " is-delete-mode" : ""}">
@@ -27619,12 +27638,6 @@ function GD(e = {}) {
                     <div class="xb-archive-meta">${n ? `${n} 本书稿 · 本地书架` : "本地书架 · 等待第一本书稿"}</div>
                 </div>
                 <div class="xb-global-actions">
-                    <button id="xb-library-new-book" class="xb-glass-button" ${t.isBusy ? "disabled" : ""}>＋ 新建</button>
-                    ${t.isDeleteBookOpen ? `
-                        <button id="xb-delete-book-close" class="xb-glass-button xb-danger-button">取消删除</button>
-                    ` : `
-                        <button id="xb-library-delete-book" class="xb-glass-button xb-danger-button" ${n && !t.isBusy ? "" : "disabled"}>删除</button>
-                    `}
                     <button id="xb-theme-toggle" class="xb-glass-button xb-theme-button" type="button" title="${K(i)}" aria-label="${K(i)}">${K(o)}</button>
                     <button id="xb-close" class="xb-glass-button">退出</button>
                 </div>
@@ -27633,13 +27646,14 @@ function GD(e = {}) {
                 ${t.isDeleteBookOpen ? '<div class="xb-delete-mode-note">删除模式：点击一本书会清除书稿内容和写作记录。</div>' : ""}
                 <section class="xb-library-grid${n ? "" : " is-empty"}" aria-label="书籍列表">
                     ${qD(t)}
+                    ${GD(t, n)}
                 </section>
             </main>
             ${t.toast ? `<div class="xb-toast">${K(t.toast)}</div>` : ""}
         </div>
     `;
 }
-function HD(e = {}) {
+function VD(e = {}) {
   const t = e.state || {}, n = t.colorTheme === "light" ? "theme-light" : "theme-dark", r = t.colorTheme === "light" ? "☾" : "☀", o = t.colorTheme === "light" ? "切换为深色视觉" : "切换为白底黑字";
   return `
         <div class="xb-ebook-screen xb-entry-screen ${K(n)}">
@@ -27662,7 +27676,7 @@ function HD(e = {}) {
         </div>
     `;
 }
-function VD(e = "") {
+function KD(e = "") {
   return Zu.find((t) => t.matches(e)) || {
     key: "other",
     title: "其他",
@@ -27672,14 +27686,14 @@ function VD(e = "") {
     matches: () => !1
   };
 }
-function KD(e = {}, t = [], n = {}) {
+function WD(e = {}, t = [], n = {}) {
   return t.length ? t.map((r) => `
             <button class="xb-file${r.path === n.selectedPath ? " is-active" : ""}" data-path="${K(r.path)}">
                 <span class="xb-file-main">${K(sa(r.path))}</span>
             </button>
         `).join("") : `<div class="xb-section-empty">${K(e.empty || "这里还没有文件。")}</div>`;
 }
-function WD(e = "") {
+function JD(e = "") {
   return `
         <div class="xb-section-subtitle">可导入</div>
         <div class="xb-imports">
@@ -27690,12 +27704,12 @@ function WD(e = "") {
         </div>
     `;
 }
-function JD(e = {}, t = {}) {
+function zD(e = {}, t = {}) {
   const n = $_(e.files);
   if (!n.length) return '<div class="xb-empty">还没有书稿文件</div>';
   const r = /* @__PURE__ */ new Map();
   n.forEach((u) => {
-    const l = VD(u.path);
+    const l = KD(u.path);
     r.has(l.key) || r.set(l.key, {
       key: l.key,
       title: l.title,
@@ -27715,13 +27729,13 @@ function JD(e = {}, t = {}) {
                 <em>${K(u.badge)}</em>
             </div>
             <div class="xb-file-group-desc">${K(u.description)}</div>
-            ${u.key === "sources" ? WD(t.writeActionAttr || "") : ""}
+            ${u.key === "sources" ? JD(t.writeActionAttr || "") : ""}
             ${u.key === "sources" ? '<div class="xb-section-subtitle">已导入</div>' : ""}
-            ${KD(u, u.files, e)}
+            ${WD(u, u.files, e)}
         </div>
     `).join("");
 }
-function zD(e = {}) {
+function YD(e = {}) {
   const t = e.historySummary ? '<div class="xb-agent-memory">已整理较早创作记录，后续写作会继续参考。</div>' : "", n = Array.isArray(e.messages) ? e.messages : [], r = [], o = (l = {}, d = 0) => {
     if (!(l.role === "assistant" && !l.streaming && String(l.content || "").trim() && !(Array.isArray(l.toolCalls) && l.toolCalls.length))) return "";
     const p = e.editingMessageIndex === d, f = e.messageActionFeedback || {};
@@ -27839,10 +27853,10 @@ function zD(e = {}) {
       d.role !== "tool" && r.push(i(d, l));
     }
   }
-  const u = e.isBusy ? YD(e) : "";
+  const u = e.isBusy ? XD(e) : "";
   return !r.length && !u ? `${t}<div class="xb-agent-empty">这里是写作助手记录。可以先导入资料，也可以直接说“帮我整理第一章开头”。</div>` : `${t}${r.join("")}${u}`;
 }
-function YD(e = {}) {
+function XD(e = {}) {
   const t = Array.isArray(e.toolTrace) ? e.toolTrace.slice(-8) : [];
   if (!t.length) return "";
   const n = e.liveToolTurn && typeof e.liveToolTurn == "object" ? e.liveToolTurn : {
@@ -27872,10 +27886,10 @@ function YD(e = {}) {
         </details>
     `;
 }
-function XD(e = {}) {
+function QD(e = {}) {
   return D_(e.editorContent || "");
 }
-function QD(e = {}) {
+function ZD(e = {}) {
   return e.isSettingsOpen ? `
         <div class="xb-ebook-settings-overlay" id="xb-agent-settings-overlay">
             <div class="xb-ebook-settings-dialog" role="dialog" aria-modal="true" aria-labelledby="xb-agent-settings-title">
@@ -27902,7 +27916,7 @@ function QD(e = {}) {
         </div>
     ` : "";
 }
-function ZD(e = {}) {
+function jD(e = {}) {
   const t = e.state || {}, n = e.providerConfig || {}, r = !!e.dirty, o = MD(n), i = t.isBusy ? "disabled" : "", s = t.isBusy || !o.canRun ? "disabled" : "", u = !t.isBusy && !o.canRun ? "disabled" : "", l = !t.isBusy && !o.canRun ? "disabled" : "", d = !!(t.messages?.length || t.historySummary?.trim()), p = ["focus-editor", "focus-agent"].includes(t.studioLayout) ? t.studioLayout : "balanced", f = t.colorTheme === "light" ? "theme-light" : "theme-dark", h = t.colorTheme === "light" ? "☾" : "☀", m = t.colorTheme === "light" ? "切换为深色视觉" : "切换为白底黑字", g = t.drawStatus || {}, y = PD(t.selectedPath), v = !!g.enabled && !!g.ready, b = !t.isBusy && !t.isDrawingChapter && y && v && xm(t.editorContent) ? "" : "disabled", _ = y ? v ? xm(t.editorContent) ? "为当前章节生成配图" : "当前章节没有正文" : "画图后端未启用" : "只有正文章节可以配图", x = t.isDrawingChapter ? "配图中" : "配图", S = t.drawProgressText ? ` · ${t.drawProgressText}` : "";
   return `
         <div class="xb-ebook-shell xb-studio-shell ${K(p)} ${K(f)}">
@@ -27920,7 +27934,7 @@ function ZD(e = {}) {
                     </div>
                 </div>
                 <section class="xb-panel xb-files-panel">
-                    <div class="xb-files">${JD(t, { writeActionAttr: i })}</div>
+                    <div class="xb-files">${zD(t, { writeActionAttr: i })}</div>
                 </section>
             </aside>
             <section class="xb-studio-workbench">
@@ -27938,7 +27952,7 @@ function ZD(e = {}) {
                         <textarea id="xb-editor-text" spellcheck="false" ${t.isBusy ? "disabled" : ""}>${K(t.editorContent)}</textarea>
                     </div>
                     <footer class="xb-editor-foot">
-                        <div class="xb-meta" id="xb-editor-meta">${r ? "有未保存修改" : "已保存到书库"} · ${XD(t)}${K(S)}</div>
+                        <div class="xb-meta" id="xb-editor-meta">${r ? "有未保存修改" : "已保存到书库"} · ${QD(t)}${K(S)}</div>
                     </footer>
                 </main>
                 <aside class="xb-agent">
@@ -27965,7 +27979,7 @@ function ZD(e = {}) {
                                     <button data-action="organize" ${s}>整理资料</button>
                                 </div>
                             </details>
-                            <div class="xb-agent-log">${zD(t)}</div>
+                            <div class="xb-agent-log">${YD(t)}</div>
                         </div>
                         <div class="xb-agent-scroll-helpers" id="xb-agent-scroll-helpers">
                             <button id="xb-agent-scroll-top" type="button" class="xb-agent-scroll-btn" title="回到顶部" aria-label="回到顶部">▲</button>
@@ -27985,12 +27999,12 @@ function ZD(e = {}) {
                     </form>
                 </aside>
             </section>
-            ${QD(t)}
+            ${ZD(t)}
             ${t.toast ? `<div class="xb-toast">${K(t.toast)}</div>` : ""}
         </div>
     `;
 }
-function jD(e = "") {
+function e$(e = "") {
   const t = String(e || "").trim();
   if (!t) return "";
   const n = /\[ebook-image:([a-z0-9\-_]+)\]/gi, r = [];
@@ -28012,7 +28026,7 @@ function jD(e = "") {
   }
   return s(t.slice(o)), r.join("");
 }
-function e$(e = {}) {
+function t$(e = {}) {
   const t = e.state || {}, { chapters: n, active: r, activePath: o, index: i } = ID(t), s = n.length > 0, u = i > 0 ? n[i - 1] : null, l = i < n.length - 1 ? n[i + 1] : null, d = s ? `第 ${i + 1} / ${n.length} 章` : "暂无章节", p = r?.content || "", f = s ? Math.round((i + 1) / n.length * 100) : 0, h = t.colorTheme === "light" ? "theme-light" : "theme-dark", m = t.colorTheme === "light" ? "☾" : "☀", g = t.colorTheme === "light" ? "切换为深色视觉" : "切换为白底黑字";
   return `
         <div class="xb-ebook-screen xb-reader-screen ${K(h)}">
@@ -28046,7 +28060,7 @@ function e$(e = {}) {
                                 <p>${K(AD(p))}</p>
                             </div>
                         </header>
-                        <div class="xb-reader-content">${jD(p)}</div>
+                        <div class="xb-reader-content">${e$(p)}</div>
                         <footer class="xb-reader-foot">
                             <button data-reader-path="${K(u?.path || "")}" ${u ? "" : "disabled"}>上一章</button>
                             <button data-reader-path="${K(l?.path || "")}" ${l ? "" : "disabled"}>下一章</button>
@@ -28064,27 +28078,27 @@ function e$(e = {}) {
         </div>
     `;
 }
-function t$(e = {}) {
+function n$(e = {}) {
   switch ((e.state || {}).viewMode) {
     case "book-entry":
-      return HD(e);
+      return VD(e);
     case "studio":
-      return ZD(e);
+      return jD(e);
     case "reader":
-      return e$(e);
+      return t$(e);
     default:
-      return GD(e);
+      return HD(e);
   }
 }
-var n$ = "LittleWhiteBox_Ebook_ColorTheme";
-function r$() {
+var r$ = "LittleWhiteBox_Ebook_ColorTheme";
+function o$() {
   try {
     return globalThis.localStorage?.getItem("LittleWhiteBox_Ebook_ColorTheme") === "light" ? "light" : "dark";
   } catch {
     return "dark";
   }
 }
-function o$() {
+function i$() {
   return {
     config: Xu({}),
     configDraft: null,
@@ -28116,7 +28130,7 @@ function o$() {
     isDrawingChapter: !1,
     drawProgressText: "",
     studioLayout: "balanced",
-    colorTheme: r$(),
+    colorTheme: o$(),
     isSettingsOpen: !1,
     isDeleteBookOpen: !1,
     configPage: "main",
@@ -28132,7 +28146,7 @@ function o$() {
     toast: ""
   };
 }
-function i$(e = "xb-ebook-root") {
+function s$(e = "xb-ebook-root") {
   if (document.getElementById("xb-ebook-styles")) return;
   const t = document.createElement("style");
   t.id = "xb-ebook-styles", t.textContent = `
@@ -28357,6 +28371,46 @@ function i$(e = "xb-ebook-root") {
             border-radius: 16px;
             background: rgba(255, 255, 255, 0.035);
             text-align: center;
+        }
+        .xb-shelf-actions {
+            align-self: start;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            min-height: 96px;
+            padding: 12px 2px;
+        }
+        .xb-shelf-action {
+            width: 58px;
+            height: 58px;
+            padding: 0;
+            display: grid;
+            place-items: center;
+            border-radius: 999px;
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            background: rgba(255, 255, 255, 0.055);
+            color: var(--xb-text-main);
+            box-shadow: 0 14px 28px rgba(0, 0, 0, 0.18);
+            transition: transform 0.28s var(--xb-fluid), border-color 0.22s ease, background 0.22s ease, color 0.22s ease, opacity 0.22s ease;
+        }
+        .xb-shelf-action span {
+            transform: translateY(-1px);
+            font-size: 34px;
+            font-weight: 300;
+            line-height: 1;
+        }
+        .xb-shelf-action:hover:not(:disabled) {
+            transform: translateY(-3px);
+            border-color: rgba(255, 255, 255, 0.34);
+            background: rgba(255, 255, 255, 0.09);
+        }
+        .xb-shelf-action-danger {
+            color: var(--xb-danger);
+        }
+        .xb-shelf-action-danger:hover:not(:disabled),
+        .xb-shelf-action-danger.is-active {
+            border-color: rgba(244, 63, 94, 0.42);
+            background: rgba(244, 63, 94, 0.12);
         }
         .xb-delete-mode-note {
             margin: 0 0 18px;
@@ -30369,6 +30423,18 @@ function i$(e = "xb-ebook-root") {
                 padding: 22px;
                 pointer-events: none;
             }
+            .xb-shelf-actions {
+                min-height: 74px;
+                gap: 10px;
+                padding: 6px 0;
+            }
+            .xb-shelf-action {
+                width: 48px;
+                height: 48px;
+            }
+            .xb-shelf-action span {
+                font-size: 29px;
+            }
             .xb-entry-actions {
                 flex-direction: column;
             }
@@ -30521,12 +30587,13 @@ function i$(e = "xb-ebook-root") {
                 padding: 0 12px;
             }
             .xb-global-actions {
-                width: 100%;
-                display: grid;
-                grid-template-columns: 1fr 1fr 1fr;
+                width: auto;
+                display: flex;
+                grid-template-columns: none;
             }
             .xb-global-actions button {
-                width: 100%;
+                width: auto;
+                min-width: 48px;
             }
             .xb-library-grid {
                 grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
@@ -30559,6 +30626,17 @@ function i$(e = "xb-ebook-root") {
                 padding: 18px;
                 font-size: 13px;
             }
+            .xb-shelf-actions {
+                min-height: 54px;
+                gap: 8px;
+            }
+            .xb-shelf-action {
+                width: 42px;
+                height: 42px;
+            }
+            .xb-shelf-action span {
+                font-size: 26px;
+            }
             .xb-entry-action span {
                 max-width: 280px;
                 font-size: 11px;
@@ -30587,13 +30665,13 @@ function i$(e = "xb-ebook-root") {
     `, document.head.appendChild(t);
 }
 var fo = /* @__PURE__ */ new Map();
-function s$(e) {
+function a$(e) {
   return e.key === "Enter" && !e.isComposing && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey;
 }
-function a$(e) {
+function l$(e) {
   return String(e.key || "").toLowerCase() === "s" && (e.ctrlKey || e.metaKey);
 }
-function l$(e, t, n) {
+function u$(e, t, n) {
   const r = e.querySelector("#xb-editor-meta");
   r && (r.textContent = `${n.isEditorDirty() ? "有未保存修改" : "已保存到书库"} · ${D_(t.editorContent || "")}`);
 }
@@ -30601,7 +30679,7 @@ function Em(e) {
   const t = e.querySelector("#xb-compose-hint");
   t && (t.textContent = "Enter 发送 · Shift+Enter 换行");
 }
-function u$(e, t) {
+function c$(e, t) {
   const n = t.colorTheme === "light" ? "light" : "dark";
   e.querySelectorAll(".xb-ebook-shell, .xb-ebook-screen").forEach((i) => {
     i.classList.toggle("theme-light", n === "light"), i.classList.toggle("theme-dark", n !== "light");
@@ -30615,7 +30693,7 @@ function Tm(e = [], t = "", n = !1) {
   const r = String(t || "").trim(), o = new Set(Array.isArray(e) ? e : []);
   return r ? (n ? o.add(r) : o.delete(r), [...o]) : [...o];
 }
-async function c$(e = "") {
+async function d$(e = "") {
   const t = String(e || "");
   if (!t) return !1;
   try {
@@ -30632,13 +30710,13 @@ async function c$(e = "") {
     return !1;
   }
 }
-function d$(e = {}) {
+function f$(e = {}) {
   return e && e.role === "assistant" && !e.streaming && String(e.content || "").trim() && !(Array.isArray(e.toolCalls) && e.toolCalls.length);
 }
-function f$(e = {}) {
+function p$(e = {}) {
   return !!(!e.isBusy && !e.isDrawingChapter && /^book\/chapters\/.+\.md$/.test(String(e.selectedPath || "")) && e.drawStatus?.enabled && e.drawStatus?.ready && String(e.editorContent || "").replace(/\[ebook-image:[a-z0-9\-_]+\]/gi, "").trim());
 }
-function p$(e, t) {
+function h$(e, t) {
   e.querySelectorAll("[data-ebook-image-slot]").forEach((n) => {
     const r = String(n.dataset.ebookImageSlot || "").trim();
     r && t.getDrawImage(r).then((o) => {
@@ -30658,7 +30736,7 @@ function p$(e, t) {
     });
   });
 }
-function h$(e = {}) {
+function m$(e = {}) {
   const { root: t, state: n, render: r, postToHost: o, bookController: i, agentRunner: s, persistConversation: u, clearConversation: l, showToast: d } = e;
   if (!t) return;
   t.querySelector("#xb-close")?.addEventListener("click", () => o("xb-ebook:close")), t.querySelector("#xb-library-link")?.addEventListener("click", () => {
@@ -30698,10 +30776,10 @@ function h$(e = {}) {
   }), t.querySelector("#xb-agent-close")?.addEventListener("click", () => o("xb-ebook:close")), t.querySelector("#xb-theme-toggle")?.addEventListener("click", () => {
     n.colorTheme = n.colorTheme === "light" ? "dark" : "light";
     try {
-      globalThis.localStorage?.setItem(n$, n.colorTheme);
+      globalThis.localStorage?.setItem(r$, n.colorTheme);
     } catch {
     }
-    u$(t, n);
+    c$(t, n);
   }), t.querySelector("#xb-agent-open-settings")?.addEventListener("click", () => {
     n.isSettingsOpen = !0, n.configFormSyncPending = !0, r();
   }), t.querySelector("#xb-agent-settings-close")?.addEventListener("click", () => {
@@ -30802,9 +30880,9 @@ function h$(e = {}) {
       const I = Number.parseInt(E.dataset.messageIndex || "", 10), C = String(E.dataset.messageAction || "").trim();
       if (!Number.isInteger(I) || I < 0 || !C || n.isBusy && C !== "cancel-edit") return;
       const k = n.messages[I];
-      if (d$(k)) {
+      if (f$(k)) {
         if (C === "copy") {
-          const N = await c$(k.content);
+          const N = await d$(k.content);
           p(I, C, N), d?.(N ? "已复制整条消息" : "复制失败");
           return;
         }
@@ -30846,17 +30924,17 @@ function h$(e = {}) {
   });
   const f = t.querySelector("#xb-editor-text");
   f?.addEventListener("keydown", (E) => {
-    a$(E) && (E.preventDefault(), i.saveCurrentFile());
+    l$(E) && (E.preventDefault(), i.saveCurrentFile());
   }), f?.addEventListener("input", () => {
     n.editorContent = f.value;
     const E = t.querySelector("#xb-save");
     E && (E.disabled = n.isBusy || !i.isEditorDirty());
     const I = t.querySelector("#xb-draw-chapter");
-    I && (I.disabled = !f$(n)), l$(t, n, i);
+    I && (I.disabled = !p$(n)), u$(t, n, i);
   });
   const h = t.querySelector("#xb-agent-input");
   h?.addEventListener("input", () => Em(t)), h?.addEventListener("keydown", (E) => {
-    s$(E) && (E.preventDefault(), t.querySelector("#xb-agent-form")?.requestSubmit());
+    a$(E) && (E.preventDefault(), t.querySelector("#xb-agent-form")?.requestSubmit());
   }), Em(t), t.querySelector("#xb-agent-form")?.addEventListener("submit", (E) => {
     if (E.preventDefault(), n.isBusy) {
       s.cancelActiveRun();
@@ -30904,14 +30982,14 @@ function h$(e = {}) {
     });
   }), v?.addEventListener("click", () => {
     _(g);
-  }), x(), p$(t, i);
+  }), x(), h$(t, i);
 }
-var m$ = 3e3, g$ = 1800;
-function y$(e = "req") {
+var g$ = 3e3, y$ = 1800;
+function v$(e = "req") {
   return `${e}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
-function v$(e = {}) {
-  const { rootId: t, hostBridge: n } = e, r = o$();
+function b$(e = {}) {
+  const { rootId: t, hostBridge: n } = e, r = i$();
   let o = null, i = null;
   function s(C = {}) {
     return rD(r.config, C);
@@ -30930,7 +31008,7 @@ function v$(e = {}) {
   function p() {
     o && (clearTimeout(o), o = null), i && (clearTimeout(i), i = null);
   }
-  function f(C = g$) {
+  function f(C = y$) {
     i && clearTimeout(i), i = setTimeout(() => {
       i = null, r.configSave = {
         status: "idle",
@@ -30950,7 +31028,7 @@ function v$(e = {}) {
         requestId: C,
         error: "保存超时，请重试"
       }, S(), f());
-    }, m$), S();
+    }, g$), S();
   }
   function m(C, { ok: k, error: N = "" } = {}) {
     C && r.configSave.requestId && r.configSave.requestId !== C || (o && (clearTimeout(o), o = null), r.configSave = {
@@ -30964,7 +31042,7 @@ function v$(e = {}) {
     state: r,
     render: S,
     showToast: l,
-    createRequestId: y$,
+    createRequestId: v$,
     describeError: d,
     saveConfig: async ({ requestId: C, config: k, payload: N }) => {
       h(C);
@@ -31005,7 +31083,7 @@ function v$(e = {}) {
     const C = document.getElementById(t);
     if (!C) return;
     const k = _(C, ".xb-agent-main"), N = _(C, ".xb-ebook-settings-body"), $ = r.isSettingsOpen;
-    if (C.innerHTML = t$({
+    if (C.innerHTML = n$({
       state: r,
       providerConfig: s(),
       dirty: g.isEditorDirty()
@@ -31014,7 +31092,7 @@ function v$(e = {}) {
         codeBlockClassName: "xb-assistant-codeblock",
         codeCopyClassName: "xb-assistant-code-copy"
       });
-    }), r.isSettingsOpen && (b.syncConfigToForm(C), r.configFormSyncPending = !1, b.bindSettingsPanelEvents(C)), h$({
+    }), r.isSettingsOpen && (b.syncConfigToForm(C), r.configFormSyncPending = !1, b.bindSettingsPanelEvents(C)), m$({
       root: C,
       state: r,
       render: S,
@@ -31055,7 +31133,7 @@ function v$(e = {}) {
     g.handleDrawProgress(C);
   }
   async function I() {
-    i$(t), await g.initializeBook(), r.status = "就绪", S(), n.postToHost("xb-ebook:frame-ready"), g.refreshDrawStatus({ renderAfter: !0 });
+    s$(t), await g.initializeBook(), r.status = "就绪", S(), n.postToHost("xb-ebook:frame-ready"), g.refreshDrawStatus({ renderAfter: !0 });
   }
   return {
     handleDrawProgress: E,
@@ -31065,10 +31143,10 @@ function v$(e = {}) {
     state: r
   };
 }
-function b$(e = "req") {
+function _$(e = "req") {
   return `${e}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
-function _$(e = {}) {
+function x$(e = {}) {
   const t = e.appSource || "xb-ebook-app", n = e.hostSource || "xb-ebook-host", r = Number(e.timeoutMs) || 3e4, o = /* @__PURE__ */ new Map();
   let i = null;
   function s(f, h = {}) {
@@ -31079,7 +31157,7 @@ function _$(e = {}) {
     }, window.location.origin);
   }
   function u(f, h = {}, m = {}) {
-    const g = b$("host");
+    const g = _$("host");
     return s(f, {
       ...h,
       requestId: g
@@ -31136,7 +31214,7 @@ function _$(e = {}) {
     dispose: p
   };
 }
-var O_ = _$(), As = v$({
+var O_ = x$(), As = b$({
   rootId: z_,
   hostBridge: O_
 });

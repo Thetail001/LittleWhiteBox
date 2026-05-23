@@ -1010,6 +1010,40 @@ test('Initializing on an empty database keeps the shelf empty', async () => {
     const html = renderEbookShell({ state });
     assert.match(html, /xb-library-grid is-empty/);
     assert.match(html, /xb-library-empty/);
+    assert.match(html, /class="xb-shelf-actions"/);
+    assert.match(html, /id="xb-library-new-book"/);
+    assert.match(html, /id="xb-library-delete-book"[^>]*disabled/);
+    const headerHtml = html.slice(html.indexOf('<header'), html.indexOf('<main'));
+    assert.doesNotMatch(headerHtml, /xb-library-new-book|xb-library-delete-book|xb-delete-book-close/);
+});
+
+test('Library shelf actions stay inside the shelf after the rendered books', () => {
+    const state = {
+        book: { id: 'book-1', title: '测试书', updatedAt: 1716039600000 },
+        books: [
+            { id: 'book-1', title: '测试书', updatedAt: 1716039600000 },
+        ],
+        files: [],
+        selectedPath: '',
+        readerPath: '',
+        viewMode: 'library',
+        editorContent: '',
+        savedContent: '',
+        isBusy: false,
+        toast: '',
+        isDeleteBookOpen: false,
+        colorTheme: 'dark',
+    };
+
+    const html = renderEbookShell({ state });
+    const bookIndex = html.indexOf('data-book-id="book-1"');
+    const shelfActionIndex = html.indexOf('class="xb-shelf-actions"');
+    const headerHtml = html.slice(html.indexOf('<header'), html.indexOf('<main'));
+    assert.ok(bookIndex >= 0);
+    assert.ok(shelfActionIndex > bookIndex);
+    assert.match(html, /id="xb-library-new-book"/);
+    assert.match(html, /id="xb-library-delete-book"/);
+    assert.doesNotMatch(headerHtml, /xb-library-new-book|xb-library-delete-book|xb-delete-book-close/);
 });
 
 test('Book controller initialization does not request draw status before frame ready', async () => {

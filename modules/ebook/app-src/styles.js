@@ -225,6 +225,46 @@ export function injectEbookStyles(rootId = 'xb-ebook-root') {
             background: rgba(255, 255, 255, 0.035);
             text-align: center;
         }
+        .xb-shelf-actions {
+            align-self: start;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            min-height: 96px;
+            padding: 12px 2px;
+        }
+        .xb-shelf-action {
+            width: 58px;
+            height: 58px;
+            padding: 0;
+            display: grid;
+            place-items: center;
+            border-radius: 999px;
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            background: rgba(255, 255, 255, 0.055);
+            color: var(--xb-text-main);
+            box-shadow: 0 14px 28px rgba(0, 0, 0, 0.18);
+            transition: transform 0.28s var(--xb-fluid), border-color 0.22s ease, background 0.22s ease, color 0.22s ease, opacity 0.22s ease;
+        }
+        .xb-shelf-action span {
+            transform: translateY(-1px);
+            font-size: 34px;
+            font-weight: 300;
+            line-height: 1;
+        }
+        .xb-shelf-action:hover:not(:disabled) {
+            transform: translateY(-3px);
+            border-color: rgba(255, 255, 255, 0.34);
+            background: rgba(255, 255, 255, 0.09);
+        }
+        .xb-shelf-action-danger {
+            color: var(--xb-danger);
+        }
+        .xb-shelf-action-danger:hover:not(:disabled),
+        .xb-shelf-action-danger.is-active {
+            border-color: rgba(244, 63, 94, 0.42);
+            background: rgba(244, 63, 94, 0.12);
+        }
         .xb-delete-mode-note {
             margin: 0 0 18px;
             color: var(--xb-danger);
@@ -2236,6 +2276,18 @@ export function injectEbookStyles(rootId = 'xb-ebook-root') {
                 padding: 22px;
                 pointer-events: none;
             }
+            .xb-shelf-actions {
+                min-height: 74px;
+                gap: 10px;
+                padding: 6px 0;
+            }
+            .xb-shelf-action {
+                width: 48px;
+                height: 48px;
+            }
+            .xb-shelf-action span {
+                font-size: 29px;
+            }
             .xb-entry-actions {
                 flex-direction: column;
             }
@@ -2388,12 +2440,13 @@ export function injectEbookStyles(rootId = 'xb-ebook-root') {
                 padding: 0 12px;
             }
             .xb-global-actions {
-                width: 100%;
-                display: grid;
-                grid-template-columns: 1fr 1fr 1fr;
+                width: auto;
+                display: flex;
+                grid-template-columns: none;
             }
             .xb-global-actions button {
-                width: 100%;
+                width: auto;
+                min-width: 48px;
             }
             .xb-library-grid {
                 grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
@@ -2425,6 +2478,17 @@ export function injectEbookStyles(rootId = 'xb-ebook-root') {
                 border-radius: 12px;
                 padding: 18px;
                 font-size: 13px;
+            }
+            .xb-shelf-actions {
+                min-height: 54px;
+                gap: 8px;
+            }
+            .xb-shelf-action {
+                width: 42px;
+                height: 42px;
+            }
+            .xb-shelf-action span {
+                font-size: 26px;
             }
             .xb-entry-action span {
                 max-width: 280px;

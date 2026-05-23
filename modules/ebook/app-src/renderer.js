@@ -365,7 +365,7 @@ function renderMessageMarkdownHtml(text = '') {
 
 function renderBookCards(state = {}) {
     if (!state.books.length) {
-        return '<div class="xb-empty xb-library-empty">书架上还没有书。点“新建一本书”，先放上第一本书稿。</div>';
+        return '<div class="xb-empty xb-library-empty">书架上还没有书。</div>';
     }
     const deleteMode = !!state.isDeleteBookOpen;
     return state.books.map((book) => {
@@ -390,6 +390,27 @@ function renderBookCards(state = {}) {
     }).join('');
 }
 
+function renderLibraryShelfActions(state = {}, bookCount = 0) {
+    const deleteMode = !!state.isDeleteBookOpen;
+    const canDelete = bookCount > 0 && !state.isBusy;
+    return `
+        <div class="xb-shelf-actions" aria-label="书架操作">
+            <button id="xb-library-new-book" class="xb-shelf-action" type="button" title="新建书稿" aria-label="新建书稿" ${state.isBusy ? 'disabled' : ''}>
+                <span aria-hidden="true">+</span>
+            </button>
+            ${deleteMode ? `
+                <button id="xb-delete-book-close" class="xb-shelf-action xb-shelf-action-danger is-active" type="button" title="退出删除模式" aria-label="退出删除模式">
+                    <span aria-hidden="true">-</span>
+                </button>
+            ` : `
+                <button id="xb-library-delete-book" class="xb-shelf-action xb-shelf-action-danger" type="button" title="删除书稿" aria-label="删除书稿" ${canDelete ? '' : 'disabled'}>
+                    <span aria-hidden="true">-</span>
+                </button>
+            `}
+        </div>
+    `;
+}
+
 function renderLibraryShell(options = {}) {
     const state = options.state || {};
     const bookCount = Array.isArray(state.books) ? state.books.length : 0;
@@ -405,12 +426,6 @@ function renderLibraryShell(options = {}) {
                     <div class="xb-archive-meta">${bookCount ? `${bookCount} 本书稿 · 本地书架` : '本地书架 · 等待第一本书稿'}</div>
                 </div>
                 <div class="xb-global-actions">
-                    <button id="xb-library-new-book" class="xb-glass-button" ${state.isBusy ? 'disabled' : ''}>＋ 新建</button>
-                    ${state.isDeleteBookOpen ? `
-                        <button id="xb-delete-book-close" class="xb-glass-button xb-danger-button">取消删除</button>
-                    ` : `
-                        <button id="xb-library-delete-book" class="xb-glass-button xb-danger-button" ${bookCount && !state.isBusy ? '' : 'disabled'}>删除</button>
-                    `}
                     <button id="xb-theme-toggle" class="xb-glass-button xb-theme-button" type="button" title="${escapeHtml(themeToggleTitle)}" aria-label="${escapeHtml(themeToggleTitle)}">${escapeHtml(themeToggleLabel)}</button>
                     <button id="xb-close" class="xb-glass-button">退出</button>
                 </div>
@@ -419,6 +434,7 @@ function renderLibraryShell(options = {}) {
                 ${state.isDeleteBookOpen ? '<div class="xb-delete-mode-note">删除模式：点击一本书会清除书稿内容和写作记录。</div>' : ''}
                 <section class="xb-library-grid${bookCount ? '' : ' is-empty'}" aria-label="书籍列表">
                     ${renderBookCards(state)}
+                    ${renderLibraryShelfActions(state, bookCount)}
                 </section>
             </main>
             ${state.toast ? `<div class="xb-toast">${escapeHtml(state.toast)}</div>` : ''}
