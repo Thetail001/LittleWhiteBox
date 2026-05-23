@@ -11,11 +11,12 @@ import {
     upsertBookFile,
 } from '../shared/ebook-db.js';
 import { normalizeBookFilePath } from '../shared/book-paths.js';
-import { EBOOK_DRAW_REQUEST_TIMEOUT_MS } from './constants.js';
+import { EBOOK_DRAW_REQUEST_TIMEOUT_MS, EBOOK_TTS_REQUEST_TIMEOUT_MS } from './constants.js';
 
 const DEFAULT_DRAFT_PATH = 'book/chapters/001.md';
 const CHAPTER_PATH_REGEX = /^book\/chapters\/.+\.md$/;
 const EBOOK_IMAGE_MARKER_REGEX = /\[ebook-image:([a-z0-9\-_]+)\]/gi;
+const MARKDOWN_LINK_REGEX = /!?\[([^\]]*)\]\([^)]+\)/g;
 const DRAW_COOLDOWN_TICK_MS = 500;
 const DRAW_COMPLETION_NOTICE_MS = 5000;
 const DRAW_COMPLETION_NOTICE_TEXT = '占位符已插入，请去阅读器查看';
@@ -26,6 +27,19 @@ function isChapterPath(path = '') {
 
 function stripEbookImageMarkers(content = '') {
     return String(content || '').replace(EBOOK_IMAGE_MARKER_REGEX, '').trim();
+}
+
+function cleanReaderTtsText(content = '') {
+    return String(content || '')
+        .replace(EBOOK_IMAGE_MARKER_REGEX, '\n')
+        .replace(/```[\s\S]*?```/g, '\n')
+        .replace(/<[^>]+>/g, '')
+        .replace(MARKDOWN_LINK_REGEX, '$1')
+        .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+        .replace(/^\s{0,3}>\s?/gm, '')
+        .replace(/[*_`~]+/g, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
 }
 
 function formatChapterTitle(path = '') {
@@ -186,6 +200,7 @@ export function createBookController(deps = {}) {
     } = deps;
     let drawCooldownTimer = null;
     let drawCompletionNoticeTimer = null;
+    let drawAbortController = null;
 
     function clearDrawCooldownTimer() {
         if (drawCooldownTimer) {
@@ -280,11 +295,95 @@ export function createBookController(deps = {}) {
         return state.editorContent !== state.savedContent;
     }
 
+    function getActiveReaderChapter() {
+        const chapters = state.files.filter((file) => CHAPTER_PATH_REGEX.test(String(file?.path || '')));
+        if (!chapters.length) return null;
+        return chapters.find((file) => file.path === state.readerPath) || chapters[0] || null;
+    }
+
+    function isReaderTtsActive() {
+        return ['loading', 'playing'].includes(String(state.readerTtsPlayback?.status || ''));
+    }
+
+    function resetReaderTtsPlayback(status = 'idle') {
+        state.readerTtsPlayback = {
+            status,
+            playbackId: '',
+            chapterPath: '',
+            error: '',
+        };
+    }
+
+    function createReaderTtsPlaybackId() {
+        return `ebook-tts-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    }
+
+    async function refreshTtsStatus(options = {}) {
+        try {
+            const result = await requestHost('xb-ebook:tts-status', {});
+            state.readerTtsStatus = {
+                enabled: !!result?.enabled,
+                ready: !!result?.ready,
+            };
+        } catch {
+            state.readerTtsStatus = {
+                enabled: false,
+                ready: false,
+            };
+        }
+        if (options.renderAfter) render();
+        return state.readerTtsStatus;
+    }
+
+    async function stopReaderTts(options = {}) {
+        const { renderAfter = true, silent = true } = options;
+        const playbackId = state.readerTtsPlayback?.playbackId || '';
+        if (!playbackId && !isReaderTtsActive()) return false;
+        resetReaderTtsPlayback('idle');
+        if (renderAfter) render();
+        await requestHost('xb-ebook:tts-stop', { playbackId }, {
+            timeoutMs: EBOOK_TTS_REQUEST_TIMEOUT_MS,
+        }).catch((error) => {
+            if (!silent) showToast?.(`停止朗读失败：${error?.message || error}`);
+        });
+        return true;
+    }
+
+    function handleTtsState(payload = {}) {
+        const playbackId = String(payload.playbackId || '');
+        if (playbackId && state.readerTtsPlayback?.playbackId && playbackId !== state.readerTtsPlayback.playbackId) {
+            return;
+        }
+        const status = String(payload.state || '');
+        if (status === 'loading' || status === 'playing') {
+            state.readerTtsPlayback = {
+                ...state.readerTtsPlayback,
+                status,
+                error: '',
+            };
+            render();
+            return;
+        }
+        if (status === 'error') {
+            const message = payload.message || payload.info?.message || '朗读失败';
+            resetReaderTtsPlayback('idle');
+            showToast?.(`朗读失败：${message}`);
+            render();
+            return;
+        }
+        if (['ended', 'stopped', 'blocked'].includes(status)) {
+            resetReaderTtsPlayback('idle');
+            if (status === 'blocked') showToast?.('朗读被浏览器阻止，请再点一次播放');
+            render();
+        }
+    }
+
     async function selectBook(bookId = '') {
         if (state.isBusy) return;
         const book = await getBook(bookId);
         if (!book) return;
         if (isEditorDirty() && !confirm('当前文件还没保存，确定切换书籍吗？')) return;
+        await stopReaderTts({ renderAfter: false });
         await setSelectedBookId(book.id);
         state.book = book;
         state.selectedPath = '';
@@ -299,6 +398,7 @@ export function createBookController(deps = {}) {
         if (isEditorDirty() && !confirm('当前文件还没保存，确定切换文件吗？')) return;
         const file = state.files.find((item) => item.path === path);
         if (!file) return;
+        await stopReaderTts({ renderAfter: false });
         state.selectedPath = file.path;
         state.viewMode = 'studio';
         state.editorContent = file.content;
@@ -309,6 +409,7 @@ export function createBookController(deps = {}) {
     async function showBookEntry() {
         if (!state.book) return;
         if (isEditorDirty() && !confirm('当前文件还没保存，确定回到书本入口吗？')) return;
+        await stopReaderTts({ renderAfter: false });
         state.viewMode = 'book-entry';
         render();
     }
@@ -316,6 +417,7 @@ export function createBookController(deps = {}) {
     async function showStudio() {
         if (!state.book) return;
         if (isEditorDirty() && state.viewMode !== 'studio' && !confirm('当前文件还没保存，确定进入创作台吗？')) return;
+        await stopReaderTts({ renderAfter: false });
         state.viewMode = 'studio';
         render();
     }
@@ -329,11 +431,13 @@ export function createBookController(deps = {}) {
         }
         state.viewMode = 'reader';
         render();
+        void refreshTtsStatus({ renderAfter: true });
     }
 
     async function selectReaderChapter(path = '') {
         const chapter = state.files.find((file) => file.path === path && /^book\/chapters\/.+\.md$/.test(file.path));
         if (!chapter) return;
+        await stopReaderTts({ renderAfter: false });
         state.readerPath = chapter.path;
         state.viewMode = 'reader';
         render();
@@ -341,6 +445,7 @@ export function createBookController(deps = {}) {
 
     async function showLibrary() {
         if (isEditorDirty() && !confirm('当前文件还没保存，确定回到书架吗？')) return;
+        await stopReaderTts({ renderAfter: false });
         state.viewMode = 'library';
         render();
     }
@@ -371,6 +476,57 @@ export function createBookController(deps = {}) {
         return state.drawStatus;
     }
 
+    async function toggleReaderTts() {
+        if (isReaderTtsActive()) {
+            await stopReaderTts({ renderAfter: true, silent: false });
+            return;
+        }
+        if (!state.book) return;
+        const chapter = getActiveReaderChapter();
+        if (!chapter) {
+            showToast?.('还没有可朗读章节');
+            return;
+        }
+        const status = await refreshTtsStatus();
+        if (!status.enabled || !status.ready) {
+            showToast?.('TTS 语音模块未启用');
+            render();
+            return;
+        }
+        const text = cleanReaderTtsText(chapter.content);
+        if (!text) {
+            showToast?.('当前章节没有可朗读正文');
+            return;
+        }
+        const playbackId = createReaderTtsPlaybackId();
+        state.readerTtsPlayback = {
+            status: 'loading',
+            playbackId,
+            chapterPath: chapter.path,
+            error: '',
+        };
+        render();
+        try {
+            const result = await requestHost('xb-ebook:tts-play', {
+                playbackId,
+                text,
+                bookId: state.book.id,
+                bookTitle: state.book.title || '未命名书稿',
+                chapterPath: chapter.path,
+                chapterTitle: formatChapterTitle(chapter.path),
+            }, {
+                timeoutMs: EBOOK_TTS_REQUEST_TIMEOUT_MS,
+            });
+            if (result?.ok === false) throw new Error(result?.error || 'tts_failed');
+        } catch (error) {
+            if (state.readerTtsPlayback?.playbackId === playbackId) {
+                resetReaderTtsPlayback('idle');
+                showToast?.(`朗读失败：${error?.message || error}`);
+                render();
+            }
+        }
+    }
+
     function handleDrawProgress(payload = {}) {
         if (!state.isDrawingChapter) return;
         clearDrawCompletionNoticeTimer();
@@ -383,8 +539,22 @@ export function createBookController(deps = {}) {
         render();
     }
 
+    function cancelCurrentChapterDraw() {
+        if (!state.isDrawingChapter || !drawAbortController) return false;
+        drawAbortController.abort();
+        clearDrawCooldownTimer();
+        clearDrawCompletionNoticeTimer();
+        state.drawProgressText = '正在停止配图...';
+        render();
+        return true;
+    }
+
     async function drawCurrentChapter() {
-        if (!state.book || state.isBusy || state.isDrawingChapter) return;
+        if (state.isDrawingChapter) {
+            cancelCurrentChapterDraw();
+            return;
+        }
+        if (!state.book || state.isBusy) return;
         if (!isChapterPath(state.selectedPath)) {
             showToast?.('只有正文章节可以配图');
             return;
@@ -410,6 +580,8 @@ export function createBookController(deps = {}) {
 
         clearDrawCooldownTimer();
         clearDrawCompletionNoticeTimer();
+        drawAbortController = new AbortController();
+        const activeDrawController = drawAbortController;
         state.isDrawingChapter = true;
         state.drawProgressText = '正在准备章节配图...';
         render();
@@ -425,7 +597,12 @@ export function createBookController(deps = {}) {
                 chapterTitle: drawChapterTitle,
             }, {
                 timeoutMs: EBOOK_DRAW_REQUEST_TIMEOUT_MS,
+                signal: activeDrawController.signal,
             });
+            if (activeDrawController.signal.aborted || result?.aborted) {
+                showToast?.('配图已取消');
+                return;
+            }
             const stillEditingTarget = state.book?.id === drawBookId && state.selectedPath === drawChapterPath;
             const storedTarget = stillEditingTarget ? null : await getBookFile(drawBookId, drawChapterPath);
             const targetContent = stillEditingTarget
@@ -461,8 +638,15 @@ export function createBookController(deps = {}) {
             completionNotice = DRAW_COMPLETION_NOTICE_TEXT;
             showToast?.(`${DRAW_COMPLETION_NOTICE_TEXT}${fallbackText}`);
         } catch (error) {
-            showToast?.(`配图失败：${error?.message || error}`);
+            if (activeDrawController.signal.aborted || /已取消|abort/i.test(String(error?.message || error || ''))) {
+                showToast?.('配图已取消');
+            } else {
+                showToast?.(`配图失败：${error?.message || error}`);
+            }
         } finally {
+            if (drawAbortController === activeDrawController) {
+                drawAbortController = null;
+            }
             clearDrawCooldownTimer();
             state.isDrawingChapter = false;
             if (completionNotice) {
@@ -483,6 +667,7 @@ export function createBookController(deps = {}) {
         const title = prompt('新书名', '新书稿');
         if (title === null) return;
         if (isEditorDirty() && !confirm('当前文件还没保存，确定新建书籍吗？')) return;
+        await stopReaderTts({ renderAfter: false });
         state.book = await createBook(title);
         state.selectedPath = DEFAULT_DRAFT_PATH;
         state.readerPath = DEFAULT_DRAFT_PATH;
@@ -568,6 +753,9 @@ export function createBookController(deps = {}) {
         const activeBookId = state.book?.id || '';
         const deletingActiveBook = activeBookId === id;
         try {
+            if (deletingActiveBook) {
+                await stopReaderTts({ renderAfter: false });
+            }
             await deleteBook(id);
             if (deletingActiveBook) {
                 state.book = null;
@@ -589,16 +777,19 @@ export function createBookController(deps = {}) {
     }
 
     return {
+        cancelCurrentChapterDraw,
         createNewBook,
         createNewFile,
         drawCurrentChapter,
         getDrawImage,
         handleDrawProgress,
+        handleTtsState,
         importMaterial,
         initializeBook,
         isEditorDirty,
         refreshBooksAndFiles,
         refreshDrawStatus,
+        refreshTtsStatus,
         removeBook,
         renameCurrentBook,
         saveCurrentFile,
@@ -609,5 +800,7 @@ export function createBookController(deps = {}) {
         showLibrary,
         showReader,
         showStudio,
+        stopReaderTts,
+        toggleReaderTts,
     };
 }

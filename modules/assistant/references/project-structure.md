@@ -81,10 +81,13 @@ LittleWhiteBox/
 │   ├── build-assistant-jsapi-manifest.mjs  # 助手 JS API 清单构建脚本
 │   ├── build-assistant-jsapi-runtime.mjs   # 助手 JS API 运行时构建脚本
 │   ├── check-garbled.js                    # 乱码检查脚本（lint 前置）
+│   ├── check-relative-imports.mjs          # 相对路径导入检查
 │   ├── story-summary-runtime-check.mjs     # summary runtime 验收脚本
 │   ├── story-summary-replay-runner.mjs     # summary 回放 / 召回对比脚本
 │   ├── story-summary-replay.config.example.json # 回放配置示例
-│   └── story-summary-replay/               # summary 回放所需入口、shim 与样本辅助
+│   └── story-summary-replay/               # summary 回放入口、shim 与样本
+│       ├── entry.mjs
+│       └── shims/
 │
 ├── bridges/                               # 与酒馆运行时、上下文、世界书、iframe 的桥接层
 │   ├── call-generate-service.js            # 生成服务调用桥接
@@ -144,12 +147,16 @@ LittleWhiteBox/
 │   │   ├── config.js                       # 终端 Agent 模型配置、预设与默认值标准化
 │   │   ├── provider-config.js              # provider 列表、label、reasoning、adapter factory
 │   │   ├── ui/
+│   │   │   ├── message-markdown.js         # 消息 Markdown 渲染
 │   │   │   ├── settings-markup.js          # 多 Agent App 共用的 API 配置表单 markup
 │   │   │   └── settings-panel.js           # 多 Agent App 共用的 API 配置表单逻辑
 │   │   ├── current-plans.js                # `[Current plans]` 提示词前缀构造
 │   │   ├── plan-ledger.js                  # `PlanCreate/Update/List/Get` 账本规则；具体 App 显式传 plansTable
+│   │   ├── tavily-search.js                # Tavily 网页搜索工具
 │   │   ├── runtime/
-│   │   │   └── delegate-runner.js          # `DelegateRun` 同步子任务执行器
+│   │   │   ├── delegate-runner.js          # `DelegateRun` 同步子任务执行器
+│   │   │   ├── protocol.js                 # agent 协议层
+│   │   │   └── streaming-messages.js       # 流式消息维护
 │   │   ├── tools/                          # 无 App 作用域的通用工具原语
 │   │   │   ├── apply-patch.js              # patch 语法解析与文本级应用
 │   │   │   ├── apply-patch-execution.js    # patch 验证/执行骨架；具体文件作用域由调用方提供
@@ -179,10 +186,14 @@ LittleWhiteBox/
 │   │   ├── ebook.html                      # 电纸书 iframe 入口，加载 dist/ebook-app.js
 │   │   ├── ebook.js                        # 宿主 overlay、iframe 消息分发、素材导入与画图桥接
 │   │   ├── host/                           # 电纸书 host 侧辅助：Agent 配置转发、聊天/角色/总结/世界书素材导入
+│   │   │   ├── assistant-config.js          # Agent 配置转发
+│   │   │   └── import-materials.js          # 素材导入
 │   │   ├── app-src/                        # 电纸书 iframe App 源码；main.js 只做装配入口
 │   │   │   ├── main.js                     # 创建 hostBridge + ebookApp 并启动，不承载业务逻辑
 │   │   │   ├── ebook-app.js                # App 生命周期装配：state、controller、runner、renderer
 │   │   │   ├── book-controller.js          # 书籍/文件选择、保存、新建、素材导入、当前章节配图落盘
+│   │   │   ├── conversation-store.js        # 会话存储
+│   │   │   ├── history-compaction.js        # 历史压缩
 │   │   │   ├── host-bridge.js              # iframe 与宿主消息桥、配置接收、host request/配图进度管理
 │   │   │   ├── agent-runner.js             # 电纸书主 Agent 与只读 Delegate 工具循环
 │   │   │   ├── renderer.js                 # 三栏 UI HTML 渲染、阅读器 `[ebook-image:slot]` 占位渲染
@@ -210,6 +221,7 @@ LittleWhiteBox/
 │   │   │   ├── data/                       # 跨 Provider 共用画图数据资源
 │   │   │   │   └── danbooru-chars.dat      # Danbooru 角色数据
 │   │   │   ├── draw-common.js              # 占位符、锚点、角色 Prompt、图片 DOM 渲染与错误分类
+│   │   │   ├── draw-llm.js                 # 共享 LLM 调用封装
 │   │   │   ├── draw-settings.js            # 共享 LLM/角色/世界书设置读写，不初始化 Provider 专属 Prompt
 │   │   │   ├── gallery-cache.js            # 共用图库缓存；聊天 `[image:slot]` 与电纸书 `[ebook-image:slot]` 共用 previews
 │   │   │   ├── scene-planner.js            # Provider 无关的 LLM 场景规划调用与解析
@@ -231,7 +243,9 @@ LittleWhiteBox/
 │   │       │   ├── SD_TAG编写指南.md       # SD 专属 TAG 指南
 │   │       │   ├── floating-panel.js       # SD 楼层/悬浮画图面板
 │   │       │   ├── prompts/               # SD 提示词模板
+│   │       │   │   ├── output-format-legacy.md
 │   │       │   │   ├── output-format.md
+│   │       │   │   ├── top-system-pov.md
 │   │       │   │   └── top-system.md
 │   │       │   ├── sd-draw.html            # SD 设置面板 UI
 │   │       │   ├── sd-draw.js              # SD 生命周期、设置、楼层出图与文本源出图 `generateImagesFromText`
@@ -243,6 +257,10 @@ LittleWhiteBox/
 │   │           ├── comfy-prompts.js        # ComfyUI 提示词模板加载与默认配置
 │   │           ├── floating-panel.js       # ComfyUI 楼层/悬浮画图面板
 │   │           ├── prompts/               # ComfyUI 提示词模板
+│   │           │   ├── output-format-legacy.md
+│   │           │   ├── output-format.md
+│   │           │   ├── top-system-pov.md
+│   │           │   └── top-system.md
 │   │           └── workflows/             # ComfyUI 默认工作流 JSON
 │   │
 │   ├── scheduled-tasks/                   # 定时任务与嵌入式任务功能

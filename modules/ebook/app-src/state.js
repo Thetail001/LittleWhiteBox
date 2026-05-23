@@ -42,6 +42,16 @@ export function createEbookState() {
         },
         isDrawingChapter: false,
         drawProgressText: '',
+        readerTtsStatus: {
+            enabled: false,
+            ready: false,
+        },
+        readerTtsPlayback: {
+            status: 'idle',
+            playbackId: '',
+            chapterPath: '',
+            error: '',
+        },
         studioLayout: 'balanced',
         colorTheme: getInitialColorTheme(),
         isSettingsOpen: false,

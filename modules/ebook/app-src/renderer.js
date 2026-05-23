@@ -396,18 +396,31 @@ function renderLibraryShelfActions(state = {}, bookCount = 0) {
     return `
         <div class="xb-shelf-actions" aria-label="书架操作">
             <button id="xb-library-new-book" class="xb-shelf-action" type="button" title="新建书稿" aria-label="新建书稿" ${state.isBusy ? 'disabled' : ''}>
-                <span aria-hidden="true">+</span>
+                <span class="xb-shelf-action-ring" aria-hidden="true">+</span>
+                <strong>新建书稿</strong>
             </button>
             ${deleteMode ? `
                 <button id="xb-delete-book-close" class="xb-shelf-action xb-shelf-action-danger is-active" type="button" title="退出删除模式" aria-label="退出删除模式">
-                    <span aria-hidden="true">-</span>
+                    <span class="xb-shelf-action-ring" aria-hidden="true">-</span>
+                    <strong>退出删除</strong>
                 </button>
             ` : `
                 <button id="xb-library-delete-book" class="xb-shelf-action xb-shelf-action-danger" type="button" title="删除书稿" aria-label="删除书稿" ${canDelete ? '' : 'disabled'}>
-                    <span aria-hidden="true">-</span>
+                    <span class="xb-shelf-action-ring" aria-hidden="true">-</span>
+                    <strong>删除书稿</strong>
                 </button>
             `}
         </div>
+    `;
+}
+
+function renderExitIcon() {
+    return `
+        <svg class="xb-exit-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M11 5H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h6"></path>
+            <path d="M13 8l4 4-4 4"></path>
+            <path d="M7 12h10"></path>
+        </svg>
     `;
 }
 
@@ -421,13 +434,14 @@ function renderLibraryShell(options = {}) {
         <div class="xb-ebook-screen xb-library-screen ${escapeHtml(themeClass)}${state.isDeleteBookOpen ? ' is-delete-mode' : ''}">
             <div class="xb-ambient-aurora"></div>
             <header class="xb-archive-header">
-                <div>
+                <div class="xb-archive-title-block">
                     <h1>小白电纸书</h1>
+                    <p class="xb-archive-subtitle">Agent 沉浸式创作与阅读平台</p>
                     <div class="xb-archive-meta">${bookCount ? `${bookCount} 本书稿 · 本地书架` : '本地书架 · 等待第一本书稿'}</div>
                 </div>
                 <div class="xb-global-actions">
                     <button id="xb-theme-toggle" class="xb-glass-button xb-theme-button" type="button" title="${escapeHtml(themeToggleTitle)}" aria-label="${escapeHtml(themeToggleTitle)}">${escapeHtml(themeToggleLabel)}</button>
-                    <button id="xb-close" class="xb-glass-button">退出</button>
+                    <button id="xb-close" class="xb-glass-button xb-exit-button" type="button" title="退出电纸书" aria-label="退出电纸书">${renderExitIcon()}</button>
                 </div>
             </header>
             <main class="xb-shelf-container">
@@ -456,11 +470,11 @@ function renderBookEntryShell(options = {}) {
                 <section class="xb-entry-actions">
                     <button class="xb-entry-action is-studio" data-entry-action="studio">
                         <strong>创作台</strong>
-                        <span>写正文、导入资料、整理设定，让写作助手审稿和修订。</span>
+                        <span>agent写作平台</span>
                     </button>
                     <button class="xb-entry-action is-reader" data-entry-action="reader">
                         <strong>阅读</strong>
-                        <span>按章节沉浸阅读。这里不放 AI，只保留安静的阅读体验。</span>
+                        <span>沉浸式阅读器</span>
                     </button>
                 </section>
             </main>
@@ -689,7 +703,7 @@ function renderMessages(state = {}) {
 
     const liveToolTurnHtml = state.isBusy ? renderLiveToolTurn(state) : '';
     if (!units.length && !liveToolTurnHtml) {
-        return `${memoryHint}<div class="xb-agent-empty">这里是写作助手记录。可以先导入资料，也可以直接说“帮我整理第一章开头”。</div>`;
+        return `${memoryHint}<div class="xb-agent-empty">这里是写作助手记录。可以先导入资料，也可以直接说“我想试试写一本书”。</div>`;
     }
     return `${memoryHint}${units.join('')}${liveToolTurnHtml}`;
 }
@@ -781,32 +795,42 @@ function renderStudioShell(options = {}) {
     const drawStatus = state.drawStatus || {};
     const drawIsChapter = isChapterPath(state.selectedPath);
     const drawReady = !!drawStatus.enabled && !!drawStatus.ready;
-    const canDrawChapter = !!(
+    const canDrawChapter = !!(state.isDrawingChapter || (
         !state.isBusy
-        && !state.isDrawingChapter
         && drawIsChapter
         && drawReady
         && stripEbookImageMarkers(state.editorContent)
-    );
+    ));
     const drawDisabledAttr = canDrawChapter ? '' : 'disabled';
-    const drawTitle = !drawIsChapter
+    const drawTitle = state.isDrawingChapter
+        ? '停止当前章节配图'
+        : !drawIsChapter
         ? '只有正文章节可以配图'
         : !drawReady
             ? '画图后端未启用'
             : !stripEbookImageMarkers(state.editorContent)
                 ? '当前章节没有正文'
                 : '为当前章节生成配图';
-    const drawButtonText = state.isDrawingChapter ? '配图中' : '配图';
+    const drawButtonText = state.isDrawingChapter ? '停止' : '配图';
     const drawProgressText = state.drawProgressText ? ` · ${state.drawProgressText}` : '';
 
     return `
         <div class="xb-ebook-shell xb-studio-shell ${escapeHtml(layoutClass)} ${escapeHtml(themeClass)}">
+            <header class="xb-mobile-studio-topbar">
+                <div class="xb-mobile-segment" aria-label="工作台视图">
+                    <span class="xb-mobile-segment-slider"></span>
+                    <button type="button" class="xb-mobile-segment-button${layoutClass !== 'focus-agent' ? ' is-active' : ''}" data-studio-layout="focus-editor">编辑</button>
+                    <button type="button" class="xb-mobile-segment-button${layoutClass === 'focus-agent' ? ' is-active' : ''}" data-studio-layout="focus-agent">助手</button>
+                </div>
+                <button class="xb-mobile-topbar-button" type="button" data-theme-toggle title="${escapeHtml(themeToggleTitle)}" aria-label="${escapeHtml(themeToggleTitle)}">${escapeHtml(themeToggleLabel)}</button>
+            </header>
+            <button class="xb-mobile-file-drawer-scrim" type="button" data-mobile-file-drawer-close title="收起目录" aria-label="收起目录"></button>
             <aside class="xb-sidebar">
+                <button class="xb-mobile-drawer-handle" type="button" data-mobile-file-drawer-close title="收起目录" aria-label="收起目录"></button>
                 <div class="xb-brand">
                     <div class="xb-title-row">
                         <h1>${escapeHtml(state.book?.title || '未命名书稿')}</h1>
                         <button class="xb-icon-button" data-book-rename title="修改书名" aria-label="修改书名" ${state.isBusy ? 'disabled' : ''}>✎</button>
-                        <button id="xb-entry-link" class="xb-icon-button" title="返回书本入口" aria-label="返回书本入口">↩</button>
                     </div>
                     <div class="xb-workspace-controller">
                         <button type="button" class="xb-layout-button${layoutClass === 'focus-editor' ? ' is-active' : ''}" data-studio-layout="focus-editor">编辑</button>
@@ -821,12 +845,17 @@ function renderStudioShell(options = {}) {
             <section class="xb-studio-workbench">
                 <main class="xb-editor">
                     <header class="xb-editor-head">
+                        <button id="xb-mobile-file-picker" class="xb-mobile-file-picker" type="button" title="打开文件目录" aria-label="打开文件目录">
+                            <span aria-hidden="true">☰</span>
+                            <strong>${escapeHtml(formatFileTitle(state.selectedPath || 'book/chapters/001.md'))}</strong>
+                            <em aria-hidden="true">⌄</em>
+                        </button>
                         <div class="xb-path">${escapeHtml(formatFileTitle(state.selectedPath || 'book/chapters/001.md'))}</div>
                         <div class="xb-editor-actions">
                             <button id="xb-reader-link">阅读器</button>
                             <button id="xb-library-link">书架</button>
                             <button id="xb-draw-chapter" title="${escapeHtml(drawTitle)}" ${drawDisabledAttr}>${escapeHtml(drawButtonText)}</button>
-                            <button id="xb-save" ${dirty && !state.isBusy ? '' : 'disabled'}>保存稿纸</button>
+                            <button id="xb-save" ${dirty && !state.isBusy ? '' : 'disabled'}>保存</button>
                         </div>
                     </header>
                     <div class="xb-editor-body">
@@ -839,25 +868,30 @@ function renderStudioShell(options = {}) {
                 <aside class="xb-agent">
                     <div class="xb-agent-aurora"></div>
                     <header class="xb-agent-head">
-                        <div class="xb-agent-id"><span></span>写作助手</div>
+                        <div class="xb-agent-head-main">
+                            <div class="xb-agent-id"><span></span>写作助手</div>
+                            <div class="xb-agent-global-actions">
+                                <button id="xb-theme-toggle" type="button" title="${escapeHtml(themeToggleTitle)}" aria-label="${escapeHtml(themeToggleTitle)}">${escapeHtml(themeToggleLabel)}</button>
+                                <button id="xb-entry-link" type="button" data-entry-link title="返回书本入口" aria-label="返回书本入口">↩</button>
+                                <button id="xb-agent-close" class="xb-exit-button" type="button" title="退出电纸书" aria-label="退出电纸书">${renderExitIcon()}</button>
+                            </div>
+                        </div>
                         <div class="xb-agent-toolbar">
                             <div class="xb-agent-context-meter" title="${escapeHtml(renderConversationContextMeterTitle(state))}">${escapeHtml(renderConversationContextMeterLabel(state))}</div>
                             <button id="xb-agent-clear" type="button" ${state.isBusy || !canClearConversation ? 'disabled' : ''}>清空对话</button>
                             <button id="xb-agent-open-settings" type="button">API配置</button>
-                            <button id="xb-agent-close" type="button">退出</button>
-                            <button id="xb-theme-toggle" type="button" title="${escapeHtml(themeToggleTitle)}" aria-label="${escapeHtml(themeToggleTitle)}">${escapeHtml(themeToggleLabel)}</button>
                         </div>
                     </header>
                     <div class="xb-agent-chat-wrap">
                         <div class="xb-agent-main${state.isBusy ? ' is-busy' : ''}">
                             <details class="xb-actions-panel">
-                                <summary>快捷动作</summary>
+                                <summary>创作入口</summary>
                                 <div class="xb-actions">
-                                    <button data-action="outline" ${agentActionAttr}>草拟大纲</button>
-                                    <button data-action="next-chapter" ${agentActionAttr}>续写草稿</button>
-                                    <button data-action="review" ${agentActionAttr}>审一遍</button>
-                                    <button data-action="revise" ${agentActionAttr}>按意见改稿</button>
+                                    <button data-action="start-book" ${agentActionAttr}>聊新书</button>
+                                    <button data-action="spine" ${agentActionAttr}>建书脊</button>
                                     <button data-action="organize" ${agentActionAttr}>整理资料</button>
+                                    <button data-action="outline" ${agentActionAttr}>搭大纲</button>
+                                    <button data-action="opening-options" ${agentActionAttr}>试写开场</button>
                                 </div>
                             </details>
                             <div class="xb-agent-log">${renderMessages(state)}</div>
@@ -884,6 +918,16 @@ function renderStudioShell(options = {}) {
             ${state.toast ? `<div class="xb-toast">${escapeHtml(state.toast)}</div>` : ''}
         </div>
     `;
+}
+
+function renderReaderChapterButtons(chapters = [], activePath = '') {
+    if (!chapters.length) return '<div class="xb-empty">还没有正文</div>';
+    return chapters.map((chapter, chapterIndex) => `
+        <button class="xb-reader-chapter${chapter.path === activePath ? ' is-active' : ''}" data-reader-path="${escapeHtml(chapter.path)}">
+            <span>${escapeHtml(formatFileTitle(chapter.path))}</span>
+            <small>${chapterIndex + 1}</small>
+        </button>
+    `).join('');
 }
 
 function renderReaderTextContent(content = '') {
@@ -932,6 +976,19 @@ function renderReaderShell(options = {}) {
     const themeClass = state.colorTheme === 'light' ? 'theme-light' : 'theme-dark';
     const themeToggleLabel = state.colorTheme === 'light' ? '☾' : '☀';
     const themeToggleTitle = state.colorTheme === 'light' ? '切换为深色视觉' : '切换为白底黑字';
+    const ttsStatus = state.readerTtsStatus || {};
+    const ttsPlayback = state.readerTtsPlayback || {};
+    const ttsActive = ['loading', 'playing'].includes(String(ttsPlayback.status || ''));
+    const ttsReady = !!ttsStatus.enabled && !!ttsStatus.ready;
+    const ttsDisabledAttr = hasChapters && ttsReady ? '' : 'disabled';
+    const ttsTitle = ttsActive
+        ? '停止朗读'
+        : !hasChapters
+            ? '还没有可朗读章节'
+            : !ttsReady
+                ? 'TTS 语音模块未启用'
+                : '播放当前章节';
+    const ttsLabel = ttsActive ? '■' : '▶';
 
     return `
         <div class="xb-ebook-screen xb-reader-screen ${escapeHtml(themeClass)}">
@@ -939,7 +996,8 @@ function renderReaderShell(options = {}) {
             <nav class="xb-reader-edge" aria-label="阅读器操作">
                 <div class="xb-reader-edge-actions">
                     <button class="xb-reader-edge-button" id="xb-entry-link" title="返回入口" aria-label="返回入口">←</button>
-                    <button class="xb-reader-edge-button" id="xb-studio-link" title="去创作台" aria-label="去创作台">✎</button>
+                    <button class="xb-reader-edge-button xb-reader-index-toggle" id="xb-reader-index-toggle" type="button" title="目录" aria-label="目录">☰</button>
+                    <button class="xb-reader-edge-button xb-reader-tts-toggle${ttsActive ? ' is-active' : ''}" id="xb-reader-tts-toggle" type="button" title="${escapeHtml(ttsTitle)}" aria-label="${escapeHtml(ttsTitle)}" ${ttsDisabledAttr}>${escapeHtml(ttsLabel)}</button>
                     <button class="xb-reader-edge-button xb-reader-theme-toggle" id="xb-theme-toggle" type="button" title="${escapeHtml(themeToggleTitle)}" aria-label="${escapeHtml(themeToggleTitle)}">${escapeHtml(themeToggleLabel)}</button>
                 </div>
                 <div class="xb-reader-progress" title="${escapeHtml(progress)}" style="--xb-reader-progress:${chapterProgress}%"><span></span></div>
@@ -948,12 +1006,7 @@ function renderReaderShell(options = {}) {
                 <aside class="xb-reader-nav">
                     <div class="xb-reader-index-title">目录</div>
                     <div class="xb-reader-chapters">
-                        ${hasChapters ? chapters.map((chapter, chapterIndex) => `
-                            <button class="xb-reader-chapter${chapter.path === activePath ? ' is-active' : ''}" data-reader-path="${escapeHtml(chapter.path)}">
-                                <span>${escapeHtml(formatFileTitle(chapter.path))}</span>
-                                <small>${chapterIndex + 1}</small>
-                            </button>
-                        `).join('') : '<div class="xb-empty">还没有正文</div>'}
+                        ${renderReaderChapterButtons(chapters, activePath)}
                     </div>
                 </aside>
                 <article class="xb-reader-paper">
@@ -979,6 +1032,14 @@ function renderReaderShell(options = {}) {
                     `}
                 </article>
             </main>
+            <button class="xb-reader-toc-scrim" id="xb-reader-index-scrim" type="button" title="收起目录" aria-label="收起目录"></button>
+            <aside class="xb-reader-toc-sheet" aria-label="章节目录">
+                <button class="xb-reader-toc-handle" id="xb-reader-index-close" type="button" title="收起目录" aria-label="收起目录"></button>
+                <div class="xb-reader-index-title">目录</div>
+                <div class="xb-reader-chapters">
+                    ${renderReaderChapterButtons(chapters, activePath)}
+                </div>
+            </aside>
             ${state.toast ? `<div class="xb-toast">${escapeHtml(state.toast)}</div>` : ''}
         </div>
     `;

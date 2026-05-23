@@ -29,15 +29,36 @@ export function createEbookHostBridge(options = {}) {
         postToHost(type, { ...payload, requestId });
         return new Promise((resolve, reject) => {
             const requestTimeoutMs = Number(requestOptions.timeoutMs) || timeoutMs;
+            const signal = requestOptions.signal;
+            let settled = false;
             const timer = setTimeout(() => {
+                settled = true;
                 pendingRequests.delete(requestId);
+                signal?.removeEventListener?.('abort', abortRequest);
                 reject(new Error('host_request_timeout'));
             }, requestTimeoutMs);
+            const settle = (callback, value) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                signal?.removeEventListener?.('abort', abortRequest);
+                pendingRequests.delete(requestId);
+                callback(value);
+            };
+            const abortRequest = () => {
+                postToHost('xb-ebook:cancel-request', { requestId });
+                settle(reject, new Error('已取消'));
+            };
             pendingRequests.set(requestId, {
-                resolve,
-                reject,
+                resolve: (value) => settle(resolve, value),
+                reject: (error) => settle(reject, error),
                 timer,
             });
+            if (signal?.aborted) {
+                abortRequest();
+            } else {
+                signal?.addEventListener?.('abort', abortRequest, { once: true });
+            }
         });
     }
 
@@ -45,8 +66,6 @@ export function createEbookHostBridge(options = {}) {
         const requestId = String(payload?.requestId || '');
         const pending = pendingRequests.get(requestId);
         if (!pending) return;
-        clearTimeout(pending.timer);
-        pendingRequests.delete(requestId);
         if (payload?.ok === false) {
             pending.reject(new Error(payload?.error || 'host_request_failed'));
         } else {
@@ -59,6 +78,7 @@ export function createEbookHostBridge(options = {}) {
         const onConfig = typeof handlers.onConfig === 'function' ? handlers.onConfig : null;
         const onOpenSettings = typeof handlers.onOpenSettings === 'function' ? handlers.onOpenSettings : null;
         const onDrawProgress = typeof handlers.onDrawProgress === 'function' ? handlers.onDrawProgress : null;
+        const onTtsState = typeof handlers.onTtsState === 'function' ? handlers.onTtsState : null;
         const handleMessage = (event) => {
             if (event.origin !== window.location.origin || event.source !== parent) return;
             const data = event.data || {};
@@ -81,6 +101,10 @@ export function createEbookHostBridge(options = {}) {
             }
             if (data.type === 'xb-ebook:draw-progress') {
                 onDrawProgress?.(data.payload || {});
+                return;
+            }
+            if (data.type === 'xb-ebook:tts-state') {
+                onTtsState?.(data.payload || {});
             }
         };
 

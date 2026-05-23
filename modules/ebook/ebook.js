@@ -3,6 +3,7 @@ import { isTrustedMessage, postToIframe } from '../../core/iframe-messaging.js';
 import { buildEbookFrameConfig, saveEbookAgentConfig } from './host/assistant-config.js';
 import { buildImportMaterial } from './host/import-materials.js';
 import { getDisplayPreviewForSlot } from '../draw/shared/gallery-cache.js';
+import { synthesizeAndPlay, stopCurrent as stopCurrentVoice } from '../fourth-wall/fw-voice-runtime.js';
 
 const SOURCE_HOST = 'xb-ebook-host';
 const SOURCE_APP = 'xb-ebook-app';
@@ -15,6 +16,8 @@ let pendingMessages = [];
 let messageHandlerInstalled = false;
 let pendingOpenSettings = false;
 let overlayResizeHandler = null;
+const pendingDrawRequests = new Map();
+let activeTtsPlayback = null;
 
 function getIframe() {
     return document.getElementById(IFRAME_ID);
@@ -177,12 +180,40 @@ function openEbookSettings() {
 }
 
 function closeEbook() {
+    pendingDrawRequests.forEach((controller) => controller.abort());
+    pendingDrawRequests.clear();
+    stopEbookTtsPlayback();
     const overlay = document.getElementById(OVERLAY_ID);
     if (overlay) overlay.remove();
     removeOverlayResizeHandler();
     frameReady = false;
     pendingMessages = [];
     pendingOpenSettings = false;
+}
+
+function postTtsState(playbackId = '', state = '', info = {}) {
+    if (!playbackId || !state) return;
+    postToFrame('xb-ebook:tts-state', {
+        playbackId,
+        state,
+        info: info || {},
+        message: info?.message || '',
+    });
+}
+
+function stopEbookTtsPlayback(playbackId = '') {
+    const active = activeTtsPlayback;
+    if (!active) {
+        try { stopCurrentVoice(); } catch {}
+        return false;
+    }
+    if (playbackId && active.playbackId !== playbackId) return false;
+    try {
+        active.stop?.();
+    } catch {}
+    postTtsState(active.playbackId, 'stopped');
+    activeTtsPlayback = null;
+    return true;
 }
 
 function replyHostResult(requestId = '', payload = {}) {
@@ -250,8 +281,82 @@ async function handleDrawStatus(payload = {}) {
     });
 }
 
+function getTtsStatus() {
+    const facade = window.xiaobaixTts;
+    const enabled = typeof facade?.isEnabled === 'function'
+        ? !!facade.isEnabled()
+        : !!facade;
+    return {
+        enabled,
+        ready: enabled && typeof facade?.synthesize === 'function',
+        playing: !!activeTtsPlayback,
+    };
+}
+
+async function handleTtsStatus(payload = {}) {
+    const requestId = String(payload.requestId || '');
+    replyHostResult(requestId, {
+        ok: true,
+        ...getTtsStatus(),
+    });
+}
+
+async function handleTtsPlay(payload = {}) {
+    const requestId = String(payload.requestId || '');
+    const playbackId = String(payload.playbackId || requestId || '').trim();
+    const text = String(payload.text || '').trim();
+    try {
+        if (!playbackId) throw new Error('playback_id_required');
+        if (!text) throw new Error('tts_text_required');
+        if (!getTtsStatus().ready) {
+            throw new Error('TTS 语音模块未启用');
+        }
+        stopEbookTtsPlayback();
+        activeTtsPlayback = {
+            playbackId,
+            stop: null,
+        };
+        const handle = synthesizeAndPlay(text, '', {
+            requestId: playbackId,
+            onState: (state, info = {}) => {
+                if (activeTtsPlayback?.playbackId !== playbackId && !['ended', 'error', 'stopped'].includes(state)) {
+                    return;
+                }
+                postTtsState(playbackId, state, info || {});
+                if (['ended', 'error', 'stopped'].includes(state) && activeTtsPlayback?.playbackId === playbackId) {
+                    activeTtsPlayback = null;
+                }
+            },
+        });
+        activeTtsPlayback.stop = handle?.stop;
+        replyHostResult(requestId, {
+            ok: true,
+            playbackId,
+            ...getTtsStatus(),
+        });
+    } catch (error) {
+        replyHostResult(requestId, {
+            ok: false,
+            error: error?.message || String(error || 'tts_failed'),
+            ...getTtsStatus(),
+        });
+    }
+}
+
+async function handleTtsStop(payload = {}) {
+    const requestId = String(payload.requestId || '');
+    const playbackId = String(payload.playbackId || '').trim();
+    stopEbookTtsPlayback(playbackId);
+    replyHostResult(requestId, {
+        ok: true,
+        ...getTtsStatus(),
+    });
+}
+
 async function handleDrawGenerate(payload = {}) {
     const requestId = String(payload.requestId || '');
+    const controller = new AbortController();
+    if (requestId) pendingDrawRequests.set(requestId, controller);
     try {
         const facade = window.xiaobaixDraw;
         if (typeof facade?.generateImagesFromText !== 'function') {
@@ -259,6 +364,7 @@ async function handleDrawGenerate(payload = {}) {
         }
         const result = await facade.generateImagesFromText({
             ...payload,
+            signal: controller.signal,
             onStateChange: (state, data) => {
                 postToFrame('xb-ebook:draw-progress', {
                     requestId,
@@ -276,7 +382,15 @@ async function handleDrawGenerate(payload = {}) {
             ok: false,
             error: error?.message || String(error || 'draw_failed'),
         });
+    } finally {
+        if (requestId) pendingDrawRequests.delete(requestId);
     }
+}
+
+function handleCancelRequest(payload = {}) {
+    const requestId = String(payload.requestId || '');
+    if (!requestId) return;
+    pendingDrawRequests.get(requestId)?.abort();
 }
 
 function previewToTransferableUrl(preview = {}) {
@@ -342,8 +456,20 @@ function handleFrameMessage(event) {
         case 'xb-ebook:draw-status':
             void handleDrawStatus(payload);
             break;
+        case 'xb-ebook:tts-status':
+            void handleTtsStatus(payload);
+            break;
+        case 'xb-ebook:tts-play':
+            void handleTtsPlay(payload);
+            break;
+        case 'xb-ebook:tts-stop':
+            void handleTtsStop(payload);
+            break;
         case 'xb-ebook:draw-generate':
             void handleDrawGenerate(payload);
+            break;
+        case 'xb-ebook:cancel-request':
+            handleCancelRequest(payload);
             break;
         case 'xb-ebook:draw-image':
             void handleDrawImage(payload);

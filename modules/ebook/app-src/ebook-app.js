@@ -255,6 +255,10 @@ export function createEbookApp(options = {}) {
         bookController.handleDrawProgress(payload);
     }
 
+    function handleTtsState(payload = {}) {
+        bookController.handleTtsState(payload);
+    }
+
     async function start() {
         injectEbookStyles(rootId);
         await bookController.initializeBook();
@@ -262,12 +266,14 @@ export function createEbookApp(options = {}) {
         render();
         hostBridge.postToHost('xb-ebook:frame-ready');
         void bookController.refreshDrawStatus({ renderAfter: true });
+        void bookController.refreshTtsStatus({ renderAfter: true });
     }
 
     return {
         handleDrawProgress,
         handleHostConfig,
         handleOpenSettings,
+        handleTtsState,
         start,
         state,
     };

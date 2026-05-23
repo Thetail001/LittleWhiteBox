@@ -294,10 +294,18 @@ test('Delegate prompt gives the reviewer a stable book-specific tool model', () 
 });
 
 test('Book action prompts rely on injected core story files', () => {
+    const startBookPrompt = buildActionPrompt('start-book');
+    const spinePrompt = buildActionPrompt('spine');
     const outlinePrompt = buildActionPrompt('outline');
     const nextChapterPrompt = buildActionPrompt('next-chapter');
+    const openingOptionsPrompt = buildActionPrompt('opening-options');
     const organizePrompt = buildActionPrompt('organize');
 
+    assert.match(startBookPrompt, /我想试试写一本书/);
+    assert.match(startBookPrompt, /不要立刻写正文/);
+    assert.match(startBookPrompt, /只问最核心的 3 到 5 个问题/);
+    assert.match(spinePrompt, /书脊/);
+    assert.match(spinePrompt, /不要直接写完整大纲/);
     assert.match(outlinePrompt, /\[作品核心设定\]/);
     assert.match(outlinePrompt, /不要硬写完整大纲/);
     assert.match(outlinePrompt, /不一次性生成全书细纲/);
@@ -306,6 +314,8 @@ test('Book action prompts rely on injected core story files', () => {
     assert.match(nextChapterPrompt, /\[作品核心设定\]/);
     assert.match(nextChapterPrompt, /不要直接硬写长正文/);
     assert.match(nextChapterPrompt, /只读取目标章节或相邻章节/);
+    assert.match(openingOptionsPrompt, /不要直接写入文件/);
+    assert.match(openingOptionsPrompt, /给 2 到 3 个不同开场方案/);
     assert.match(organizePrompt, /材料太少/);
     assert.doesNotMatch(outlinePrompt, /\[Book readiness\]|\[Core file digests\]|不要机械/);
 });
@@ -1010,6 +1020,7 @@ test('Initializing on an empty database keeps the shelf empty', async () => {
     const html = renderEbookShell({ state });
     assert.match(html, /xb-library-grid is-empty/);
     assert.match(html, /xb-library-empty/);
+    assert.match(html, /Agent 沉浸式创作与阅读平台/);
     assert.match(html, /class="xb-shelf-actions"/);
     assert.match(html, /id="xb-library-new-book"/);
     assert.match(html, /id="xb-library-delete-book"[^>]*disabled/);
@@ -1041,9 +1052,146 @@ test('Library shelf actions stay inside the shelf after the rendered books', () 
     const headerHtml = html.slice(html.indexOf('<header'), html.indexOf('<main'));
     assert.ok(bookIndex >= 0);
     assert.ok(shelfActionIndex > bookIndex);
+    assert.match(headerHtml, /class="xb-archive-subtitle">Agent 沉浸式创作与阅读平台/);
     assert.match(html, /id="xb-library-new-book"/);
     assert.match(html, /id="xb-library-delete-book"/);
+    assert.match(html, /xb-shelf-action-ring/);
+    assert.match(headerHtml, /id="xb-close"[^>]*aria-label="退出电纸书"/);
+    assert.match(headerHtml, /class="xb-exit-icon"/);
     assert.doesNotMatch(headerHtml, /xb-library-new-book|xb-library-delete-book|xb-delete-book-close/);
+});
+
+test('Studio renders mobile workspace switching and file drawer hooks', () => {
+    const state = {
+        book: { id: 'book-mobile-studio', title: '移动工作台' },
+        books: [],
+        files: [
+            { path: 'book/chapters/001.md', content: '# 第 1 章\n\n正文' },
+            { path: 'book/outline.md', content: '# 大纲' },
+        ],
+        selectedPath: 'book/chapters/001.md',
+        readerPath: 'book/chapters/001.md',
+        viewMode: 'studio',
+        editorContent: '# 第 1 章\n\n正文',
+        savedContent: '# 第 1 章\n\n正文',
+        messages: [],
+        toolTrace: [],
+        openToolTurnKeys: [],
+        openThoughtKeys: [],
+        historySummary: '',
+        isBusy: false,
+        drawStatus: { provider: 'novelai', enabled: true, ready: true },
+        colorTheme: 'dark',
+        status: '就绪',
+        toast: '',
+    };
+
+    const html = renderEbookShell({
+        state,
+        providerConfig: { provider: 'test', model: 'demo' },
+        dirty: false,
+    });
+
+    assert.match(html, /class="xb-mobile-studio-topbar"/);
+    assert.match(html, /class="xb-mobile-segment"/);
+    assert.match(html, /data-studio-layout="focus-editor"/);
+    assert.match(html, /data-studio-layout="focus-agent"/);
+    assert.match(html, /id="xb-mobile-file-picker"/);
+    assert.match(html, /class="xb-mobile-file-drawer-scrim"/);
+    assert.match(html, /data-mobile-file-drawer-close/);
+    assert.match(html, /id="xb-save"[^>]*>保存<\/button>/);
+    assert.match(html, /这里是写作助手记录。可以先导入资料，也可以直接说“我想试试写一本书”。/);
+    assert.match(html, /<summary>创作入口<\/summary>/);
+    assert.match(html, />聊新书<\/button>/);
+    assert.match(html, />建书脊<\/button>/);
+    assert.match(html, />搭大纲<\/button>/);
+    assert.match(html, />试写开场<\/button>/);
+    assert.doesNotMatch(html, /续写草稿|审一遍|按意见改稿/);
+    assert.doesNotMatch(html, /保存稿纸/);
+});
+
+test('Reader renders a mobile table-of-contents drawer', () => {
+    const state = {
+        book: { id: 'book-reader-toc', title: '目录测试' },
+        books: [],
+        files: [
+            { path: 'book/chapters/001.md', content: '# 第 1 章\n\n第一章正文' },
+            { path: 'book/chapters/002.md', content: '# 第 2 章\n\n第二章正文' },
+        ],
+        selectedPath: 'book/chapters/001.md',
+        readerPath: 'book/chapters/001.md',
+        viewMode: 'reader',
+        editorContent: '',
+        savedContent: '',
+        messages: [],
+        isBusy: false,
+        colorTheme: 'dark',
+        toast: '',
+    };
+
+    const html = renderEbookShell({ state });
+    const actionsHtml = html.match(/<div class="xb-reader-edge-actions">([\s\S]*?)<\/div>/)?.[1] || '';
+    assert.match(html, /id="xb-reader-index-toggle"/);
+    assert.match(html, /id="xb-reader-tts-toggle"/);
+    assert.match(html, /id="xb-reader-tts-toggle"[^>]*disabled/);
+    assert.match(html, /id="xb-reader-index-scrim"/);
+    assert.match(html, /class="xb-reader-toc-sheet"/);
+    assert.match(html, /id="xb-reader-index-close"/);
+    assert.doesNotMatch(actionsHtml, /id="xb-studio-link"/);
+    assert(
+        actionsHtml.indexOf('id="xb-entry-link"') < actionsHtml.indexOf('id="xb-reader-index-toggle"'),
+        'reader entry button should stay before the toc button',
+    );
+    assert(
+        actionsHtml.indexOf('id="xb-reader-index-toggle"') < actionsHtml.indexOf('id="xb-reader-tts-toggle"'),
+        'reader toc button should stay before the tts button',
+    );
+    assert(
+        actionsHtml.indexOf('id="xb-reader-tts-toggle"') < actionsHtml.indexOf('id="xb-theme-toggle"'),
+        'reader tts button should stay before the theme button',
+    );
+    assert.equal((html.match(/data-reader-path="book\/chapters\/001\.md"/g) || []).length, 2);
+
+    const readyHtml = renderEbookShell({
+        state: {
+            ...state,
+            readerTtsStatus: { enabled: true, ready: true },
+        },
+    });
+    assert.match(readyHtml, /id="xb-reader-tts-toggle"[^>]*>▶<\/button>/);
+    assert.doesNotMatch(readyHtml, /id="xb-reader-tts-toggle"[^>]*disabled/);
+
+    const activeHtml = renderEbookShell({
+        state: {
+            ...state,
+            readerTtsStatus: { enabled: true, ready: true },
+            readerTtsPlayback: {
+                status: 'playing',
+                playbackId: 'reader-playback-1',
+                chapterPath: 'book/chapters/001.md',
+                error: '',
+            },
+        },
+    });
+    assert.match(activeHtml, /class="[^"]*xb-reader-tts-toggle[^"]*is-active[^"]*" id="xb-reader-tts-toggle"/);
+    assert.match(activeHtml, /id="xb-reader-tts-toggle"[^>]*>■<\/button>/);
+});
+
+test('Book entry uses concise studio and reader descriptions', () => {
+    const html = renderEbookShell({
+        state: {
+            book: { id: 'book-entry-copy', title: '入口文案测试' },
+            books: [],
+            files: [],
+            viewMode: 'book-entry',
+            colorTheme: 'dark',
+            toast: '',
+        },
+    });
+
+    assert.match(html, /agent写作平台/);
+    assert.match(html, /沉浸式阅读器/);
+    assert.doesNotMatch(html, /这里不放 AI/);
 });
 
 test('Book controller initialization does not request draw status before frame ready', async () => {
@@ -1105,6 +1253,14 @@ test('Studio draw button is only active for drawable chapters', () => {
     });
     assert.match(enabledHtml, /id="xb-draw-chapter"[^>]*>配图<\/button>/);
     assert.doesNotMatch(enabledHtml, /id="xb-draw-chapter"[^>]*disabled/);
+
+    const drawingHtml = renderEbookShell({
+        state: { ...baseState, isDrawingChapter: true, editorContent: '' },
+        providerConfig: { provider: 'test', model: 'demo' },
+        dirty: false,
+    });
+    assert.match(drawingHtml, /id="xb-draw-chapter"[^>]*>停止<\/button>/);
+    assert.doesNotMatch(drawingHtml, /id="xb-draw-chapter"[^>]*disabled/);
 
     const nonChapterHtml = renderEbookShell({
         state: { ...baseState, selectedPath: 'book/outline.md' },
@@ -1185,6 +1341,75 @@ test('Book controller draws current chapter and inserts ebook image markers by a
     assert.equal(drawPayload.bookId, book.id);
     assert.equal(drawPayload.chapterPath, 'book/chapters/001.md');
     assert.equal(state.drawProgressText, '占位符已插入，请去阅读器查看');
+});
+
+test('Book drawing can be cancelled by clicking the chapter draw button again', async () => {
+    await resetDb();
+    const book = await createBook('取消配图测试');
+    const originalContent = '她推开门。';
+    await upsertBookFile(book.id, 'book/chapters/001.md', originalContent);
+    const state = {
+        book,
+        books: [book],
+        files: await listBookFiles(book.id),
+        selectedPath: 'book/chapters/001.md',
+        readerPath: 'book/chapters/001.md',
+        viewMode: 'studio',
+        editorContent: originalContent,
+        savedContent: originalContent,
+        isBusy: false,
+        isDrawingChapter: false,
+        drawStatus: { provider: 'novelai', enabled: true, ready: true },
+        drawProgressText: '',
+        toast: '',
+    };
+    const toasts = [];
+    let drawSignal = null;
+    let startDraw = null;
+    const drawStarted = new Promise((resolve) => {
+        startDraw = resolve;
+    });
+    const controller = createBookController({
+        state,
+        render() {},
+        async requestHost(type, _payload, options = {}) {
+            if (type === 'xb-ebook:draw-status') {
+                return { ok: true, provider: 'novelai', enabled: true, ready: true };
+            }
+            if (type === 'xb-ebook:draw-generate') {
+                drawSignal = options.signal;
+                startDraw();
+                return new Promise((resolve, reject) => {
+                    options.signal?.addEventListener('abort', () => reject(new Error('已取消')), { once: true });
+                    setTimeout(() => resolve({
+                        ok: true,
+                        success: 1,
+                        total: 1,
+                        images: [{ slotId: 'slot-should-not-write', anchor: '她推开门', success: true }],
+                    }), 1000).unref?.();
+                });
+            }
+            throw new Error('unexpected_request');
+        },
+        showToast(message) {
+            toasts.push(message);
+        },
+    });
+
+    const runningDraw = controller.drawCurrentChapter();
+    await drawStarted;
+    assert.equal(state.isDrawingChapter, true);
+    assert.equal(drawSignal?.aborted, false);
+
+    await controller.drawCurrentChapter();
+    assert.equal(drawSignal.aborted, true);
+    assert.equal(state.drawProgressText, '正在停止配图...');
+
+    await runningDraw;
+    assert.equal(state.isDrawingChapter, false);
+    assert.equal(toasts.at(-1), '配图已取消');
+    const updated = await getBookFile(book.id, 'book/chapters/001.md');
+    assert.equal(updated.content, originalContent);
 });
 
 test('Book drawing saves the original chapter if the user switches files while generation runs', async () => {
@@ -1318,6 +1543,66 @@ test('Reader renders ebook image markers as loadable image slots', () => {
     assert.match(html, /data-ebook-image-slot="slot-reader"/);
     assert.match(html, /配图加载中/);
     assert.doesNotMatch(html, /\[ebook-image:slot-reader\]/);
+});
+
+test('Reader TTS plays the active chapter text and stops when switching chapters', async () => {
+    await resetDb();
+    const book = await createBook('朗读测试');
+    await upsertBookFile(
+        book.id,
+        'book/chapters/001.md',
+        '# 第 1 章\n\n第一段。\n\n[ebook-image:slot-voice]\n\n第二段。',
+    );
+    await upsertBookFile(book.id, 'book/chapters/002.md', '下一章。');
+    const state = {
+        book,
+        books: [book],
+        files: await listBookFiles(book.id),
+        selectedPath: 'book/chapters/001.md',
+        readerPath: 'book/chapters/001.md',
+        viewMode: 'reader',
+        editorContent: '',
+        savedContent: '',
+        isBusy: false,
+        readerTtsStatus: { enabled: true, ready: true },
+        readerTtsPlayback: { status: 'idle', playbackId: '', chapterPath: '', error: '' },
+        toast: '',
+    };
+    const requests = [];
+    const controller = createBookController({
+        state,
+        render() {},
+        async requestHost(type, payload = {}) {
+            requests.push({ type, payload });
+            if (type === 'xb-ebook:tts-status') return { ok: true, enabled: true, ready: true };
+            if (type === 'xb-ebook:tts-play') return { ok: true, playbackId: payload.playbackId };
+            if (type === 'xb-ebook:tts-stop') return { ok: true };
+            throw new Error(`unexpected_request:${type}`);
+        },
+        showToast() {},
+    });
+
+    await controller.toggleReaderTts();
+
+    const playRequest = requests.find((item) => item.type === 'xb-ebook:tts-play');
+    assert.ok(playRequest);
+    assert.equal(playRequest.payload.chapterPath, 'book/chapters/001.md');
+    assert.match(playRequest.payload.text, /第一段。/);
+    assert.match(playRequest.payload.text, /第二段。/);
+    assert.doesNotMatch(playRequest.payload.text, /\[ebook-image:/);
+    assert.doesNotMatch(playRequest.payload.text, /^#/m);
+    assert.equal(state.readerTtsPlayback.status, 'loading');
+
+    controller.handleTtsState({ playbackId: playRequest.payload.playbackId, state: 'playing' });
+    assert.equal(state.readerTtsPlayback.status, 'playing');
+
+    await controller.selectReaderChapter('book/chapters/002.md');
+
+    const stopRequest = requests.find((item) => item.type === 'xb-ebook:tts-stop');
+    assert.ok(stopRequest);
+    assert.equal(stopRequest.payload.playbackId, playRequest.payload.playbackId);
+    assert.equal(state.readerPath, 'book/chapters/002.md');
+    assert.equal(state.readerTtsPlayback.status, 'idle');
 });
 
 test('Deleting a book removes persisted conversation rows and stale selection metadata', async () => {
@@ -2057,6 +2342,20 @@ test('Book renderer uses a compact agent toolbar with shared config actions', as
     assert.match(html, /id="xb-agent-clear"/);
     assert.match(html, /id="xb-agent-open-settings"/);
     assert.match(html, /id="xb-agent-close"/);
+    assert.match(html, /class="xb-agent-head-main"/);
+    assert.match(html, /class="xb-agent-global-actions"/);
+    assert.match(html, /data-entry-link title="返回书本入口"/);
+    assert.match(html, /id="xb-agent-close"[^>]*aria-label="退出电纸书"/);
+    assert.match(html, /class="xb-exit-icon"/);
+    const globalActionsHtml = html.match(/<div class="xb-agent-global-actions">([\s\S]*?)<\/div>/)?.[1] || '';
+    assert(
+        globalActionsHtml.indexOf('id="xb-theme-toggle"') < globalActionsHtml.indexOf('data-entry-link'),
+        'entry button should sit after the theme toggle in the agent global actions',
+    );
+    assert(
+        globalActionsHtml.indexOf('data-entry-link') < globalActionsHtml.indexOf('id="xb-agent-close"'),
+        'entry button should sit before exit in the agent global actions',
+    );
     assert.match(html, /\/188k/);
     assert.doesNotMatch(html, /模型：/);
     assert.doesNotMatch(html, /创作对话：约/);

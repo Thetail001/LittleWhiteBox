@@ -1364,6 +1364,7 @@ export async function initTts() {
     window.registerModuleCleanup?.('tts', cleanupTts);
 
     window.xiaobaixTts = {
+        isEnabled: isModuleEnabled,
         openSettings,
         closeSettings,
         player,

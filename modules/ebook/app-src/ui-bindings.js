@@ -93,14 +93,13 @@ function isEditableAssistantTextMessage(message = {}) {
 }
 
 function canDrawSelectedChapter(state = {}) {
-    return !!(
+    return !!(state.isDrawingChapter || (
         !state.isBusy
-        && !state.isDrawingChapter
         && /^book\/chapters\/.+\.md$/.test(String(state.selectedPath || ''))
         && state.drawStatus?.enabled
         && state.drawStatus?.ready
         && String(state.editorContent || '').replace(/\[ebook-image:[a-z0-9\-_]+\]/gi, '').trim()
-    );
+    ));
 }
 
 function hydrateReaderImages(root, bookController) {
@@ -171,10 +170,13 @@ export function bindEbookEvents(options = {}) {
             void bookController.removeBook(button.dataset.deleteBookId || '');
         });
     });
-    root.querySelector('#xb-entry-link')?.addEventListener('click', () => void bookController.showBookEntry());
+    root.querySelectorAll('#xb-entry-link, [data-entry-link]').forEach((button) => {
+        button.addEventListener('click', () => void bookController.showBookEntry());
+    });
     root.querySelector('#xb-studio-link')?.addEventListener('click', () => void bookController.showStudio());
     root.querySelector('#xb-studio-empty-link')?.addEventListener('click', () => void bookController.showStudio());
     root.querySelector('#xb-reader-link')?.addEventListener('click', () => void bookController.showReader());
+    root.querySelector('#xb-reader-tts-toggle')?.addEventListener('click', () => void bookController.toggleReaderTts());
     root.querySelector('#xb-draw-chapter')?.addEventListener('click', () => void bookController.drawCurrentChapter());
     root.querySelector('#xb-new-book')?.addEventListener('click', () => void bookController.createNewBook());
     root.querySelector('#xb-new-file')?.addEventListener('click', () => void bookController.createNewFile());
@@ -183,14 +185,17 @@ export function bindEbookEvents(options = {}) {
     });
     root.querySelector('#xb-save')?.addEventListener('click', () => void bookController.saveCurrentFile());
     root.querySelector('#xb-agent-close')?.addEventListener('click', () => postToHost('xb-ebook:close'));
-    root.querySelector('#xb-theme-toggle')?.addEventListener('click', () => {
-        state.colorTheme = state.colorTheme === 'light' ? 'dark' : 'light';
-        try {
-            globalThis.localStorage?.setItem(EBOOK_THEME_STORAGE_KEY, state.colorTheme);
-        } catch {
-            // Theme choice is purely cosmetic; ignore storage failures.
-        }
-        applyColorTheme(root, state);
+    root.querySelectorAll('#xb-theme-toggle, [data-theme-toggle]').forEach((button) => {
+        button.addEventListener('click', () => {
+            state.colorTheme = state.colorTheme === 'light' ? 'dark' : 'light';
+            try {
+                globalThis.localStorage?.setItem(EBOOK_THEME_STORAGE_KEY, state.colorTheme);
+            } catch {
+                // Theme choice is purely cosmetic; ignore storage failures.
+            }
+            applyColorTheme(root, state);
+            render();
+        });
     });
     root.querySelector('#xb-agent-open-settings')?.addEventListener('click', () => {
         state.isSettingsOpen = true;
@@ -244,10 +249,33 @@ export function bindEbookEvents(options = {}) {
         });
     });
     root.querySelectorAll('[data-reader-path]').forEach((button) => {
-        button.addEventListener('click', () => void bookController.selectReaderChapter(button.dataset.readerPath || ''));
+        button.addEventListener('click', () => {
+            root.querySelector('.xb-reader-screen')?.classList.remove('is-reader-index-open');
+            void bookController.selectReaderChapter(button.dataset.readerPath || '');
+        });
     });
     root.querySelectorAll('.xb-file').forEach((button) => {
-        button.addEventListener('click', () => void bookController.selectFile(button.dataset.path || ''));
+        button.addEventListener('click', () => {
+            root.querySelector('.xb-studio-shell')?.classList.remove('is-file-drawer-open');
+            void bookController.selectFile(button.dataset.path || '');
+        });
+    });
+    root.querySelector('#xb-mobile-file-picker')?.addEventListener('click', () => {
+        root.querySelector('.xb-studio-shell')?.classList.add('is-file-drawer-open');
+    });
+    root.querySelectorAll('[data-mobile-file-drawer-close]').forEach((button) => {
+        button.addEventListener('click', () => {
+            root.querySelector('.xb-studio-shell')?.classList.remove('is-file-drawer-open');
+        });
+    });
+    root.querySelector('#xb-reader-index-toggle')?.addEventListener('click', () => {
+        root.querySelector('.xb-reader-screen')?.classList.add('is-reader-index-open');
+    });
+    root.querySelector('#xb-reader-index-close')?.addEventListener('click', () => {
+        root.querySelector('.xb-reader-screen')?.classList.remove('is-reader-index-open');
+    });
+    root.querySelector('#xb-reader-index-scrim')?.addEventListener('click', () => {
+        root.querySelector('.xb-reader-screen')?.classList.remove('is-reader-index-open');
     });
     root.querySelectorAll('[data-import]').forEach((button) => {
         button.addEventListener('click', () => void bookController.importMaterial(button.dataset.import || ''));

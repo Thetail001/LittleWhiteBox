@@ -12,6 +12,7 @@ hostBridge.start({
     onConfig: app.handleHostConfig,
     onOpenSettings: app.handleOpenSettings,
     onDrawProgress: app.handleDrawProgress,
+    onTtsState: app.handleTtsState,
 });
 
 void app.start();
