@@ -263,6 +263,29 @@ test('formatToolResultDisplay summarizes web search results', () => {
     assert.match(display.details, /Traditional machiya/);
 });
 
+test('formatToolResultDisplay shows apply_patch recovery guidance on failure', () => {
+    const display = formatToolResultDisplay({
+        toolName: TOOL_NAMES.APPLY_PATCH,
+        content: JSON.stringify({
+            ok: false,
+            summary: 'Patch 校验失败，未修改任何文件。',
+            nextStep: '先 Read 目标文件当前内容，再用当前文件里真实存在的原文行重写 patchText；不要凭记忆或旧内容匹配。',
+            error: 'apply_patch_apply_error:hunk 1 old block did not match the current file',
+            recovery: {
+                rules: [
+                    '复制 Read 返回的当前原文作为空格上下文行和 `-` 删除行。',
+                ],
+            },
+        }),
+    });
+
+    assert.match(display.summary, /Patch 校验失败/);
+    assert.match(display.summary, /下一步：先 Read 目标文件当前内容/);
+    assert.match(display.details, /old block did not match/);
+    assert.match(display.details, /复制 Read 返回/);
+    assert.doesNotMatch(display.summary, /补丁已应用/);
+});
+
 test('formatToolResultDisplay summarizes streamed read previews without fake total lines', () => {
     const display = formatToolResultDisplay({
         toolName: TOOL_NAMES.READ,

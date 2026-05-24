@@ -873,6 +873,13 @@ export function injectAssistantStyles(rootId) {
         .xb-assistant-empty h2 { margin: 0 0 10px; font-size: 24px; }
         .xb-assistant-empty p { margin: 0; color: #4b5a70; line-height: 1.7; }
         .xb-assistant-empty p + p { margin-top: 8px; }
+        .xb-assistant-history-gate {
+            align-self: center;
+            color: rgba(75, 90, 112, 0.72);
+            font-size: 12px;
+            line-height: 1;
+            padding: 4px 0;
+        }
         .xb-assistant-bubble {
             width: calc(100% - 20px);
             max-width: calc(100% - 20px);

@@ -31,6 +31,7 @@ export function createEbookState() {
         openThoughtKeys: [],
         editingMessageIndex: -1,
         messageActionFeedback: {},
+        uiMessageWindowLimit: 5,
         historySummary: '',
         archivedTurnCount: 0,
         isBusy: false,

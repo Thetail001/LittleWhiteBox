@@ -1,4 +1,5 @@
 import { buildMarkdownFragment, enhancePathLinks } from '../../../agent-core/ui/message-markdown.js';
+import { expandMessageWindow, getMessageWindow } from '../../../agent-core/ui/message-windowing.js';
 
 export function createChatUi(deps) {
     const {
@@ -626,6 +627,20 @@ export function createChatUi(deps) {
         return units;
     }
 
+    function createHistoryGateRenderUnit(hiddenBefore = 0) {
+        const signature = `history-gate:${hiddenBefore}`;
+        return {
+            signature,
+            build: () => {
+                const gate = document.createElement('div');
+                gate.className = 'xb-assistant-history-gate';
+                gate.dataset.renderSignature = signature;
+                gate.textContent = `较早记录 ${hiddenBefore} 条`;
+                return gate;
+            },
+        };
+    }
+
     function applyRenderUnits(container, previousUnits, unitSpecs) {
         const nextUnits = [];
 
@@ -673,7 +688,14 @@ export function createChatUi(deps) {
             return;
         }
 
-        const unitSpecs = collectRenderUnits();
+        const allUnitSpecs = collectRenderUnits();
+        const messageWindow = getMessageWindow(state, allUnitSpecs.length);
+        const unitSpecs = messageWindow.hiddenBefore
+            ? [
+                createHistoryGateRenderUnit(messageWindow.hiddenBefore),
+                ...allUnitSpecs.slice(messageWindow.startIndex),
+            ]
+            : allUnitSpecs;
         const previousUnits = renderCache.kind === 'messages' ? renderCache.units : [];
         const canReuseAll = previousUnits.length === unitSpecs.length
             && unitSpecs.every((unit, index) => previousUnits[index]?.signature === unit.signature);
@@ -693,6 +715,19 @@ export function createChatUi(deps) {
         } else {
             container.scrollTop = previousScrollTop;
         }
+    }
+
+    function revealOlderMessages(container) {
+        if (!container) return false;
+        if (container.scrollTop > 64) return false;
+        const allUnitSpecs = collectRenderUnits();
+        if (!expandMessageWindow(state, allUnitSpecs.length)) return false;
+
+        const previousScrollHeight = container.scrollHeight;
+        const previousScrollTop = container.scrollTop;
+        renderMessages(container);
+        container.scrollTop = Math.max(0, container.scrollHeight - previousScrollHeight + previousScrollTop);
+        return true;
     }
 
     function renderApprovalPanel(container) {
@@ -770,6 +805,7 @@ export function createChatUi(deps) {
         renderApprovalPanel,
         scrollChatToBottom,
         scrollChatToTop,
+        revealOlderMessages,
         updateChatScrollButtonsVisibility,
         handleAssistantChatScroll,
         copyText,

@@ -78,6 +78,7 @@ test('DelegateRun completes from a direct model answer', async () => {
     assert.equal(seenTask.messages[0].role, 'system');
     assert.match(seenTask.messages[0].content, /子任务执行规则/);
     assert.match(seenTask.messages[1].content, /\[Task\]/);
+    assert.equal(typeof seenTask.onStreamProgress, 'function');
     assert.equal(seenTask.tools.some((tool) => tool.function?.name === TOOL_NAMES.DELEGATE_RUN), false);
 });
 

@@ -802,6 +802,21 @@ export function formatToolResultDisplay(message) {
     const planToolResult = formatPlanToolResult(message, parsed);
     if (planToolResult) return planToolResult;
 
+    if (message.toolName === TOOL_NAMES.APPLY_PATCH && parsed.ok === false) {
+        const recovery = parsed.recovery && typeof parsed.recovery === 'object' ? parsed.recovery : {};
+        const rules = Array.isArray(recovery.rules) ? recovery.rules : [];
+        return {
+            summary: [
+                parsed.summary || 'Patch 失败，未修改任何文件。',
+                parsed.nextStep ? `下一步：${parsed.nextStep}` : '',
+            ].filter(Boolean).join('\n'),
+            details: [
+                parsed.error ? `错误：${parsed.error}` : '',
+                ...rules.map((rule) => `- ${rule}`),
+            ].filter(Boolean).join('\n'),
+        };
+    }
+
     if (parsed.ok === false && parsed.error) {
         const lines = [
             `工具返回错误：${parsed.error}`,

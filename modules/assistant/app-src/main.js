@@ -6,6 +6,7 @@ import {
 import { createAssistantRuntime } from './runtime.js';
 import { buildCurrentPlansContextText } from '../../agent-core/current-plans.js';
 import { mergeThoughtBlocks } from '../../agent-core/runtime/protocol.js';
+import { resetMessageWindow } from '../../agent-core/ui/message-windowing.js';
 import {
     createAgentAdapter,
 } from '../../agent-core/provider-config.js';
@@ -89,6 +90,7 @@ const state = {
     progressLabel: '',
     activeRun: null,
     autoScroll: true,
+    uiMessageWindowLimit: 5,
     toast: '',
     localImportProgress: {
         active: false,
@@ -1137,6 +1139,7 @@ const {
     renderApprovalPanel,
     scrollChatToBottom,
     scrollChatToTop,
+    revealOlderMessages,
     updateChatScrollButtonsVisibility,
     handleAssistantChatScroll,
     copyText,
@@ -1447,6 +1450,7 @@ async function executeAssistantRun(run) {
     state.currentRound = 0;
     state.progressLabel = '生成中';
     state.autoScroll = true;
+    resetMessageWindow(state);
     render();
 
     try {
@@ -1766,6 +1770,11 @@ function bindEvents(root) {
 
     root.querySelector('#xb-assistant-chat').addEventListener('scroll', (event) => {
         const container = event.currentTarget;
+        if (revealOlderMessages(container)) {
+            state.autoScroll = false;
+            updateChatScrollButtonsVisibility(root);
+            return;
+        }
         const threshold = 48;
         state.autoScroll = container.scrollHeight - container.scrollTop - container.clientHeight <= threshold;
         handleAssistantChatScroll(root);
@@ -1915,6 +1924,7 @@ function bindEvents(root) {
         state.draftAttachments = [];
         state.historySummary = '';
         state.archivedTurnCount = 0;
+        resetMessageWindow(state);
         state.pendingApproval = null;
         state.editingMessageIndex = -1;
         resetCompactionState();
@@ -2020,6 +2030,7 @@ function bindEvents(root) {
         if (!value && !attachments.length) return;
 
         state.isPreparingRun = true;
+        resetMessageWindow(state);
         pushMessage({ role: 'user', content: value, attachments });
         input.value = '';
         state.draftAttachments = [];

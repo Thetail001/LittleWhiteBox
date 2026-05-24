@@ -1,6 +1,8 @@
 import { readSseEventsFromResponse } from './sse.js';
 
 export const HOST_CHAT_COMPLETIONS_SOURCE_OPENAI = 'openai';
+export const HOST_CHAT_COMPLETIONS_SOURCE_CLAUDE = 'claude';
+export const HOST_CHAT_COMPLETIONS_SOURCE_MAKERSUITE = 'makersuite';
 export const HOST_CHAT_COMPLETIONS_STATUS_ENDPOINT = '/api/backends/chat-completions/status';
 export const HOST_CHAT_COMPLETIONS_GENERATE_ENDPOINT = '/api/backends/chat-completions/generate';
 
@@ -42,11 +44,11 @@ function normalizeHostFailureMessage(rawText = '', fallbackMessage = '') {
     return String(rawText || fallbackMessage || '').trim();
 }
 
-function buildOpenAICompatibleHostFields(config = {}) {
+function buildHostChatCompletionsFields(config = {}, source = HOST_CHAT_COMPLETIONS_SOURCE_OPENAI) {
     const baseUrl = normalizeBaseUrl(config.baseUrl);
     const apiKey = String(config.apiKey || '').trim();
     const fields = {
-        chat_completion_source: HOST_CHAT_COMPLETIONS_SOURCE_OPENAI,
+        chat_completion_source: source || HOST_CHAT_COMPLETIONS_SOURCE_OPENAI,
     };
 
     if (baseUrl) {
@@ -59,13 +61,32 @@ function buildOpenAICompatibleHostFields(config = {}) {
     return fields;
 }
 
-export function buildHostOpenAICompatibleStatusPayload(config = {}) {
-    return buildOpenAICompatibleHostFields(config);
+function cleanPayload(body = {}) {
+    Object.keys(body).forEach((key) => {
+        if (body[key] === undefined || body[key] === '') {
+            delete body[key];
+        }
+    });
+    return body;
 }
 
-export function buildHostOpenAICompatibleGeneratePayload(config = {}, task = {}, messages = [], stream = false) {
-    const body = {
-        ...buildOpenAICompatibleHostFields(config),
+export function buildHostChatCompletionsStatusPayload(config = {}, source = HOST_CHAT_COMPLETIONS_SOURCE_OPENAI) {
+    return buildHostChatCompletionsFields(config, source);
+}
+
+export function buildHostOpenAICompatibleStatusPayload(config = {}) {
+    return buildHostChatCompletionsStatusPayload(config, HOST_CHAT_COMPLETIONS_SOURCE_OPENAI);
+}
+
+export function buildHostChatCompletionsGeneratePayload(
+    config = {},
+    task = {},
+    messages = [],
+    stream = false,
+    source = HOST_CHAT_COMPLETIONS_SOURCE_OPENAI,
+) {
+    return cleanPayload({
+        ...buildHostChatCompletionsFields(config, source),
         stream: !!stream,
         messages,
         model: config.model,
@@ -73,26 +94,53 @@ export function buildHostOpenAICompatibleGeneratePayload(config = {}, task = {},
         temperature: task.reasoning?.enabled ? undefined : task.temperature,
         tools: Array.isArray(task.tools) && task.tools.length ? task.tools : undefined,
         tool_choice: Array.isArray(task.tools) && task.tools.length ? (task.toolChoice || 'auto') : undefined,
-    };
-
-    if (task.reasoning?.enabled) {
-        body.reasoning_effort = task.reasoning.effort;
-    }
-
-    Object.keys(body).forEach((key) => {
-        if (body[key] === undefined || body[key] === '') {
-            delete body[key];
-        }
+        use_sysprompt: source === HOST_CHAT_COMPLETIONS_SOURCE_OPENAI ? undefined : true,
+        reasoning_effort: task.reasoning?.enabled ? task.reasoning.effort : undefined,
+        include_reasoning: source === HOST_CHAT_COMPLETIONS_SOURCE_OPENAI
+            ? undefined
+            : (task.reasoning?.enabled ? true : undefined),
     });
-
-    return body;
 }
 
-export async function fetchHostOpenAICompatibleModels(config = {}, options = {}) {
+export function buildHostOpenAICompatibleGeneratePayload(config = {}, task = {}, messages = [], stream = false) {
+    return buildHostChatCompletionsGeneratePayload(
+        config,
+        task,
+        messages,
+        stream,
+        HOST_CHAT_COMPLETIONS_SOURCE_OPENAI,
+    );
+}
+
+export function buildHostClaudeGeneratePayload(config = {}, task = {}, messages = [], stream = false) {
+    return buildHostChatCompletionsGeneratePayload(
+        config,
+        task,
+        messages,
+        stream,
+        HOST_CHAT_COMPLETIONS_SOURCE_CLAUDE,
+    );
+}
+
+export function buildHostGoogleGeneratePayload(config = {}, task = {}, messages = [], stream = false) {
+    return buildHostChatCompletionsGeneratePayload(
+        config,
+        task,
+        messages,
+        stream,
+        HOST_CHAT_COMPLETIONS_SOURCE_MAKERSUITE,
+    );
+}
+
+export async function fetchHostChatCompletionsModels(
+    config = {},
+    source = HOST_CHAT_COMPLETIONS_SOURCE_OPENAI,
+    options = {},
+) {
     const response = await fetch(HOST_CHAT_COMPLETIONS_STATUS_ENDPOINT, {
         method: 'POST',
         headers: buildHeaders(),
-        body: JSON.stringify(buildHostOpenAICompatibleStatusPayload(config)),
+        body: JSON.stringify(buildHostChatCompletionsStatusPayload(config, source)),
         signal: options.signal,
     });
     const rawText = await response.text();
@@ -115,6 +163,10 @@ export async function fetchHostOpenAICompatibleModels(config = {}, options = {})
         ? data.data.map((item) => String(item?.id || item?.name || '').trim()).filter(Boolean)
         : [];
     return [...new Set(models)];
+}
+
+export async function fetchHostOpenAICompatibleModels(config = {}, options = {}) {
+    return await fetchHostChatCompletionsModels(config, HOST_CHAT_COMPLETIONS_SOURCE_OPENAI, options);
 }
 
 export async function createHostChatCompletion(payload = {}, options = {}) {

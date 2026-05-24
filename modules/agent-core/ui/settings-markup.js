@@ -83,6 +83,8 @@ export function buildAgentSettingsPanelMarkup(options = {}) {
                         <option value="openai-responses">OpenAI Responses</option>
                         <option value="openai-compatible">OpenAI-compatible</option>
                         <option value="sillytavern-openai-compatible">SillyTavern OpenAI-compatible</option>
+                        <option value="sillytavern-claude">SillyTavern Claude</option>
+                        <option value="sillytavern-google">SillyTavern Google AI</option>
                         <option value="anthropic">Anthropic</option>
                         <option value="google">Google AI</option>
                     </select>
@@ -150,6 +152,8 @@ export function buildAgentSettingsPanelMarkup(options = {}) {
                     <option value="openai-responses">OpenAI Responses</option>
                     <option value="openai-compatible">OpenAI-compatible</option>
                     <option value="sillytavern-openai-compatible">SillyTavern OpenAI-compatible</option>
+                    <option value="sillytavern-claude">SillyTavern Claude</option>
+                    <option value="sillytavern-google">SillyTavern Google AI</option>
                     <option value="anthropic">Anthropic</option>
                     <option value="google">Google AI</option>
                 </select>

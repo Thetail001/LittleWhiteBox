@@ -39,6 +39,18 @@ export const DEFAULT_MODEL_CONFIGS = {
         temperature: 0.2,
         toolMode: 'native',
     },
+    'sillytavern-claude': {
+        baseUrl: '',
+        model: 'claude-sonnet-4-0',
+        apiKey: '',
+        temperature: 0.2,
+    },
+    'sillytavern-google': {
+        baseUrl: '',
+        model: 'gemini-2.5-pro',
+        apiKey: '',
+        temperature: 0.2,
+    },
     anthropic: {
         baseUrl: 'https://api.anthropic.com/v1',
         model: 'claude-sonnet-4-0',

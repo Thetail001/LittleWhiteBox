@@ -160,7 +160,7 @@ export class AnthropicAdapter {
         this.client = new Anthropic({
             apiKey: config.apiKey,
             baseURL: String(config.baseUrl || 'https://api.anthropic.com/v1').replace(/\/$/, ''),
-            timeout: Number(config.timeoutMs) || 180000,
+            timeout: Number(config.timeoutMs) || 15 * 60 * 1000,
             maxRetries: 0,
             dangerouslyAllowBrowser: true,
         });

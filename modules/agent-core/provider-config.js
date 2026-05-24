@@ -2,11 +2,13 @@ import { AnthropicAdapter } from './adapters/anthropic.js';
 import { GoogleAdapter } from './adapters/google.js';
 import { OpenAICompatibleAdapter } from './adapters/openai-compatible.js';
 import { OpenAIResponsesAdapter } from './adapters/openai-responses.js';
+import { SillyTavernClaudeAdapter } from './adapters/sillytavern-claude.js';
+import { SillyTavernGoogleAdapter } from './adapters/sillytavern-google.js';
 import { SillyTavernOpenAICompatibleAdapter } from './adapters/sillytavern-openai-compatible.js';
 import { DEFAULT_PRESET_NAME, buildDefaultPreset, cloneDefaultModelConfigs, normalizeAgentConfig, normalizePresetName } from './config.js';
 import { normalizeTavilyApiKey, normalizeTavilyBaseUrl } from './tavily-search.js';
 
-export const AGENT_REQUEST_TIMEOUT_MS = 180000;
+export const AGENT_REQUEST_TIMEOUT_MS = 15 * 60 * 1000;
 
 export const TOOL_MODE_OPTIONS = Object.freeze([
     { value: 'native', label: '原生 Tool Calling' },
@@ -23,9 +25,21 @@ export const PROVIDER_OPTIONS = Object.freeze([
     { value: 'openai-responses', label: 'OpenAI Responses' },
     { value: 'openai-compatible', label: 'OpenAI-Compatible' },
     { value: 'sillytavern-openai-compatible', label: 'SillyTavern OpenAI-Compatible' },
+    { value: 'sillytavern-claude', label: 'SillyTavern Claude' },
+    { value: 'sillytavern-google', label: 'SillyTavern Google AI' },
     { value: 'anthropic', label: 'Anthropic' },
     { value: 'google', label: 'Google AI' },
 ]);
+
+function isAnthropicProvider(provider = '') {
+    return provider === 'anthropic' || provider === 'sillytavern-claude';
+}
+
+function isSillyTavernProvider(provider = '') {
+    return provider === 'sillytavern-openai-compatible'
+        || provider === 'sillytavern-claude'
+        || provider === 'sillytavern-google';
+}
 
 export function normalizeReasoningEffort(value = '') {
     return REASONING_EFFORT_OPTIONS.some((item) => item.value === value) ? value : 'medium';
@@ -63,7 +77,7 @@ export function resolveActiveProviderConfig(configValue = {}, options = {}) {
             tavilyApiKey: normalizeTavilyApiKey(config.tavilyApiKey),
             tavilyBaseUrl: normalizeTavilyBaseUrl(config.tavilyBaseUrl),
             temperature: Number(providerConfig.temperature ?? 0.2),
-            maxTokens: provider === 'anthropic' ? 32000 : null,
+            maxTokens: isAnthropicProvider(provider) ? 32000 : null,
             timeoutMs: Number(options.timeoutMs) || AGENT_REQUEST_TIMEOUT_MS,
             toolMode: providerConfig.toolMode || 'native',
             reasoningEnabled: Boolean(providerConfig.reasoningEnabled),
@@ -92,7 +106,7 @@ export function resolveActiveProviderConfig(configValue = {}, options = {}) {
         tavilyApiKey: normalizeTavilyApiKey(config.tavilyApiKey),
         tavilyBaseUrl: normalizeTavilyBaseUrl(config.tavilyBaseUrl),
         temperature: Number(providerConfig.temperature ?? 0.2),
-        maxTokens: provider === 'anthropic' ? 32000 : null,
+        maxTokens: isAnthropicProvider(provider) ? 32000 : null,
         timeoutMs: Number(options.timeoutMs) || AGENT_REQUEST_TIMEOUT_MS,
         toolMode: providerConfig.toolMode || 'native',
         reasoningEnabled: Boolean(providerConfig.reasoningEnabled),
@@ -101,12 +115,16 @@ export function resolveActiveProviderConfig(configValue = {}, options = {}) {
 }
 
 export function createAgentAdapter(providerConfig = {}, options = {}) {
-    if (!providerConfig.apiKey && providerConfig.provider !== 'sillytavern-openai-compatible') {
+    if (!providerConfig.apiKey && !isSillyTavernProvider(providerConfig.provider)) {
         throw new Error(options.missingApiKeyMessage || '请先填写当前模型配置的 API Key。');
     }
     switch (providerConfig.provider) {
         case 'sillytavern-openai-compatible':
             return new SillyTavernOpenAICompatibleAdapter(providerConfig);
+        case 'sillytavern-claude':
+            return new SillyTavernClaudeAdapter(providerConfig);
+        case 'sillytavern-google':
+            return new SillyTavernGoogleAdapter(providerConfig);
         case 'openai-responses':
             return new OpenAIResponsesAdapter(providerConfig);
         case 'anthropic':

@@ -1,4 +1,5 @@
 import { createPlanLedger } from '../../../agent-core/plan-ledger.js';
+import { resetMessageWindow } from '../../../agent-core/ui/message-windowing.js';
 import db, { metaTable, messagesTable, plansTable, sessionsTable } from './session-db.js';
 import { normalizeLocalSources } from '../workspace/local-sources.js';
 
@@ -255,6 +256,7 @@ export function createSessionStore(deps) {
                 state.messages = [];
                 state.historySummary = '';
                 state.archivedTurnCount = 0;
+                resetMessageWindow(state);
                 state.sidebarCollapsed = true;
                 state.localSources = [];
                 state.isWorkspaceOpen = false;
@@ -285,6 +287,7 @@ export function createSessionStore(deps) {
                 .filter(Boolean);
             state.historySummary = String(session.historySummary || '');
             state.archivedTurnCount = 0;
+            resetMessageWindow(state);
             state.sidebarCollapsed = session.sidebarCollapsed !== undefined ? !!session.sidebarCollapsed : true;
             state.localSources = normalizeLocalSources(session.localSources);
             state.isWorkspaceOpen = !!session.isWorkspaceOpen;
@@ -311,6 +314,7 @@ export function createSessionStore(deps) {
             state.messages = [];
             state.historySummary = '';
             state.archivedTurnCount = 0;
+            resetMessageWindow(state);
             state.sidebarCollapsed = true;
             state.localSources = [];
             state.isWorkspaceOpen = false;

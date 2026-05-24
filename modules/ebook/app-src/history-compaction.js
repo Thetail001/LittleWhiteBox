@@ -1,4 +1,5 @@
 import { EBOOK_SUMMARY_SYSTEM_PROMPT } from './prompts.js';
+import { resetMessageWindow } from '../../agent-core/ui/message-windowing.js';
 
 export const EBOOK_MAX_CONTEXT_TOKENS = 188000;
 export const EBOOK_SUMMARY_TRIGGER_TOKENS = 158000;
@@ -180,6 +181,7 @@ export function createEbookHistoryCompactionController(deps = {}) {
             }
             state.messages = turns.slice(archiveCount).flat();
             state.archivedTurnCount = 0;
+            resetMessageWindow(state);
             await persistConversation();
 
             if (estimateCurrentContextTokens() <= summaryTriggerTokens) {

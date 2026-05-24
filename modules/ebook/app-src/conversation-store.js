@@ -1,4 +1,5 @@
 import { normalizeThoughtBlocks } from '../../agent-core/runtime/protocol.js';
+import { resetMessageWindow } from '../../agent-core/ui/message-windowing.js';
 import db, { ebookMessagesTable, ebookSessionsTable } from '../shared/ebook-db.js';
 
 let writeQueue = Promise.resolve();
@@ -76,6 +77,7 @@ function resetConversationUiState(state) {
     state.openThoughtKeys = [];
     state.editingMessageIndex = -1;
     state.messageActionFeedback = {};
+    resetMessageWindow(state);
 }
 
 function resetConversationState(state) {

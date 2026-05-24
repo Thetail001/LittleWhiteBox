@@ -49,6 +49,7 @@ test('history compaction source includes full archived tool details', async () =
         historySummary: '旧结论：modules/old.js 里有 pending 状态。',
         contextStats: { usedTokens: 999 },
         progressLabel: '',
+        uiMessageWindowLimit: 100,
     };
     let summarySource = '';
     let summaryRequest = null;
@@ -104,4 +105,5 @@ test('history compaction source includes full archived tool details', async () =
     assert.match(summarySource, /modules\/old\.js/);
     assert.match(summarySource, /工具输出详情:\n12 export const fragileConfig = true/);
     assert.match(summarySource, /exactTechnicalMarkerAfterOldTinyLimit/);
+    assert.equal(state.uiMessageWindowLimit, 5);
 });

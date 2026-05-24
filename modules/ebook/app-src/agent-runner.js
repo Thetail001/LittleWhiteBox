@@ -11,6 +11,7 @@ import {
 } from '../../agent-core/runtime/protocol.js';
 import { createStreamingMessageController } from '../../agent-core/runtime/streaming-messages.js';
 import { buildTavilySearchTracePayload, isTavilyConfigured } from '../../agent-core/tavily-search.js';
+import { resetMessageWindow } from '../../agent-core/ui/message-windowing.js';
 import { upsertBookFile } from '../shared/ebook-db.js';
 import {
     EBOOK_TOOL_NAMES,
@@ -31,7 +32,6 @@ import {
 import { safeJsonParse, safeJsonStringify } from './text-utils.js';
 
 const MAX_TOOL_ROUNDS = 48;
-
 function findLastUserMessageIndex(messages = []) {
     for (let index = messages.length - 1; index >= 0; index -= 1) {
         if (messages[index]?.role === 'user') return index;
@@ -267,6 +267,7 @@ export function createEbookAgentRunner(deps = {}) {
         state.isBusy = true;
         state.status = 'AI 正在阅读作品...';
         state.agentAutoScroll = true;
+        resetMessageWindow(state);
         state.toolTrace = [];
         state.liveToolTurn = null;
         state.editingMessageIndex = -1;
@@ -274,8 +275,8 @@ export function createEbookAgentRunner(deps = {}) {
             state.messages.push({ role: 'user', content: taskText });
         }
         state.activeTurnStartIndex = findLastUserMessageIndex(state.messages);
-        await persistConversation?.(runBookId);
         render();
+        await persistConversation?.(runBookId);
 
         const controller = new AbortController();
         state.activeController = controller;

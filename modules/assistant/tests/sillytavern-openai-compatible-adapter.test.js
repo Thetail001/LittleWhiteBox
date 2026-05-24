@@ -1,15 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+import { SillyTavernClaudeAdapter } from '../../agent-core/adapters/sillytavern-claude.js';
+import { SillyTavernGoogleAdapter } from '../../agent-core/adapters/sillytavern-google.js';
 import { SillyTavernOpenAICompatibleAdapter } from '../../agent-core/adapters/sillytavern-openai-compatible.js';
 import {
     HOST_CHAT_COMPLETIONS_GENERATE_ENDPOINT,
     HOST_CHAT_COMPLETIONS_STATUS_ENDPOINT,
+    buildHostClaudeGeneratePayload,
+    buildHostGoogleGeneratePayload,
     buildHostOpenAICompatibleGeneratePayload,
     buildHostOpenAICompatibleStatusPayload,
     fetchHostOpenAICompatibleModels,
     setHostChatCompletionsRequestHeadersProvider,
 } from '../../../shared/host-llm/chat-completions/client.js';
+import { createAgentAdapter } from '../../agent-core/provider-config.js';
 
 function createSseResponse(events = [], delimiter = '\n\n') {
     const payload = events.map((event) => `data: ${JSON.stringify(event)}${delimiter}`).join('') + `data: [DONE]${delimiter}`;
@@ -77,6 +82,385 @@ test('host OpenAI-compatible payloads use SillyTavern backend fields without lea
     assert.equal(Object.hasOwn(payload, 'temperature'), false);
     assert.equal(payload.tool_choice, 'auto');
     assert.equal(payload.tools.length, 1);
+});
+
+test('host Claude and Google payloads select the matching SillyTavern chat-completions source', () => {
+    const claudePayload = buildHostClaudeGeneratePayload(
+        {
+            baseUrl: 'https://claude-proxy.example/v1/',
+            apiKey: 'claude-key',
+            model: 'claude-sonnet-4-0',
+        },
+        {
+            maxTokens: 32000,
+            temperature: 0.4,
+            reasoning: { enabled: true, effort: 'medium' },
+            tools: [{
+                type: 'function',
+                function: {
+                    name: 'Read',
+                    parameters: { type: 'object', properties: {} },
+                },
+            }],
+        },
+        [{ role: 'user', content: 'hello' }],
+        true,
+    );
+    const googlePayload = buildHostGoogleGeneratePayload(
+        {
+            baseUrl: 'https://google-proxy.example/',
+            apiKey: 'google-key',
+            model: 'gemini-2.5-pro',
+        },
+        {
+            temperature: 0.3,
+            tools: [{
+                type: 'function',
+                function: {
+                    name: 'Write',
+                    parameters: { type: 'object', properties: {} },
+                },
+            }],
+        },
+        [{ role: 'user', content: 'hello' }],
+        false,
+    );
+
+    assert.equal(claudePayload.chat_completion_source, 'claude');
+    assert.equal(claudePayload.reverse_proxy, 'https://claude-proxy.example/v1');
+    assert.equal(claudePayload.proxy_password, 'claude-key');
+    assert.equal(claudePayload.use_sysprompt, true);
+    assert.equal(claudePayload.reasoning_effort, 'medium');
+    assert.equal(claudePayload.include_reasoning, true);
+    assert.equal(claudePayload.tool_choice, 'auto');
+    assert.equal(googlePayload.chat_completion_source, 'makersuite');
+    assert.equal(googlePayload.reverse_proxy, 'https://google-proxy.example');
+    assert.equal(googlePayload.proxy_password, 'google-key');
+    assert.equal(googlePayload.use_sysprompt, true);
+    assert.equal(googlePayload.tool_choice, 'auto');
+});
+
+test('sillytavern Claude adapter streams tool calls through host generate endpoint', async () => {
+    const adapter = new SillyTavernClaudeAdapter({
+        baseUrl: '',
+        apiKey: '',
+        model: 'claude-sonnet-4-0',
+    });
+    const originalFetch = globalThis.fetch;
+    const requests = [];
+    globalThis.fetch = async (url, options = {}) => {
+        requests.push({
+            url: String(url),
+            body: JSON.parse(String(options.body || '{}')),
+        });
+        return createSseResponse([
+            {
+                type: 'message_start',
+                message: { model: 'claude-sonnet-4-0' },
+            },
+            {
+                type: 'content_block_start',
+                index: 0,
+                content_block: { type: 'text', text: '' },
+            },
+            {
+                type: 'content_block_delta',
+                index: 0,
+                delta: { type: 'text_delta', text: '我先读取文件。' },
+            },
+            {
+                type: 'content_block_start',
+                index: 1,
+                content_block: { type: 'tool_use', id: 'toolu_1', name: 'Read', input: {} },
+            },
+            {
+                type: 'content_block_delta',
+                index: 1,
+                delta: { type: 'input_json_delta', partial_json: '{"filePath":"book/outline.md"}' },
+            },
+            {
+                type: 'message_delta',
+                delta: { stop_reason: 'tool_use' },
+            },
+        ]);
+    };
+
+    try {
+        const result = await adapter.chat({
+            messages: [{ role: 'user', content: '读大纲' }],
+            tools: [{
+                type: 'function',
+                function: {
+                    name: 'Read',
+                    description: 'Read file.',
+                    parameters: { type: 'object', properties: { filePath: { type: 'string' } } },
+                },
+            }],
+            onStreamProgress: () => {},
+        });
+
+        assert.equal(requests[0].url, HOST_CHAT_COMPLETIONS_GENERATE_ENDPOINT);
+        assert.equal(requests[0].body.chat_completion_source, 'claude');
+        assert.equal(requests[0].body.stream, true);
+        assert.equal(requests[0].body.use_sysprompt, true);
+        assert.equal(result.text, '我先读取文件。');
+        assert.deepEqual(result.toolCalls, [{
+            id: 'toolu_1',
+            name: 'Read',
+            arguments: '{"filePath":"book/outline.md"}',
+        }]);
+        assert.equal(result.provider, 'sillytavern-claude');
+        assert.equal(result.providerPayload.anthropicContent[1].type, 'tool_use');
+    } finally {
+        globalThis.fetch = originalFetch;
+    }
+});
+
+test('sillytavern Google adapter streams function calls through host generate endpoint', async () => {
+    const adapter = new SillyTavernGoogleAdapter({
+        baseUrl: '',
+        apiKey: '',
+        model: 'gemini-2.5-pro',
+    });
+    const originalFetch = globalThis.fetch;
+    const requests = [];
+    globalThis.fetch = async (url, options = {}) => {
+        requests.push({
+            url: String(url),
+            body: JSON.parse(String(options.body || '{}')),
+        });
+        return createSseResponse([
+            {
+                candidates: [{
+                    content: {
+                        role: 'model',
+                        parts: [{ text: '我先写一个测试文件。' }],
+                    },
+                }],
+            },
+            {
+                candidates: [{
+                    finishReason: 'STOP',
+                    content: {
+                        role: 'model',
+                        parts: [{
+                            functionCall: {
+                                name: 'Write',
+                                args: { filePath: 'book/notes/test.md', content: 'hello' },
+                            },
+                        }],
+                    },
+                }],
+            },
+        ]);
+    };
+
+    try {
+        const result = await adapter.chat({
+            messages: [{ role: 'user', content: '写测试文件' }],
+            tools: [{
+                type: 'function',
+                function: {
+                    name: 'Write',
+                    description: 'Write file.',
+                    parameters: { type: 'object', properties: { filePath: { type: 'string' } } },
+                },
+            }],
+            onStreamProgress: () => {},
+        });
+
+        assert.equal(requests[0].url, HOST_CHAT_COMPLETIONS_GENERATE_ENDPOINT);
+        assert.equal(requests[0].body.chat_completion_source, 'makersuite');
+        assert.equal(requests[0].body.stream, true);
+        assert.equal(requests[0].body.use_sysprompt, true);
+        assert.equal(result.text, '我先写一个测试文件。');
+        assert.deepEqual(result.toolCalls, [{
+            id: 'st-google-tool-1',
+            name: 'Write',
+            arguments: '{"filePath":"book/notes/test.md","content":"hello"}',
+        }]);
+        assert.equal(result.provider, 'sillytavern-google');
+        assert.equal(result.providerPayload.googleContent.parts.length, 2);
+    } finally {
+        globalThis.fetch = originalFetch;
+    }
+});
+
+test('sillytavern Claude adapter replays preserved anthropic content through host generate endpoint', async () => {
+    const adapter = new SillyTavernClaudeAdapter({
+        baseUrl: '',
+        apiKey: '',
+        model: 'claude-sonnet-4-0',
+    });
+    const originalFetch = globalThis.fetch;
+    const requests = [];
+    const preservedContent = [
+        { type: 'text', text: '我先看看。' },
+        { type: 'thinking', thinking: '保留原生思考块。' },
+        {
+            type: 'tool_use',
+            id: 'toolu_1',
+            name: 'Read',
+            input: { filePath: 'book/outline.md' },
+        },
+    ];
+    globalThis.fetch = async (url, options = {}) => {
+        requests.push({
+            url: String(url),
+            body: JSON.parse(String(options.body || '{}')),
+        });
+        return createJsonResponse({
+            content: [{ type: 'text', text: '继续完成。' }],
+            stop_reason: 'end_turn',
+            model: 'claude-sonnet-4-0',
+        });
+    };
+
+    try {
+        const result = await adapter.chat({
+            messages: [
+                { role: 'user', content: '继续处理' },
+                {
+                    role: 'assistant',
+                    content: '',
+                    providerPayload: {
+                        anthropicContent: preservedContent,
+                    },
+                },
+                {
+                    role: 'tool',
+                    tool_call_id: 'toolu_1',
+                    content: JSON.stringify({ ok: true }),
+                },
+            ],
+            tools: [],
+        });
+
+        assert.equal(requests[0].url, HOST_CHAT_COMPLETIONS_GENERATE_ENDPOINT);
+        assert.deepEqual(requests[0].body.messages[1], {
+            role: 'assistant',
+            content: preservedContent,
+        });
+        assert.equal(requests[0].body.messages[2].role, 'tool');
+        assert.equal(result.text, '继续完成。');
+    } finally {
+        globalThis.fetch = originalFetch;
+    }
+});
+
+test('sillytavern Google adapter replays preserved google contents with host tool-call signatures', async () => {
+    const adapter = new SillyTavernGoogleAdapter({
+        baseUrl: '',
+        apiKey: '',
+        model: 'gemini-2.5-pro',
+    });
+    const originalFetch = globalThis.fetch;
+    const requests = [];
+    const googleContents = [
+        {
+            role: 'model',
+            parts: [{
+                text: '我先说明一下。',
+                thoughtSignature: 'sig-text',
+            }],
+        },
+        {
+            role: 'model',
+            parts: [{
+                functionCall: {
+                    id: 'call-1',
+                    name: 'Read',
+                    args: { filePath: 'book/outline.md' },
+                },
+                thoughtSignature: 'sig-call',
+            }],
+        },
+    ];
+    globalThis.fetch = async (url, options = {}) => {
+        requests.push({
+            url: String(url),
+            body: JSON.parse(String(options.body || '{}')),
+        });
+        return createJsonResponse({
+            model: 'gemini-2.5-pro',
+            choices: [{
+                finish_reason: 'STOP',
+                message: {
+                    content: '继续完成。',
+                },
+            }],
+            responseContent: {
+                role: 'model',
+                parts: [{ text: '继续完成。' }],
+            },
+        });
+    };
+
+    try {
+        const result = await adapter.chat({
+            messages: [
+                { role: 'user', content: '继续处理' },
+                {
+                    role: 'assistant',
+                    content: '',
+                    providerPayload: {
+                        googleContent: googleContents[1],
+                        googleContents,
+                    },
+                },
+                {
+                    role: 'tool',
+                    tool_call_id: 'call-1',
+                    content: JSON.stringify({ ok: true }),
+                },
+            ],
+            tools: [],
+        });
+
+        assert.equal(requests[0].url, HOST_CHAT_COMPLETIONS_GENERATE_ENDPOINT);
+        assert.deepEqual(requests[0].body.messages.slice(1, 3), [
+            {
+                role: 'assistant',
+                content: [{
+                    type: 'text',
+                    text: '我先说明一下。',
+                }],
+                signature: 'sig-text',
+            },
+            {
+                role: 'assistant',
+                content: [{
+                    type: 'tool_calls',
+                    tool_calls: [{
+                        id: 'call-1',
+                        type: 'function',
+                        function: {
+                            name: 'Read',
+                            arguments: '{"filePath":"book/outline.md"}',
+                        },
+                        signature: 'sig-call',
+                    }],
+                }],
+            },
+        ]);
+        assert.equal(requests[0].body.messages[3].role, 'tool');
+        assert.equal(result.text, '继续完成。');
+    } finally {
+        globalThis.fetch = originalFetch;
+    }
+});
+
+test('agent factory allows SillyTavern Claude and Google without direct API keys', () => {
+    assert.equal(createAgentAdapter({
+        provider: 'sillytavern-claude',
+        model: 'claude-sonnet-4-0',
+        apiKey: '',
+    }) instanceof SillyTavernClaudeAdapter, true);
+    assert.equal(createAgentAdapter({
+        provider: 'sillytavern-google',
+        model: 'gemini-2.5-pro',
+        apiKey: '',
+    }) instanceof SillyTavernGoogleAdapter, true);
 });
 
 test('host OpenAI-compatible model pull posts to SillyTavern status endpoint', async () => {

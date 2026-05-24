@@ -149,8 +149,8 @@ export function getEbookToolDefinitions(options = {}) {
                     name: EBOOK_TOOL_NAMES.WRITE,
                     description: [
                         '写入当前书稿里的完整文本文件。',
-                        '适合新建文件，或在明确需要整篇重写时覆盖整个文件。',
-                        '改章节局部内容时优先用 apply_patch，避免无意覆盖已有文字。',
+                        '适合新建文件、整篇重写，或大段正文、整节、整章重写。',
+                        '使用前先 Read 目标文件；Write 会覆盖完整文件，所以保留原文时要把完整内容写回。',
                         '参数名是 `filePath` 和 `content`。Write 会覆盖目标文件的完整内容。',
                     ].join('\n'),
                     parameters: {
@@ -170,13 +170,14 @@ export function getEbookToolDefinitions(options = {}) {
                     name: EBOOK_TOOL_NAMES.APPLY_PATCH,
                     description: [
                         '用结构化补丁精准修改当前书稿文件。',
-                        '适合局部修订、多文件修订、新增、删除或重命名书稿文件。',
+                        '适合小范围局部修订、多文件小改、新增、删除或重命名书稿文件。',
+                        '不适合大段正文或整章重写；这类改动先 Read，再用 Write 写回完整文件更稳。',
                         'Patch format uses structured headers such as `*** Begin Patch`, `*** Update File: book/example.md`, `@@`, and `*** End Patch`.',
                         'File operation headers support `*** Add File: book/...`, `*** Update File: book/...`, and `*** Delete File: book/...`; renames use `*** Move to: book/...` after an update header.',
                         'Hunk headers support plain `@@`, anchored `@@ existing line`, and standard unified diff ranges like `@@ -1,3 +1,3 @@`.',
                         'Hunk body lines must start with a space for context, `-` for removed old lines, or `+` for added new lines; add-file content lines must start with `+`.',
                         '补丁头里的文件路径必须写成 `book/...`。',
-                        '修订章节时优先用它，尽量保留没有必要改动的原文。',
+                        '修订章节时只在能用当前原文稳定锚定小范围修改时使用它。',
                     ].join('\n'),
                     parameters: {
                         type: 'object',

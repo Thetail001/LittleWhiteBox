@@ -4,6 +4,7 @@ import { buildAgentSettingsPanelMarkup } from '../../agent-core/ui/settings-mark
 import { escapeHtml, trimInlineText } from './text-utils.js';
 import { formatDraftMetrics, formatTextMetrics } from './text-metrics.js';
 import { EBOOK_MAX_CONTEXT_TOKENS, estimateEbookTokens } from './history-compaction.js';
+import { getMessageWindow } from '../../agent-core/ui/message-windowing.js';
 import { buildBookContextPrompt, EBOOK_SYSTEM_PROMPT } from './prompts.js';
 
 const STUDIO_FILE_SECTIONS = [
@@ -705,7 +706,39 @@ function renderMessages(state = {}) {
     if (!units.length && !liveToolTurnHtml) {
         return `${memoryHint}<div class="xb-agent-empty">这里是写作助手记录。可以先导入资料，也可以直接说“我想试试写一本书”。</div>`;
     }
-    return `${memoryHint}${units.join('')}${liveToolTurnHtml}`;
+    const messageWindow = getMessageWindow(state, units.length);
+    const historyGateHtml = messageWindow.hiddenBefore
+        ? `<div class="xb-agent-history-gate">较早记录 ${messageWindow.hiddenBefore} 条</div>`
+        : '';
+    return `${memoryHint}${historyGateHtml}${units.slice(messageWindow.startIndex).join('')}${liveToolTurnHtml}`;
+}
+
+export function countMessageWindowUnits(messages = []) {
+    let count = 0;
+    for (let index = 0; index < messages.length; index += 1) {
+        const message = messages[index];
+        if (!message || !['user', 'assistant', 'tool'].includes(message.role)) continue;
+        if (message.role === 'assistant' && Array.isArray(message.toolCalls) && message.toolCalls.length) {
+            count += 1;
+            let nextIndex = index;
+            while (
+                nextIndex < messages.length
+                && messages[nextIndex]?.role === 'assistant'
+                && Array.isArray(messages[nextIndex].toolCalls)
+                && messages[nextIndex].toolCalls.length
+            ) {
+                nextIndex += 1;
+                while (nextIndex < messages.length && messages[nextIndex]?.role === 'tool') {
+                    nextIndex += 1;
+                }
+            }
+            index = nextIndex - 1;
+            continue;
+        }
+        if (message.role === 'tool') continue;
+        count += 1;
+    }
+    return count;
 }
 
 function renderLiveToolTurn(state = {}) {

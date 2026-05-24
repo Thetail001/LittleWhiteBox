@@ -1,0 +1,212 @@
+import {
+    buildHostClaudeGeneratePayload,
+    createHostChatCompletion,
+    streamHostChatCompletion,
+} from '../../../shared/host-llm/chat-completions/client.js';
+
+function cloneJson(value) {
+    if (value === undefined) return undefined;
+    try {
+        return JSON.parse(JSON.stringify(value));
+    } catch {
+        return undefined;
+    }
+}
+
+function parseJson(text, fallback = {}) {
+    try {
+        return JSON.parse(text || '');
+    } catch {
+        return fallback;
+    }
+}
+
+function normalizeAnthropicContent(content = []) {
+    const normalized = Array.isArray(content)
+        ? cloneJson(content)
+        : null;
+    return Array.isArray(normalized) && normalized.length
+        ? normalized
+        : null;
+}
+
+function buildHostClaudeMessages(task = {}) {
+    const sourceMessages = Array.isArray(task.messages) ? task.messages : [];
+    const messages = [];
+    sourceMessages.forEach((message) => {
+        if (!message || typeof message !== 'object') return;
+        const cloned = cloneJson(message) || {};
+        const preservedContent = normalizeAnthropicContent(cloned?.providerPayload?.anthropicContent);
+        delete cloned.providerPayload;
+        if (cloned.role === 'assistant' && preservedContent) {
+            delete cloned.tool_calls;
+            cloned.content = preservedContent;
+        }
+        messages.push(cloned);
+    });
+    return messages;
+}
+
+function normalizeContentBlocks(content = []) {
+    return (Array.isArray(content) ? content : [])
+        .map((block) => {
+            if (!block || typeof block !== 'object') return null;
+            if (block.type === 'text') {
+                return { type: 'text', text: String(block.text || '') };
+            }
+            if (block.type === 'tool_use' && block.name) {
+                return {
+                    type: 'tool_use',
+                    id: String(block.id || block.name),
+                    name: String(block.name),
+                    input: cloneJson(block.input) || parseJson(block.inputJson, {}),
+                };
+            }
+            if (block.type === 'thinking') {
+                return { type: 'thinking', thinking: String(block.thinking || block.text || '') };
+            }
+            if (block.type === 'redacted_thinking') {
+                return { type: 'redacted_thinking', data: String(block.data || '') };
+            }
+            return cloneJson(block) || null;
+        })
+        .filter(Boolean);
+}
+
+function parseContentResult(content = [], options = {}) {
+    const normalized = normalizeContentBlocks(content);
+    const toolCalls = normalized
+        .filter((block) => block.type === 'tool_use' && block.name)
+        .map((block, index) => ({
+            id: block.id || `st-claude-tool-${index + 1}`,
+            name: block.name,
+            arguments: JSON.stringify(block.input || {}),
+        }));
+    const text = normalized
+        .filter((block) => block.type === 'text')
+        .map((block) => block.text || '')
+        .join('\n');
+    const thoughts = normalized
+        .filter((block) => block.type === 'thinking' || block.type === 'redacted_thinking')
+        .map((block) => ({
+            label: block.type === 'thinking' ? '思考块' : '已脱敏思考块',
+            text: block.type === 'thinking' ? (block.thinking || '') : (block.data || ''),
+        }))
+        .filter((item) => item.text);
+
+    return {
+        text,
+        toolCalls,
+        thoughts,
+        finishReason: options.finishReason || 'stop',
+        model: options.model || '',
+        provider: 'sillytavern-claude',
+        providerPayload: normalized.length ? { anthropicContent: normalized } : undefined,
+    };
+}
+
+function emitStreamProgress(task, payload) {
+    if (typeof task.onStreamProgress !== 'function') return;
+    task.onStreamProgress({
+        ...(typeof payload.text === 'string' ? { text: payload.text } : {}),
+        ...(Array.isArray(payload.thoughts) ? { thoughts: payload.thoughts } : {}),
+    });
+}
+
+function createClaudeStreamAccumulator(task, config = {}) {
+    const blocks = [];
+    let finishReason = 'stop';
+    let model = config.model || '';
+
+    const ensureBlock = (index, initial = {}) => {
+        const safeIndex = Number.isInteger(Number(index)) ? Number(index) : blocks.length;
+        if (!blocks[safeIndex]) {
+            blocks[safeIndex] = { ...initial };
+        } else {
+            blocks[safeIndex] = { ...blocks[safeIndex], ...initial };
+        }
+        return blocks[safeIndex];
+    };
+
+    const emit = () => {
+        const result = parseContentResult(blocks, { finishReason, model });
+        emitStreamProgress(task, {
+            text: result.text,
+            thoughts: result.thoughts,
+        });
+    };
+
+    return {
+        accept(event = {}) {
+            if (event?.message?.model) {
+                model = event.message.model;
+            }
+            if (event.type === 'content_block_start') {
+                ensureBlock(event.index, cloneJson(event.content_block) || {});
+                emit();
+                return;
+            }
+            if (event.type === 'content_block_delta') {
+                const block = ensureBlock(event.index);
+                const delta = event.delta || {};
+                if (delta.type === 'text_delta') {
+                    block.type = block.type || 'text';
+                    block.text = `${block.text || ''}${delta.text || ''}`;
+                } else if (delta.type === 'input_json_delta') {
+                    block.type = block.type || 'tool_use';
+                    block.inputJson = `${block.inputJson || ''}${delta.partial_json || ''}`;
+                    block.input = parseJson(block.inputJson, block.input || {});
+                } else if (delta.type === 'thinking_delta') {
+                    block.type = block.type || 'thinking';
+                    block.thinking = `${block.thinking || ''}${delta.thinking || ''}`;
+                } else if (delta.type === 'signature_delta') {
+                    block.signature = `${block.signature || ''}${delta.signature || ''}`;
+                }
+                emit();
+                return;
+            }
+            if (event.type === 'message_delta') {
+                finishReason = event.delta?.stop_reason || finishReason;
+            }
+        },
+        result() {
+            return parseContentResult(blocks, { finishReason, model });
+        },
+    };
+}
+
+export class SillyTavernClaudeAdapter {
+    constructor(config) {
+        this.config = config;
+    }
+
+    buildMessages(task) {
+        return buildHostClaudeMessages(task);
+    }
+
+    async chat(task) {
+        const stream = typeof task.onStreamProgress === 'function';
+        const messages = this.buildMessages(task);
+        const payload = buildHostClaudeGeneratePayload(this.config, task, messages, stream);
+
+        if (stream) {
+            const accumulator = createClaudeStreamAccumulator(task, this.config);
+            await streamHostChatCompletion(payload, (event) => {
+                accumulator.accept(event);
+            }, { signal: task.signal });
+            return accumulator.result();
+        }
+
+        const response = await createHostChatCompletion(payload, { signal: task.signal });
+        const content = Array.isArray(response?.content)
+            ? response.content
+            : [{
+                type: 'text',
+                text: response?.choices?.[0]?.message?.content || '',
+            }];
+        return parseContentResult(content, {
+            finishReason: response?.stop_reason || response?.choices?.[0]?.finish_reason || 'stop',
+            model: response?.model || this.config.model,
+        });
+    }
+}

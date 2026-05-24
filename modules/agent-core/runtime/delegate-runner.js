@@ -219,6 +219,7 @@ export function createDelegateRunner(deps = {}) {
         let finalAnswerReminderSent = false;
         let pendingToolResponses = null;
         let pendingFinalAnswerReminderText = '';
+        const absorbStreamProgress = () => {};
 
         while (rounds < maxRounds) {
             if (parentRun?.controller?.signal?.aborted) {
@@ -237,6 +238,8 @@ export function createDelegateRunner(deps = {}) {
                     effort: providerConfig.reasoningEffort,
                 },
                 signal: parentRun?.controller?.signal,
+                // 分身不直接渲染 token，但内部走流式可以避免长任务被中转当成无响应请求切断。
+                onStreamProgress: absorbStreamProgress,
             };
 
             if (Array.isArray(pendingToolResponses) && pendingToolResponses.length && adapter?.supportsSessionToolLoop) {

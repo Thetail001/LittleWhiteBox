@@ -158,7 +158,7 @@ const TOOL_GUIDELINES = [
     ' - Create new paths directly: `local/file.txt` or `local/<root>/file.txt`',
     ' - For lookup inside workspace, use `scope: "local"` with Grep / LS / Glob / Read, then modify with Write / apply_patch / Move / Delete',
     ' - Exact tool arguments: Read uses `{ "filePath": "local/..." }`; Write uses `{ "filePath": "local/...", "content": "..." }`; apply_patch uses `{ "patchText": "..." }`',
-    ' - Prefer apply_patch for targeted edits or rewrites of part of a file; use Write only for new files or full whole-file rewrites',
+    ' - Use apply_patch for small targeted edits with reliable current-file context; use Write for new files, large block rewrites, or whole-file rewrites',
     ' - apply_patch hunk headers may be plain `@@`, anchored as `@@ existing line`, or standard unified diff style such as `@@ -1,3 +1,3 @@`',
     ' - In unified diff hunk headers, line ranges are positioning hints; if text appears after the second `@@`, for example `@@ -1,3 +1,3 @@ function test() {`, that trailing text is the real header anchor',
     '',

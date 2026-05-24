@@ -57,6 +57,89 @@ function buildFailureSummary(errorMessage = '') {
     return 'Patch 校验失败，未修改任何文件。';
 }
 
+function buildFailureRecovery(errorMessage = '') {
+    const normalized = String(errorMessage || '').trim().toLowerCase();
+    const readFirstStep = '先 Read 目标文件当前内容，再用当前文件里真实存在的原文行重写 patchText；不要凭记忆或旧内容匹配。';
+
+    if (normalized.startsWith('apply_patch_parse_error:')) {
+        return {
+            kind: 'parse_error',
+            readBeforeRetry: false,
+            nextStep: '重新生成完整 patchText：必须从 `*** Begin Patch` 开始，以 `*** End Patch` 结束，中间包含 `*** Update/Add/Delete File: ...` 文件操作。',
+            rules: [
+                'Update hunk 使用 `@@` 或 `@@ 当前文件中的锚点行`。',
+                'hunk 内容行必须以空格、`-` 或 `+` 开头。',
+                '不要传 JSON、sed、XML 或普通 unified diff 外壳。',
+            ],
+        };
+    }
+
+    if (normalized.includes('has no match context')) {
+        return {
+            kind: 'missing_match_context',
+            readBeforeRetry: true,
+            nextStep: readFirstStep,
+            rules: [
+                'Update hunk 不能只有新增行，必须至少包含一行当前文件已有的上下文行或删除行。',
+                '如果只是插入内容，先 Read 插入点附近原文，把插入点前后的原句作为上下文。',
+            ],
+        };
+    }
+
+    if (normalized.includes('ambiguous')) {
+        return {
+            kind: 'ambiguous_match',
+            readBeforeRetry: true,
+            nextStep: readFirstStep,
+            rules: [
+                '增加更多相邻原文上下文，让旧块只匹配一个位置。',
+                '或使用 `@@ 当前文件中唯一存在的锚点行` 限定 hunk 范围。',
+            ],
+        };
+    }
+
+    if (normalized.includes('old block did not match')
+        || normalized.includes('header matched but old block did not match')
+        || normalized.includes('header did not match')
+        || normalized.includes('missing_block_match')
+        || normalized.includes('missing_header_anchor')
+        || normalized.includes('header_anchor_without_block')) {
+        return {
+            kind: 'stale_or_imprecise_context',
+            readBeforeRetry: true,
+            nextStep: readFirstStep,
+            rules: [
+                '复制 Read 返回的当前原文作为空格上下文行和 `-` 删除行。',
+                '不要改写空格上下文行的标点、缩进、空白或全半角字符。',
+                '如果使用 `@@ 锚点`，锚点必须是当前文件里真实存在且足够唯一的原文。',
+            ],
+        };
+    }
+
+    if (normalized.includes('file_not_found') || normalized.includes('path_required') || normalized.includes('destination_exists')) {
+        return {
+            kind: 'path_or_destination_error',
+            readBeforeRetry: true,
+            nextStep: '先用 LS / Glob 确认目标路径，再 Read 要修改的现有文件；确认路径和内容后重新生成 patchText。',
+            rules: [
+                'Update/Delete 的目标文件必须已经存在。',
+                'Add 的目标文件不能已经存在。',
+                '路径必须使用当前工具要求的工作区前缀。',
+            ],
+        };
+    }
+
+    return {
+        kind: 'patch_failed',
+        readBeforeRetry: true,
+        nextStep: readFirstStep,
+        rules: [
+            '重新尝试前先确认目标文件路径和当前内容。',
+            '小范围修改用当前原文精确上下文；大段正文、整节或整章重写改用 Write 写回完整文件。',
+        ],
+    };
+}
+
 function buildChangedPathSet(changes = []) {
     return new Set(
         (Array.isArray(changes) ? changes : [])
@@ -78,10 +161,13 @@ function resolveMutationNextState(result = {}) {
 export function buildPatchFailureResult(error) {
     const rawError = error instanceof Error ? error.message : String(error || 'unknown_error');
     const validation = normalizeValidationState(error?.patchValidation);
+    const recovery = buildFailureRecovery(rawError);
     return {
         ok: false,
         phase: 'failed',
         summary: buildFailureSummary(rawError),
+        nextStep: recovery.nextStep,
+        recovery,
         filesChanged: 0,
         addedCount: 0,
         updatedCount: 0,

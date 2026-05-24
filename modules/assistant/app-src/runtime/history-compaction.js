@@ -1,3 +1,5 @@
+import { resetMessageWindow } from '../../../agent-core/ui/message-windowing.js';
+
 export function splitMessagesIntoTurns(messages = []) {
     const turns = [];
     let currentTurn = [];
@@ -127,6 +129,7 @@ export function createHistoryCompactionController(deps) {
         if (archivedCount <= 0) return false;
         state.messages = turns.slice(archivedCount).flat();
         state.archivedTurnCount = 0;
+        resetMessageWindow(state);
         return true;
     }
 

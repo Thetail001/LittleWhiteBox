@@ -1,6 +1,8 @@
 import { buildActionPrompt } from './prompts.js';
+import { countMessageWindowUnits } from './renderer.js';
 import { EBOOK_THEME_STORAGE_KEY } from './state.js';
 import { formatDraftMetrics } from './text-metrics.js';
+import { expandMessageWindow } from '../../agent-core/ui/message-windowing.js';
 
 const messageActionFeedbackTimers = new Map();
 
@@ -502,12 +504,38 @@ export function bindEbookEvents(options = {}) {
     const scrollTopBtn = root.querySelector('#xb-agent-scroll-top');
     const scrollBottomBtn = root.querySelector('#xb-agent-scroll-bottom');
     const scrollHelpers = root.querySelector('#xb-agent-scroll-helpers');
+    let agentTouchStartY = null;
+    let agentLastScrollTop = Number(agentMain?.scrollTop || 0);
 
     function scrollAgentToBottom(container) {
         if (!container) return;
         const apply = () => { container.scrollTop = container.scrollHeight; };
         apply();
         scheduleFrame(() => { apply(); scheduleFrame(apply); });
+    }
+
+    function isAgentNearBottom(threshold = 48) {
+        if (!agentMain) return true;
+        return agentMain.scrollHeight - agentMain.scrollTop - agentMain.clientHeight <= threshold;
+    }
+
+    function suspendAgentAutoScroll() {
+        state.agentAutoScroll = false;
+    }
+
+    function revealOlderAgentMessages() {
+        if (!agentMain || agentMain.scrollTop > 64) return false;
+        const totalUnits = countMessageWindowUnits(state.messages || []);
+        if (!expandMessageWindow(state, totalUnits)) return false;
+        const previousScrollHeight = agentMain.scrollHeight;
+        const previousScrollTop = agentMain.scrollTop;
+        render();
+        scheduleFrame(() => {
+            const nextAgentMain = root.querySelector('.xb-agent-main');
+            if (!nextAgentMain) return;
+            nextAgentMain.scrollTop = Math.max(0, nextAgentMain.scrollHeight - previousScrollHeight + previousScrollTop);
+        });
+        return true;
     }
 
     function updateAgentScrollButtonsVisibility() {
@@ -530,8 +558,21 @@ export function bindEbookEvents(options = {}) {
 
     function handleAgentScroll() {
         if (!agentMain) return;
-        const threshold = 48;
-        state.agentAutoScroll = agentMain.scrollHeight - agentMain.scrollTop - agentMain.clientHeight <= threshold;
+        if (revealOlderAgentMessages()) {
+            state.agentAutoScroll = false;
+            return;
+        }
+        const currentScrollTop = Number(agentMain.scrollTop || 0);
+        const scrollingTowardBottom = currentScrollTop > agentLastScrollTop;
+        agentLastScrollTop = currentScrollTop;
+        const nearBottom = isAgentNearBottom();
+        if (nearBottom) {
+            if (state.agentAutoScroll !== false || scrollingTowardBottom) {
+                state.agentAutoScroll = true;
+            }
+        } else {
+            state.agentAutoScroll = false;
+        }
         if (agentScrollTicking) return;
         agentScrollTicking = true;
         scheduleFrame(() => {
@@ -545,6 +586,24 @@ export function bindEbookEvents(options = {}) {
     agentMain?.addEventListener('scroll', () => {
         handleAgentScroll();
     });
+    agentMain?.addEventListener('wheel', (event) => {
+        if (Number(event?.deltaY || 0) < 0) {
+            suspendAgentAutoScroll();
+        }
+    }, { passive: true });
+    agentMain?.addEventListener('touchstart', (event) => {
+        agentTouchStartY = Number(event?.touches?.[0]?.clientY);
+    }, { passive: true });
+    agentMain?.addEventListener('touchmove', (event) => {
+        const currentY = Number(event?.touches?.[0]?.clientY);
+        if (!Number.isFinite(agentTouchStartY) || !Number.isFinite(currentY)) {
+            suspendAgentAutoScroll();
+            return;
+        }
+        if (currentY > agentTouchStartY + 4 || !isAgentNearBottom()) {
+            suspendAgentAutoScroll();
+        }
+    }, { passive: true });
 
     scrollTopBtn?.addEventListener('click', () => {
         state.agentAutoScroll = false;

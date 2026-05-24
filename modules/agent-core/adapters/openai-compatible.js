@@ -639,7 +639,7 @@ export class OpenAICompatibleAdapter {
         this.client = new OpenAI({
             apiKey: config.apiKey,
             baseURL: String(config.baseUrl || 'https://api.openai.com/v1').replace(/\/$/, ''),
-            timeout: Number(config.timeoutMs) || 180000,
+            timeout: Number(config.timeoutMs) || 15 * 60 * 1000,
             maxRetries: 0,
             dangerouslyAllowBrowser: true,
         });

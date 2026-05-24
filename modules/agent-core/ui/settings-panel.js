@@ -1,4 +1,9 @@
-import { fetchHostOpenAICompatibleModels } from '../../../shared/host-llm/chat-completions/client.js';
+import {
+    HOST_CHAT_COMPLETIONS_SOURCE_CLAUDE,
+    HOST_CHAT_COMPLETIONS_SOURCE_MAKERSUITE,
+    HOST_CHAT_COMPLETIONS_SOURCE_OPENAI,
+    fetchHostChatCompletionsModels,
+} from '../../../shared/host-llm/chat-completions/client.js';
 import {
     AGENT_JSAPI_PERMISSION_OPTIONS,
     AGENT_PERMISSION_MODE_OPTIONS,
@@ -61,6 +66,26 @@ function normalizeConfigPage(value = '') {
 
 function normalizeBaseUrl(rawBaseUrl) {
     return String(rawBaseUrl || '').trim().replace(/\/+$/, '');
+}
+
+function isSillyTavernProvider(provider = '') {
+    return provider === 'sillytavern-openai-compatible'
+        || provider === 'sillytavern-claude'
+        || provider === 'sillytavern-google';
+}
+
+function isToolModeProvider(provider = '') {
+    return provider === 'openai-compatible' || provider === 'sillytavern-openai-compatible';
+}
+
+function isAnthropicProvider(provider = '') {
+    return provider === 'anthropic' || provider === 'sillytavern-claude';
+}
+
+function getSillyTavernChatCompletionSource(provider = '') {
+    if (provider === 'sillytavern-claude') return HOST_CHAT_COMPLETIONS_SOURCE_CLAUDE;
+    if (provider === 'sillytavern-google') return HOST_CHAT_COMPLETIONS_SOURCE_MAKERSUITE;
+    return HOST_CHAT_COMPLETIONS_SOURCE_OPENAI;
 }
 
 function uniqueUrls(urls = []) {
@@ -209,8 +234,11 @@ async function pullModelsForProvider(providerConfig) {
     const baseUrl = normalizeBaseUrl(providerConfig.baseUrl || '');
     const apiKey = String(providerConfig.apiKey || '').trim();
 
-    if (provider === 'sillytavern-openai-compatible') {
-        return filterModels(await fetchHostOpenAICompatibleModels(providerConfig));
+    if (isSillyTavernProvider(provider)) {
+        return filterModels(await fetchHostChatCompletionsModels(
+            providerConfig,
+            getSillyTavernChatCompletionSource(provider),
+        ));
     }
 
     if (!apiKey) {
@@ -247,7 +275,7 @@ async function pullModelsForProvider(providerConfig) {
         });
     }
 
-    if (provider === 'anthropic') {
+    if (isAnthropicProvider(provider)) {
         return await tryCandidateFetches({
             urls: buildAnthropicCandidateUrls(baseUrl),
             requestOptionsList: [{
@@ -407,11 +435,11 @@ export function createAgentSettingsPanel(deps = {}) {
             jsApiPermission: normalizeJsApiPermission(root.querySelector('#xb-assistant-jsapi-permission')?.value || draft.jsApiPermission),
             delegatePresetName: resolveExistingPresetName(root.querySelector('#xb-assistant-delegate-preset-select')?.value || draft.delegatePresetName, draft.currentPresetName),
             delegateProvider: root.querySelector('#xb-assistant-delegate-provider')?.value || draft.delegateProvider || 'openai-compatible',
-            delegateBaseUrl: root.querySelector('#xb-assistant-delegate-base-url')?.value.trim() || '',
-            delegateModel: root.querySelector('#xb-assistant-delegate-model')?.value.trim() || '',
-            delegateApiKey: root.querySelector('#xb-assistant-delegate-api-key')?.value.trim() || '',
+            delegateBaseUrl: root.querySelector('#xb-assistant-delegate-base-url')?.value.trim() ?? draft.delegateBaseUrl ?? '',
+            delegateModel: root.querySelector('#xb-assistant-delegate-model')?.value.trim() ?? draft.delegateModel ?? '',
+            delegateApiKey: root.querySelector('#xb-assistant-delegate-api-key')?.value.trim() ?? draft.delegateApiKey ?? '',
             delegateTemperature: Number(draft.delegateTemperature ?? 0.2),
-            delegateReasoningEnabled: root.querySelector('#xb-assistant-delegate-reasoning-enabled')?.checked || false,
+            delegateReasoningEnabled: root.querySelector('#xb-assistant-delegate-reasoning-enabled')?.checked ?? Boolean(draft.delegateReasoningEnabled),
             delegateReasoningEffort: normalizeReasoningEffort(root.querySelector('#xb-assistant-delegate-reasoning-effort')?.value || draft.delegateReasoningEffort),
             delegateToolMode: root.querySelector('#xb-assistant-delegate-tool-mode')?.value || draft.delegateToolMode || 'native',
         };
@@ -423,7 +451,7 @@ export function createAgentSettingsPanel(deps = {}) {
     }
 
     function resolveRuntimeMaxTokens(draft = ensureConfigDraft()) {
-        if (draft.provider === 'anthropic') {
+        if (isAnthropicProvider(draft.provider)) {
             return 32000;
         }
         return null;
@@ -437,7 +465,7 @@ export function createAgentSettingsPanel(deps = {}) {
             temperature: Number(draft.temperature ?? 0.2),
             reasoningEnabled: Boolean(draft.reasoningEnabled),
             reasoningEffort: normalizeReasoningEffort(draft.reasoningEffort),
-            toolMode: (draft.provider === 'openai-compatible' || draft.provider === 'sillytavern-openai-compatible')
+            toolMode: isToolModeProvider(draft.provider)
                 ? (draft.toolMode || 'native')
                 : undefined,
         };
@@ -451,7 +479,7 @@ export function createAgentSettingsPanel(deps = {}) {
             temperature: Number(draft.delegateTemperature ?? 0.2),
             reasoningEnabled: Boolean(draft.delegateReasoningEnabled),
             reasoningEffort: normalizeReasoningEffort(draft.delegateReasoningEffort),
-            toolMode: (draft.delegateProvider === 'openai-compatible' || draft.delegateProvider === 'sillytavern-openai-compatible')
+            toolMode: isToolModeProvider(draft.delegateProvider)
                 ? (draft.delegateToolMode || 'native')
                 : undefined,
         };
@@ -498,7 +526,7 @@ export function createAgentSettingsPanel(deps = {}) {
             tavilyApiKey: draft.tavilyApiKey || '',
             tavilyBaseUrl: normalizeTavilyBaseUrl(draft.tavilyBaseUrl || DEFAULT_TAVILY_BASE_URL),
             temperature: Number(draft.delegateTemperature ?? 0.2),
-            maxTokens: draft.delegateProvider === 'anthropic' ? 32000 : null,
+            maxTokens: isAnthropicProvider(draft.delegateProvider) ? 32000 : null,
             timeoutMs: AGENT_REQUEST_TIMEOUT_MS,
             toolMode: draft.delegateToolMode || 'native',
             reasoningEnabled: Boolean(draft.delegateReasoningEnabled),
@@ -549,8 +577,25 @@ export function createAgentSettingsPanel(deps = {}) {
         node.classList.toggle('is-error', status === 'error');
     }
 
+    function syncConfigPage(root) {
+        if (!root) return;
+        const page = normalizeConfigPage(state.configPage);
+        state.configPage = page;
+        root.querySelectorAll('[data-config-page]').forEach((button) => {
+            const isActive = normalizeConfigPage(button?.dataset?.configPage) === page;
+            button.classList.toggle('is-active', isActive);
+            button.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        });
+        root.querySelectorAll('[data-config-page-panel]').forEach((panel) => {
+            const isActive = normalizeConfigPage(panel?.dataset?.configPagePanel) === page;
+            panel.toggleAttribute('hidden', !isActive);
+        });
+        root.querySelector('#xb-assistant-delete-preset')?.toggleAttribute('hidden', page === 'delegate');
+    }
+
     function syncConfigToForm(root) {
         if (!state.config) return;
+        syncConfigPage(root);
         const draft = ensureConfigDraft();
         const provider = draft.provider || 'openai-compatible';
         const pulledModels = getProviderModels(provider);
@@ -596,7 +641,7 @@ export function createAgentSettingsPanel(deps = {}) {
         root.querySelector('#xb-assistant-model').value = draft.model || '';
         root.querySelector('#xb-assistant-api-key').value = draft.apiKey || '';
         if (tavilyApiKeyInput) tavilyApiKeyInput.value = draft.tavilyApiKey || '';
-        toolModeWrap.style.display = (provider === 'openai-compatible' || provider === 'sillytavern-openai-compatible') ? '' : 'none';
+        toolModeWrap.style.display = isToolModeProvider(provider) ? '' : 'none';
         refillSelect(toolModeSelect, TOOL_MODE_OPTIONS);
         toolModeSelect.value = draft.toolMode || 'native';
         if (permissionModeSelect) {
@@ -618,7 +663,7 @@ export function createAgentSettingsPanel(deps = {}) {
         if (delegateModelInput) delegateModelInput.value = draft.delegateModel || '';
         if (delegateApiKeyInput) delegateApiKeyInput.value = draft.delegateApiKey || '';
         if (delegateToolModeWrap) {
-            delegateToolModeWrap.style.display = (delegateProvider === 'openai-compatible' || delegateProvider === 'sillytavern-openai-compatible') ? '' : 'none';
+            delegateToolModeWrap.style.display = isToolModeProvider(delegateProvider) ? '' : 'none';
         }
         if (delegateToolModeSelect) {
             refillSelect(delegateToolModeSelect, TOOL_MODE_OPTIONS);
@@ -906,8 +951,10 @@ export function createAgentSettingsPanel(deps = {}) {
 
         root.querySelectorAll('[data-config-page]').forEach((button) => {
             button.addEventListener('click', (event) => {
+                syncConfigDraft(root);
                 state.configPage = normalizeConfigPage(event.currentTarget?.dataset?.configPage);
-                render?.();
+                syncConfigPage(root);
+                syncConfigToForm(root);
             });
         });
 

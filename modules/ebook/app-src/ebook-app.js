@@ -16,6 +16,41 @@ import { enhanceMarkdownContent } from '../../agent-core/ui/message-markdown.js'
 const CONFIG_SAVE_TIMEOUT_MS = 3000;
 const CONFIG_SAVE_RESULT_MS = 1800;
 
+export function captureScrollState(root, selector) {
+    const node = root?.querySelector?.(selector);
+    if (!node) return null;
+    const distanceToBottom = node.scrollHeight - node.scrollTop - node.clientHeight;
+    return {
+        selector,
+        scrollTop: node.scrollTop,
+        nearBottom: distanceToBottom < 80,
+    };
+}
+
+export function restoreScrollState(root, snapshot, defaultSelector = null, options = {}) {
+    const selector = snapshot?.selector || defaultSelector;
+    if (!selector) return;
+    const node = root?.querySelector?.(selector);
+    if (!node) return;
+    if (options.forceBottom) {
+        node.scrollTop = node.scrollHeight;
+        return;
+    }
+    if (!snapshot) {
+        if (options.defaultToBottom !== false) {
+            node.scrollTop = node.scrollHeight;
+        }
+        return;
+    }
+    if (options.preserveScrollTop) {
+        node.scrollTop = Math.min(snapshot.scrollTop, node.scrollHeight);
+        return;
+    }
+    node.scrollTop = snapshot.nearBottom
+        ? node.scrollHeight
+        : Math.min(snapshot.scrollTop, node.scrollHeight);
+}
+
 function createRequestId(prefix = 'req') {
     return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -147,37 +182,6 @@ export function createEbookApp(options = {}) {
         getRuntimeSummaryText: ({ providerLabel }) => providerLabel,
     });
 
-    function captureScrollState(root, selector) {
-        const node = root?.querySelector?.(selector);
-        if (!node) return null;
-        const distanceToBottom = node.scrollHeight - node.scrollTop - node.clientHeight;
-        return {
-            selector,
-            scrollTop: node.scrollTop,
-            nearBottom: distanceToBottom < 80,
-        };
-    }
-
-    function restoreScrollState(root, snapshot, defaultSelector = null, options = {}) {
-        const selector = snapshot?.selector || defaultSelector;
-        if (!selector) return;
-        const node = root?.querySelector?.(selector);
-        if (!node) return;
-        if (options.forceBottom) {
-            node.scrollTop = node.scrollHeight;
-            return;
-        }
-        if (!snapshot) {
-            if (options.defaultToBottom !== false) {
-                node.scrollTop = node.scrollHeight;
-            }
-            return;
-        }
-        node.scrollTop = snapshot.nearBottom
-            ? node.scrollHeight
-            : Math.min(snapshot.scrollTop, node.scrollHeight);
-    }
-
     function captureFocusState(root) {
         const active = document.activeElement;
         if (!active || !root?.contains?.(active)) return null;
@@ -249,9 +253,11 @@ export function createEbookApp(options = {}) {
             clearConversation: conversationStore.clearConversation,
             showToast,
         });
+        const shouldAutoScrollAgent = state.agentAutoScroll !== false;
         restoreScrollState(root, agentScroll, '.xb-agent-main', {
-            forceBottom: state.agentAutoScroll !== false,
-            defaultToBottom: state.agentAutoScroll !== false,
+            forceBottom: shouldAutoScrollAgent,
+            defaultToBottom: shouldAutoScrollAgent,
+            preserveScrollTop: !shouldAutoScrollAgent,
         });
         if (state.isSettingsOpen) {
             const settingsBody = root.querySelector('.xb-ebook-settings-body');

@@ -422,7 +422,7 @@ export class GoogleAdapter {
             apiKey: config.apiKey,
             httpOptions: {
                 baseUrl: String(config.baseUrl || 'https://generativelanguage.googleapis.com/v1beta').replace(/\/$/, ''),
-                timeout: Number(config.timeoutMs) || 180000,
+                timeout: Number(config.timeoutMs) || 15 * 60 * 1000,
             },
         });
     }
