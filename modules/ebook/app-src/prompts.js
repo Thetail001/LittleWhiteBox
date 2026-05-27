@@ -48,8 +48,12 @@ export const EBOOK_SYSTEM_PROMPT = [
     '## Tool Layers',
     ' - Discover book structure: LS / Glob inspect paths and directory entries only; they do not read file bodies.',
     ' - Inspect book content: Grep / Read search and read chapters, settings, sources, and review notes.',
-    ' - Modify the current book: Edit / Write / Move / Delete save, revise, and organize files. Use Edit for small in-sentence or multi-spot local revisions; use Write for large sections or whole-chapter rewrites.',
+    ' - Modify the current book: Edit / Write / Move / Delete save, revise, and organize files. Use Edit `oldString` for small in-sentence or multi-spot local revisions; use Edit `startLine`/`endLine` for contiguous medium-sized passage replacement from a recent Read result; use Edit `insertAtLine` to insert new text before a line or append at the end without replacing existing text; use Write for creating files, complete file rewrites, whole sections, whole chapters, or rewrites where most content is new.',
     ' - Edit is same-file sequential: for several changes in one file, use one Edit call with multiple edits. Do not send several Edit calls for the same file in the same turn; if edits overlap, merge them into one larger replacement.',
+    ' - Before Edit, use the current file content as the source of truth: Read the target file unless the exact current text is already available in the conversation or a recent tool result.',
+    ' - Edit can tolerate common punctuation and whitespace-only differences in long fragments, but it is not semantic fuzzy search. If a long block still fails, Read the current file and anchor the replacement with exact surrounding text.',
+    ' - For line-range revisions, Edit may use `startLine`/`endLine` from the latest Read result instead of `oldString`. Multiple line ranges in one Edit call are applied from bottom to top automatically to avoid line-number shifts; keep the original Read line numbers and do not recalculate them.',
+    ' - For insertions, Edit may use `insertAtLine` from the latest Read result. `insertAtLine` inserts before that line; use totalLines + 1 to append to the end of the file.',
     ' - Rename the current book: RenameBook changes only the book title. It does not move chapters, sources, or setting files.',
     ' - Manage writing plans: PlanCreate / PlanUpdate / PlanList / PlanGet only track plans for the current book. They do not draft prose automatically. Plan ids are internal handles for later tool calls; do not explain or show them to the user unless the user asks for debugging details.',
     ' - Independent review: DelegateRun asks the read-only reviewer delegate to inspect the book and return findings. The delegate reviews and reports only; you perform any actual writes.',
@@ -90,7 +94,7 @@ export const EBOOK_SYSTEM_PROMPT = [
     '## 审稿与修订纪律',
     ' - 审稿：优先 DelegateRun，让只读审稿分身按 `book/review-rules.md` 里的固定审稿规则检查章节。为了保持分身独立性，本次任务只给审稿范围、文件路径、必要事实背景和输出形式；不要临时另写审稿标准或牵引结论。',
     ' - 审稿沉淀：主助手收到分身结果后，再按固定审稿规则整理可执行意见，必要时写入 `book/reviews/`。',
-    ' - 修订：读章节与对应审稿意见；小修用 Edit，大段改写、整节或整章重写用 Write。不要无理由整章覆盖。',
+    ' - 修订：读章节与对应审稿意见；句内和小段修改用 Edit oldString，连续中段替换用 Edit startLine/endLine，新增插入用 Edit insertAtLine，整节、整章、全文件或大部分新写才用 Write。不要无理由整章覆盖。',
     ' - 审稿循环：通过档不用修；修改档直接按意见修，不要修完又反复送审；只有打回、整章重写、重写后结构可能大变，或用户明确要求复审时，才再次 DelegateRun。',
     '',
     '# 回答方式',
@@ -402,7 +406,7 @@ export function buildActionPrompt(action = '', options = {}) {
             return [
                 `请按审稿意见修订当前章节：${selectedPath || 'book/chapters/001.md'}。`,
                 '先确认章节文件和对应审稿文件是否存在；如果缺少其中任一项，就先告诉用户当前还不能修订，并说明下一步该补什么。',
-                `读取章节和对应审稿文件（优先 ${reviewPath}）；小修用 Edit，大段或整章重写用 Write。`,
+                `读取章节和对应审稿文件（优先 ${reviewPath}）；小修用 Edit oldString，连续中段替换用 Edit startLine/endLine，新增插入用 Edit insertAtLine，整节或整章重写用 Write。`,
                 '修订后如果故事事实、关系或伏笔状态发生变化，同步更新 `book/state.md`，再说明改动点和仍需人工确认的地方。',
             ].join('\n');
         case 'organize':

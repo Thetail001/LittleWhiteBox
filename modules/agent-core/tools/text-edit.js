@@ -1,4 +1,5 @@
 const CONTEXT_RADIUS = 24;
+const MIN_FLEXIBLE_WHITESPACE_CHARS = 24;
 
 const NORMALIZE_CHAR_MAP = new Map([
     ['“', '"'],
@@ -24,6 +25,20 @@ function normalizeEquivalentText(text = '') {
     return Array.from(String(text ?? ''), (char) => NORMALIZE_CHAR_MAP.get(char) || char).join('');
 }
 
+function buildCompactWhitespaceIndex(text = '') {
+    let compact = '';
+    const positions = [];
+    let offset = 0;
+    for (const char of String(text ?? '')) {
+        const start = offset;
+        offset += char.length;
+        if (/\s/u.test(char)) continue;
+        compact += normalizeEquivalentText(char);
+        positions.push({ start, end: offset });
+    }
+    return { compact, positions };
+}
+
 function findAllRanges(text = '', needle = '') {
     if (!needle) return [];
     const ranges = [];
@@ -47,6 +62,26 @@ function findEquivalentRanges(text = '', needle = '') {
     }));
 }
 
+function findFlexibleWhitespaceRanges(text = '', needle = '') {
+    const haystack = buildCompactWhitespaceIndex(text);
+    const target = buildCompactWhitespaceIndex(needle);
+    if (target.compact.length < MIN_FLEXIBLE_WHITESPACE_CHARS) return [];
+    if (!target.compact || target.compact === needle && haystack.compact === text) return [];
+    return findAllRanges(haystack.compact, target.compact)
+        .map((range) => {
+            const first = haystack.positions[range.start];
+            const last = haystack.positions[range.end - 1];
+            if (!first || !last) return null;
+            return {
+                start: first.start,
+                end: last.end,
+                equivalent: true,
+                flexibleWhitespace: true,
+            };
+        })
+        .filter(Boolean);
+}
+
 function lineNumberAt(text = '', index = 0) {
     let line = 1;
     const limit = Math.max(0, Math.min(index, text.length));
@@ -62,6 +97,12 @@ function contextForRange(text = '', range = {}) {
     const prefix = start > 0 ? '...' : '';
     const suffix = end < text.length ? '...' : '';
     return `${prefix}${text.slice(start, end).replace(/\s+/g, ' ')}${suffix}`;
+}
+
+function numberPreviewLines(lines = [], startLine = 1, limit = 8) {
+    const selected = lines.slice(0, limit);
+    const suffix = lines.length > limit ? '\n...' : '';
+    return `${selected.map((line, index) => `${startLine + index}: ${line}`).join('\n')}${suffix}`;
 }
 
 function buildMatches(text = '', ranges = []) {
@@ -101,7 +142,9 @@ function adaptReplacementStyle(replacement = '', matchedText = '') {
 function findReplacementRanges(content = '', oldString = '') {
     const exact = findAllRanges(content, oldString);
     if (exact.length) return exact;
-    return findEquivalentRanges(content, oldString);
+    const equivalent = findEquivalentRanges(content, oldString);
+    if (equivalent.length) return equivalent;
+    return findFlexibleWhitespaceRanges(content, oldString);
 }
 
 function applyRanges(content = '', ranges = [], newString = '') {
@@ -119,6 +162,11 @@ function applyRanges(content = '', ranges = [], newString = '') {
     return {
         content: nextContent,
         replacements,
+        matchedBy: ranges.some((range) => range.flexibleWhitespace)
+            ? 'flexible_whitespace'
+            : ranges.some((range) => range.equivalent)
+                ? 'punctuation_equivalent'
+                : 'exact',
     };
 }
 
@@ -133,6 +181,203 @@ function buildFailure(error = '', message = '', extra = {}) {
 
 function buildEditFailure(error = '', message = '', suggestion = '', extra = {}) {
     return buildFailure(error, message, suggestion ? { suggestion, ...extra } : extra);
+}
+
+function hasLineRange(edit = {}) {
+    return Object.hasOwn(edit, 'startLine') || Object.hasOwn(edit, 'endLine');
+}
+
+function hasInsertLine(edit = {}) {
+    return Object.hasOwn(edit, 'insertAtLine');
+}
+
+function toPositiveInteger(value) {
+    const number = Number(value);
+    return Number.isInteger(number) && number > 0 ? number : 0;
+}
+
+function splitFileLines(text = '') {
+    return String(text ?? '').replace(/\r\n/g, '\n').split('\n');
+}
+
+function splitReplacementLines(text = '') {
+    if (text === '') return [];
+    const lines = String(text ?? '').replace(/\r\n/g, '\n').split('\n');
+    if (lines.length > 1 && lines[lines.length - 1] === '') lines.pop();
+    const nonEmpty = lines.filter((line) => line.trim());
+    const hasReadLineNumbers = nonEmpty.length > 0
+        && nonEmpty.every((line) => /^\s*\d+:\s?/.test(line));
+    return hasReadLineNumbers
+        ? lines.map((line) => (line.trim() ? line.replace(/^\s*\d+:\s?/, '') : line))
+        : lines;
+}
+
+function applyLineRangeEdits(content = '', editList = []) {
+    const originalLines = splitFileLines(content);
+    const results = new Array(editList.length);
+    const normalized = editList.map((edit = {}, index) => {
+        const startLine = toPositiveInteger(edit.startLine);
+        const endLine = toPositiveInteger(edit.endLine);
+        const newString = typeof edit.newString === 'string' ? edit.newString : String(edit.newString ?? '');
+        const replacementLines = splitReplacementLines(newString);
+        return {
+            edit,
+            index,
+            startLine,
+            endLine,
+            newString,
+            replacementLines,
+        };
+    });
+
+    normalized.forEach((item) => {
+        if (!item.startLine || !item.endLine) {
+            results[item.index] = buildEditFailure(
+                'invalid_line_range',
+                'startLine and endLine must be positive integers',
+                'Use line numbers from the latest Read result, with startLine <= endLine.',
+            );
+            return;
+        }
+        if (item.endLine < item.startLine) {
+            results[item.index] = buildEditFailure(
+                'invalid_line_range',
+                'endLine must be greater than or equal to startLine',
+                'Use an inclusive line range from the latest Read result.',
+            );
+            return;
+        }
+        if (item.endLine > originalLines.length) {
+            results[item.index] = buildEditFailure(
+                'line_range_out_of_bounds',
+                `Line range ${item.startLine}-${item.endLine} is outside the file`,
+                `Read the current file again. This file has ${originalLines.length} lines.`,
+            );
+        }
+    });
+
+    const sorted = normalized
+        .slice()
+        .sort((left, right) => left.startLine - right.startLine || left.endLine - right.endLine);
+    sorted.forEach((item, sortedIndex) => {
+        if (results[item.index]) return;
+        const previous = sorted[sortedIndex - 1];
+        if (previous && !results[previous.index] && item.startLine <= previous.endLine) {
+            results[previous.index] = buildEditFailure(
+                'overlapping_line_ranges',
+                `Line range ${previous.startLine}-${previous.endLine} overlaps ${item.startLine}-${item.endLine}`,
+                'Merge overlapping line edits into one larger startLine/endLine replacement.',
+            );
+            results[item.index] = buildEditFailure(
+                'overlapping_line_ranges',
+                `Line range ${item.startLine}-${item.endLine} overlaps ${previous.startLine}-${previous.endLine}`,
+                'Merge overlapping line edits into one larger startLine/endLine replacement.',
+            );
+        }
+    });
+
+    const nextLines = originalLines.slice();
+    normalized
+        .slice()
+        .sort((left, right) => right.startLine - left.startLine || right.endLine - left.endLine)
+        .forEach((item) => {
+            if (results[item.index]) return;
+            const oldLines = originalLines.slice(item.startLine - 1, item.endLine);
+            nextLines.splice(item.startLine - 1, item.endLine - item.startLine + 1, ...item.replacementLines);
+            results[item.index] = {
+                ok: true,
+                index: item.index,
+                startLine: item.startLine,
+                endLine: item.endLine,
+                replacements: 1,
+                matchedBy: 'line_range',
+                oldPreview: numberPreviewLines(oldLines, item.startLine),
+                newPreview: numberPreviewLines(item.replacementLines, item.startLine),
+            };
+        });
+
+    const failedCount = results.filter((result) => result && !result.ok).length;
+    const appliedCount = results.filter((result) => result && result.ok).length;
+    return {
+        ok: failedCount === 0,
+        partial: appliedCount > 0 && failedCount > 0 ? true : undefined,
+        content: nextLines.join('\n'),
+        results,
+    };
+}
+
+function getInsertableLineCount(content = '') {
+    return content === '' ? 0 : splitFileLines(content).length;
+}
+
+function applyLineInsertEdits(content = '', editList = []) {
+    const originalLines = content === '' ? [] : splitFileLines(content);
+    const lineCount = getInsertableLineCount(content);
+    const results = new Array(editList.length);
+    const normalized = editList.map((edit = {}, index) => {
+        const insertAtLine = toPositiveInteger(edit.insertAtLine);
+        const newString = typeof edit.newString === 'string' ? edit.newString : String(edit.newString ?? '');
+        const insertionLines = splitReplacementLines(newString);
+        return {
+            edit,
+            index,
+            insertAtLine,
+            newString,
+            insertionLines,
+        };
+    });
+
+    normalized.forEach((item) => {
+        if (!item.insertAtLine) {
+            results[item.index] = buildEditFailure(
+                'invalid_insert_line',
+                'insertAtLine must be a positive integer',
+                'Use a line number from the latest Read result. insertAtLine inserts before that line; totalLines + 1 appends to the end.',
+            );
+            return;
+        }
+        if (item.insertAtLine > lineCount + 1) {
+            results[item.index] = buildEditFailure(
+                'insert_line_out_of_bounds',
+                `Insert line ${item.insertAtLine} is outside the file`,
+                `Read the current file again. This file has ${lineCount} lines, so valid insertAtLine values are 1-${lineCount + 1}.`,
+            );
+            return;
+        }
+        if (!item.newString) {
+            results[item.index] = buildEditFailure(
+                'no_changes',
+                'No changes to make',
+                'Provide non-empty newString text to insert.',
+            );
+        }
+    });
+
+    const nextLines = originalLines.slice();
+    normalized
+        .slice()
+        .sort((left, right) => right.insertAtLine - left.insertAtLine || right.index - left.index)
+        .forEach((item) => {
+            if (results[item.index]) return;
+            nextLines.splice(item.insertAtLine - 1, 0, ...item.insertionLines);
+            results[item.index] = {
+                ok: true,
+                index: item.index,
+                insertAtLine: item.insertAtLine,
+                replacements: 0,
+                matchedBy: 'line_insert',
+                newPreview: numberPreviewLines(item.insertionLines, item.insertAtLine),
+            };
+        });
+
+    const failedCount = results.filter((result) => result && !result.ok).length;
+    const appliedCount = results.filter((result) => result && result.ok).length;
+    return {
+        ok: failedCount === 0,
+        partial: appliedCount > 0 && failedCount > 0 ? true : undefined,
+        content: nextLines.join('\n'),
+        results,
+    };
 }
 
 export function applyTextEdits(content = '', edits = []) {
@@ -152,6 +397,52 @@ export function applyTextEdits(content = '', edits = []) {
                 'Provide a non-empty edits array. For same-file multi-spot changes, put all replacements in this one Edit call.',
             )],
         };
+    }
+
+    const lineRangeCount = editList.filter((edit) => hasLineRange(edit)).length;
+    const insertLineCount = editList.filter((edit) => hasInsertLine(edit)).length;
+    const positionedEditCount = lineRangeCount + insertLineCount;
+    if (positionedEditCount && editList.some((edit) => (
+        Object.hasOwn(edit, 'oldString')
+        || (hasLineRange(edit) && hasInsertLine(edit))
+    ))) {
+        return {
+            ok: false,
+            content: nextContent,
+            results: [buildEditFailure(
+                'mixed_edit_modes',
+                'Do not mix oldString, line-range, and insertion fields in one edit item',
+                'Use exactly one Edit mode per call: oldString/newString, startLine/endLine/newString, or insertAtLine/newString.',
+            )],
+        };
+    }
+    if (positionedEditCount && positionedEditCount !== editList.length) {
+        return {
+            ok: false,
+            content: nextContent,
+            results: [buildEditFailure(
+                'mixed_edit_modes',
+                'Do not mix Edit modes in one Edit call',
+                'Use separate Edit calls for oldString replacements, line-range replacements, and insertAtLine insertions.',
+            )],
+        };
+    }
+    if (lineRangeCount && insertLineCount) {
+        return {
+            ok: false,
+            content: nextContent,
+            results: [buildEditFailure(
+                'mixed_edit_modes',
+                'Do not mix line-range edits with insertions in one Edit call',
+                'Use one Edit call for startLine/endLine replacements, then a separate Edit call for insertAtLine insertions if needed.',
+            )],
+        };
+    }
+    if (lineRangeCount) {
+        return applyLineRangeEdits(nextContent, editList);
+    }
+    if (insertLineCount) {
+        return applyLineInsertEdits(nextContent, editList);
     }
 
     editList.forEach((edit = {}, index) => {
@@ -182,23 +473,11 @@ export function applyTextEdits(content = '', edits = []) {
         }
 
         if (!oldString) {
-            if (nextContent) {
-                results.push(buildEditFailure(
-                    'empty_old_string',
-                    'oldString is empty; provide text to replace',
-                    'Use an empty oldString only to create an empty or missing file. For existing files, provide the exact current fragment to replace, or use Write for a full rewrite.',
-                ));
-                return;
-            }
-            nextContent = newString;
-            previousNewStrings.push(newString);
-            appliedCount += 1;
-            results.push({
-                ok: true,
-                index,
-                replacements: 1,
-                created: true,
-            });
+            results.push(buildEditFailure(
+                'empty_old_string',
+                'oldString is empty; provide text to replace',
+                'Use Write to create files. For Edit, provide the exact current fragment to replace, or use Write for a full rewrite.',
+            ));
             return;
         }
 
@@ -207,7 +486,7 @@ export function applyTextEdits(content = '', edits = []) {
             results.push(buildEditFailure(
                 'not_found',
                 'String to replace not found in file',
-                'Read the current file and copy the exact current text into oldString. If this overlaps another same-file edit, merge them into one larger replacement; for large rewrites, use Write.',
+                'Edit already retries long oldString values with common punctuation and whitespace differences ignored. If it still fails, Read the current file and copy the exact current text into oldString. If this overlaps another same-file edit, merge them into one larger replacement; for very large rewrites, use Write.',
             ));
             return;
         }
@@ -231,6 +510,7 @@ export function applyTextEdits(content = '', edits = []) {
             ok: true,
             index,
             replacements: selectedRanges.length,
+            matchedBy: applied.matchedBy,
         });
     });
 

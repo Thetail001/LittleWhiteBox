@@ -110,6 +110,110 @@ test('Shared applyTextEdits reports multiple matches with line contexts unless r
     assert.equal((replaced.content.match(/怪物/g) || []).length, 3);
 });
 
+test('Shared applyTextEdits tolerates whitespace differences for long fragments', () => {
+    const content = [
+        '开头。',
+        '第一段看见了光。',
+        '',
+        '  第二段，停在门口。',
+        '第三段才慢慢回头。',
+        '结尾。',
+    ].join('\n');
+    const result = applyTextEdits(content, [
+        {
+            oldString: '第一段看见了光。\n第二段,停在门口。\n\n第三段才慢慢回头。',
+            newString: '第一段没有立刻说话。\n第二段把手收回去。',
+        },
+    ]);
+
+    assert.equal(result.ok, true);
+    assert.equal(result.results[0].matchedBy, 'flexible_whitespace');
+    assert.equal(result.content, [
+        '开头。',
+        '第一段没有立刻说话。',
+        '第二段把手收回去。',
+        '结尾。',
+    ].join('\n'));
+});
+
+test('Shared applyTextEdits replaces line ranges in descending order automatically', () => {
+    const content = ['一', '二', '三', '四', '五', '六', '七', '八'].join('\n');
+    const result = applyTextEdits(content, [
+        { startLine: 2, endLine: 3, newString: '二三合并' },
+        { startLine: 6, endLine: 7, newString: '6: 六改\n7: 七改\n8: 七后新增' },
+    ]);
+
+    assert.equal(result.ok, true);
+    assert.equal(result.results[0].matchedBy, 'line_range');
+    assert.match(result.results[1].oldPreview, /6: 六/);
+    assert.match(result.results[1].newPreview, /6: 六改/);
+    assert.equal(result.content, ['一', '二三合并', '四', '五', '六改', '七改', '七后新增', '八'].join('\n'));
+});
+
+test('Shared applyTextEdits inserts text before, inside, and after line-numbered content', () => {
+    const content = ['一', '二', '三'].join('\n');
+    const result = applyTextEdits(content, [
+        { insertAtLine: 1, newString: '开头' },
+        { insertAtLine: 3, newString: '3: 中间甲\n4: 中间乙' },
+        { insertAtLine: 4, newString: '结尾' },
+    ]);
+
+    assert.equal(result.ok, true);
+    assert.equal(result.results[0].matchedBy, 'line_insert');
+    assert.match(result.results[1].newPreview, /3: 中间甲/);
+    assert.equal(result.content, ['开头', '一', '二', '中间甲', '中间乙', '三', '结尾'].join('\n'));
+
+    const empty = applyTextEdits('', [
+        { insertAtLine: 1, newString: '第一行' },
+    ]);
+    assert.equal(empty.ok, true);
+    assert.equal(empty.content, '第一行');
+});
+
+test('Shared applyTextEdits rejects mixed modes and partially applies valid line ranges', () => {
+    const content = ['一', '二', '三', '四', '五'].join('\n');
+    const mixedItem = applyTextEdits(content, [
+        { oldString: '一', startLine: 1, endLine: 1, newString: '一改' },
+    ]);
+    assert.equal(mixedItem.ok, false);
+    assert.equal(mixedItem.content, content);
+    assert.equal(mixedItem.results[0].error, 'mixed_edit_modes');
+
+    const mixed = applyTextEdits(content, [
+        { startLine: 1, endLine: 1, newString: '一改' },
+        { oldString: '二', newString: '二改' },
+    ]);
+    assert.equal(mixed.ok, false);
+    assert.equal(mixed.content, content);
+    assert.equal(mixed.results[0].error, 'mixed_edit_modes');
+
+    const mixedInsert = applyTextEdits(content, [
+        { insertAtLine: 1, newString: '开头' },
+        { startLine: 2, endLine: 2, newString: '二改' },
+    ]);
+    assert.equal(mixedInsert.ok, false);
+    assert.equal(mixedInsert.content, content);
+    assert.equal(mixedInsert.results[0].error, 'mixed_edit_modes');
+
+    const overlapping = applyTextEdits(content, [
+        { startLine: 2, endLine: 4, newString: '中段' },
+        { startLine: 3, endLine: 5, newString: '后段' },
+    ]);
+    assert.equal(overlapping.ok, false);
+    assert.equal(overlapping.content, content);
+    assert.equal(overlapping.results[1].error, 'overlapping_line_ranges');
+
+    const partial = applyTextEdits(content, [
+        { startLine: 1, endLine: 1, newString: '一改' },
+        { startLine: 9, endLine: 9, newString: '越界' },
+        { startLine: 5, endLine: 5, newString: '五改' },
+    ]);
+    assert.equal(partial.ok, false);
+    assert.equal(partial.partial, true);
+    assert.equal(partial.results[1].error, 'line_range_out_of_bounds');
+    assert.equal(partial.content, ['一改', '二', '三', '四', '五改'].join('\n'));
+});
+
 test('Shared applyTextEdits protects later edits from matching newly inserted text', () => {
     const result = applyTextEdits('他走过来。', [
         { oldString: '他', newString: '他慢慢' },
@@ -846,7 +950,26 @@ test('Book Edit edits only book files', async () => {
     assert.match(read.content, /新内容二/);
 });
 
-test('Book Edit creates missing files only with an empty oldString', async () => {
+test('Book Edit inserts into existing files by line number', async () => {
+    await resetDb();
+    const book = await createBook('文本插入测试');
+    await upsertBookFile(book.id, 'book/chapters/001.md', '第一行\n第二行');
+    const runtime = createBookToolRuntime({ bookId: book.id });
+
+    const result = await runtime.execute(EBOOK_TOOL_NAMES.EDIT, {
+        filePath: 'book/chapters/001.md',
+        edits: [
+            { insertAtLine: 1, newString: '开头' },
+            { insertAtLine: 3, newString: '结尾' },
+        ],
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.appliedCount, 2);
+    assert.equal((await getBookFile(book.id, 'book/chapters/001.md')).content, '开头\n第一行\n第二行\n结尾');
+});
+
+test('Book Edit never creates missing files', async () => {
     await resetDb();
     const book = await createBook('文本编辑新建测试');
     const runtime = createBookToolRuntime({ bookId: book.id });
@@ -858,12 +981,38 @@ test('Book Edit creates missing files only with an empty oldString', async () =>
     assert.equal(missing.ok, false);
     assert.equal(missing.error, 'file_not_found');
 
-    const created = await runtime.execute(EBOOK_TOOL_NAMES.EDIT, {
+    const implicitCreate = await runtime.execute(EBOOK_TOOL_NAMES.EDIT, {
+        filePath: 'book/notes/implicit.md',
+        edits: [{ newString: '# 不应创建\n' }],
+    });
+    assert.equal(implicitCreate.ok, false);
+    assert.equal(implicitCreate.error, 'file_not_found');
+    assert.equal(await getBookFile(book.id, 'book/notes/implicit.md'), null);
+
+    const lineCreate = await runtime.execute(EBOOK_TOOL_NAMES.EDIT, {
+        filePath: 'book/notes/line-create.md',
+        edits: [{ startLine: 1, endLine: 1, newString: '# 不应创建\n' }],
+    });
+    assert.equal(lineCreate.ok, false);
+    assert.equal(lineCreate.error, 'file_not_found');
+    assert.equal(await getBookFile(book.id, 'book/notes/line-create.md'), null);
+
+    const oldCreate = await runtime.execute(EBOOK_TOOL_NAMES.EDIT, {
         filePath: 'book/notes/new.md',
         edits: [{ oldString: '', newString: '# 新文件\n' }],
     });
-    assert.equal(created.ok, true);
-    assert.equal((await getBookFile(book.id, 'book/notes/new.md')).content, '# 新文件\n');
+    assert.equal(oldCreate.ok, false);
+    assert.equal(oldCreate.error, 'file_not_found');
+    assert.equal(await getBookFile(book.id, 'book/notes/new.md'), null);
+
+    await upsertBookFile(book.id, 'book/notes/empty.md', '');
+    const emptyOldString = await runtime.execute(EBOOK_TOOL_NAMES.EDIT, {
+        filePath: 'book/notes/empty.md',
+        edits: [{ oldString: '', newString: '# 仍不应写入\n' }],
+    });
+    assert.equal(emptyOldString.ok, false);
+    assert.equal(emptyOldString.error, 'empty_old_string');
+    assert.equal((await getBookFile(book.id, 'book/notes/empty.md')).content, '');
 });
 
 test('Book Edit persists partial successes and reports failed edits', async () => {
@@ -5592,10 +5741,19 @@ test('Book prompt keeps assistant-style tool layers and recovery rules', () => {
     assert.match(EBOOK_SYSTEM_PROMPT, /### 章节推进/);
     assert.match(EBOOK_SYSTEM_PROMPT, /### 状态与复盘/);
     assert.match(EBOOK_SYSTEM_PROMPT, /If a tool returns an error/);
-    assert.match(EBOOK_SYSTEM_PROMPT, /Use Edit for small in-sentence or multi-spot local revisions/);
+    assert.match(EBOOK_SYSTEM_PROMPT, /Use Edit `oldString` for small in-sentence or multi-spot local revisions/);
+    assert.match(EBOOK_SYSTEM_PROMPT, /use Edit `startLine`\/`endLine` for contiguous medium-sized passage replacement/);
+    assert.match(EBOOK_SYSTEM_PROMPT, /use Edit `insertAtLine` to insert new text/);
+    assert.match(EBOOK_SYSTEM_PROMPT, /use Write for creating files, complete file rewrites, whole sections, whole chapters/);
     assert.match(EBOOK_SYSTEM_PROMPT, /Do not send several Edit calls for the same file in the same turn/);
+    assert.match(EBOOK_SYSTEM_PROMPT, /Read the target file unless the exact current text is already available/);
     assert.match(EBOOK_SYSTEM_PROMPT, /if edits overlap, merge them into one larger replacement/);
-    assert.match(EBOOK_SYSTEM_PROMPT, /whole-chapter rewrites/);
+    assert.match(EBOOK_SYSTEM_PROMPT, /startLine`\/`endLine` from the latest Read result/);
+    assert.match(EBOOK_SYSTEM_PROMPT, /applied from bottom to top automatically to avoid line-number shifts/);
+    assert.match(EBOOK_SYSTEM_PROMPT, /insertAtLine` inserts before that line/);
+    assert.match(EBOOK_SYSTEM_PROMPT, /连续中段替换用 Edit startLine\/endLine/);
+    assert.match(EBOOK_SYSTEM_PROMPT, /新增插入用 Edit insertAtLine/);
+    assert.match(EBOOK_SYSTEM_PROMPT, /rewrites where most content is new/);
     assert.match(EBOOK_SYSTEM_PROMPT, /RenameBook/);
     assert.match(EBOOK_SYSTEM_PROMPT, /DelegateRun/);
     assert.match(EBOOK_SYSTEM_PROMPT, /先说结论或动作，再说理由/);
@@ -5624,6 +5782,13 @@ test('Book prompt keeps assistant-style tool layers and recovery rules', () => {
     assert.match(String(edit.function.description), /replaceAll/);
     assert.match(String(edit.function.description), /Do not issue multiple Edit tool calls for the same file/);
     assert.match(String(edit.function.description), /If two changes overlap, merge them into one replacement/);
+    assert.match(String(edit.function.description), /startLine\/endLine\/newString/);
+    assert.match(String(edit.function.description), /insertAtLine\/newString/);
+    assert.match(String(edit.function.description), /contiguous medium-sized passage replacement/);
+    assert.match(String(edit.function.description), /Read the target file first unless the exact current text is already available/);
+    assert.match(String(edit.function.description), /bottom to top automatically to avoid line-number shifts/);
+    assert.match(String(edit.function.description), /insertAtLine inserts before that line/);
+    assert.match(String(edit.function.description), /Do not include oldString in a startLine\/endLine or insertAtLine edit item/);
     assert.equal(Object.hasOwn(edit.function.parameters.properties, 'filePath'), true);
     assert.equal(Object.hasOwn(edit.function.parameters.properties, 'edits'), true);
     assert.equal(
@@ -5665,7 +5830,7 @@ test('Book tool definitions teach exact parameters like assistant tools', () => 
 
     const write = definitions.get(EBOOK_TOOL_NAMES.WRITE);
     assert.match(String(write.description), /argument names are `filePath` and `content`/);
-    assert.match(String(write.description), /large prose sections, whole sections, or whole-chapter rewrites/);
+    assert.match(String(write.description), /complete file rewrites, whole sections, whole chapters/);
     assert.match(String(write.description), /include all original content you want to keep/);
     assert.equal(Object.hasOwn(write.parameters.properties, 'path'), false);
     assert.match(String(write.parameters.properties.filePath.description), /Target file path/);
@@ -5674,10 +5839,12 @@ test('Book tool definitions teach exact parameters like assistant tools', () => 
     assert.match(String(edit.description), /One call edits one file/);
     assert.match(String(edit.description), /edits array/);
     assert.match(String(edit.description), /Combine same-file changes into one Edit call/);
+    assert.equal(edit.parameters.properties.edits.items.required.includes('newString'), true);
+    assert.equal(edit.parameters.properties.edits.items.required.includes('oldString'), false);
+    assert.equal(Object.hasOwn(edit.parameters.properties.edits.items.properties, 'startLine'), true);
+    assert.equal(Object.hasOwn(edit.parameters.properties.edits.items.properties, 'insertAtLine'), true);
     assert.equal(Object.hasOwn(edit.parameters.properties, 'path'), false);
     assert.match(String(edit.parameters.properties.filePath.description), /Target file path/);
-    assert.equal(edit.parameters.properties.edits.items.required.includes('oldString'), true);
-    assert.equal(edit.parameters.properties.edits.items.required.includes('newString'), true);
 
     const deleteTool = definitions.get(EBOOK_TOOL_NAMES.DELETE);
     assert.match(String(deleteTool.description), /Directory paths should end with `\/`/);

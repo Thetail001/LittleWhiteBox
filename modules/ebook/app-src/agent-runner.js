@@ -200,7 +200,7 @@ function appendDelegateProgress(entry = {}, event = {}) {
 
 function getToolArgumentSchemaHint(toolName = '') {
     if (toolName === EBOOK_TOOL_NAMES.EDIT) {
-        return 'Expected Edit arguments: {"filePath":"book/...","edits":[{"oldString":"...","newString":"...","replaceAll":false}]}';
+        return 'Expected Edit arguments: {"filePath":"book/...","edits":[{"oldString":"...","newString":"..."}]} or {"filePath":"book/...","edits":[{"startLine":1,"endLine":3,"newString":"..."}]} or {"filePath":"book/...","edits":[{"insertAtLine":4,"newString":"..."}]}';
     }
     if (toolName === EBOOK_TOOL_NAMES.WRITE) {
         return 'Expected Write arguments: {"filePath":"book/...","content":"..."}';

@@ -282,21 +282,18 @@ export function createBookFileToolHandlers(options = {}) {
         const edits = Array.isArray(args.edits) ? args.edits : [];
         const file = await getBookFile(await currentBookId(), path);
         if (!file) {
-            const canCreate = edits.length === 1 && String(edits[0]?.oldString ?? '') === '';
-            if (!canCreate) {
-                return {
+            return {
+                ok: false,
+                path,
+                error: 'file_not_found',
+                message: 'File does not exist',
+                results: [{
                     ok: false,
-                    path,
                     error: 'file_not_found',
                     message: 'File does not exist',
-                    results: [{
-                        ok: false,
-                        error: 'file_not_found',
-                        message: 'File does not exist',
-                    }],
-                    summary: `未找到 ${path}。`,
-                };
-            }
+                }],
+                summary: `未找到 ${path}。`,
+            };
         }
 
         const result = applyTextEdits(file?.content || '', edits);
