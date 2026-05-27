@@ -1,0 +1,209 @@
+import type {
+    XbTavernCharacter,
+    XbTavernContext,
+    XbTavernHistoryMessage,
+    XbTavernUser,
+    XbTavernWorldBook,
+    XbTavernWorldEntry,
+} from './message-assembler';
+
+export interface SillyTavernContextSource {
+    characterId?: number | string;
+    this_chid?: number | string;
+    characters?: unknown[];
+    character?: unknown;
+    chat?: unknown[];
+    name1?: string;
+    name2?: string;
+    userPersona?: string;
+    persona?: string;
+    worldNames?: string[];
+    selectedWorldInfo?: string[] | string;
+    selected_world_info?: string[] | string;
+    globalWorldNames?: string[];
+    charLore?: Array<{ name?: string; extraBooks?: string[] }>;
+    sessionMeta?: Record<string, unknown>;
+}
+
+export interface BuildXbTavernContextOptions {
+    worldBooks?: XbTavernWorldBook[];
+    extraWorldBooks?: XbTavernWorldBook[];
+    worldbookNames?: string[];
+    includeChat?: boolean;
+    historyLimit?: number;
+}
+
+function normalizeText(value: unknown = ''): string {
+    return String(value || '').trim();
+}
+
+function cloneJson<T>(value: T): T {
+    try {
+        return JSON.parse(JSON.stringify(value)) as T;
+    } catch {
+        return value;
+    }
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+    return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function asArray(value: unknown): unknown[] {
+    return Array.isArray(value) ? value : [];
+}
+
+function readEntryList(value: unknown): unknown[] {
+    if (Array.isArray(value)) {return value;}
+    const record = asRecord(value);
+    return Object.keys(record).length ? Object.values(record) : [];
+}
+
+function pickCharacter(source: SillyTavernContextSource = {}): Record<string, unknown> {
+    if (source.character && typeof source.character === 'object') {return asRecord(source.character);}
+    const id = source.characterId ?? source.this_chid;
+    if (id === undefined || id === null) {return {};}
+    const index = Number(id);
+    if (!Number.isInteger(index)) {return {};}
+    return asRecord(asArray(source.characters)[index]);
+}
+
+function pickData(character: Record<string, unknown>): Record<string, unknown> {
+    return asRecord(character.data) || {};
+}
+
+export function normalizeSillyTavernCharacter(source: SillyTavernContextSource = {}): XbTavernCharacter {
+    const character = pickCharacter(source);
+    const data = pickData(character);
+    return {
+        id: normalizeText(source.characterId ?? source.this_chid),
+        name: normalizeText(character.name || data.name || source.name2),
+        avatar: normalizeText(character.avatar || data.avatar),
+        description: normalizeText(data.description || character.description),
+        personality: normalizeText(data.personality || character.personality),
+        scenario: normalizeText(data.scenario || character.scenario),
+        firstMessage: normalizeText(data.first_mes || character.first_mes),
+        mesExample: normalizeText(data.mes_example || character.mes_example),
+        creatorNotes: normalizeText(data.creator_notes || character.creator_notes),
+        data: cloneJson(data),
+    };
+}
+
+export function normalizeSillyTavernUser(source: SillyTavernContextSource = {}): XbTavernUser {
+    return {
+        name: normalizeText(source.name1) || 'User',
+        persona: normalizeText(source.userPersona || source.persona),
+    };
+}
+
+export function normalizeSillyTavernHistory(source: SillyTavernContextSource = {}, options: BuildXbTavernContextOptions = {}): XbTavernHistoryMessage[] {
+    if (options.includeChat === false) {return [];}
+    const raw = asArray(source.chat);
+    const limit = Number(options.historyLimit);
+    const selected = Number.isFinite(limit) && limit > 0 ? raw.slice(-limit) : raw;
+    return selected.map((item) => {
+        const message = asRecord(item);
+        return {
+            role: message.is_user ? 'user' as const : 'assistant' as const,
+            name: normalizeText(message.name),
+            content: normalizeText(message.mes || message.message || message.content),
+            is_user: !!message.is_user,
+        };
+    }).filter((message) => message.content);
+}
+
+function normalizeEmbeddedCharacterBook(source: SillyTavernContextSource = {}): XbTavernWorldBook | null {
+    const character = pickCharacter(source);
+    const data = pickData(character);
+    const characterBook = asRecord(data.character_book);
+    const entries = readEntryList(characterBook.entries);
+    if (!entries.length) {return null;}
+    const name = normalizeText(characterBook.name) || `${normalizeText(character.name || data.name) || 'Character'} embedded lorebook`;
+    return {
+        name,
+        entries: entries.map((entry) => ({
+            ...cloneJson(asRecord(entry)),
+            sourceWorldBook: name,
+        }) as XbTavernWorldEntry),
+    };
+}
+
+function addUnique(target: string[], value: unknown): void {
+    if (Array.isArray(value)) {
+        value.forEach((item) => addUnique(target, item));
+        return;
+    }
+    const text = normalizeText(value);
+    if (text && !target.includes(text)) {target.push(text);}
+}
+
+export function collectSillyTavernWorldbookNames(source: SillyTavernContextSource = {}, options: BuildXbTavernContextOptions = {}): string[] {
+    const character = pickCharacter(source);
+    const data = pickData(character);
+    const extensions = asRecord(data.extensions);
+    const characterBook = asRecord(data.character_book);
+    const names: string[] = [];
+
+    addUnique(names, options.worldbookNames);
+    addUnique(names, extensions.world);
+    addUnique(names, character.world);
+    if (!readEntryList(characterBook.entries).length) {
+        addUnique(names, characterBook.name);
+    }
+    addUnique(names, source.worldNames);
+    addUnique(names, source.selectedWorldInfo);
+    addUnique(names, source.selected_world_info);
+    addUnique(names, source.globalWorldNames);
+
+    const avatar = normalizeText(character.avatar);
+    asArray(source.charLore).forEach((entry) => {
+        const record = asRecord(entry);
+        if (!avatar || normalizeText(record.name) === avatar) {
+            addUnique(names, record.extraBooks);
+        }
+    });
+
+    return names;
+}
+
+export function normalizeWorldbookData(name = '', data: unknown): XbTavernWorldBook {
+    const record = asRecord(data);
+    const rawEntries = record.entries && !Array.isArray(record.entries)
+        ? Object.values(asRecord(record.entries))
+        : asArray(record.entries);
+    return {
+        name: normalizeText(name || record.name),
+        entries: rawEntries.map((entry) => ({
+            ...cloneJson(asRecord(entry)),
+            sourceWorldBook: normalizeText(name || record.name),
+        }) as XbTavernWorldEntry),
+    };
+}
+
+export function buildXbTavernContextFromSillyTavern(
+    source: SillyTavernContextSource = {},
+    options: BuildXbTavernContextOptions = {},
+): XbTavernContext {
+    const embeddedBook = normalizeEmbeddedCharacterBook(source);
+    const worldBooks = [
+        ...(embeddedBook ? [embeddedBook] : []),
+        ...(Array.isArray(options.worldBooks) ? options.worldBooks : []),
+        ...(Array.isArray(options.extraWorldBooks) ? options.extraWorldBooks : []),
+    ];
+    return {
+        character: normalizeSillyTavernCharacter(source),
+        user: normalizeSillyTavernUser(source),
+        history: normalizeSillyTavernHistory(source, options),
+        worldBooks,
+        worldEntries: worldBooks.flatMap((book) => Array.isArray(book.entries)
+            ? book.entries.map((entry) => ({
+                ...entry,
+                sourceWorldBook: entry.sourceWorldBook || book.name,
+            }))
+            : []),
+        sessionMeta: {
+            ...(source.sessionMeta || {}),
+            worldbookNames: collectSillyTavernWorldbookNames(source, options),
+        },
+    };
+}

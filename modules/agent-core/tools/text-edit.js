@@ -206,6 +206,39 @@ function toPositiveInteger(value) {
     return Number.isInteger(number) && number > 0 ? number : 0;
 }
 
+function getEditMode(edit = {}) {
+    const startLine = toPositiveInteger(edit.startLine);
+    const endLine = toPositiveInteger(edit.endLine);
+    if (startLine && endLine) return 'line_range';
+    if (toPositiveInteger(edit.insertAtLine)) return 'line_insert';
+    if (hasOldStringMode(edit)) return 'old_string';
+    if (hasLineRange(edit)) return 'line_range';
+    if (hasInsertLine(edit)) return 'line_insert';
+    return 'old_string';
+}
+
+function normalizeEditForMode(edit = {}, mode = '') {
+    const newString = typeof edit.newString === 'string' ? edit.newString : String(edit.newString ?? '');
+    if (mode === 'line_range') {
+        return {
+            startLine: edit.startLine,
+            endLine: edit.endLine,
+            newString,
+        };
+    }
+    if (mode === 'line_insert') {
+        return {
+            insertAtLine: edit.insertAtLine,
+            newString,
+        };
+    }
+    return {
+        oldString: typeof edit.oldString === 'string' ? edit.oldString : String(edit.oldString ?? ''),
+        newString,
+        replaceAll: !!edit.replaceAll,
+    };
+}
+
 function splitFileLines(text = '') {
     return String(text ?? '').replace(/\r\n/g, '\n').split('\n');
 }
@@ -390,6 +423,180 @@ function applyLineInsertEdits(content = '', editList = []) {
     };
 }
 
+function applyLinePositionEdits(content = '', editList = [], modeList = []) {
+    const hasLineRange = modeList.some((mode) => mode === 'line_range');
+    const originalLines = content === '' && !hasLineRange ? [] : splitFileLines(content);
+    const insertableLineCount = getInsertableLineCount(content);
+    const results = new Array(editList.length);
+    const normalized = editList.map((edit = {}, index) => {
+        const mode = modeList[index];
+        if (mode === 'line_insert') {
+            const insertAtLine = toPositiveInteger(edit.insertAtLine);
+            const newString = typeof edit.newString === 'string' ? edit.newString : String(edit.newString ?? '');
+            return {
+                mode,
+                edit,
+                index,
+                insertAtLine,
+                newString,
+                insertionLines: splitReplacementLines(newString),
+            };
+        }
+        const startLine = toPositiveInteger(edit.startLine);
+        const endLine = toPositiveInteger(edit.endLine);
+        const newString = typeof edit.newString === 'string' ? edit.newString : String(edit.newString ?? '');
+        return {
+            mode,
+            edit,
+            index,
+            startLine,
+            endLine,
+            newString,
+            replacementLines: splitReplacementLines(newString),
+        };
+    });
+
+    normalized.forEach((item) => {
+        if (item.mode === 'line_insert') {
+            if (!item.insertAtLine) {
+                results[item.index] = buildEditFailure(
+                    'invalid_insert_line',
+                    'insertAtLine must be a positive integer',
+                    'Use a line number from the latest Read result. insertAtLine inserts before that line; totalLines + 1 appends to the end.',
+                );
+                return;
+            }
+            if (item.insertAtLine > insertableLineCount + 1) {
+                results[item.index] = buildEditFailure(
+                    'insert_line_out_of_bounds',
+                    `Insert line ${item.insertAtLine} is outside the file`,
+                    `Read the current file again. This file has ${insertableLineCount} lines, so valid insertAtLine values are 1-${insertableLineCount + 1}.`,
+                );
+                return;
+            }
+            if (!item.newString) {
+                results[item.index] = buildEditFailure(
+                    'no_changes',
+                    'No changes to make',
+                    'Provide non-empty newString text to insert.',
+                );
+            }
+            return;
+        }
+
+        if (!item.startLine || !item.endLine) {
+            results[item.index] = buildEditFailure(
+                'invalid_line_range',
+                'startLine and endLine must be positive integers',
+                'Use line numbers from the latest Read result, with startLine <= endLine.',
+            );
+            return;
+        }
+        if (item.endLine < item.startLine) {
+            results[item.index] = buildEditFailure(
+                'invalid_line_range',
+                'endLine must be greater than or equal to startLine',
+                'Use an inclusive line range from the latest Read result.',
+            );
+            return;
+        }
+        if (item.endLine > originalLines.length) {
+            results[item.index] = buildEditFailure(
+                'line_range_out_of_bounds',
+                `Line range ${item.startLine}-${item.endLine} is outside the file`,
+                `Read the current file again. This file has ${originalLines.length} lines.`,
+            );
+        }
+    });
+
+    const ranges = normalized
+        .filter((item) => item.mode === 'line_range')
+        .slice()
+        .sort((left, right) => left.startLine - right.startLine || left.endLine - right.endLine);
+    ranges.forEach((item, sortedIndex) => {
+        if (results[item.index]) return;
+        const previous = ranges[sortedIndex - 1];
+        if (previous && !results[previous.index] && item.startLine <= previous.endLine) {
+            results[previous.index] = buildEditFailure(
+                'overlapping_line_ranges',
+                `Line range ${previous.startLine}-${previous.endLine} overlaps ${item.startLine}-${item.endLine}`,
+                'Merge overlapping line edits into one larger startLine/endLine replacement.',
+            );
+            results[item.index] = buildEditFailure(
+                'overlapping_line_ranges',
+                `Line range ${item.startLine}-${item.endLine} overlaps ${previous.startLine}-${previous.endLine}`,
+                'Merge overlapping line edits into one larger startLine/endLine replacement.',
+            );
+        }
+    });
+
+    const inserts = normalized.filter((item) => item.mode === 'line_insert');
+    inserts.forEach((insert) => {
+        if (results[insert.index]) return;
+        const coveringRange = ranges.find((range) => (
+            !results[range.index]
+            && range.startLine < insert.insertAtLine
+            && insert.insertAtLine <= range.endLine
+        ));
+        if (!coveringRange) return;
+        const failure = buildEditFailure(
+            'insert_inside_line_range',
+            `Insert line ${insert.insertAtLine} falls inside replaced line range ${coveringRange.startLine}-${coveringRange.endLine}`,
+            'Merge the insertion into that startLine/endLine replacement, or insert at the range start/end boundary.',
+        );
+        results[insert.index] = failure;
+        results[coveringRange.index] = failure;
+    });
+
+    const nextLines = originalLines.slice();
+    normalized
+        .slice()
+        .sort((left, right) => {
+            const leftAnchor = left.mode === 'line_insert' ? left.insertAtLine : left.startLine;
+            const rightAnchor = right.mode === 'line_insert' ? right.insertAtLine : right.startLine;
+            if (leftAnchor !== rightAnchor) return rightAnchor - leftAnchor;
+            if (left.mode !== right.mode) return left.mode === 'line_range' ? -1 : 1;
+            if (left.mode === 'line_insert') return right.index - left.index;
+            return right.endLine - left.endLine || right.index - left.index;
+        })
+        .forEach((item) => {
+            if (results[item.index]) return;
+            if (item.mode === 'line_insert') {
+                nextLines.splice(item.insertAtLine - 1, 0, ...item.insertionLines);
+                results[item.index] = {
+                    ok: true,
+                    index: item.index,
+                    insertAtLine: item.insertAtLine,
+                    replacements: 0,
+                    matchedBy: 'line_insert',
+                    newPreview: numberPreviewLines(item.insertionLines, item.insertAtLine),
+                };
+                return;
+            }
+            const oldLines = originalLines.slice(item.startLine - 1, item.endLine);
+            nextLines.splice(item.startLine - 1, item.endLine - item.startLine + 1, ...item.replacementLines);
+            results[item.index] = {
+                ok: true,
+                index: item.index,
+                startLine: item.startLine,
+                endLine: item.endLine,
+                replacements: 1,
+                matchedBy: 'line_range',
+                oldPreview: numberPreviewLines(oldLines, item.startLine),
+                newPreview: numberPreviewLines(item.replacementLines, item.startLine),
+            };
+        });
+
+    const failedCount = results.filter((result) => result && !result.ok).length;
+    const appliedCount = results.filter((result) => result && result.ok).length;
+    return {
+        ok: failedCount === 0,
+        partial: appliedCount > 0 && failedCount > 0 ? true : undefined,
+        content: nextLines.join('\n'),
+        results,
+    };
+}
+
 function normalizeEditsInput(edits) {
     if (Array.isArray(edits)) {
         return { ok: true, edits, parsedFromString: false };
@@ -476,24 +683,12 @@ export function applyTextEdits(content = '', edits) {
         };
     }
 
-    const lineRangeCount = editList.filter((edit) => hasLineRange(edit)).length;
-    const insertLineCount = editList.filter((edit) => hasInsertLine(edit)).length;
+    const modeList = editList.map((edit) => getEditMode(edit));
+    const lineRangeCount = modeList.filter((mode) => mode === 'line_range').length;
+    const insertLineCount = modeList.filter((mode) => mode === 'line_insert').length;
+    const oldStringCount = modeList.filter((mode) => mode === 'old_string').length;
     const positionedEditCount = lineRangeCount + insertLineCount;
-    if (positionedEditCount && editList.some((edit) => (
-        hasOldStringMode(edit)
-        || (hasLineRange(edit) && hasInsertLine(edit))
-    ))) {
-        return {
-            ok: false,
-            content: nextContent,
-            results: [buildEditFailure(
-                'mixed_edit_modes',
-                'Do not mix oldString, line-range, and insertion fields in one edit item',
-                'Use exactly one Edit mode per call: oldString/newString, startLine/endLine/newString, or insertAtLine/newString.',
-            )],
-        };
-    }
-    if (positionedEditCount && positionedEditCount !== editList.length) {
+    if (positionedEditCount && oldStringCount) {
         return {
             ok: false,
             content: nextContent,
@@ -505,28 +700,26 @@ export function applyTextEdits(content = '', edits) {
         };
     }
     if (lineRangeCount && insertLineCount) {
-        return {
-            ok: false,
-            content: nextContent,
-            results: [buildEditFailure(
-                'mixed_edit_modes',
-                'Do not mix line-range edits with insertions in one Edit call',
-                'Use one Edit call for startLine/endLine replacements, then a separate Edit call for insertAtLine insertions if needed.',
-            )],
-        };
+        const result = applyLinePositionEdits(
+            nextContent,
+            editList.map((edit, index) => normalizeEditForMode(edit, modeList[index])),
+            modeList,
+        );
+        if (normalizedInput.warning) result.warning = normalizedInput.warning;
+        return result;
     }
     if (lineRangeCount) {
-        const result = applyLineRangeEdits(nextContent, editList);
+        const result = applyLineRangeEdits(nextContent, editList.map((edit, index) => normalizeEditForMode(edit, modeList[index])));
         if (normalizedInput.warning) result.warning = normalizedInput.warning;
         return result;
     }
     if (insertLineCount) {
-        const result = applyLineInsertEdits(nextContent, editList);
+        const result = applyLineInsertEdits(nextContent, editList.map((edit, index) => normalizeEditForMode(edit, modeList[index])));
         if (normalizedInput.warning) result.warning = normalizedInput.warning;
         return result;
     }
 
-    editList.forEach((edit = {}, index) => {
+    editList.map((edit, index) => normalizeEditForMode(edit, modeList[index])).forEach((edit = {}, index) => {
         const oldString = typeof edit.oldString === 'string' ? edit.oldString : String(edit.oldString ?? '');
         const newString = typeof edit.newString === 'string' ? edit.newString : String(edit.newString ?? '');
         const replaceAll = !!edit.replaceAll;

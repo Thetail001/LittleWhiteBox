@@ -33,6 +33,7 @@ import { initTts, cleanupTts } from "./modules/tts/tts.js";
 import { initEnaPlanner, cleanupEnaPlanner } from "./modules/ena-planner/ena-planner.js";
 import { initAssistant, cleanupAssistant } from "./modules/assistant/assistant.js";
 import { initEbook, cleanupEbook } from "./modules/ebook/ebook.js";
+import { initTavern, cleanupTavern } from "./modules/tavern/tavern.js";
 
 extension_settings[EXT_ID] = extension_settings[EXT_ID] || {
     enabled: true,
@@ -567,7 +568,8 @@ function toggleSettingsControls(enabled) {
         'xiaobaix_max_rendered', 'xiaobaix_story_outline_enabled', 'xiaobaix_story_summary_enabled',
         'xiaobaix_draw_provider', 'xiaobaix_draw_open_settings',
         'xiaobaix_tts_enabled', 'xiaobaix_tts_open_settings',
-        'xiaobaix_ena_planner_enabled', 'xiaobaix_ena_planner_open_settings'
+        'xiaobaix_ena_planner_enabled', 'xiaobaix_ena_planner_open_settings',
+        'xiaobaix_tavern_open_settings'
     ];
     controls.forEach(id => {
         $(`#${id}`).prop('disabled', !enabled).toggleClass('disabled-control', !enabled);
@@ -597,6 +599,11 @@ function syncFeatureActionButtons() {
     if (ebookButton) {
         ebookButton.disabled = !isXiaobaixEnabled;
         ebookButton.classList.toggle('disabled-action', !isXiaobaixEnabled);
+    }
+    const tavernButton = document.getElementById('xiaobaix_tavern_open_settings');
+    if (tavernButton) {
+        tavernButton.disabled = !isXiaobaixEnabled;
+        tavernButton.classList.toggle('disabled-action', !isXiaobaixEnabled);
     }
     const fourthWallButton = document.getElementById('xiaobaix_fourth_wall_open_settings');
     if (fourthWallButton) {
@@ -632,6 +639,7 @@ async function toggleAllFeatures(enabled) {
             { condition: extension_settings[EXT_ID].tts?.enabled, init: initTts },
             { condition: extension_settings[EXT_ID].enaPlanner?.enabled, init: initEnaPlanner },
             { condition: true, init: initEbook },
+            { condition: true, init: initTavern },
             { condition: true, init: initStreamingGeneration },
             { condition: true, init: initButtonCollapse }
         ];
@@ -678,6 +686,7 @@ async function toggleAllFeatures(enabled) {
         try { cleanupEnaPlanner(); } catch (e) { }
         try { cleanupAssistant(); } catch (e) { }
         try { cleanupEbook(); } catch (e) { }
+        try { cleanupTavern(); } catch (e) { }
         try { clearBlobCaches(); } catch (e) { }
         toggleSettingsControls(false);
         try { window.cleanupWorldbookHostBridge && window.cleanupWorldbookHostBridge(); document.getElementById('xb-worldbook')?.remove(); } catch (e) { }
@@ -839,6 +848,18 @@ async function setupSettings() {
                 window.xiaobaixEbook.open();
             } else {
                 toastr.warning('电纸书初始化失败');
+            }
+        });
+
+        $("#xiaobaix_tavern_open_settings").on("click", async function () {
+            if (!isXiaobaixEnabled) return;
+            if (!window.xiaobaixTavern?.open) {
+                await initTavern();
+            }
+            if (window.xiaobaixTavern?.open) {
+                window.xiaobaixTavern.open();
+            } else {
+                toastr.warning('小白酒馆初始化失败');
             }
         });
 
@@ -1051,6 +1072,7 @@ jQuery(async () => {
                 { condition: settings.tts?.enabled, init: initTts },
                 { condition: settings.enaPlanner?.enabled, init: initEnaPlanner },
                 { condition: true, init: initEbook },
+                { condition: true, init: initTavern },
                 { condition: true, init: initStreamingGeneration },
                 { condition: true, init: initButtonCollapse }
             ];

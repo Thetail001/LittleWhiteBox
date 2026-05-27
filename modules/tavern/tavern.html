@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LittleWhiteBox Tavern</title>
+</head>
+<body>
+    <div id="app"></div>
+    <script>
+        const version = new URLSearchParams(location.search).get('v') || '';
+        const suffix = version ? `?v=${encodeURIComponent(version)}` : '';
+        const stylesheet = document.createElement('link');
+        stylesheet.rel = 'stylesheet';
+        stylesheet.href = `./dist/tavern-app.css${suffix}`;
+        document.head.appendChild(stylesheet);
+        const script = document.createElement('script');
+        script.type = 'module';
+        script.src = `./dist/tavern-app.js${suffix}`;
+        document.body.appendChild(script);
+    </script>
+</body>
+</html>

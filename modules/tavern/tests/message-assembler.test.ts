@@ -1,0 +1,360 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+
+import {
+    XBTavernSelectiveLogic,
+    XBTavernWorldPosition,
+    activateWorldEntries,
+    buildXbTavernMessages,
+    squashChatHistory,
+} from '../shared/message-assembler';
+import {
+    DEFAULT_XB_TAVERN_PRESET_ID,
+    createDefaultXbTavernPreset,
+    listBuiltInXbTavernPresets,
+} from '../shared/presets';
+
+test('xb tavern assembler keeps LittleWhiteBox top prompts locked first', () => {
+    const result = buildXbTavernMessages({
+        character: {
+            name: 'Aster',
+            description: 'A careful pilot.',
+        },
+        user: {
+            name: 'Player',
+        },
+    }, {
+        systemPrompt: 'LWB top system',
+        toolPrompt: 'LWB tool rules',
+        sections: [{ placement: 'top', role: 'system', content: 'Preset tone' }],
+    }, {
+        currentUserMessage: 'Hello.',
+    });
+
+    assert.equal(result.messages[0].role, 'system');
+    assert.equal(result.messages[0].content, 'LWB top system');
+    assert.equal(result.messages[1].role, 'system');
+    assert.equal(result.messages[1].content, 'LWB tool rules');
+    assert.equal(result.messages[2].content, 'Preset tone');
+    assert.deepEqual(result.messageLayers.slice(0, 3).map((item) => item.layer), ['lwb-system', 'lwb-tool', 'preset']);
+    assert.deepEqual(JSON.parse(result.meta.rawMessagesJson), result.messages);
+    assert.match(result.messages.map((message) => message.content).join('\n'), /<character_card>/);
+    assert.equal(result.messages.filter((message) => message.content === 'LWB top system').length, 1);
+});
+
+test('xb tavern default preset has stable metadata and locked top messages', () => {
+    const preset = createDefaultXbTavernPreset();
+    const result = buildXbTavernMessages({
+        character: { name: 'Aster', description: 'Pilot.' },
+    }, preset, {
+        currentUserMessage: '继续。',
+    });
+
+    assert.equal(preset.id, DEFAULT_XB_TAVERN_PRESET_ID);
+    assert.equal(preset.name, '小白酒馆默认角色扮演预设');
+    assert.equal(preset.version, '1.0.0');
+    assert.equal(listBuiltInXbTavernPresets()[0]?.id, DEFAULT_XB_TAVERN_PRESET_ID);
+    assert.equal(result.messages[0].content, preset.systemPrompt);
+    assert.equal(result.messages[1].content, preset.toolPrompt);
+    assert.deepEqual(result.messageLayers.slice(0, 2).map((item) => item.layer), ['lwb-system', 'lwb-tool']);
+});
+
+test('xb tavern preset labels are debug metadata only', () => {
+    const result = buildXbTavernMessages({}, {
+        systemPrompt: 'Top',
+        toolPrompt: 'Tools',
+        sections: [{
+            id: 'debug-label-test',
+            label: 'Debug Label',
+            locked: true,
+            placement: 'beforeHistory',
+            role: 'system',
+            content: 'Actual preset content.',
+        }],
+    }, {
+        currentUserMessage: 'Hello.',
+    });
+
+    assert.equal(result.messageLayers.some((layer) => layer.label === 'Debug Label'), true);
+    assert.equal(result.messages.some((message) => message.content.includes('Debug Label')), false);
+    assert.deepEqual(JSON.parse(result.meta.rawMessagesJson), result.messages);
+});
+
+test('xb tavern world activation supports constant, keyword, and selective logic', () => {
+    const entries = activateWorldEntries([
+        {
+            uid: 1,
+            comment: 'constant lore',
+            content: 'The city never sleeps.',
+            constant: true,
+            order: 10,
+        },
+        {
+            uid: 2,
+            comment: 'keyword lore',
+            content: 'The station has old doors.',
+            key: ['station'],
+            order: 20,
+        },
+        {
+            uid: 3,
+            comment: 'selective lore',
+            content: 'The vault opens only during rain.',
+            key: ['vault'],
+            keysecondary: ['rain'],
+            selectiveLogic: XBTavernSelectiveLogic.AND_ALL,
+            order: 30,
+        },
+        {
+            uid: 4,
+            comment: 'disabled lore',
+            content: 'Disabled.',
+            key: ['station'],
+            disable: true,
+            order: 40,
+        },
+    ], {
+        scanText: 'The player reaches the station. The vault is quiet.',
+    });
+
+    assert.deepEqual(entries.map((entry) => entry.uid), [2, 1]);
+});
+
+test('xb tavern world activation honors decorator activation and suppression', () => {
+    const entries = activateWorldEntries([
+        {
+            uid: 'forced',
+            content: '@@activate\nForced lore.',
+        },
+        {
+            uid: 'suppressed',
+            content: '@@dont_activate\nSuppressed lore.',
+            constant: true,
+        },
+    ], {
+        scanText: '',
+    });
+
+    assert.deepEqual(entries.map((entry) => entry.uid), ['forced']);
+    assert.equal(entries[0].content, 'Forced lore.');
+});
+
+test('xb tavern world activation supports recursion, budget, probability and sticky gates', () => {
+    const entries = activateWorldEntries([
+        {
+            uid: 'first',
+            content: 'Hidden relay keyword.',
+            key: ['station'],
+            order: 10,
+        },
+        {
+            uid: 'recursive',
+            content: 'Recursive lore.',
+            key: ['relay'],
+            order: 9,
+        },
+        {
+            uid: 'sticky',
+            content: 'Sticky lore.',
+            key: ['missing'],
+            order: 8,
+        },
+        {
+            uid: 'blocked',
+            content: 'Blocked lore.',
+            key: ['station'],
+            probability: 0,
+            order: 7,
+        },
+    ], {
+        scanText: 'station',
+        recursion: true,
+        recursionLimit: 3,
+        turn: 5,
+        budgetChars: 80,
+        entryStates: {
+            sticky: { stickyUntilTurn: 8 },
+        },
+    });
+
+    assert.deepEqual(entries.map((entry) => entry.uid), ['first', 'recursive', 'sticky']);
+});
+
+test('xb tavern assembler exposes world candidate explanations', () => {
+    const result = buildXbTavernMessages({
+        worldBooks: [{
+            name: 'DebugWorld',
+            entries: [
+                {
+                    uid: 'hit',
+                    comment: 'hit lore',
+                    content: 'Hit lore.',
+                    key: ['station'],
+                    order: 20,
+                },
+                {
+                    uid: 'miss',
+                    comment: 'miss lore',
+                    content: 'Miss lore.',
+                    key: ['moon'],
+                    order: 10,
+                },
+            ],
+        }],
+    }, {
+        systemPrompt: 'Top',
+        toolPrompt: 'Tools',
+    }, {
+        currentUserMessage: 'The station door opens.',
+    });
+
+    const hit = result.worldEntryCandidates.find((entry) => entry.uid === 'hit');
+    const miss = result.worldEntryCandidates.find((entry) => entry.uid === 'miss');
+    assert.equal(hit?.sourceWorldBook, 'DebugWorld');
+    assert.equal(hit?.status, 'activated');
+    assert.equal(hit?.activationReason, 'keyword');
+    assert.equal(hit?.positionLabel, 'after character');
+    assert.equal(miss?.status, 'not_matched');
+    assert.equal(result.activatedWorldEntries[0].sourceWorldBook, 'DebugWorld');
+});
+
+test('xb tavern assembler does not double count flattened world entries when world books exist', () => {
+    const entry = {
+        uid: 'same',
+        content: 'Same lore.',
+        constant: true,
+    };
+    const result = buildXbTavernMessages({
+        worldBooks: [{ name: 'BookA', entries: [entry] }],
+        worldEntries: [entry],
+    }, {
+        systemPrompt: 'Top',
+        toolPrompt: 'Tools',
+    }, {
+        currentUserMessage: 'Hello.',
+    });
+
+    assert.equal(result.worldEntryCandidates.length, 1);
+    assert.equal(result.activatedWorldEntries.length, 1);
+});
+
+test('xb tavern assembler keeps same uid entries separate across world books', () => {
+    const result = buildXbTavernMessages({
+        worldBooks: [
+            {
+                name: 'BookA',
+                entries: [{ uid: 1, content: 'Book A lore.', constant: true, order: 2 }],
+            },
+            {
+                name: 'BookB',
+                entries: [{ uid: 1, content: 'Book B lore.', constant: true, order: 1 }],
+            },
+        ],
+    }, {
+        systemPrompt: 'Top',
+        toolPrompt: 'Tools',
+    }, {
+        currentUserMessage: 'Hello.',
+    });
+
+    assert.equal(result.activatedWorldEntries.length, 2);
+    assert.deepEqual(result.activatedWorldEntries.map((entry) => entry.sourceWorldBook), ['BookA', 'BookB']);
+    assert.equal(new Set(result.worldEntryCandidates.map((entry) => entry.activationKey)).size, 2);
+    assert.deepEqual(result.worldEntryCandidates.map((entry) => entry.status), ['activated', 'activated']);
+});
+
+test('xb tavern assembler maps world positions into stable message locations', () => {
+    const result = buildXbTavernMessages({
+        character: {
+            name: 'Aster',
+            description: 'Pilot.',
+        },
+        user: {
+            name: 'Player',
+        },
+        history: [
+            { role: 'user', content: 'We enter the station.' },
+            { role: 'assistant', content: 'Aster checks the lights.' },
+        ],
+        worldEntries: [
+            {
+                uid: 'before',
+                content: 'Before character lore.',
+                constant: true,
+                position: XBTavernWorldPosition.before,
+            },
+            {
+                uid: 'after',
+                content: 'After character lore.',
+                constant: true,
+                position: XBTavernWorldPosition.after,
+            },
+            {
+                uid: 'depth',
+                content: 'Depth lore.',
+                constant: true,
+                position: XBTavernWorldPosition.atDepth,
+                depth: 0,
+                role: 'system',
+            },
+            {
+                uid: 'outlet',
+                content: 'Outlet lore.',
+                constant: true,
+                position: XBTavernWorldPosition.outlet,
+                outletName: 'status',
+            },
+        ],
+    }, {
+        systemPrompt: 'Top',
+        toolPrompt: 'Tools',
+    }, {
+        currentUserMessage: 'Look at the vault.',
+        historyMode: 'raw',
+    });
+
+    const contents = result.messages.map((message) => message.content);
+    assert.equal(contents.indexOf('<world_info_before_character>\nBefore character lore.\n</world_info_before_character>') < contents.findIndex((content) => content.includes('<character_card>')), true);
+    assert.equal(contents.indexOf('<world_info_after_character>\nAfter character lore.\n</world_info_after_character>') > contents.findIndex((content) => content.includes('<character_card>')), true);
+    assert.deepEqual(result.outlets, { status: 'Outlet lore.' });
+    assert.equal(result.messages[result.messages.length - 2].content, 'Look at the vault.');
+    assert.equal(result.messages[result.messages.length - 1].content, '<world_info_depth depth="0">\nDepth lore.\n</world_info_depth>');
+});
+
+test('xb tavern assembler can squash chat history like a controlled preset layer', () => {
+    const squashed = squashChatHistory([
+        { role: 'user', content: 'Open the door.' },
+        { role: 'assistant', content: 'The door opens.' },
+    ], {
+        role: 'assistant',
+        userName: 'Mira',
+        characterName: 'Aster',
+    });
+
+    assert.deepEqual(squashed, [{
+        role: 'assistant',
+        content: 'Mira: Open the door.\n\nAster: The door opens.',
+    }]);
+});
+
+test('xb tavern assembler supports preset placements around history', () => {
+    const result = buildXbTavernMessages({
+        history: [{ role: 'user', content: 'Previous turn.' }],
+    }, {
+        systemPrompt: 'Top',
+        toolPrompt: 'Tools',
+        sections: [
+            { placement: 'beforeHistory', role: 'system', content: 'Before history rule.' },
+            { placement: 'afterHistory', role: 'system', content: 'After history rule.' },
+            { placement: 'assistantPrefill', role: 'assistant', content: 'Aster whispers:' },
+        ],
+    }, {
+        currentUserMessage: 'Current turn.',
+    });
+
+    const contents = result.messages.map((message) => message.content);
+    assert.equal(contents.includes('Before history rule.'), true);
+    assert.equal(contents.includes('After history rule.'), true);
+    assert.equal(result.messages[result.messages.length - 1].role, 'assistant');
+    assert.equal(result.messages[result.messages.length - 1].content, 'Aster whispers:');
+});

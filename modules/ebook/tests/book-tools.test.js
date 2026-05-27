@@ -150,14 +150,14 @@ test('Shared applyTextEdits replaces line ranges in descending order automatical
     assert.equal(result.content, ['一', '二三合并', '四', '五', '六改', '七改', '七后新增', '八'].join('\n'));
 });
 
-test('Shared applyTextEdits ignores empty optional mode fields from model tool arguments', () => {
+test('Shared applyTextEdits ignores stray optional mode fields from model tool arguments', () => {
     const content = ['一', '二', '三', '四'].join('\n');
     const lineRange = applyTextEdits(content, [
         {
-            oldString: '',
+            oldString: '二',
             startLine: 2,
             endLine: 3,
-            insertAtLine: null,
+            insertAtLine: 2,
             newString: '二三合并',
         },
     ]);
@@ -167,7 +167,7 @@ test('Shared applyTextEdits ignores empty optional mode fields from model tool a
 
     const insertion = applyTextEdits(content, [
         {
-            oldString: null,
+            oldString: '三',
             startLine: null,
             endLine: null,
             insertAtLine: 3,
@@ -178,16 +178,18 @@ test('Shared applyTextEdits ignores empty optional mode fields from model tool a
     assert.equal(insertion.results[0].matchedBy, 'line_insert');
     assert.equal(insertion.content, ['一', '二', '插入行', '三', '四'].join('\n'));
 
-    const realMixed = applyTextEdits(content, [
+    const oldString = applyTextEdits(content, [
         {
             oldString: '二',
-            startLine: 2,
-            endLine: 3,
+            startLine: null,
+            endLine: null,
+            insertAtLine: '',
             newString: '二三合并',
         },
     ]);
-    assert.equal(realMixed.ok, false);
-    assert.equal(realMixed.results[0].error, 'mixed_edit_modes');
+    assert.equal(oldString.ok, true);
+    assert.equal(oldString.results[0].matchedBy, 'exact');
+    assert.equal(oldString.content, ['一', '二三合并', '三', '四'].join('\n'));
 });
 
 test('Shared applyTextEdits accepts JSON-stringified edits with a warning and rejects invalid edit types', () => {
@@ -237,14 +239,32 @@ test('Shared applyTextEdits inserts text before, inside, and after line-numbered
     assert.equal(empty.content, '第一行');
 });
 
-test('Shared applyTextEdits rejects mixed modes and partially applies valid line ranges', () => {
+test('Shared applyTextEdits deletes words, sentences, and line ranges with empty newString', () => {
+    const oldStringDelete = applyTextEdits('她慢慢抬头。她没有说话。', [
+        { oldString: '慢慢', newString: '' },
+        { oldString: '她没有说话。', newString: '' },
+    ]);
+
+    assert.equal(oldStringDelete.ok, true);
+    assert.equal(oldStringDelete.content, '她抬头。');
+
+    const lineRangeDelete = applyTextEdits(['一', '二', '三', '四'].join('\n'), [
+        { startLine: 2, endLine: 3, newString: '' },
+    ]);
+
+    assert.equal(lineRangeDelete.ok, true);
+    assert.equal(lineRangeDelete.results[0].matchedBy, 'line_range');
+    assert.equal(lineRangeDelete.content, ['一', '四'].join('\n'));
+});
+
+test('Shared applyTextEdits rejects oldString mixed with line-number modes and partially applies valid line ranges', () => {
     const content = ['一', '二', '三', '四', '五'].join('\n');
-    const mixedItem = applyTextEdits(content, [
+    const dirtyLineRangeItem = applyTextEdits(content, [
         { oldString: '一', startLine: 1, endLine: 1, newString: '一改' },
     ]);
-    assert.equal(mixedItem.ok, false);
-    assert.equal(mixedItem.content, content);
-    assert.equal(mixedItem.results[0].error, 'mixed_edit_modes');
+    assert.equal(dirtyLineRangeItem.ok, true);
+    assert.equal(dirtyLineRangeItem.content, ['一改', '二', '三', '四', '五'].join('\n'));
+    assert.equal(dirtyLineRangeItem.results[0].matchedBy, 'line_range');
 
     const mixed = applyTextEdits(content, [
         { startLine: 1, endLine: 1, newString: '一改' },
@@ -253,14 +273,6 @@ test('Shared applyTextEdits rejects mixed modes and partially applies valid line
     assert.equal(mixed.ok, false);
     assert.equal(mixed.content, content);
     assert.equal(mixed.results[0].error, 'mixed_edit_modes');
-
-    const mixedInsert = applyTextEdits(content, [
-        { insertAtLine: 1, newString: '开头' },
-        { startLine: 2, endLine: 2, newString: '二改' },
-    ]);
-    assert.equal(mixedInsert.ok, false);
-    assert.equal(mixedInsert.content, content);
-    assert.equal(mixedInsert.results[0].error, 'mixed_edit_modes');
 
     const overlapping = applyTextEdits(content, [
         { startLine: 2, endLine: 4, newString: '中段' },
@@ -279,6 +291,34 @@ test('Shared applyTextEdits rejects mixed modes and partially applies valid line
     assert.equal(partial.partial, true);
     assert.equal(partial.results[1].error, 'line_range_out_of_bounds');
     assert.equal(partial.content, ['一改', '二', '三', '四', '五改'].join('\n'));
+});
+
+test('Shared applyTextEdits mixes line ranges and insertions using original Read line numbers', () => {
+    const content = ['一', '二', '三', '四', '五'].join('\n');
+    const result = applyTextEdits(content, [
+        { insertAtLine: 5, newString: '五之前' },
+        { startLine: 2, endLine: 3, newString: '二三合并' },
+        { insertAtLine: 2, newString: '二之前' },
+    ]);
+
+    assert.equal(result.ok, true);
+    assert.equal(result.results[0].matchedBy, 'line_insert');
+    assert.equal(result.results[1].matchedBy, 'line_range');
+    assert.equal(result.results[2].matchedBy, 'line_insert');
+    assert.equal(result.content, ['一', '二之前', '二三合并', '四', '五之前', '五'].join('\n'));
+
+    const ambiguous = applyTextEdits(content, [
+        { startLine: 2, endLine: 4, newString: '中段' },
+        { insertAtLine: 3, newString: '插在被替换范围内部' },
+        { insertAtLine: 5, newString: '五之前' },
+    ]);
+
+    assert.equal(ambiguous.ok, false);
+    assert.equal(ambiguous.partial, true);
+    assert.equal(ambiguous.results[0].error, 'insert_inside_line_range');
+    assert.equal(ambiguous.results[1].error, 'insert_inside_line_range');
+    assert.equal(ambiguous.results[2].matchedBy, 'line_insert');
+    assert.equal(ambiguous.content, ['一', '二', '三', '四', '五之前', '五'].join('\n'));
 });
 
 test('Shared applyTextEdits protects later edits from matching newly inserted text', () => {
@@ -5808,20 +5848,23 @@ test('Book prompt keeps assistant-style tool layers and recovery rules', () => {
     assert.match(EBOOK_SYSTEM_PROMPT, /### 章节推进/);
     assert.match(EBOOK_SYSTEM_PROMPT, /### 状态与复盘/);
     assert.match(EBOOK_SYSTEM_PROMPT, /If a tool returns an error/);
-    assert.match(EBOOK_SYSTEM_PROMPT, /Use Edit `oldString` for small in-sentence or multi-spot local revisions/);
-    assert.match(EBOOK_SYSTEM_PROMPT, /use Edit `startLine`\/`endLine` for contiguous medium-sized passage replacement/);
-    assert.match(EBOOK_SYSTEM_PROMPT, /use Edit `insertAtLine` to insert new text/);
-    assert.match(EBOOK_SYSTEM_PROMPT, /use Write for creating files, complete file rewrites, whole sections, whole chapters/);
+    assert.match(EBOOK_SYSTEM_PROMPT, /Edit changes text inside existing files/);
+    assert.match(EBOOK_SYSTEM_PROMPT, /Use Edit `oldString` for small in-sentence, small-paragraph, or multi-spot local revisions/);
+    assert.match(EBOOK_SYSTEM_PROMPT, /Set `newString` to `""` to remove the matched word, sentence, or fragment/);
+    assert.match(EBOOK_SYSTEM_PROMPT, /use `newString:""` to remove the range/);
+    assert.match(EBOOK_SYSTEM_PROMPT, /`insertAtLine` inserts before that line/);
+    assert.match(EBOOK_SYSTEM_PROMPT, /Write creates files or rewrites complete files\/sections\/chapters/);
     assert.match(EBOOK_SYSTEM_PROMPT, /Do not send several Edit calls for the same file in the same turn/);
     assert.match(EBOOK_SYSTEM_PROMPT, /Edit `edits` must be a real, non-empty JSON array/);
     assert.match(EBOOK_SYSTEM_PROMPT, /Wrong: `"edits":"\[/);
-    assert.match(EBOOK_SYSTEM_PROMPT, /Each Edit item must choose exactly one mode/);
-    assert.match(EBOOK_SYSTEM_PROMPT, /line-range items must not include `oldString` or `insertAtLine`/);
+    assert.match(EBOOK_SYSTEM_PROMPT, /Each Edit item should choose exactly one mode/);
+    assert.match(EBOOK_SYSTEM_PROMPT, /complete `startLine`\/`endLine` wins/);
     assert.match(EBOOK_SYSTEM_PROMPT, /Read the target file unless the exact current text is already available/);
     assert.match(EBOOK_SYSTEM_PROMPT, /if edits overlap, merge them into one larger replacement/);
     assert.match(EBOOK_SYSTEM_PROMPT, /startLine`\/`endLine` from the latest Read result/);
-    assert.match(EBOOK_SYSTEM_PROMPT, /new line count does not need to match old line count/);
-    assert.match(EBOOK_SYSTEM_PROMPT, /applied from bottom to top automatically to avoid line-number shifts/);
+    assert.match(EBOOK_SYSTEM_PROMPT, /Replacement line count does not need to match the original range/);
+    assert.match(EBOOK_SYSTEM_PROMPT, /Line-range and insertion items may share one Edit call/);
+    assert.match(EBOOK_SYSTEM_PROMPT, /applied by original line numbers from bottom to top automatically/);
     assert.match(EBOOK_SYSTEM_PROMPT, /insertAtLine` inserts before that line/);
     assert.match(EBOOK_SYSTEM_PROMPT, /连续中段替换用 Edit startLine\/endLine/);
     assert.match(EBOOK_SYSTEM_PROMPT, /新增插入用 Edit insertAtLine/);
@@ -5854,19 +5897,22 @@ test('Book prompt keeps assistant-style tool layers and recovery rules', () => {
     assert.match(String(edit.function.description), /replaceAll/);
     assert.match(String(edit.function.description), /Do not issue multiple Edit tool calls for the same file/);
     assert.match(String(edit.function.description), /must be a non-empty array value, not a JSON-stringified string/);
+    assert.match(String(edit.function.description), /Line-range and insertion items may share one call/);
+    assert.match(String(edit.function.description), /Keep oldString edits separate from line-number edits/);
     assert.match(String(edit.function.description), /Wrong: `"edits":"\[/);
-    assert.match(String(edit.function.description), /Omit unused mode fields entirely/);
+    assert.match(String(edit.function.description), /Omit unused mode fields when possible/);
     assert.match(String(edit.function.description), /Correct line-range item/);
-    assert.match(String(edit.function.description), /Wrong mixed item/);
+    assert.match(String(edit.function.description), /stray fields are ignored/);
     assert.match(String(edit.function.description), /If two changes overlap, merge them into one replacement/);
     assert.match(String(edit.function.description), /startLine\/endLine\/newString/);
     assert.match(String(edit.function.description), /insertAtLine\/newString/);
     assert.match(String(edit.function.description), /contiguous medium-sized passage replacement/);
     assert.match(String(edit.function.description), /Read the target file first unless the exact current text is already available/);
     assert.match(String(edit.function.description), /bottom to top automatically to avoid line-number shifts/);
-    assert.match(String(edit.function.description), /replacement line count does not need to match/);
+    assert.match(String(edit.function.description), /insertion falls inside a line range being replaced/);
+    assert.match(String(edit.function.description), /Replacement line count does not need to match/);
     assert.match(String(edit.function.description), /insertAtLine inserts before that line/);
-    assert.match(String(edit.function.description), /Do not include oldString in a startLine\/endLine or insertAtLine edit item/);
+    assert.match(String(edit.function.description), /choose one mode by priority instead of failing/);
     assert.equal(Object.hasOwn(edit.function.parameters.properties, 'filePath'), true);
     assert.equal(Object.hasOwn(edit.function.parameters.properties, 'edits'), true);
     assert.equal(
@@ -5917,7 +5963,7 @@ test('Book tool definitions teach exact parameters like assistant tools', () => 
     assert.match(String(edit.description), /One call edits one file/);
     assert.match(String(edit.description), /edits array/);
     assert.match(String(edit.parameters.properties.edits.description), /real, non-empty JSON array, not a quoted JSON string/);
-    assert.match(String(edit.parameters.properties.edits.description), /Omit unused mode fields entirely/);
+    assert.match(String(edit.parameters.properties.edits.description), /Stray optional fields are ignored by mode priority/);
     assert.match(String(edit.description), /Combine same-file changes into one Edit call/);
     assert.equal(edit.parameters.properties.edits.items.required.includes('newString'), true);
     assert.equal(edit.parameters.properties.edits.items.required.includes('oldString'), false);
