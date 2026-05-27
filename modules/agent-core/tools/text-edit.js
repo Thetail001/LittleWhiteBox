@@ -183,12 +183,22 @@ function buildEditFailure(error = '', message = '', suggestion = '', extra = {})
     return buildFailure(error, message, suggestion ? { suggestion, ...extra } : extra);
 }
 
+function hasActiveModeField(edit = {}, key = '') {
+    if (!Object.hasOwn(edit, key)) return false;
+    const value = edit[key];
+    return value !== undefined && value !== null && value !== '';
+}
+
+function hasOldStringMode(edit = {}) {
+    return hasActiveModeField(edit, 'oldString');
+}
+
 function hasLineRange(edit = {}) {
-    return Object.hasOwn(edit, 'startLine') || Object.hasOwn(edit, 'endLine');
+    return hasActiveModeField(edit, 'startLine') || hasActiveModeField(edit, 'endLine');
 }
 
 function hasInsertLine(edit = {}) {
-    return Object.hasOwn(edit, 'insertAtLine');
+    return hasActiveModeField(edit, 'insertAtLine');
 }
 
 function toPositiveInteger(value) {
@@ -380,9 +390,71 @@ function applyLineInsertEdits(content = '', editList = []) {
     };
 }
 
+function normalizeEditsInput(edits) {
+    if (Array.isArray(edits)) {
+        return { ok: true, edits, parsedFromString: false };
+    }
+    if (typeof edits === 'string') {
+        const raw = edits.trim();
+        if (!raw) {
+            return {
+                ok: false,
+                error: 'edits_must_be_array',
+                message: 'edits must be a JSON array, but received an empty string',
+                suggestion: 'Pass edits as an array, not a quoted JSON string. Correct: "edits":[{"oldString":"old","newString":"new"}].',
+            };
+        }
+        try {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) {
+                return {
+                    ok: true,
+                    edits: parsed,
+                    parsedFromString: true,
+                    warning: 'edits was provided as a JSON string and was parsed for compatibility. Pass edits as an array, not a quoted JSON string.',
+                };
+            }
+            return {
+                ok: false,
+                error: 'edits_must_be_array',
+                message: `edits must be a JSON array, but the JSON string parsed to ${Array.isArray(parsed) ? 'array' : typeof parsed}`,
+                suggestion: 'Pass edits directly as an array. Correct: "edits":[{"startLine":10,"endLine":50,"newString":"..."}]. Wrong: "edits":"[{\\"startLine\\":10,...}]".',
+            };
+        } catch (error) {
+            return {
+                ok: false,
+                error: 'invalid_edits_json_string',
+                message: `edits must be a JSON array, but received a string that is not valid JSON: ${error?.message || 'parse failed'}`,
+                suggestion: 'Do not JSON-stringify edits. Pass an array value: "edits":[{"oldString":"old","newString":"new"}].',
+            };
+        }
+    }
+    if (edits === undefined || edits === null) {
+        return { ok: true, edits: [], parsedFromString: false };
+    }
+    return {
+        ok: false,
+        error: 'edits_must_be_array',
+        message: `edits must be a JSON array, but received ${typeof edits}`,
+        suggestion: 'Pass edits as an array, not an object/string. Correct: "edits":[{"oldString":"old","newString":"new"}].',
+    };
+}
+
 export function applyTextEdits(content = '', edits = []) {
     let nextContent = String(content ?? '');
-    const editList = Array.isArray(edits) ? edits : [];
+    const normalizedInput = normalizeEditsInput(edits);
+    if (!normalizedInput.ok) {
+        return {
+            ok: false,
+            content: nextContent,
+            results: [buildEditFailure(
+                normalizedInput.error,
+                normalizedInput.message,
+                normalizedInput.suggestion,
+            )],
+        };
+    }
+    const editList = normalizedInput.edits;
     const results = [];
     const previousNewStrings = [];
     let appliedCount = 0;
@@ -403,7 +475,7 @@ export function applyTextEdits(content = '', edits = []) {
     const insertLineCount = editList.filter((edit) => hasInsertLine(edit)).length;
     const positionedEditCount = lineRangeCount + insertLineCount;
     if (positionedEditCount && editList.some((edit) => (
-        Object.hasOwn(edit, 'oldString')
+        hasOldStringMode(edit)
         || (hasLineRange(edit) && hasInsertLine(edit))
     ))) {
         return {
@@ -439,10 +511,14 @@ export function applyTextEdits(content = '', edits = []) {
         };
     }
     if (lineRangeCount) {
-        return applyLineRangeEdits(nextContent, editList);
+        const result = applyLineRangeEdits(nextContent, editList);
+        if (normalizedInput.warning) result.warning = normalizedInput.warning;
+        return result;
     }
     if (insertLineCount) {
-        return applyLineInsertEdits(nextContent, editList);
+        const result = applyLineInsertEdits(nextContent, editList);
+        if (normalizedInput.warning) result.warning = normalizedInput.warning;
+        return result;
     }
 
     editList.forEach((edit = {}, index) => {
@@ -520,5 +596,6 @@ export function applyTextEdits(content = '', edits = []) {
         partial: appliedCount > 0 && failedCount > 0 ? true : undefined,
         content: nextContent,
         results,
+        warning: normalizedInput.warning,
     };
 }

@@ -279,7 +279,7 @@ export function createBookFileToolHandlers(options = {}) {
     async function executeEdit(args = {}) {
         assertWritable();
         const path = assertBookFilePath(args.filePath);
-        const edits = Array.isArray(args.edits) ? args.edits : [];
+        const edits = args.edits;
         const file = await getBookFile(await currentBookId(), path);
         if (!file) {
             return {
@@ -312,6 +312,7 @@ export function createBookFileToolHandlers(options = {}) {
             appliedCount,
             failedCount,
             results: result.results,
+            warning: result.warning,
             summary: result.ok
                 ? `已修改 ${path}，应用 ${appliedCount} 项。`
                 : result.partial
