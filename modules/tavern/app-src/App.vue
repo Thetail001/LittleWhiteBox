@@ -49,7 +49,7 @@ const agentConfig = ref<Record<string, unknown>>({});
 const availableCharacters = ref<Array<{ id: string; name: string; avatar?: string }>>([]);
 const selectedCharacterId = ref('');
 const statusText = ref('等待读取资料');
-const currentUserMessage = ref('测试一句角色回复。');
+const currentUserMessage = ref('');
 const historyMode = ref<'raw' | 'squash'>('squash');
 const runtimeText = ref('');
 const runtimeError = ref('');
@@ -66,6 +66,7 @@ const activePresetId = ref(DEFAULT_XB_TAVERN_PRESET_ID);
 const presetStatus = ref('');
 const savedPresetJson = ref('');
 const selectedPresetSourceId = ref('');
+type AppView = 'home' | 'chat' | 'settings';
 type WorkspaceKey = 'snapshot' | 'world' | 'messages' | 'runtime' | 'preset';
 interface BrainCheck {
     key: WorkspaceKey;
@@ -77,6 +78,16 @@ const presetIsBuiltIn = computed(() => activePresetId.value === DEFAULT_XB_TAVER
 const presetDirty = computed(() => !presetIsBuiltIn.value && snapshotPreset(preset.value) !== savedPresetJson.value);
 const selectedSession = computed(() => sessions.value.find((item) => item.id === selectedSessionId.value) || null);
 const sessionRuntimeState = computed(() => normalizeTavernSessionState(selectedSession.value?.state || {}));
+const activeView = ref<AppView>('home');
+const usingLockedSessionContext = computed(() => !!selectedSession.value?.contextSnapshot);
+const liveWorldBookCount = computed(() => context.value.worldBooks?.length || 0);
+const liveWorldEntryCount = computed(() => (context.value.worldBooks || []).reduce((sum, book) => sum + (book.entries?.length || 0), 0));
+const contextSourceTitle = computed(() => usingLockedSessionContext.value
+    ? '当前显示和试聊：会话锁定资料'
+    : '当前显示和试聊：刚读取的酒馆资料');
+const contextSourceDetail = computed(() => usingLockedSessionContext.value
+    ? `会话锁定了 ${selectedSession.value?.characterName || '未选择角色'} 的资料。你刚改角色卡或世界书后，需要刷新会话资料，或者改用刚读取资料重新试聊。`
+    : `正在使用酒馆最新读取资料：${context.value.character?.name || '未选择角色'} / 世界书 ${liveWorldBookCount.value} 本 ${liveWorldEntryCount.value} 条。`);
 const activeWorkspace = ref<WorkspaceKey>('snapshot');
 const workspaceTabs = [
     { key: 'snapshot', label: '1 选角色', hint: '确认小白读的是哪张卡' },
@@ -124,6 +135,9 @@ const effectiveHistoryCount = computed(() => effectiveContext.value.history?.len
 const lastRequestSnapshot = computed(() => selectedSession.value?.state?.lastRequestSnapshot as RequestAuditSnapshot | undefined);
 const lastRequestMatchesPreview = computed(() => !!lastRequestSnapshot.value?.rawMessagesJson
     && lastRequestSnapshot.value.rawMessagesJson === rawMessagesJson.value);
+const sessionMessagesForChat = computed(() => sessionMessages.value.filter((message) => !message.error));
+const latestErrorMessage = computed(() => [...sessionMessages.value].reverse().find((message) => message.error)?.content || runtimeError.value);
+const chatReadyLabel = computed(() => selectedSessionId.value ? selectedSessionTitle.value : '未创建会话');
 const brainChecks = computed<BrainCheck[]>(() => {
     const layers = buildResult.value.messageLayers;
     const topRulesLocked = layers[0]?.layer === 'lwb-system'
@@ -191,6 +205,7 @@ const characterFields = computed(() => {
 
 const diagnosticRows = computed(() => {
     const rows = [
+        contextSourceDetail.value,
         diagnostics.value.message || statusText.value,
         characterName.value ? '' : '当前没有可用角色卡。',
         effectiveHistoryCount.value ? '' : '这次准备资料里没有聊天历史。',
@@ -255,6 +270,18 @@ const messageGroups = computed(() => {
 
 const activatedOrder = computed(() => new Map(buildResult.value.activatedWorldEntries.map((entry, index) => [entry.activationKey, index])));
 const candidateRows = computed(() => buildResult.value.worldEntryCandidates);
+function displayList(value: unknown): string {
+    if (Array.isArray(value)) {return value.map((item) => String(item || '').trim()).filter(Boolean).join(', ');}
+    return String(value || '').trim();
+}
+const worldBookEntryRows = computed(() => worldBooks.value.flatMap((book) => (book.entries || []).map((entry, index) => ({
+    key: `${book.name || 'worldbook'}-${entry.uid ?? entry.id ?? index}`,
+    bookName: book.name || '未命名世界书',
+    title: String(entry.comment || entry.title || entry.name || entry.uid || entry.id || `条目 ${index + 1}`),
+    keywords: displayList(entry.key),
+    secondaryKeywords: displayList(entry.keysecondary || entry.secondary_keys),
+    content: String(entry.content || ''),
+}))));
 const scanTextPreview = computed(() => buildResult.value.meta.scanText || '');
 const worldBudget = computed(() => buildResult.value.meta.worldBudget);
 const worldPositionRows = computed(() => Object.entries(buildResult.value.meta.worldPositionCounts || {})
@@ -453,7 +480,9 @@ function applyHostPayload(payload: Record<string, unknown>) {
     agentConfig.value = payload.agentConfig as Record<string, unknown> || agentConfig.value;
     availableCharacters.value = payload.availableCharacters as Array<{ id: string; name: string; avatar?: string }> || availableCharacters.value;
     selectedCharacterId.value = String(payload.selectedCharacterId || context.value.character?.id || selectedCharacterId.value || '');
-    statusText.value = diagnostics.value.message || '宿主资料已加载';
+    statusText.value = usingLockedSessionContext.value
+        ? `${diagnostics.value.message || '宿主资料已加载'}；当前会话仍使用锁定资料。`
+        : diagnostics.value.message || '宿主资料已加载';
 }
 
 function onHostMessage(event: MessageEvent) {
@@ -474,6 +503,15 @@ function refreshSelectedCharacter() {
     postToHost('xb-tavern:refresh-context', {
         characterId: selectedCharacterId.value,
     });
+}
+
+async function useLiveContextForPreview() {
+    selectedSessionId.value = '';
+    sessionMessages.value = [];
+    runtimeText.value = '';
+    runtimeError.value = '';
+    runtimeSnapshotJson.value = '';
+    await setSelectedTavernSessionId('');
 }
 
 async function refreshSessions() {
@@ -512,6 +550,12 @@ async function createSessionFromContext() {
     });
     selectedSessionId.value = session.id;
     await refreshSessions();
+    return session;
+}
+
+async function createSessionAndOpenChat() {
+    await createSessionFromContext();
+    activeView.value = 'chat';
 }
 
 async function refreshSelectedSessionSnapshot() {
@@ -539,6 +583,7 @@ async function selectSession(sessionId: string) {
     selectedSessionId.value = sessionId;
     await setSelectedTavernSessionId(sessionId);
     sessionMessages.value = await listTavernMessages(sessionId);
+    activeView.value = 'chat';
 }
 
 function shortText(value = '', limit = 180) {
@@ -548,22 +593,30 @@ function shortText(value = '', limit = 180) {
 
 function statusLabel(status = '') {
     const labels: Record<string, string> = {
-        activated: '已激活',
-        budget_skipped: '预算跳过',
-        not_matched: '未命中',
-        secondary_not_matched: '二级未命中',
+        activated: '本次会带上',
+        budget_skipped: '超出预算，未带上',
+        not_matched: '本次未带上',
+        secondary_not_matched: '二级关键词不满足',
         disabled: '已禁用',
         suppressed_by_decorator: '装饰器抑制',
         cooldown: '冷却中',
         delay: '延迟中',
-        probability_failed: '概率未通过',
+        probability_failed: '概率判定未带上',
     };
     return labels[status] || status || '未知';
 }
 
-function candidateReason(entry: { status?: string; activationReason?: string; budgetShortfall?: number; budgetRemainingBefore?: number }) {
+function candidateReason(entry: { status?: string; activationReason?: string; budgetShortfall?: number; budgetRemainingBefore?: number; matchedKeys?: string[]; matchedSecondaryKeys?: string[] }) {
     if (entry.status === 'activated') {
-        return entry.activationReason ? `命中：${entry.activationReason}` : '已激活';
+        const matched = [
+            ...(entry.matchedKeys || []),
+            ...(entry.matchedSecondaryKeys || []),
+        ].filter(Boolean);
+        if (matched.length) {return `触发关键词：${matched.join(', ')}`;}
+        if (entry.activationReason === 'constant') {return '常驻条目，本次固定带上';}
+        if (entry.activationReason === 'decorator') {return '装饰器要求本次带上';}
+        if (entry.activationReason === 'sticky') {return '粘滞状态，本次继续带上';}
+        return '本次会带上';
     }
     if (entry.status === 'budget_skipped') {
         const shortfall = Number(entry.budgetShortfall) || 0;
@@ -603,6 +656,10 @@ function insertionTargetLabel(target = '') {
 }
 
 async function runOnce() {
+    if (!String(currentUserMessage.value || '').trim()) {
+        runtimeError.value = '先写一句要发给角色的话。';
+        return;
+    }
     runtimeError.value = '';
     runtimeText.value = '';
     runtimeProvider.value = '';
@@ -640,6 +697,7 @@ async function runOnce() {
             error: result.error || '',
         }, null, 2);
         await refreshSessions();
+        currentUserMessage.value = '';
     } catch (error) {
         runtimeError.value = error instanceof Error ? error.message : String(error || 'run_failed');
     } finally {
@@ -668,22 +726,284 @@ onUnmounted(() => {
         <p class="eyebrow">
           LittleWhiteBox Tavern
         </p>
-        <h1>小白酒馆验脑台</h1>
+        <h1>小白酒馆</h1>
         <p class="top-subtitle">
-          先确认角色、资料、世界书和发送内容都对，再做正式聊天。
+          选角色，开会话，检查资料，然后进入独立聊天。
         </p>
       </div>
-      <button
-        class="icon-button"
-        type="button"
-        title="关闭"
-        @click="postToHost('xb-tavern:close')"
+      <nav
+        class="view-tabs"
+        aria-label="小白酒馆页面"
       >
-        ×
-      </button>
+        <button
+          type="button"
+          :class="{ active: activeView === 'home' }"
+          @click="activeView = 'home'"
+        >
+          首页
+        </button>
+        <button
+          type="button"
+          :class="{ active: activeView === 'chat' }"
+          @click="activeView = 'chat'"
+        >
+          聊天
+        </button>
+        <button
+          type="button"
+          :class="{ active: activeView === 'settings' }"
+          @click="activeView = 'settings'"
+        >
+          设置
+        </button>
+        <button
+          class="icon-button"
+          type="button"
+          title="关闭"
+          @click="postToHost('xb-tavern:close')"
+        >
+          ×
+        </button>
+      </nav>
     </header>
 
-    <section class="xb-layout">
+    <section
+      v-if="activeView === 'home'"
+      class="tavern-home"
+    >
+      <div class="home-hero">
+        <div>
+          <p class="eyebrow">
+            独立会话
+          </p>
+          <h2>{{ characterName }}</h2>
+          <p>
+            {{ contextSourceDetail }}
+          </p>
+        </div>
+        <div class="home-actions">
+          <button
+            type="button"
+            class="primary-action"
+            @click="selectedSessionId ? activeView = 'chat' : createSessionAndOpenChat()"
+          >
+            {{ selectedSessionId ? '进入聊天' : '开始聊天' }}
+          </button>
+          <button
+            type="button"
+            @click="refreshSelectedCharacter"
+          >
+            从酒馆重新读取
+          </button>
+          <button
+            v-if="usingLockedSessionContext"
+            type="button"
+            @click="useLiveContextForPreview"
+          >
+            改用刚读取资料
+          </button>
+        </div>
+      </div>
+
+      <div class="home-grid">
+        <article class="home-card">
+          <span>当前角色</span>
+          <strong>{{ characterName }}</strong>
+          <small>{{ userName }} · 历史 {{ effectiveHistoryCount }} 条</small>
+          <label
+            class="field-label"
+            for="xb-home-character-select"
+          >切换角色卡</label>
+          <select
+            id="xb-home-character-select"
+            v-model="selectedCharacterId"
+            @change="refreshSelectedCharacter"
+          >
+            <option
+              v-for="character in availableCharacters"
+              :key="character.id"
+              :value="character.id"
+            >
+              {{ character.name }}
+            </option>
+          </select>
+        </article>
+
+        <article class="home-card">
+          <span>资料状态</span>
+          <strong>{{ worldBookCount }} 本世界书</strong>
+          <small>{{ worldBookEntryRows.length }} 个条目 · 本次会带上 {{ activatedCount }} 条</small>
+          <button
+            type="button"
+            @click="activeView = 'settings'; activeWorkspace = 'world'"
+          >
+            查看资料
+          </button>
+        </article>
+
+        <article class="home-card">
+          <span>会话</span>
+          <strong>{{ chatReadyLabel }}</strong>
+          <small>{{ sessionMessagesForChat.length }} 条消息</small>
+          <button
+            type="button"
+            @click="createSessionAndOpenChat"
+          >
+            新开会话
+          </button>
+        </article>
+      </div>
+
+      <section class="session-board">
+        <div class="panel-head">
+          <div>
+            <h2>会话列表</h2>
+            <p class="muted compact">
+              选择一个会话后直接进入聊天页。
+            </p>
+          </div>
+          <button
+            type="button"
+            @click="activeView = 'settings'"
+          >
+            设置
+          </button>
+        </div>
+        <div class="home-session-list">
+          <button
+            v-for="session in sessions"
+            :key="session.id"
+            type="button"
+            :class="{ active: session.id === selectedSessionId }"
+            @click="selectSession(session.id)"
+          >
+            <strong>{{ session.title }}</strong>
+            <small>{{ session.characterName || '未选择角色' }}</small>
+          </button>
+          <p
+            v-if="!sessions.length"
+            class="muted"
+          >
+            还没有小白酒馆会话。
+          </p>
+        </div>
+      </section>
+    </section>
+
+    <section
+      v-if="activeView === 'chat'"
+      class="tavern-chat"
+    >
+      <aside class="chat-side">
+        <div class="panel">
+          <h2>{{ characterName }}</h2>
+          <p class="muted compact">
+            {{ contextSourceTitle }}
+          </p>
+          <dl class="kv">
+            <dt>世界书</dt>
+            <dd>{{ worldBookCount }} 本 / {{ activatedCount }} 条</dd>
+            <dt>会话</dt>
+            <dd>{{ chatReadyLabel }}</dd>
+          </dl>
+          <button
+            type="button"
+            @click="activeView = 'settings'; activeWorkspace = 'world'"
+          >
+            查看本轮资料
+          </button>
+          <button
+            type="button"
+            @click="activeView = 'home'"
+          >
+            返回首页
+          </button>
+        </div>
+        <div class="panel">
+          <h2>会话</h2>
+          <div class="session-list">
+            <button
+              v-for="session in sessions"
+              :key="session.id"
+              type="button"
+              :class="{ active: session.id === selectedSessionId }"
+              @click="selectSession(session.id)"
+            >
+              {{ session.title }}
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      <section class="chat-main">
+        <header class="chat-head">
+          <div>
+            <p class="eyebrow">
+              CHAT
+            </p>
+            <h2>{{ selectedSessionTitle }}</h2>
+          </div>
+          <button
+            type="button"
+            @click="createSessionAndOpenChat"
+          >
+            新会话
+          </button>
+        </header>
+        <div class="chat-scroll">
+          <div
+            v-for="message in sessionMessagesForChat"
+            :key="`${message.sessionId}-${message.order}`"
+            class="chat-bubble"
+            :class="message.role === 'user' ? 'from-user' : 'from-assistant'"
+          >
+            <span>{{ roleLabel(message.role) }}</span>
+            <p>{{ message.content }}</p>
+          </div>
+          <div
+            v-if="isRunning && runtimeText"
+            class="chat-bubble from-assistant streaming"
+          >
+            <span>AI</span>
+            <p>{{ runtimeText }}</p>
+          </div>
+          <p
+            v-if="!sessionMessagesForChat.length && !isRunning"
+            class="chat-empty"
+          >
+            这里还没有消息。下面写一句话，开始测试这个角色。
+          </p>
+          <p
+            v-if="latestErrorMessage"
+            class="error"
+          >
+            {{ latestErrorMessage }}
+          </p>
+        </div>
+        <form
+          class="chat-compose"
+          @submit.prevent="runOnce"
+        >
+          <textarea
+            v-model="currentUserMessage"
+            rows="3"
+            placeholder="对角色说一句话..."
+          />
+          <button
+            type="submit"
+            class="primary-action"
+            :disabled="isRunning"
+          >
+            {{ isRunning ? '发送中' : '发送' }}
+          </button>
+        </form>
+      </section>
+    </section>
+
+    <section
+      v-if="activeView === 'settings'"
+      class="xb-layout"
+    >
       <aside class="xb-sidebar">
         <div class="panel guide-card">
           <h2>你现在要做什么</h2>
@@ -716,6 +1036,10 @@ onUnmounted(() => {
 
         <div class="panel">
           <h2>当前选择</h2>
+          <p class="context-source">
+            <strong>{{ contextSourceTitle }}</strong>
+            <span>{{ contextSourceDetail }}</span>
+          </p>
           <dl class="kv">
             <dt>角色</dt>
             <dd>{{ characterName }}</dd>
@@ -747,7 +1071,14 @@ onUnmounted(() => {
             type="button"
             @click="refreshSelectedCharacter"
           >
-            读取这张角色
+            从酒馆重新读取
+          </button>
+          <button
+            v-if="usingLockedSessionContext"
+            type="button"
+            @click="useLiveContextForPreview"
+          >
+            改用刚读取资料
           </button>
         </div>
 
@@ -772,14 +1103,21 @@ onUnmounted(() => {
             type="button"
             @click="createSessionFromContext"
           >
-            用当前资料开始新会话
+            用刚读取资料开始新会话
           </button>
           <button
             type="button"
             :disabled="!selectedSessionId"
             @click="refreshSelectedSessionSnapshot"
           >
-            用当前资料刷新会话快照
+            把刚读取资料写入当前会话
+          </button>
+          <button
+            v-if="usingLockedSessionContext"
+            type="button"
+            @click="useLiveContextForPreview"
+          >
+            不用旧会话，直接看刚读取资料
           </button>
           <div class="session-list">
             <button
@@ -843,6 +1181,13 @@ onUnmounted(() => {
             <strong>你要判断：</strong>
             <span>角色名、用户 persona、角色描述、首条消息和世界书来源是不是这次要测试的资料。</span>
           </div>
+          <div
+            v-if="usingLockedSessionContext"
+            class="context-warning"
+          >
+            <strong>你现在看的不是刚读取资料。</strong>
+            <span>当前选中了旧会话，页面和试聊都在用会话锁定资料。刚改过世界书时，先点“改用刚读取资料”，或把刚读取资料写入当前会话。</span>
+          </div>
           <div class="step-actions">
             <label>
               角色卡
@@ -863,13 +1208,20 @@ onUnmounted(() => {
               type="button"
               @click="refreshSelectedCharacter"
             >
-              读取这张角色
+              从酒馆重新读取
             </button>
             <button
               type="button"
               @click="createSessionFromContext"
             >
-              用当前资料开始新会话
+              用刚读取资料开始新会话
+            </button>
+            <button
+              v-if="usingLockedSessionContext"
+              type="button"
+              @click="useLiveContextForPreview"
+            >
+              改用刚读取资料
             </button>
           </div>
           <div class="snapshot-grid">
@@ -915,7 +1267,7 @@ onUnmounted(() => {
             <div>
               <h2>2. 看它读到了哪些资料</h2>
               <p class="muted compact">
-                这里检查资料有没有漏读、误读，世界书为什么会被带上。
+                先看小白读到了哪些世界书；本次试聊会带上哪些条目，会由第 4 步那句话决定。
               </p>
             </div>
             <div class="panel-pills">
@@ -927,6 +1279,19 @@ onUnmounted(() => {
             <strong>你要判断：</strong>
             <span>该触发的世界书有没有触发；不该触发的有没有混进来；检查结果有没有明显报错。</span>
           </div>
+          <div
+            v-if="usingLockedSessionContext"
+            class="context-warning"
+          >
+            <strong>世界书来自旧会话快照。</strong>
+            <span>如果你刚改了酒馆世界书，这里不会自动变化。点“改用刚读取资料”看最新资料，或回到会话区刷新当前会话资料。</span>
+            <button
+              type="button"
+              @click="useLiveContextForPreview"
+            >
+              改用刚读取资料
+            </button>
+          </div>
           <ul class="diagnostics inline-diagnostics">
             <li
               v-for="row in diagnosticRows"
@@ -935,6 +1300,34 @@ onUnmounted(() => {
               {{ row }}
             </li>
           </ul>
+          <section class="read-world-section">
+            <div class="message-group-head">
+              <strong>已经读到的世界书条目</strong>
+              <span>{{ worldBookEntryRows.length }} 条</span>
+            </div>
+            <div class="world-list read-world-list">
+              <article
+                v-for="entry in worldBookEntryRows"
+                :key="entry.key"
+                class="world-entry"
+              >
+                <div class="entry-head">
+                  <strong>{{ entry.title }}</strong>
+                  <span>{{ entry.bookName }}</span>
+                </div>
+                <p class="entry-meta">
+                  关键词：{{ entry.keywords || '无' }} / 二级关键词：{{ entry.secondaryKeywords || '无' }}
+                </p>
+                <p>{{ shortText(entry.content, 260) }}</p>
+              </article>
+              <p
+                v-if="!worldBookEntryRows.length"
+                class="muted"
+              >
+                这次没有读到世界书条目。
+              </p>
+            </div>
+          </section>
           <div class="world-debug-grid">
             <details class="debug-box">
               <summary>开发查看：用于匹配世界书的文本 · {{ buildResult.meta.scanTextChars }} 字</summary>
@@ -952,6 +1345,10 @@ onUnmounted(() => {
                 <span v-if="!worldPositionRows.length">这次没有带上世界书</span>
               </div>
             </div>
+          </div>
+          <div class="message-group-head world-send-head">
+            <strong>本次试聊会带上的世界书</strong>
+            <span>由第 4 步输入决定</span>
           </div>
           <div class="world-list">
             <article
@@ -982,14 +1379,14 @@ onUnmounted(() => {
               v-if="!activatedCandidateRows.length"
               class="muted"
             >
-              这次没有带上世界书条目。
+              当前这句试聊输入没有触发世界书条目。这不代表没读到世界书；去第 4 步换一句包含关键词的话，再回来看会带上哪些条目。
             </p>
           </div>
           <details
             v-if="skippedCandidateRows.length"
             class="raw-json"
           >
-            <summary>开发查看：未带上的世界书条目 · {{ skippedCandidateRows.length }} 条</summary>
+            <summary>高级查看：本次不会带上的候选条目 · {{ skippedCandidateRows.length }} 条</summary>
             <div class="world-list folded-world-list">
               <article
                 v-for="entry in skippedCandidateRows"
@@ -1038,12 +1435,20 @@ onUnmounted(() => {
             <strong>你要判断：</strong>
             <span>最前面必须是小白固定规则；酒馆预设不能混进来；世界书和角色卡应出现在合理位置。</span>
           </div>
-          <label class="field-label">这次试聊要发的话</label>
-          <textarea
-            v-model="currentUserMessage"
-            class="input"
-            rows="3"
-          />
+          <p class="context-source inline-source">
+            <strong>{{ contextSourceTitle }}</strong>
+            <span>{{ contextSourceDetail }}</span>
+          </p>
+          <div class="test-message-preview">
+            <strong>本次试聊输入</strong>
+            <p>{{ currentUserMessage || '还没填写。去第 4 步写一句要对角色说的话。' }}</p>
+            <button
+              type="button"
+              @click="activeWorkspace = 'runtime'"
+            >
+              去试聊页修改
+            </button>
+          </div>
           <div class="message-preview">
             <section
               v-for="group in messageGroups"
@@ -1098,6 +1503,39 @@ onUnmounted(() => {
             <strong>你要判断：</strong>
             <span>回复是否像这张角色、是否读到了该读的世界书、是否没有暴露调试信息。</span>
           </div>
+          <div
+            v-if="usingLockedSessionContext"
+            class="context-warning"
+          >
+            <strong>这次试聊会用旧会话锁定资料。</strong>
+            <span>如果你刚改了角色卡或世界书，先点下面按钮改用刚读取资料，或刷新当前会话资料。</span>
+            <button
+              type="button"
+              @click="useLiveContextForPreview"
+            >
+              改用刚读取资料
+            </button>
+          </div>
+          <div class="run-card">
+            <div>
+              <strong>怎么试：</strong>
+              <ol>
+                <li>在下面写一句你要对角色说的话。</li>
+                <li>点“试聊一句”。</li>
+                <li>看回复像不像这个角色、有没有吃到世界书。</li>
+              </ol>
+            </div>
+            <p class="context-source inline-source">
+              <strong>{{ contextSourceTitle }}</strong>
+              <span>{{ contextSourceDetail }}</span>
+            </p>
+          </div>
+          <label class="field-label">要发给角色的一句话</label>
+          <textarea
+            v-model="currentUserMessage"
+            class="input"
+            rows="3"
+          />
           <p
             v-if="runtimeError"
             class="error"

@@ -201,6 +201,8 @@ export interface XbTavernWorldEntryCandidate {
     contentChars: number;
     key: string[];
     keysecondary: string[];
+    matchedKeys: string[];
+    matchedSecondaryKeys: string[];
     decorators: string[];
     position: XBTavernWorldPosition;
     positionLabel: string;
@@ -696,6 +698,7 @@ function buildWorldEntryCandidates(
         const explanation = activated
             ? { status: 'activated', activationReason: activated.activationReason }
             : explainEntryStatus(normalized, settings);
+        const matcher = buildMatcher(settings, normalized);
         const status = activated
             ? (budgetDebug.enabled && !budgetIncluded.has(normalized.activationKey) ? 'budget_skipped' : 'activated')
             : (explanation.status === 'activated' ? 'probability_failed' : explanation.status);
@@ -708,6 +711,8 @@ function buildWorldEntryCandidates(
             contentChars: normalized.contentChars,
             key: normalized.key,
             keysecondary: normalized.keysecondary,
+            matchedKeys: normalized.key.filter((keyword) => matcher(keyword)),
+            matchedSecondaryKeys: normalized.keysecondary.filter((keyword) => matcher(keyword)),
             decorators: normalized.decorators,
             position: normalized.position,
             positionLabel: describeWorldPosition(normalized.position),
@@ -1024,7 +1029,34 @@ function collectContextWorldEntries(context: XbTavernContext = {}): XbTavernWorl
                 sourceWorldBook: entry.sourceWorldBook || entry.worldName || entry.world || book.name,
             }))
             : []);
-    return [...directEntries, ...bookEntries];
+    return dedupeWorldEntries([...directEntries, ...bookEntries]);
+}
+
+function makeWorldEntryDedupeKey(entry: XbTavernWorldEntry = {}): string {
+    const source = normalizeText(entry.sourceWorldBook || entry.worldName || entry.world) || 'direct';
+    const rawUid = entry.uid ?? entry.id;
+    const uid = normalizeText(rawUid);
+    if (uid) {return `${source}\u0000uid\u0000${uid}`;}
+    const title = normalizeText(entry.comment || entry.title || entry.name);
+    const content = normalizeText(entry.content);
+    const key = normalizeStringArray(entry.key).join('\u0001');
+    const keysecondary = [
+        ...normalizeStringArray(entry.keysecondary),
+        ...normalizeStringArray(entry.secondary_keys),
+    ].join('\u0001');
+    return `${source}\u0000body\u0000${title}\u0000${key}\u0000${keysecondary}\u0000${content}`;
+}
+
+function dedupeWorldEntries(entries: XbTavernWorldEntry[] = []): XbTavernWorldEntry[] {
+    const seen = new Set<string>();
+    const result: XbTavernWorldEntry[] = [];
+    entries.forEach((entry) => {
+        const key = makeWorldEntryDedupeKey(entry);
+        if (seen.has(key)) {return;}
+        seen.add(key);
+        result.push(entry);
+    });
+    return result;
 }
 
 export function buildXbTavernMessages(

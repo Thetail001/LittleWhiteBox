@@ -64,6 +64,40 @@ test('tavern session db stores independent sessions and messages', async () => {
     assert.deepEqual(messages[1]?.requestSnapshot, { messageCount: buildResult.messages.length });
 });
 
+test('tavern session db stores only cloneable snapshots from runtime inputs', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({
+        title: 'Clone guard',
+        contextSnapshot: {
+            character: { id: '1', name: 'Nia' },
+        },
+        state: {
+            turn: 1,
+            helper: () => 'not cloneable',
+        },
+    });
+
+    await appendTavernMessage(session.id, {
+        role: 'assistant',
+        content: 'OK.',
+        providerPayload: {
+            text: 'OK.',
+            helper: () => 'not cloneable',
+        },
+        requestSnapshot: {
+            messageCount: 1,
+            helper: () => 'not cloneable',
+        },
+    });
+
+    const messages = await listTavernMessages(session.id);
+    assert.equal(messages.length, 1);
+    assert.deepEqual(messages[0]?.providerPayload, { text: 'OK.' });
+    assert.deepEqual(messages[0]?.requestSnapshot, { messageCount: 1 });
+});
+
 test('tavern preset db derives, activates, edits and resets presets', async () => {
     await db.delete();
     await db.open();

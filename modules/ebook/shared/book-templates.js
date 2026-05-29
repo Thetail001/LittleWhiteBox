@@ -727,7 +727,7 @@ export const DEFAULT_BOOK_FILES = Object.freeze([
     },
     {
         path: 'book/chapters/001.md',
-        content: '# 第 1 章\n\n从这里开始写正文。\n',
+        content: '从这里开始写正文。\n',
     },
     {
         path: 'book/notes/revision-plan.md',

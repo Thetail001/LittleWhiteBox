@@ -85,6 +85,23 @@ function cleanReaderTtsText(content = '') {
         .trim();
 }
 
+function normalizeReaderTtsHeadingText(text = '') {
+    return String(text || '')
+        .replace(/[*_`~]/g, '')
+        .replace(/[《》「」『』“”"'\s]/g, '')
+        .trim();
+}
+
+function stripDuplicateReaderTtsHeading(content = '', chapterTitle = '') {
+    const normalizedTitle = normalizeReaderTtsHeadingText(chapterTitle);
+    const text = String(content || '');
+    if (!normalizedTitle) return text;
+    return text.replace(/^\s{0,3}(?:\r?\n\s{0,3})*#{1,6}\s+(.+?)\s*#*\s*(?:\r?\n|$)/, (full, heading) => {
+        if (normalizeReaderTtsHeadingText(heading) !== normalizedTitle) return full;
+        return '';
+    });
+}
+
 function formatChapterTitle(path = '') {
     const match = String(path || '').match(/^book\/chapters\/(.+)\.md$/);
     if (!match) return String(path || '章节');
@@ -542,7 +559,8 @@ export function createBookController(deps = {}) {
             render();
             return;
         }
-        const text = cleanReaderTtsText(chapter.content);
+        const chapterTitle = formatChapterTitle(chapter.path);
+        const text = cleanReaderTtsText(stripDuplicateReaderTtsHeading(chapter.content, chapterTitle));
         if (!text) {
             showToast?.('当前章节没有可朗读正文');
             return;
@@ -562,7 +580,7 @@ export function createBookController(deps = {}) {
                 bookId: state.book.id,
                 bookTitle: state.book.title || '未命名书稿',
                 chapterPath: chapter.path,
-                chapterTitle: formatChapterTitle(chapter.path),
+                chapterTitle,
             }, {
                 timeoutMs: EBOOK_TTS_REQUEST_TIMEOUT_MS,
             });

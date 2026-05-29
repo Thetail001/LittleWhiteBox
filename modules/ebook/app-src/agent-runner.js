@@ -11,6 +11,7 @@ import {
 } from '../../agent-core/runtime/protocol.js';
 import { createStreamingMessageController } from '../../agent-core/runtime/streaming-messages.js';
 import { createLightBrakeController } from '../../agent-core/runtime/light-brake.js';
+import { resolveConversationTokens } from '../../agent-core/runtime/context-tokens.js';
 import { buildTavilySearchTracePayload, isTavilyConfigured } from '../../agent-core/tavily-search.js';
 import { resetMessageWindow } from '../../agent-core/ui/message-windowing.js';
 import { upsertBookFile } from '../shared/ebook-db.js';
@@ -23,7 +24,11 @@ import {
     formatEbookToolResult,
     getEbookToolDefinitions,
 } from '../shared/book-tools.js';
-import { createEbookHistoryCompactionController, splitEbookMessagesIntoTurns } from './history-compaction.js';
+import {
+    EBOOK_MAX_CONTEXT_TOKENS,
+    createEbookHistoryCompactionController,
+    splitEbookMessagesIntoTurns,
+} from './history-compaction.js';
 import {
     buildBookContextPrompt,
     buildBookTurnContextPrompt,
@@ -31,6 +36,7 @@ import {
     EBOOK_DELEGATE_PROMPT,
     EBOOK_SYSTEM_PROMPT,
 } from './prompts.js';
+import { buildConversationContextMeterStateKey } from './renderer.js';
 import { safeJsonParse, safeJsonStringify } from './text-utils.js';
 
 const MAX_TOOL_ROUNDS = 48;
@@ -602,6 +608,38 @@ export function createEbookAgentRunner(deps = {}) {
                 return messages;
             }
 
+            async function updateContextMeterFromRequest(messages = []) {
+                if (!Array.isArray(messages) || !messages.length) return;
+                const stateKey = buildConversationContextMeterStateKey(state, providerConfig);
+                const updateSerial = (Number(state.contextStatsRequestSerial) || 0) + 1;
+                state.contextStatsRequestSerial = updateSerial;
+                try {
+                    const usedTokens = await resolveConversationTokens({
+                        messages,
+                        tools,
+                        providerConfig,
+                    });
+                    const currentStateKey = buildConversationContextMeterStateKey(state, providerConfig);
+                    if (
+                        updateSerial !== state.contextStatsRequestSerial
+                        || stateKey !== currentStateKey
+                        || !Number.isFinite(usedTokens)
+                        || controller.signal.aborted
+                    ) return;
+                    state.contextStats = {
+                        usedTokens,
+                        budgetTokens: EBOOK_MAX_CONTEXT_TOKENS,
+                        summaryActive: !!state.historySummary,
+                        source: 'resolved',
+                        stateKey,
+                        updatedAt: Date.now(),
+                    };
+                    renderStreamingSurface();
+                } catch {
+                    // The renderer keeps its local estimate if tokenizer counting is unavailable.
+                }
+            }
+
             function dropStreamingAssistantMessage() {
                 removeStreamingAssistantMessage(streamingAssistantMessage);
             }
@@ -650,6 +688,7 @@ export function createEbookAgentRunner(deps = {}) {
                     } else {
                         await compactionController.ensureContextBudget(adapter, controller.signal);
                         requestTask.messages = await buildReplayMessages();
+                        void updateContextMeterFromRequest(requestTask.messages);
                     }
 
                     console.info('[Ebook][ModelRequest] round:start', {
@@ -831,6 +870,9 @@ export function createEbookAgentRunner(deps = {}) {
                 state.status = '就绪';
                 await refreshBooksAndFiles();
                 await persistConversation?.(runBookId);
+                void buildReplayMessages()
+                    .then((messages) => updateContextMeterFromRequest(messages))
+                    .catch(() => {});
                 return;
             }
             throw new Error('工具轮次达到上限，已停止。');

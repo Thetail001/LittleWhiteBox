@@ -34,6 +34,48 @@ function cloneJson(value) {
     return value;
   }
 }
+function makeWorldbookEntryKey(entry = {}, fallbackIndex = 0) {
+  const uid = normalizeText(entry.uid ?? entry.id);
+  if (uid) {
+    return `uid:${uid}`;
+  }
+  const bodyKey = [
+    "body",
+    normalizeText(entry.comment || entry.title || entry.name),
+    normalizeText(entry.content),
+    JSON.stringify(entry.key || ""),
+    JSON.stringify(entry.keysecondary || entry.secondary_keys || "")
+  ].join("\0");
+  return bodyKey === 'body\0\0\0""\0""' ? `empty:${fallbackIndex}` : bodyKey;
+}
+function dedupeWorldBooks(books = []) {
+  const byName = /* @__PURE__ */ new Map();
+  books.forEach((book, bookIndex) => {
+    const name = normalizeText(book.name) || `worldbook-${bookIndex + 1}`;
+    const existing = byName.get(name);
+    if (!existing) {
+      byName.set(name, {
+        ...book,
+        name,
+        entries: []
+      });
+    }
+    const target = byName.get(name);
+    if (!target.error && book.error) {
+      target.error = book.error;
+    }
+    const seen = new Set(readEntryList(target.entries).map((entry, index) => makeWorldbookEntryKey(entry, index)));
+    readEntryList(book.entries).forEach((entry, entryIndex) => {
+      const key = makeWorldbookEntryKey(entry, entryIndex);
+      if (seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+      target.entries.push(entry);
+    });
+  });
+  return Array.from(byName.values());
+}
 function getWindowRecord() {
   return window;
 }
@@ -185,10 +227,10 @@ async function buildTavernContext(options = {}) {
       };
     }
   }));
-  const worldBooks = [
+  const worldBooks = dedupeWorldBooks([
     ...embeddedBook ? [embeddedBook] : [],
     ...fetchedWorldBooks
-  ];
+  ]);
   const context = {
     character: normalizeCharacter(ctx, options),
     user: normalizeUser(ctx),

@@ -12,6 +12,8 @@ import {
     collectStudioFileSectionModels,
     formatFileTitle,
     renderEbookShell,
+    renderConversationContextMeterLabel,
+    renderConversationContextMeterTitle,
     renderProviderReadiness,
     renderSettingsDialog,
 } from './renderer.js';
@@ -386,6 +388,13 @@ export function createEbookApp(options = {}) {
         const agentMain = root.querySelector('.xb-agent-main');
         const agentLog = root.querySelector('.xb-agent-log');
         if (!shell || !agentMain || !agentLog) return false;
+
+        const contextMeter = root.querySelector('.xb-agent-context-meter');
+        if (contextMeter) {
+            const providerConfig = getActiveProviderConfig();
+            contextMeter.textContent = renderConversationContextMeterLabel(state, providerConfig);
+            contextMeter.title = renderConversationContextMeterTitle(state, providerConfig);
+        }
 
         const agentScroll = captureScrollState(root, '.xb-agent-main');
         const shouldAutoScrollAgent = state.agentAutoScroll !== false;

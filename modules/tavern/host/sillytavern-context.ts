@@ -53,6 +53,44 @@ function cloneJson<T>(value: T): T {
     }
 }
 
+function makeWorldbookEntryKey(entry: Record<string, unknown> = {}, fallbackIndex = 0): string {
+    const uid = normalizeText(entry.uid ?? entry.id);
+    if (uid) {return `uid:${uid}`;}
+    const bodyKey = [
+        'body',
+        normalizeText(entry.comment || entry.title || entry.name),
+        normalizeText(entry.content),
+        JSON.stringify(entry.key || ''),
+        JSON.stringify(entry.keysecondary || entry.secondary_keys || ''),
+    ].join('\u0000');
+    return bodyKey === 'body\u0000\u0000\u0000""\u0000""' ? `empty:${fallbackIndex}` : bodyKey;
+}
+
+function dedupeWorldBooks(books: Array<Record<string, unknown>> = []): Array<Record<string, unknown>> {
+    const byName = new Map<string, Record<string, unknown>>();
+    books.forEach((book, bookIndex) => {
+        const name = normalizeText(book.name) || `worldbook-${bookIndex + 1}`;
+        const existing = byName.get(name);
+        if (!existing) {
+            byName.set(name, {
+                ...book,
+                name,
+                entries: [],
+            });
+        }
+        const target = byName.get(name) as Record<string, unknown>;
+        if (!target.error && book.error) {target.error = book.error;}
+        const seen = new Set(readEntryList(target.entries).map((entry, index) => makeWorldbookEntryKey(entry, index)));
+        readEntryList(book.entries).forEach((entry, entryIndex) => {
+            const key = makeWorldbookEntryKey(entry, entryIndex);
+            if (seen.has(key)) {return;}
+            seen.add(key);
+            (target.entries as Record<string, unknown>[]).push(entry);
+        });
+    });
+    return Array.from(byName.values());
+}
+
 function getWindowRecord(): Record<string, unknown> {
     return window as unknown as Record<string, unknown>;
 }
@@ -204,10 +242,10 @@ export async function buildTavernContext(options: TavernHostOptions = {}): Promi
             };
         }
     }));
-    const worldBooks = [
+    const worldBooks = dedupeWorldBooks([
         ...(embeddedBook ? [embeddedBook] : []),
         ...fetchedWorldBooks,
-    ];
+    ]);
     const context = {
         character: normalizeCharacter(ctx, options),
         user: normalizeUser(ctx),

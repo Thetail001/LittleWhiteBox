@@ -123,6 +123,15 @@ function cloneJson<T>(value: T): T {
     return JSON.parse(JSON.stringify(value)) as T;
 }
 
+function cloneSerializable<T>(value: T, fallback: T): T {
+    if (value === undefined) {return fallback;}
+    try {
+        return JSON.parse(JSON.stringify(value)) as T;
+    } catch {
+        return fallback;
+    }
+}
+
 function normalizePresetName(value = '', fallback = '我的小白酒馆预设'): string {
     const normalized = String(value || '').trim();
     return normalized.slice(0, 120) || fallback;
@@ -181,12 +190,12 @@ export async function createTavernSession(input: Partial<TavernSessionRecord> = 
         characterName: String(input.characterName || ''),
         createdAt: Number(input.createdAt) || timestamp,
         updatedAt: timestamp,
-        contextSnapshot: input.contextSnapshot,
-        buildSnapshot: input.buildSnapshot,
+        contextSnapshot: cloneSerializable(input.contextSnapshot, undefined),
+        buildSnapshot: cloneSerializable(input.buildSnapshot, undefined),
         presetId: String(input.presetId || ''),
         presetName: String(input.presetName || ''),
         summary: String(input.summary || ''),
-        state: normalizeTavernSessionState(input.state || {}),
+        state: cloneSerializable(normalizeTavernSessionState(input.state || {}), {}),
     };
     await tavernSessionsTable.put(session);
     await tavernMetaTable.put({ key: 'selectedSessionId', value: session.id, updatedAt: timestamp });
@@ -229,9 +238,9 @@ export async function updateTavernSessionState(sessionId = '', patch: Partial<Ta
         worldEntryStates: mergeWorldEntryStates(currentState.worldEntryStates || {}, patchState.worldEntryStates || {}),
     };
     await tavernSessionsTable.update(id, {
-        state,
+        state: cloneSerializable(state, {}),
         updatedAt: timestamp,
-        buildSnapshot: patch.lastBuildSnapshot || existing.buildSnapshot,
+        buildSnapshot: cloneSerializable(patch.lastBuildSnapshot || existing.buildSnapshot, undefined),
     });
     return await getTavernSession(id);
 }
@@ -252,8 +261,8 @@ export async function updateTavernSessionSnapshot(sessionId = '', patch: {
     const character = contextSnapshot?.character || {};
     const update: Partial<TavernSessionRecord> = {
         updatedAt: now(),
-        contextSnapshot,
-        buildSnapshot: 'buildSnapshot' in patch ? patch.buildSnapshot : existing.buildSnapshot,
+        contextSnapshot: cloneSerializable(contextSnapshot, undefined),
+        buildSnapshot: cloneSerializable('buildSnapshot' in patch ? patch.buildSnapshot : existing.buildSnapshot, undefined),
         presetId: 'presetId' in patch ? String(patch.presetId || '') : existing.presetId,
         presetName: 'presetName' in patch ? String(patch.presetName || '') : existing.presetName,
         characterId: 'characterId' in patch ? String(patch.characterId || '') : String(character.id || existing.characterId || ''),
@@ -280,12 +289,12 @@ export async function appendTavernMessage(sessionId: string, message: TavernAppe
         provider: 'provider' in message ? String(message.provider || '') : undefined,
         model: 'model' in message ? String(message.model || '') : undefined,
         finishReason: 'finishReason' in message ? String(message.finishReason || '') : undefined,
-        providerPayload: 'providerPayload' in message ? message.providerPayload : undefined,
-        contextSnapshot: 'contextSnapshot' in message ? message.contextSnapshot : undefined,
-        buildSnapshot: 'buildSnapshot' in message ? message.buildSnapshot : undefined,
+        providerPayload: 'providerPayload' in message ? cloneSerializable(message.providerPayload, undefined) : undefined,
+        contextSnapshot: 'contextSnapshot' in message ? cloneSerializable(message.contextSnapshot, undefined) : undefined,
+        buildSnapshot: 'buildSnapshot' in message ? cloneSerializable(message.buildSnapshot, undefined) : undefined,
         presetId: 'presetId' in message ? String(message.presetId || '') : undefined,
         presetName: 'presetName' in message ? String(message.presetName || '') : undefined,
-        requestSnapshot: 'requestSnapshot' in message ? message.requestSnapshot : undefined,
+        requestSnapshot: 'requestSnapshot' in message ? cloneSerializable(message.requestSnapshot, undefined) : undefined,
     };
     await db.transaction('rw', tavernMessagesTable, tavernSessionsTable, async () => {
         await tavernMessagesTable.put(record);
@@ -314,11 +323,11 @@ export async function saveTavernPreset(preset: XbTavernPreset, options: {
 } = {}): Promise<TavernPresetRecord> {
     const timestamp = now();
     const id = String(preset.id || createId('tavern-preset'));
-    const normalizedPreset = cloneJson({
+    const normalizedPreset = cloneSerializable({
         ...preset,
         id,
         name: normalizePresetName(preset.name),
-    });
+    }, createDefaultXbTavernPreset());
     const existing = await tavernPresetsTable.get(id);
     const record: TavernPresetRecord = {
         id,

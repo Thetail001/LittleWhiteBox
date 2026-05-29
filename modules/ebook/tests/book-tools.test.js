@@ -70,7 +70,10 @@ const {
     collectAgentRenderUnits,
     collectStudioFileSectionModels,
     countMessageWindowUnits,
+    buildConversationContextMeterStateKey,
     renderEbookShell,
+    renderConversationContextMeterLabel,
+    renderConversationContextMeterTitle,
 } = rendererModule;
 const { bindEbookEvents } = uiBindingsModule;
 const { HTML_PREVIEW_SANDBOX, renderMarkdownToHtml } = messageMarkdownModule;
@@ -733,6 +736,10 @@ test('Default outline template pushes volume-level planning before chapter draft
     assert.match(reviewRules, /短期欲望 -> 障碍 -> 行动 -> 结果/);
     assert.match(reviewRules, /每 5 章内是否有 1-3 个实质进展/);
     assert.match(reviewRules, /积极约 3、阻碍\/落空\/误解\/代价约 7/);
+
+    const firstChapter = DEFAULT_BOOK_FILES.find((file) => file.path === 'book/chapters/001.md')?.content || '';
+    assert.equal(firstChapter, '从这里开始写正文。\n');
+    assert.doesNotMatch(firstChapter, /^#\s*第\s*1\s*章/m);
 });
 
 test('Book context prompt keeps stable files separate from volatile turn context', () => {
@@ -2903,6 +2910,36 @@ test('Reader renders chapter markdown while preserving image markers', () => {
     assert.doesNotMatch(html, /\[ebook-image:slot-md\]/);
 });
 
+test('Reader skips a duplicated first chapter heading without suppressing body headings', () => {
+    const state = {
+        book: { id: 'book-reader-heading', title: '章节标题测试' },
+        books: [],
+        files: [{
+            path: 'book/chapters/001.md',
+            content: '# 第 1 章\n\n正文第一段。\n\n## 正文小标题',
+        }],
+        selectedPath: 'book/chapters/001.md',
+        readerPath: 'book/chapters/001.md',
+        viewMode: 'reader',
+        messages: [],
+        toolTrace: [],
+        isBusy: false,
+        colorTheme: 'dark',
+        toast: '',
+    };
+
+    const html = renderEbookShell({
+        state,
+        providerConfig: { provider: 'test', model: 'demo' },
+        dirty: false,
+    });
+
+    assert.match(html, /<h2>第 1 章<\/h2>/);
+    assert.doesNotMatch(html, /<h1[^>]*>第 1 章<\/h1>/);
+    assert.match(html, /正文第一段。/);
+    assert.match(html, /<h2[^>]*>正文小标题<\/h2>/);
+});
+
 test('Reader TTS plays the active chapter text and stops when switching chapters', async () => {
     await resetDb();
     const book = await createBook('朗读测试');
@@ -2947,6 +2984,7 @@ test('Reader TTS plays the active chapter text and stops when switching chapters
     assert.equal(playRequest.payload.chapterPath, 'book/chapters/001.md');
     assert.match(playRequest.payload.text, /第一段。/);
     assert.match(playRequest.payload.text, /第二段。/);
+    assert.doesNotMatch(playRequest.payload.text, /第 1 章/);
     assert.doesNotMatch(playRequest.payload.text, /\[ebook-image:/);
     assert.doesNotMatch(playRequest.payload.text, /^#/m);
     assert.equal(state.readerTtsPlayback.status, 'loading');
@@ -4953,7 +4991,7 @@ test('Book renderer uses a compact agent toolbar with shared config actions', as
         dirty: false,
     });
 
-    assert.match(html, /class="xb-agent-context-meter" title="当前实际送模上下文 \/ 188k（已整理较早创作记录）"/);
+    assert.match(html, /class="xb-agent-context-meter" title="当前估算送模上下文 \/ 188k（已整理较早创作记录）"/);
     assert.match(html, /id="xb-agent-clear"/);
     assert.match(html, /id="xb-agent-open-settings"/);
     assert.match(html, /id="xb-agent-close"/);
@@ -4974,6 +5012,45 @@ test('Book renderer uses a compact agent toolbar with shared config actions', as
     assert.match(html, /\/188k/);
     assert.doesNotMatch(html, /模型：/);
     assert.doesNotMatch(html, /创作对话：约/);
+});
+
+test('Book context meter ignores resolved token stats when conversation state changes', async () => {
+    await resetDb();
+    const book = await createBook('计数缓存签名测试');
+    const providerConfig = { provider: 'anthropic', model: 'claude-sonnet-4' };
+    const state = {
+        book,
+        books: [book],
+        files: await listBookFiles(book.id),
+        selectedPath: 'book/chapters/001.md',
+        readerPath: '',
+        viewMode: 'studio',
+        editorContent: '',
+        savedContent: '',
+        messages: [{ role: 'user', content: '继续写第一章。' }],
+        toolTrace: [],
+        openToolTurnKeys: [],
+        openThoughtKeys: [],
+        historySummary: '',
+        isBusy: false,
+        status: '就绪',
+        toast: '',
+    };
+    state.contextStats = {
+        usedTokens: 777000,
+        budgetTokens: EBOOK_MAX_CONTEXT_TOKENS,
+        source: 'resolved',
+        stateKey: buildConversationContextMeterStateKey(state, providerConfig),
+        updatedAt: Date.now(),
+    };
+
+    assert.equal(renderConversationContextMeterLabel(state, providerConfig), '777k/188k');
+    assert.equal(renderConversationContextMeterTitle(state, providerConfig), '最近一次发模上下文 / 188k');
+
+    state.messages.push({ role: 'assistant', content: '新增回复让缓存失效。' });
+
+    assert.notEqual(renderConversationContextMeterLabel(state, providerConfig), '777k/188k');
+    assert.equal(renderConversationContextMeterTitle(state, providerConfig), '当前估算送模上下文 / 188k');
 });
 
 test('Book renderer shows context distillation overlay during history compaction', async () => {

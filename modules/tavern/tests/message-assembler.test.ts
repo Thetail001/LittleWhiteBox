@@ -612,6 +612,37 @@ test('xb tavern assembler does not double count flattened world entries when wor
     assert.equal(result.activatedWorldEntries.length, 1);
 });
 
+test('xb tavern assembler deduplicates repeated entries from the same world book', () => {
+    const result = buildXbTavernMessages({
+        worldBooks: [
+            {
+                name: 'BookA',
+                entries: [
+                    { uid: 'same', content: 'Same lore.', constant: true },
+                    { uid: 'same', content: 'Same lore.', constant: true },
+                    { content: 'No uid lore.', key: ['station'] },
+                    { content: 'No uid lore.', key: ['station'] },
+                ],
+            },
+            {
+                name: 'BookA',
+                entries: [
+                    { uid: 'same', content: 'Same lore.', constant: true },
+                ],
+            },
+        ],
+    }, {
+        systemPrompt: 'Top',
+        toolPrompt: 'Tools',
+    }, {
+        currentUserMessage: 'station',
+    });
+
+    assert.equal(result.worldEntryCandidates.length, 2);
+    assert.equal(result.activatedWorldEntries.length, 2);
+    assert.deepEqual(result.worldEntryCandidates.map((entry) => entry.content).sort(), ['No uid lore.', 'Same lore.']);
+});
+
 test('xb tavern assembler keeps same uid entries separate across world books', () => {
     const result = buildXbTavernMessages({
         worldBooks: [

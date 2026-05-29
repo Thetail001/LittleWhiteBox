@@ -218,7 +218,97 @@ function formatContextMeterCount(tokens = 0) {
     return `${Math.max(0, Math.round((Number(tokens) || 0) / 1000))}k`;
 }
 
-function estimateConversationContextTokens(state = {}, providerConfig = {}) {
+function createContextMeterHasher() {
+    let hashA = 2166136261;
+    let hashB = 2166136261 ^ 0x9e3779b9;
+    let charCount = 0;
+    let chunkCount = 0;
+
+    function addText(value = '') {
+        const text = String(value ?? '');
+        chunkCount += 1;
+        charCount += text.length;
+        for (let index = 0; index < text.length; index += 1) {
+            const code = text.charCodeAt(index);
+            hashA ^= code;
+            hashA = Math.imul(hashA, 16777619);
+            hashB ^= code + 0x9e3779b9 + (hashB << 6) + (hashB >>> 2);
+            hashB = Math.imul(hashB, 1597334677);
+        }
+    }
+
+    function addField(name, value = '') {
+        addText('\u001e');
+        addText(name);
+        addText('\u001f');
+        addText(value);
+    }
+
+    function digest() {
+        return [
+            charCount,
+            chunkCount,
+            (hashA >>> 0).toString(36),
+            (hashB >>> 0).toString(36),
+        ].join(':');
+    }
+
+    return {
+        addField,
+        digest,
+    };
+}
+
+export function buildConversationContextMeterStateKey(state = {}, providerConfig = {}) {
+    const hasher = createContextMeterHasher();
+    hasher.addField('book-id', state.book?.id || '');
+    hasher.addField('provider', providerConfig?.provider || '');
+    hasher.addField('model', providerConfig?.model || '');
+    hasher.addField('tool-mode', providerConfig?.toolMode || '');
+    hasher.addField('selected-path', state.selectedPath || '');
+    hasher.addField('history-summary', state.historySummary || '');
+
+    const files = Array.isArray(state.files) ? state.files : [];
+    hasher.addField('file-count', files.length);
+    files.forEach((file, index) => {
+        hasher.addField(`file:${index}:path`, file?.path || '');
+        hasher.addField(`file:${index}:content`, file?.content || '');
+    });
+
+    const messages = Array.isArray(state.messages) ? state.messages : [];
+    hasher.addField('message-count', messages.length);
+    messages.forEach((message, index) => {
+        hasher.addField(`message:${index}:role`, message?.role || '');
+        hasher.addField(`message:${index}:content`, message?.content || '');
+        hasher.addField(`message:${index}:error`, message?.error ? '1' : '0');
+        hasher.addField(`message:${index}:tool-call-id`, message?.toolCallId || '');
+        hasher.addField(`message:${index}:tool-name`, message?.toolName || '');
+        const toolCalls = Array.isArray(message?.toolCalls) ? message.toolCalls : [];
+        hasher.addField(`message:${index}:tool-call-count`, toolCalls.length);
+        toolCalls.forEach((toolCall, toolCallIndex) => {
+            hasher.addField(`message:${index}:tool-call:${toolCallIndex}:id`, toolCall?.id || '');
+            hasher.addField(`message:${index}:tool-call:${toolCallIndex}:name`, toolCall?.name || '');
+            hasher.addField(`message:${index}:tool-call:${toolCallIndex}:arguments`, toolCall?.arguments || '');
+        });
+    });
+
+    return hasher.digest();
+}
+
+function resolveContextStatsForState(state = {}, providerConfig = {}) {
+    const stats = state.contextStats && typeof state.contextStats === 'object' ? state.contextStats : null;
+    if (!stats) return null;
+    const stateKey = buildConversationContextMeterStateKey(state, providerConfig);
+    if (stats.stateKey !== stateKey) return null;
+    const usedTokens = Number(stats.usedTokens);
+    if (!Number.isFinite(usedTokens)) return null;
+    return {
+        ...stats,
+        usedTokens,
+    };
+}
+
+export function estimateConversationContextTokens(state = {}, providerConfig = {}) {
     const contextPrompt = buildBookContextPrompt({
         book: state.book,
         files: state.files,
@@ -251,15 +341,21 @@ function estimateConversationContextTokens(state = {}, providerConfig = {}) {
     return estimateTokenCount(lines.join('\n\n'));
 }
 
-function renderConversationContextMeterLabel(state = {}, providerConfig = {}) {
-    const used = estimateConversationContextTokens(state, providerConfig);
+export function renderConversationContextMeterLabel(state = {}, providerConfig = {}) {
+    const stats = resolveContextStatsForState(state, providerConfig);
+    const used = stats ? stats.usedTokens : estimateConversationContextTokens(state, providerConfig);
     return `${formatContextMeterCount(used)}/${formatContextMeterCount(EBOOK_MAX_CONTEXT_TOKENS)}`;
 }
 
-function renderConversationContextMeterTitle(state = {}) {
+export function renderConversationContextMeterTitle(state = {}, providerConfig = {}) {
+    const stats = resolveContextStatsForState(state, providerConfig);
+    const source = String(stats?.source || '').trim();
+    const prefix = source === 'resolved'
+        ? '最近一次发模上下文 / 188k'
+        : '当前估算送模上下文 / 188k';
     return state.historySummary?.trim()
-        ? '当前实际送模上下文 / 188k（已整理较早创作记录）'
-        : '当前实际送模上下文 / 188k';
+        ? `${prefix}（已整理较早创作记录）`
+        : prefix;
 }
 
 function renderCompactionOverlay(state = {}) {
@@ -1564,7 +1660,7 @@ function renderStudioShell(options = {}) {
                             </div>
                         </div>
                         <div class="xb-agent-toolbar">
-                            <div class="xb-agent-context-meter" title="${escapeHtml(renderConversationContextMeterTitle(state))}">${escapeHtml(renderConversationContextMeterLabel(state, providerConfig))}</div>
+                            <div class="xb-agent-context-meter" title="${escapeHtml(renderConversationContextMeterTitle(state, providerConfig))}">${escapeHtml(renderConversationContextMeterLabel(state, providerConfig))}</div>
                             <button id="xb-agent-clear" type="button" ${state.isBusy || !canClearConversation ? 'disabled' : ''}>清空对话</button>
                             <button id="xb-agent-open-settings" type="button">API配置</button>
                         </div>
@@ -1622,7 +1718,22 @@ function renderReaderChapterButtons(chapters = [], activePath = '') {
     `).join('');
 }
 
-function renderReaderTextContent(content = '') {
+function normalizeReaderHeadingText(text = '') {
+    return String(text || '')
+        .replace(/[*_`~]/g, '')
+        .replace(/[《》「」『』“”"'\s]/g, '')
+        .trim();
+}
+
+function isDuplicateReaderChapterHeading(block = '', chapterTitle = '') {
+    const match = String(block || '').match(/^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$/);
+    if (!match) return false;
+    const heading = normalizeReaderHeadingText(match[1]);
+    const title = normalizeReaderHeadingText(chapterTitle);
+    return !!heading && !!title && heading === title;
+}
+
+function renderReaderTextContent(content = '', options = {}) {
     const normalized = String(content || '').trim();
     if (!normalized) return '';
     const markerRegex = /\[ebook-image:([a-z0-9\-_]+)\]/gi;
@@ -1636,6 +1747,7 @@ function renderReaderTextContent(content = '') {
             .map((block) => block.trim())
             .filter(Boolean)
             .forEach((block) => {
+                if (paragraphIndex === 0 && isDuplicateReaderChapterHeading(block, options.chapterTitle)) return;
                 parts.push(renderReaderMarkdownBlock(block, paragraphIndex));
                 paragraphIndex += 1;
             });
@@ -1711,7 +1823,7 @@ function renderReaderShell(options = {}) {
                                 <p>${escapeHtml(formatTextMetrics(content))}</p>
                             </div>
                         </header>
-                        <div class="xb-reader-content">${renderReaderTextContent(content)}</div>
+                        <div class="xb-reader-content">${renderReaderTextContent(content, { chapterTitle: formatFileTitle(activePath) })}</div>
                         <footer class="xb-reader-foot">
                             <button data-reader-path="${escapeHtml(previous?.path || '')}" ${previous ? '' : 'disabled'}>上一章</button>
                             <button data-reader-path="${escapeHtml(next?.path || '')}" ${next ? '' : 'disabled'}>下一章</button>

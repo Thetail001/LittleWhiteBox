@@ -34,6 +34,8 @@ export function createEbookState() {
         uiMessageWindowLimit: 5,
         historySummary: '',
         archivedTurnCount: 0,
+        contextStats: null,
+        contextStatsRequestSerial: 0,
         compactionOverlay: null,
         protocolNotice: null,
         isBusy: false,

@@ -137,6 +137,41 @@ function addUnique(target: string[], value: unknown): void {
     if (text && !target.includes(text)) {target.push(text);}
 }
 
+function makeWorldbookEntryKey(entry: XbTavernWorldEntry = {}, fallbackIndex = 0): string {
+    const uid = normalizeText(entry.uid ?? entry.id);
+    if (uid) {return `uid:${uid}`;}
+    const bodyKey = [
+        'body',
+        normalizeText(entry.comment || entry.title || entry.name),
+        normalizeText(entry.content),
+        JSON.stringify(entry.key || ''),
+        JSON.stringify(entry.keysecondary || entry.secondary_keys || ''),
+    ].join('\u0000');
+    return bodyKey === 'body\u0000\u0000\u0000""\u0000""' ? `empty:${fallbackIndex}` : bodyKey;
+}
+
+function dedupeWorldBooks(books: XbTavernWorldBook[] = []): XbTavernWorldBook[] {
+    const byName = new Map<string, XbTavernWorldBook>();
+    books.forEach((book, bookIndex) => {
+        const name = normalizeText(book.name) || `worldbook-${bookIndex + 1}`;
+        const existing = byName.get(name) || {
+            ...book,
+            name,
+            entries: [],
+        };
+        if (!existing.error && book.error) {existing.error = book.error;}
+        const seen = new Set(existing.entries.map((entry, index) => makeWorldbookEntryKey(entry, index)));
+        (Array.isArray(book.entries) ? book.entries : []).forEach((entry, entryIndex) => {
+            const key = makeWorldbookEntryKey(entry, entryIndex);
+            if (seen.has(key)) {return;}
+            seen.add(key);
+            existing.entries.push(entry);
+        });
+        byName.set(name, existing);
+    });
+    return Array.from(byName.values());
+}
+
 export function collectSillyTavernWorldbookNames(source: SillyTavernContextSource = {}, options: BuildXbTavernContextOptions = {}): string[] {
     const character = pickCharacter(source);
     const data = pickData(character);
@@ -185,11 +220,11 @@ export function buildXbTavernContextFromSillyTavern(
     options: BuildXbTavernContextOptions = {},
 ): XbTavernContext {
     const embeddedBook = normalizeEmbeddedCharacterBook(source);
-    const worldBooks = [
+    const worldBooks = dedupeWorldBooks([
         ...(embeddedBook ? [embeddedBook] : []),
         ...(Array.isArray(options.worldBooks) ? options.worldBooks : []),
         ...(Array.isArray(options.extraWorldBooks) ? options.extraWorldBooks : []),
-    ];
+    ]);
     return {
         character: normalizeSillyTavernCharacter(source),
         user: normalizeSillyTavernUser(source),
