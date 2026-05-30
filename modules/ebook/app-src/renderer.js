@@ -265,9 +265,6 @@ export function buildConversationContextMeterStateKey(state = {}, providerConfig
     hasher.addField('provider', providerConfig?.provider || '');
     hasher.addField('model', providerConfig?.model || '');
     hasher.addField('tool-mode', providerConfig?.toolMode || '');
-    hasher.addField('selected-path', state.selectedPath || '');
-    hasher.addField('history-summary', state.historySummary || '');
-
     const files = Array.isArray(state.files) ? state.files : [];
     hasher.addField('file-count', files.length);
     files.forEach((file, index) => {
@@ -316,8 +313,6 @@ export function estimateConversationContextTokens(state = {}, providerConfig = {
     const turnContextPrompt = buildBookTurnContextPrompt({
         book: state.book,
         files: state.files,
-        selectedPath: state.selectedPath,
-        historySummary: state.historySummary,
     });
     const lines = [];
     lines.push(`[System]\n${EBOOK_SYSTEM_PROMPT}`);
@@ -353,9 +348,7 @@ export function renderConversationContextMeterTitle(state = {}, providerConfig =
     const prefix = source === 'resolved'
         ? '最近一次发模上下文 / 188k'
         : '当前估算送模上下文 / 188k';
-    return state.historySummary?.trim()
-        ? `${prefix}（已整理较早创作记录）`
-        : prefix;
+    return prefix;
 }
 
 function renderCompactionOverlay(state = {}) {
@@ -363,12 +356,12 @@ function renderCompactionOverlay(state = {}) {
     if (!overlay.active) return '';
     const current = formatContextMeterCount(overlay.currentTokens);
     const target = Number(overlay.yieldTokens) > 0 ? formatContextMeterCount(overlay.yieldTokens) : '....';
-    const status = String(overlay.status || '').trim() || '正在整理较早创作记录...';
+    const status = String(overlay.status || '').trim() || '正在释放较早对话...';
     return `
         <div class="xb-distillation-layer${overlay.resolved ? ' resolved' : ''}" role="status" aria-live="polite">
             <div class="xb-distillation-backdrop"></div>
             <div class="xb-distillation-aura"></div>
-            <section class="xb-distillation-plaque" aria-label="创作记忆整理">
+            <section class="xb-distillation-plaque" aria-label="上下文释放">
                 <div class="xb-distillation-title">CONTEXT DISTILLATION</div>
                 <div class="xb-distillation-status">${escapeHtml(status)}</div>
                 <div class="xb-distillation-metrics">
@@ -1270,9 +1263,6 @@ function getToolRunSignature(batches = [], turnKey = '', state = {}, isOpen = fa
 }
 
 export function collectAgentRenderUnits(state = {}) {
-    const memoryHint = state.historySummary
-        ? createAgentRenderUnit('memory', '<div class="xb-agent-memory">已整理较早创作记录，后续写作会继续参考。</div>')
-        : null;
     const messages = Array.isArray(state.messages) ? state.messages : [];
     const units = [];
 
@@ -1426,7 +1416,6 @@ export function collectAgentRenderUnits(state = {}) {
     const hasLiveToolTurn = !!(state.isBusy && Array.isArray(state.toolTrace) && state.toolTrace.length);
     if (!units.length && !hasLiveToolTurn) {
         return [
-            memoryHint,
             createAgentRenderUnit('empty', '<div class="xb-agent-empty">这里是写作助手记录。可以先导入资料，也可以直接说“我想试试写一本书”。</div>'),
         ].filter(Boolean);
     }
@@ -1448,7 +1437,6 @@ export function collectAgentRenderUnits(state = {}) {
         ? createAgentRenderUnit('live-tool-turn', liveTraceSignature, () => renderLiveToolTurn(state))
         : null;
     return [
-        memoryHint,
         historyGate,
         ...units.slice(messageWindow.startIndex),
         liveToolTurn,
@@ -1565,7 +1553,7 @@ function renderStudioShell(options = {}) {
     const agentInputAttr = (!state.isBusy && !readiness.canRun) ? 'disabled' : '';
     const sendButtonAttr = (!state.isBusy && !readiness.canRun) ? 'disabled' : '';
     const agentInputDraft = String(state.agentInputDraft || '');
-    const canClearConversation = !!(state.messages?.length || state.historySummary?.trim());
+    const canClearConversation = !!state.messages?.length;
     const layoutClass = ['focus-editor', 'focus-agent'].includes(state.studioLayout)
         ? state.studioLayout
         : 'balanced';

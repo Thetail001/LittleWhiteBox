@@ -1,7 +1,7 @@
 import { extensionFolderPath } from '../../core/constants.js';
 import { createFirstPartyIframeOverlay, loadFirstPartyIframeCacheKey } from '../../core/first-party-iframe-app.js';
 import { isTrustedMessage, postToIframe } from '../../core/iframe-messaging.js';
-import { buildTavernFrameConfig } from './host/agent-config.js';
+import { buildTavernFrameConfig, saveTavernAgentConfig } from './host/agent-config.js';
 import { buildTavernContext } from './host/sillytavern-context.js';
 
 interface PendingFrameMessage {
@@ -72,6 +72,23 @@ async function refreshContext(options: Record<string, unknown> = {}): Promise<vo
     postToFrame('xb-tavern:context', await buildTavernContext(options) as unknown as Record<string, unknown>);
 }
 
+async function saveConfigFromFrame(payload: Record<string, unknown> = {}): Promise<void> {
+    const requestId = String(payload.requestId || '');
+    const configPatch = payload.payload && typeof payload.payload === 'object'
+        ? payload.payload as Record<string, unknown>
+        : {};
+    const result = await saveTavernAgentConfig(configPatch, { silent: false });
+    postToFrame('xb-tavern:config-saved', {
+        requestId,
+        ok: result.ok,
+        config: result.config,
+        error: result.error || '',
+    });
+    if (result.ok) {
+        await sendConfigToFrame();
+    }
+}
+
 async function createOverlay(): Promise<HTMLElement> {
     return createFirstPartyIframeOverlay({
         overlayId: OVERLAY_ID,
@@ -110,6 +127,9 @@ function handleFrameMessage(event: MessageEvent): void {
             break;
         case 'xb-tavern:refresh-context':
             void refreshContext(data.payload || {});
+            break;
+        case 'xb-tavern:save-config':
+            void saveConfigFromFrame(data.payload || {});
             break;
         default:
             break;

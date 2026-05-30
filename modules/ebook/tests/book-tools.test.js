@@ -18,6 +18,7 @@ const uiBindingsModule = await import('../app-src/ui-bindings.js');
 const messageMarkdownModule = await import('../../agent-core/ui/message-markdown.js');
 const lightBrakeModule = await import('../../agent-core/runtime/light-brake.js');
 const textEditModule = await import('../../agent-core/tools/text-edit.js');
+const openAICompatibleAdapterModule = await import('../../agent-core/adapters/openai-compatible.js');
 
 const {
     default: db,
@@ -57,7 +58,6 @@ const {
 } = compactionModule;
 const {
     EBOOK_DELEGATE_PROMPT,
-    EBOOK_SUMMARY_SYSTEM_PROMPT,
     EBOOK_SYSTEM_PROMPT,
     buildActionPrompt,
     buildBookContextPrompt,
@@ -79,6 +79,7 @@ const { bindEbookEvents } = uiBindingsModule;
 const { HTML_PREVIEW_SANDBOX, renderMarkdownToHtml } = messageMarkdownModule;
 const { createLightBrakeController } = lightBrakeModule;
 const { applyTextEdits } = textEditModule;
+const { buildTaggedMessages } = openAICompatibleAdapterModule;
 
 async function resetDb() {
     await db.delete();
@@ -268,7 +269,7 @@ test('Shared applyTextEdits accepts JSON-stringified edits with a warning and re
     ]));
 
     assert.equal(parsed.ok, true);
-    assert.match(parsed.warning, /parsed for compatibility/);
+    assert.match(parsed.warning, /模型把 edits 发成了字符串/);
     assert.equal(parsed.content, ['一', '二三合并成一行'].join('\n'));
 
     const invalidString = applyTextEdits(content, '[{]');
@@ -294,7 +295,7 @@ test('Shared applyTextEdits repairs malformed JSON-like stringified line edits',
     const result = applyTextEdits(content, malformed);
 
     assert.equal(result.ok, true);
-    assert.match(result.warning, /malformed JSON-like string/);
+    assert.match(result.warning, /不是标准 JSON/);
     assert.equal(result.content, ['一', '她说："回来。"', '三也留下', '四'].join('\n'));
 
     const multi = applyTextEdits(content, '[{"startLine":2,"endLine":2,"newString":"二："改""},{"insertAtLine":4,"newString":"四之前"}]');
@@ -603,6 +604,39 @@ test('Book tools reject paths outside the current book namespace', async () => {
     assert.equal(root.entries.some((entry) => entry.path === 'book/reviews/'), true);
 });
 
+test('Book Grep defaults to literal text search and only uses regex when requested', async () => {
+    await resetDb();
+    const book = await createBook('Grep 字面搜索测试');
+    await upsertBookFile(book.id, 'book/notes/grep.md', [
+        '她问：[A+B]真的会出现吗？',
+        '普通章节文本。',
+        'CDDD 可以被正则命中。',
+    ].join('\n'));
+    const runtime = createBookToolRuntime({ bookId: book.id });
+
+    const literal = await runtime.execute(EBOOK_TOOL_NAMES.GREP, {
+        pattern: '[A+B]',
+        path: 'book/notes/',
+    });
+    assert.equal(literal.ok, true);
+    assert.equal(literal.count, 1);
+    assert.equal(literal.results[0].lineNumber, 1);
+
+    const defaultPlainPattern = await runtime.execute(EBOOK_TOOL_NAMES.GREP, {
+        pattern: 'C.*D',
+        path: 'book/notes/',
+    });
+    assert.equal(defaultPlainPattern.count, 0);
+
+    const regex = await runtime.execute(EBOOK_TOOL_NAMES.GREP, {
+        pattern: 'C.*D',
+        path: 'book/notes/',
+        useRegex: true,
+    });
+    assert.equal(regex.count, 1);
+    assert.equal(regex.results[0].lineNumber, 3);
+});
+
 test('Book runtime exposes Tavily web search only when configured', async () => {
     await resetDb();
     const book = await createBook('联网资料测试');
@@ -802,9 +836,8 @@ test('Book context prompt keeps stable files separate from volatile turn context
     assert.match(turnPrompt, /title: 提示词书稿/);
     assert.match(turnPrompt, /\[状态追踪\]/);
     assert.match(turnPrompt, /林栖第一次看到旧信/);
-    assert.match(turnPrompt, /\[Current file\]\nbook\/chapters\/001\.md/);
-    assert.match(turnPrompt, /\[创作记录\]/);
-    assert.match(turnPrompt, /第一章已经起草/);
+    assert.doesNotMatch(turnPrompt, /\[Current file\]|book\/chapters\/001\.md/);
+    assert.doesNotMatch(turnPrompt, /\[创作记录\]|第一章已经起草/);
     assert.doesNotMatch(turnPrompt, /\[作品概况\]|正文章节|已导入资料|chat\.md/);
     assert.doesNotMatch(stablePrompt, /\[Book readiness\]|\[Core file digests\]/);
 });
@@ -830,7 +863,6 @@ test('Delegate book context injects review rules and core story files', () => {
                 content: '# 第 1 章\n\n雨下了一整夜。',
             },
         ],
-        historySummary: '第一章已经起草。',
     });
 
     assert.match(prompt, /\[审稿分身自动上下文\]/);
@@ -841,8 +873,7 @@ test('Delegate book context injects review rules and core story files', () => {
     assert.match(prompt, /旧信已经露面/);
     assert.match(prompt, /\[审稿规则\]/);
     assert.match(prompt, /特别检查伏笔是否兑现/);
-    assert.match(prompt, /\[创作记录\]/);
-    assert.match(prompt, /第一章已经起草/);
+    assert.doesNotMatch(prompt, /\[创作记录\]|第一章已经起草/);
 });
 
 test('Delegate book context keeps full injected review rules and core files', () => {
@@ -1097,8 +1128,7 @@ test('Book agent automatically passes review context into DelegateRun', async ()
     assert.match(seenUserPrompt, /暂时建立合作/);
     assert.match(seenUserPrompt, /\[审稿规则\]/);
     assert.match(seenUserPrompt, /人物动机是否前后一致/);
-    assert.match(seenUserPrompt, /\[创作记录\]/);
-    assert.match(seenUserPrompt, /已经写完第一章草稿/);
+    assert.doesNotMatch(seenUserPrompt, /\[创作记录\]|已经写完第一章草稿/);
     assert.match(seenUserPrompt, /\[主助手本次补充\]/);
     assert.match(seenUserPrompt, /book\/chapters\/001\.md/);
     assert.match(seenUserPrompt, /本次重点看节奏、人物动机和性场景功能/);
@@ -3130,7 +3160,7 @@ test('Book conversation history is restored per book', async () => {
     await store.restoreConversation(first.id);
     assert.equal(state.messages.length, 2);
     assert.equal(state.messages[0].content, '写第一章开头');
-    assert.equal(state.historySummary, '第一本的创作记录');
+    assert.equal(state.historySummary, '');
     assert.equal(state.toolTrace.length, 0);
     assert.deepEqual(state.openToolTurnKeys, []);
     assert.deepEqual(state.openThoughtKeys, []);
@@ -3184,6 +3214,7 @@ test('Book conversation preserves tool context separately from UI folding', asyn
     assert.equal(providerMessages[1].tool_calls[0].function.name, EBOOK_TOOL_NAMES.READ);
     assert.equal(providerMessages[2].role, 'tool');
     assert.equal(providerMessages[2].tool_call_id, 'call-read');
+    assert.equal(providerMessages[2].toolName, EBOOK_TOOL_NAMES.READ);
 });
 
 test('Book renderer shows thoughts while keeping tool batches folded', async () => {
@@ -4991,7 +5022,7 @@ test('Book renderer uses a compact agent toolbar with shared config actions', as
         dirty: false,
     });
 
-    assert.match(html, /class="xb-agent-context-meter" title="当前估算送模上下文 \/ 188k（已整理较早创作记录）"/);
+    assert.match(html, /class="xb-agent-context-meter" title="当前估算送模上下文 \/ 188k"/);
     assert.match(html, /id="xb-agent-clear"/);
     assert.match(html, /id="xb-agent-open-settings"/);
     assert.match(html, /id="xb-agent-close"/);
@@ -5047,6 +5078,9 @@ test('Book context meter ignores resolved token stats when conversation state ch
     assert.equal(renderConversationContextMeterLabel(state, providerConfig), '777k/188k');
     assert.equal(renderConversationContextMeterTitle(state, providerConfig), '最近一次发模上下文 / 188k');
 
+    state.selectedPath = 'book/chapters/002.md';
+    assert.equal(renderConversationContextMeterLabel(state, providerConfig), '777k/188k');
+
     state.messages.push({ role: 'assistant', content: '新增回复让缓存失效。' });
 
     assert.notEqual(renderConversationContextMeterLabel(state, providerConfig), '777k/188k');
@@ -5075,10 +5109,10 @@ test('Book renderer shows context distillation overlay during history compaction
             resolved: true,
             currentTokens: 158000,
             yieldTokens: 9000,
-            status: '创作记忆已建立。',
+            status: '已只保留最近 2 轮创作上下文。',
         },
         isBusy: true,
-        status: '正在整理较早创作记录...',
+        status: '正在释放较早对话...',
         toast: '',
     };
 
@@ -5090,7 +5124,7 @@ test('Book renderer shows context distillation overlay during history compaction
 
     assert.match(html, /xb-distillation-layer resolved/);
     assert.match(html, /CONTEXT DISTILLATION/);
-    assert.match(html, /创作记忆已建立。/);
+    assert.match(html, /已只保留最近 2 轮创作上下文。/);
     assert.match(html, />158k<\/strong>/);
     assert.match(html, />9k<\/strong>/);
     const chatWrapStart = html.indexOf('class="xb-agent-chat-wrap"');
@@ -5187,11 +5221,15 @@ test('Ebook settings open as an in-app shared config panel instead of jumping to
     assert.match(html, /分身 API/);
     assert.match(html, /id="xb-assistant-preset-select"/);
     assert.match(html, /id="xb-assistant-provider"/);
+    assert.match(html, /id="xb-assistant-temperature"/);
+    assert.match(html, /id="xb-assistant-send-temperature"/);
     assert.match(html, /id="xb-assistant-tavily-api-key"/);
     assert.match(html, /id="xb-assistant-delegate-preset-select"/);
     assert.match(html, /id="xb-assistant-delegate-provider"/);
     assert.match(html, /id="xb-assistant-delegate-base-url"/);
     assert.match(html, /id="xb-assistant-delegate-model"/);
+    assert.match(html, /id="xb-assistant-delegate-temperature"/);
+    assert.match(html, /id="xb-assistant-delegate-send-temperature"/);
     assert.match(html, /id="xb-assistant-delegate-tool-mode"/);
     assert.match(html, /id="xb-assistant-delegate-pull-models"/);
     assert.match(html, /id="xb-assistant-save"/);
@@ -5728,6 +5766,133 @@ test('Book agent refreshes file surfaces for write tools without extra full rend
     assert.deepEqual(state.messages.map((message) => message.role), ['user', 'assistant', 'tool', 'assistant']);
     assert.equal(JSON.parse(state.messages[2].content).ok, true);
     assert.equal((await getBookFile(book.id, 'book/chapters/001.md')).content, '# 第 1 章\n\n新的正文。');
+});
+
+test('Book agent replays repaired tagged-json Write content after executing malformed arguments', async () => {
+    await resetDb();
+    const book = await createBook('兼容工具 Write 回放测试');
+    const state = {
+        config: {},
+        book,
+        books: [book],
+        files: await listBookFiles(book.id),
+        selectedPath: 'book/chapters/001.md',
+        readerPath: '',
+        viewMode: 'studio',
+        editorContent: '',
+        savedContent: '',
+        messages: [],
+        toolTrace: [],
+        historySummary: '',
+        archivedTurnCount: 0,
+        isBusy: false,
+        activeController: null,
+        status: '就绪',
+        toast: '',
+    };
+    const targetPath = 'book/chapters/001.md';
+    const repairedContent = '她说："回来。"\n第二行';
+    const malformedArguments = [
+        `{"filePath":"${targetPath}","content":"她说："回来。"`,
+        '第二行"}',
+    ].join('\n');
+    let round = 0;
+    let secondRoundMessages = [];
+    const runner = createEbookAgentRunner({
+        state,
+        async refreshBooksAndFiles() {
+            state.files = await listBookFiles(book.id);
+        },
+        render() {},
+        renderAgentSurface() {
+            return true;
+        },
+        renderToolTraceSurface() {
+            return true;
+        },
+        renderFilesSurface() {
+            return true;
+        },
+        renderEditorFileSurface() {
+            return true;
+        },
+        showToast() {},
+        persistConversation() {},
+        isEditorDirty() {
+            return false;
+        },
+        getActiveProviderConfig() {
+            return {
+                provider: 'openai-compatible',
+                toolMode: 'tagged-json',
+                temperature: 0.2,
+                maxTokens: 1000,
+                reasoningEnabled: false,
+                reasoningEffort: 'medium',
+            };
+        },
+        createAdapter() {
+            return {
+                async chat(task) {
+                    round += 1;
+                    if (round === 1) {
+                        return {
+                            text: '',
+                            provider: 'openai-compatible',
+                            providerPayload: {
+                                openaiCompatibleMessage: {
+                                    role: 'assistant',
+                                    content: '',
+                                    tool_calls: [{
+                                        id: 'call-write-compat',
+                                        type: 'function',
+                                        function: {
+                                            name: EBOOK_TOOL_NAMES.WRITE,
+                                            arguments: '{}',
+                                        },
+                                    }],
+                                },
+                            },
+                            toolCalls: [{
+                                id: 'call-write-compat',
+                                name: EBOOK_TOOL_NAMES.WRITE,
+                                arguments: malformedArguments,
+                            }],
+                        };
+                    }
+                    secondRoundMessages = task.messages;
+                    return {
+                        text: '已写入。上一轮 Write 参数可以回放。',
+                        toolCalls: [],
+                    };
+                },
+            };
+        },
+    });
+
+    await runner.runAgent('写一段含引号的正文。');
+
+    assert.equal((await getBookFile(book.id, targetPath)).content, repairedContent);
+    const storedArguments = JSON.parse(state.messages[1].toolCalls[0].arguments);
+    assert.deepEqual(storedArguments, {
+        filePath: targetPath,
+        content: repairedContent,
+    });
+
+    const taggedMessages = buildTaggedMessages({
+        systemPrompt: EBOOK_SYSTEM_PROMPT,
+        tools: getEbookToolDefinitions({ includeDelegateTool: false }),
+        messages: secondRoundMessages,
+    });
+    const taggedAssistant = taggedMessages.find((message) => (
+        message.role === 'assistant' && String(message.content || '').includes('<tool_call>')
+    ));
+    assert.ok(taggedAssistant);
+    const taggedPayloadText = String(taggedAssistant.content).match(/<tool_call>([\s\S]*?)<\/tool_call>/)?.[1] || '';
+    const taggedPayload = JSON.parse(taggedPayloadText);
+    assert.equal(taggedPayload.name, EBOOK_TOOL_NAMES.WRITE);
+    assert.deepEqual(taggedPayload.arguments, storedArguments);
+    assert.notDeepEqual(taggedPayload.arguments, {});
 });
 
 test('Book agent reports invalid tool arguments without executing Edit', async () => {
@@ -6335,10 +6500,7 @@ test('Book agent reroll can start directly from an edited user message', async (
     assert.match(userRequests[0].content, /\[用户本轮请求\]\n\n修正后的第一章要求。$/);
 });
 
-test('Book history compaction writes creative record and releases archived turns', async () => {
-    assert.match(EBOOK_SUMMARY_SYSTEM_PROMPT, /创作记录/);
-    assert.match(EBOOK_SUMMARY_SYSTEM_PROMPT, /不超过 10000 tokens/);
-
+test('Book history compaction releases archived turns without writing creative record', async () => {
     const state = {
         messages: [
             { role: 'user', content: '设定女主叫林栖。' },
@@ -6367,7 +6529,7 @@ test('Book history compaction writes creative record and releases archived turns
         uiMessageWindowLimit: 100,
     };
     let persisted = false;
-    let summarySource = '';
+    let completed = false;
     const controller = createEbookHistoryCompactionController({
         state,
         render() {},
@@ -6381,39 +6543,67 @@ test('Book history compaction writes creative record and releases archived turns
         buildProviderMessages() {
             return [{ role: 'system', content: state.historySummary }, ...state.messages];
         },
+        onCompactionComplete() {
+            completed = true;
+        },
         summaryTriggerTokens: 1,
         defaultPreservedTurns: 1,
         minPreservedTurns: 1,
     });
 
-    await controller.ensureContextBudget({
-        async chat(request) {
-            assert.equal(request.systemPrompt, EBOOK_SUMMARY_SYSTEM_PROMPT);
-            assert.equal(request.toolChoice, 'none');
-            assert.deepEqual(request.tools, []);
-            assert.equal(request.messages[0].role, 'system');
-            assert.equal(request.messages[0].content, EBOOK_SUMMARY_SYSTEM_PROMPT);
-            assert.equal(request.messages[1].role, 'user');
-            summarySource = request.messages[1].content;
-            assert.equal(request.maxTokens, 10000);
-            assert.match(summarySource, /工具调用: Read/);
-            assert.match(summarySource, /工具结果: Read/);
-            return { text: '创作记录：沈照与林栖；下一章已写到 book/chapters/002.md。' };
-        },
-    }, new AbortController().signal);
+    await controller.ensureContextBudget({}, new AbortController().signal);
 
     assert.equal(persisted, true);
-    assert.match(summarySource, /已有创作记录/);
-    assert.match(summarySource, /林栖/);
-    assert.match(state.historySummary, /沈照与林栖/);
+    assert.equal(completed, false);
+    assert.equal(state.historySummary, '');
     assert.equal(state.messages.length, 2);
     assert.equal(state.messages[0].content, '继续写下一章。');
     assert.equal(state.uiMessageWindowLimit, 5);
 });
 
-test('Book agent compaction sends the summary prompt and injects returned creative record into replay', async () => {
+test('Book history compaction stops before pruning when aborted', async () => {
+    const state = {
+        messages: [
+            { role: 'user', content: '旧请求。' },
+            { role: 'assistant', content: '旧回复。' },
+            { role: 'user', content: '新请求。' },
+            { role: 'assistant', content: '新回复。' },
+        ],
+        historySummary: '',
+        status: '就绪',
+        archivedTurnCount: 0,
+        uiMessageWindowLimit: 100,
+    };
+    let persisted = false;
+    const controller = createEbookHistoryCompactionController({
+        state,
+        render() {},
+        showToast() {},
+        persistConversation() {
+            persisted = true;
+        },
+        buildProviderMessages() {
+            return state.messages;
+        },
+        summaryTriggerTokens: 1,
+        defaultPreservedTurns: 1,
+        minPreservedTurns: 1,
+    });
+    const abortController = new AbortController();
+    abortController.abort();
+
+    await assert.rejects(
+        () => controller.ensureContextBudget({}, abortController.signal),
+        /Context compaction aborted/,
+    );
+    assert.equal(persisted, false);
+    assert.equal(state.messages.length, 4);
+    assert.equal(state.archivedTurnCount, 0);
+});
+
+test('Book agent compaction prunes old turns and does not inject creative record into replay', async () => {
     await resetDb();
-    const book = await createBook('创作记录链路测试');
+    const book = await createBook('上下文释放链路测试');
     const longOldDraft = `夜里，棚屋里只点了一盏灯。\n${'OLD_CHAPTER_29_TEXT '.repeat(140000)}`;
     const state = {
         config: {},
@@ -6439,8 +6629,6 @@ test('Book agent compaction sends the summary prompt and injects returned creati
         status: '就绪',
         toast: '',
     };
-    const summaryText = '创作记录：第29章旧版已经废弃，后续不能照抄旧稿。';
-    let sawSummaryRequest = false;
     let replayMessages = [];
     const runner = createEbookAgentRunner({
         state,
@@ -6465,19 +6653,10 @@ test('Book agent compaction sends the summary prompt and injects returned creati
         createAdapter() {
             return {
                 async chat(task) {
-                    if (Array.isArray(task.tools) && task.tools.length === 0) {
-                        sawSummaryRequest = true;
-                        assert.equal(task.systemPrompt, EBOOK_SUMMARY_SYSTEM_PROMPT);
-                        assert.equal(task.toolChoice, 'none');
-                        assert.equal(task.messages[0].role, 'system');
-                        assert.equal(task.messages[0].content, EBOOK_SUMMARY_SYSTEM_PROMPT);
-                        assert.equal(task.messages[1].role, 'user');
-                        assert.match(task.messages[1].content, /第 1 段创作对话/);
-                        return { text: summaryText };
-                    }
+                    assert.notEqual(task.toolChoice, 'none');
                     replayMessages = task.messages;
                     return {
-                        text: '我会按新的创作记录继续，不照抄旧稿。',
+                        text: '我会依据当前书稿文件继续。',
                         toolCalls: [],
                     };
                 },
@@ -6487,15 +6666,13 @@ test('Book agent compaction sends the summary prompt and injects returned creati
 
     await runner.runAgent('继续写，但不要沿用旧版问题。');
 
-    assert.equal(sawSummaryRequest, true);
-    assert.equal(state.historySummary, summaryText);
+    assert.equal(state.historySummary, '');
     const latestUserMessage = replayMessages.filter((message) => message.role === 'user').at(-1);
-    assert.match(latestUserMessage?.content || '', /\[创作记录\]/);
-    assert.match(latestUserMessage?.content || '', /第29章旧版已经废弃/);
+    assert.doesNotMatch(latestUserMessage?.content || '', /\[创作记录\]/);
     assert.doesNotMatch(latestUserMessage?.content || '', /OLD_CHAPTER_29_TEXT OLD_CHAPTER_29_TEXT/);
 });
 
-test('Book history compaction redacts full prose and write payloads before summarizing', async () => {
+test('Book history compaction drops old prose instead of summarizing it', async () => {
     const leakedChapterText = `夜里，棚屋里只点了一盏灯。\n${'旧版正文。'.repeat(1200)}\nUNIQUE_OLD_CHAPTER_SHOULD_NOT_APPEAR`;
     const state = {
         messages: [
@@ -6533,7 +6710,6 @@ test('Book history compaction redacts full prose and write payloads before summa
         archivedTurnCount: 0,
         uiMessageWindowLimit: 100,
     };
-    let summarySource = '';
     const controller = createEbookHistoryCompactionController({
         state,
         render() {},
@@ -6550,71 +6726,53 @@ test('Book history compaction redacts full prose and write payloads before summa
         minPreservedTurns: 1,
     });
 
-    await controller.ensureContextBudget({
-        async chat(request) {
-            assert.equal(request.messages[0].role, 'system');
-            assert.equal(request.messages[0].content, EBOOK_SUMMARY_SYSTEM_PROMPT);
-            assert.equal(request.messages[1].role, 'user');
-            summarySource = request.messages[1].content;
-            return { text: '第29章旧版已写入 book/chapters/029.md，后续需按用户要求修订。' };
-        },
-    }, new AbortController().signal);
+    await controller.ensureContextBudget({}, new AbortController().signal);
 
-    assert.doesNotMatch(summarySource, /UNIQUE_OLD_CHAPTER_SHOULD_NOT_APPEAR/);
-    assert.doesNotMatch(summarySource, /旧版正文。旧版正文。旧版正文。/);
-    assert.match(summarySource, /长文本已省略/);
-    assert.match(summarySource, /book\/chapters\/029\.md/);
+    assert.equal(state.historySummary, '');
+    assert.equal(state.messages.length, 2);
+    assert.equal(state.messages[0].content, '下一步继续。');
+    assert.doesNotMatch(JSON.stringify(state.messages), /UNIQUE_OLD_CHAPTER_SHOULD_NOT_APPEAR/);
+    assert.doesNotMatch(JSON.stringify(state.messages), /旧版正文。旧版正文。旧版正文。/);
 });
 
-test('Book history compaction fallback also redacts full prose when summary model fails', async () => {
+test('Book history compaction reports when one preserved turn is still too large', async () => {
     const leakedChapterText = `${'泥地旧稿。'.repeat(1200)}\nUNIQUE_FALLBACK_OLD_CHAPTER_SHOULD_NOT_APPEAR`;
     const state = {
         messages: [
-            { role: 'user', content: '保存第29章旧稿。' },
-            {
-                role: 'assistant',
-                content: '',
-                toolCalls: [{
-                    id: 'call-write-fallback',
-                    name: EBOOK_TOOL_NAMES.WRITE,
-                    arguments: JSON.stringify({
-                        filePath: 'book/chapters/029.md',
-                        content: leakedChapterText,
-                    }),
-                }],
-            },
-            { role: 'tool', toolCallId: 'call-write-fallback', toolName: EBOOK_TOOL_NAMES.WRITE, content: '{"ok":true,"path":"book/chapters/029.md","summary":"已写入 book/chapters/029.md。"}' },
-            { role: 'user', content: '保留最近一轮。' },
-            { role: 'assistant', content: '好的。' },
+            { role: 'user', content: `这一轮本身太长。\n${leakedChapterText}` },
+            { role: 'assistant', content: '收到。' },
         ],
         historySummary: '',
         status: '就绪',
         archivedTurnCount: 0,
         uiMessageWindowLimit: 100,
     };
+    const toastMessages = [];
+    const unableEvents = [];
     const controller = createEbookHistoryCompactionController({
         state,
         render() {},
-        showToast() {},
+        showToast(message) {
+            toastMessages.push(message);
+        },
         persistConversation() {},
         buildProviderMessages() {
             return state.messages;
+        },
+        onCompactionUnable(event = {}) {
+            unableEvents.push(event);
         },
         summaryTriggerTokens: 1,
         defaultPreservedTurns: 1,
         minPreservedTurns: 1,
     });
 
-    await controller.ensureContextBudget({
-        async chat() {
-            throw new Error('summary_model_failed');
-        },
-    }, new AbortController().signal);
+    await controller.ensureContextBudget({}, new AbortController().signal);
 
-    assert.doesNotMatch(state.historySummary, /UNIQUE_FALLBACK_OLD_CHAPTER_SHOULD_NOT_APPEAR/);
-    assert.doesNotMatch(state.historySummary, /泥地旧稿。泥地旧稿。泥地旧稿。/);
-    assert.match(state.historySummary, /长文本已省略/);
-    assert.match(state.historySummary, /book\/chapters\/029\.md/);
+    assert.equal(state.historySummary, '');
+    assert.equal(unableEvents.length, 1);
+    assert.match(unableEvents[0].status, /当前这一轮过长/);
+    assert.equal(toastMessages.some((message) => /结束、拆分任务或重新开始/.test(message)), true);
 });
 
 test('Book history compaction counts real tool schemas through the shared tokenizer path', async () => {
@@ -6728,7 +6886,12 @@ test('Book prompt keeps assistant-style tool layers and recovery rules', () => {
     assert.match(EBOOK_SYSTEM_PROMPT, /rewrites where most content is new/);
     assert.match(EBOOK_SYSTEM_PROMPT, /RenameBook/);
     assert.match(EBOOK_SYSTEM_PROMPT, /DelegateRun/);
-    assert.match(EBOOK_SYSTEM_PROMPT, /先说结论或动作，再说理由/);
+    assert.match(EBOOK_SYSTEM_PROMPT, /写作伙伴/);
+    assert.match(EBOOK_SYSTEM_PROMPT, /让故事更有生命/);
+    assert.match(EBOOK_SYSTEM_PROMPT, /用人类的五感演绎场景/);
+    assert.match(EBOOK_SYSTEM_PROMPT, /不要让人物只为完成章节任务而说话或行动/);
+    assert.match(EBOOK_SYSTEM_PROMPT, /展现你对创作的热情和天赋/);
+    assert.doesNotMatch(EBOOK_SYSTEM_PROMPT, /先说结论或动作，再说理由/);
     assert.match(EBOOK_SYSTEM_PROMPT, /\[ebook-image:slotId\]/);
     assert.doesNotMatch(EBOOK_SYSTEM_PROMPT, /apply_patch|## 工具参数速记|## apply_patch 格式/);
     assert.doesNotMatch(EBOOK_SYSTEM_PROMPT, /system-reminder/);
@@ -6802,7 +6965,8 @@ test('Book tool definitions teach exact parameters like assistant tools', () => 
     assert.match(String(glob.description), /`path` is only an optional directory scope and does not replace pattern/);
 
     const grep = definitions.get(EBOOK_TOOL_NAMES.GREP);
-    assert.match(String(grep.description), /useRegex: false/);
+    assert.match(String(grep.description), /literal text search by default/);
+    assert.match(String(grep.description), /useRegex: true/);
     assert.match(String(grep.parameters.properties.outputMode.description), /files_with_matches/);
 
     const read = definitions.get(EBOOK_TOOL_NAMES.READ);

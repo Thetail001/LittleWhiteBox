@@ -90,6 +90,21 @@ function buildToolResultBlock(message = {}) {
     };
 }
 
+function buildToolUseBlocksFromToolCalls(toolCalls = []) {
+    return (Array.isArray(toolCalls) ? toolCalls : [])
+        .map((toolCall) => {
+            const name = String(toolCall?.function?.name || '').trim();
+            if (!name) return null;
+            return {
+                type: 'tool_use',
+                id: toolCall.id,
+                name,
+                input: parseArguments(toolCall.function.arguments),
+            };
+        })
+        .filter(Boolean);
+}
+
 export function buildAnthropicMessages(messages) {
     const filtered = [];
 
@@ -99,6 +114,16 @@ export function buildAnthropicMessages(messages) {
 
         if (message.role === 'assistant') {
             const preservedContent = normalizeAnthropicContent(message);
+            const topLevelToolUses = buildToolUseBlocksFromToolCalls(message.tool_calls);
+            if (preservedContent && topLevelToolUses.length) {
+                filtered.push({
+                    role: 'assistant',
+                    content: preservedContent
+                        .filter((block) => block?.type !== 'tool_use')
+                        .concat(topLevelToolUses),
+                });
+                continue;
+            }
             if (preservedContent) {
                 filtered.push({
                     role: 'assistant',
@@ -126,12 +151,7 @@ export function buildAnthropicMessages(messages) {
                 role: 'assistant',
                 content: [
                     ...(message.content ? [{ type: 'text', text: message.content }] : []),
-                    ...message.tool_calls.map((toolCall) => ({
-                        type: 'tool_use',
-                        id: toolCall.id,
-                        name: toolCall.function.name,
-                        input: parseArguments(toolCall.function.arguments),
-                    })),
+                    ...buildToolUseBlocksFromToolCalls(message.tool_calls),
                 ],
             });
             continue;

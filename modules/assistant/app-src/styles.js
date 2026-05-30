@@ -207,6 +207,21 @@ export function injectAssistantStyles(rootId) {
         }
         .xb-assistant-grow { min-width: 0; }
         .xb-assistant-model-row { align-items: end; }
+        .xb-assistant-temperature-row {
+            display: grid;
+            grid-template-columns: 96px auto;
+            gap: 10px;
+            align-items: end;
+        }
+        .xb-assistant-temperature-row .xb-assistant-checkbox-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-height: 42px;
+        }
+        .xb-assistant-temperature-row input[type="number"] {
+            width: 96px;
+        }
         .xb-assistant-checkbox-row {
             grid-template-columns: minmax(0, 1fr) auto;
             align-items: center;
@@ -217,6 +232,10 @@ export function injectAssistantStyles(rootId) {
             gap: 8px;
             color: #1b3758;
             font-size: 14px;
+        }
+        .xb-assistant-checkbox-control input {
+            width: auto;
+            height: 16px;
         }
         .xb-assistant-help {
             margin-top: -2px;

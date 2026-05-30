@@ -116,9 +116,11 @@ export function buildProviderAssistantToolCallMessage(result = {}, toolCalls = [
 }
 
 export function buildProviderToolResultMessage(message = {}) {
+    const toolName = String(message.toolName || message.tool_name || '').trim();
     return {
         role: 'tool',
         tool_call_id: String(message.toolCallId || message.tool_call_id || ''),
+        ...(toolName ? { toolName } : {}),
         content: String(message.content || ''),
     };
 }

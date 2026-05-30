@@ -265,6 +265,8 @@ function buildRuntimeConfig() {
         delegateConfig: settings.delegateConfig || {},
         presetNames: Object.keys(settings.presets || {}),
         presets: settings.presets || {},
+        tavilyApiKey: settings.tavilyApiKey || '',
+        tavilyBaseUrl: settings.tavilyBaseUrl || '',
         toolInfo: {
             readableSources: ['littlewhitebox', 'sillytavern-public', 'session-local-source'],
             writableSources: ['session-local-source'],

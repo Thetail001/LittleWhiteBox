@@ -26,8 +26,15 @@ declare module '*.js' {
     export function getContext(): Record<string, unknown>;
     export const AssistantStorage: {
         get<T = unknown>(key: string, fallback?: T): Promise<T>;
+        load(): Promise<Record<string, unknown>>;
+        saveNow(options?: Record<string, unknown>): Promise<void>;
+        _dirtyVersion?: number;
     };
+    export const AGENT_SETTINGS_CONFIG_VERSION: number;
     export function normalizeAgentSettings(settings: Record<string, unknown>): Record<string, unknown>;
+    export function normalizeAgentConfig(settings: Record<string, unknown>): Record<string, unknown>;
+    export function normalizeJsApiPermission(value: unknown): string;
+    export function normalizePresetName(value: unknown): string;
     export function createFirstPartyIframeOverlay(options: {
         overlayId: string;
         iframeId: string;
@@ -45,4 +52,12 @@ declare module '*.js' {
         config: Record<string, unknown>,
         options?: Record<string, unknown>,
     ): Record<string, unknown>;
+    export function renderMarkdownToHtml(text: string): string;
+    export function enhanceMarkdownContent(rootNode: ParentNode, options?: Record<string, unknown>): ParentNode;
+    export function createAgentSettingsPanel(deps?: Record<string, unknown>): {
+        getActiveProviderConfig(options?: Record<string, unknown>): Record<string, unknown>;
+        syncConfigToForm(root: ParentNode): void;
+        bindSettingsPanelEvents(root: ParentNode): void;
+    };
+    export function buildAgentSettingsPanelMarkup(options?: Record<string, unknown>): string;
 }

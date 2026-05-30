@@ -111,10 +111,10 @@ function buildIncludePredicate(include = '') {
     return (path) => regexp.test(path);
 }
 
-function buildSearchRegExp(pattern = '', useRegex = true) {
+function buildSearchRegExp(pattern = '', useRegex = false) {
     const text = String(pattern || '');
     if (!text) throw new Error('grep_pattern_required');
-    if (useRegex === false) {
+    if (useRegex !== true) {
         return new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
     }
     return new RegExp(text, 'i');
@@ -183,7 +183,7 @@ export function createBookFileToolHandlers(options = {}) {
     }
 
     async function executeGrep(args = {}) {
-        const regexp = buildSearchRegExp(args.pattern, args.useRegex !== false);
+        const regexp = buildSearchRegExp(args.pattern, args.useRegex === true);
         const directory = args.path ? assertBookDirectoryPath(args.path) : '';
         const include = buildIncludePredicate(args.include || '');
         const outputMode = ['content', 'files_with_matches', 'count'].includes(args.outputMode) ? args.outputMode : 'content';

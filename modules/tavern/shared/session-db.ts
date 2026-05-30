@@ -245,6 +245,26 @@ export async function updateTavernSessionState(sessionId = '', patch: Partial<Ta
     return await getTavernSession(id);
 }
 
+export async function replaceTavernSessionState(sessionId = '', stateInput: Partial<TavernSessionState> = {}): Promise<TavernSessionRecord | null> {
+    const id = String(sessionId || '').trim();
+    if (!id) {return null;}
+    const existing = await getTavernSession(id);
+    if (!existing) {return null;}
+    const timestamp = now();
+    const normalized = normalizeTavernSessionState(stateInput);
+    const state: TavernSessionState = {
+        ...stateInput,
+        turn: Math.max(0, Number(normalized.turn) || 0),
+        worldEntryStates: normalized.worldEntryStates || {},
+    };
+    await tavernSessionsTable.update(id, {
+        state: cloneSerializable(state, {}),
+        updatedAt: timestamp,
+        buildSnapshot: cloneSerializable(state.lastBuildSnapshot || existing.buildSnapshot, undefined),
+    });
+    return await getTavernSession(id);
+}
+
 export async function updateTavernSessionSnapshot(sessionId = '', patch: {
     contextSnapshot?: XbTavernContext;
     buildSnapshot?: XbTavernBuildSnapshot;
@@ -301,6 +321,43 @@ export async function appendTavernMessage(sessionId: string, message: TavernAppe
         await tavernSessionsTable.update(id, { updatedAt: timestamp });
     });
     return record;
+}
+
+export async function updateTavernMessage(
+    sessionId = '',
+    order = -1,
+    patch: Partial<Pick<TavernMessageRecord, 'content' | 'error'>>,
+): Promise<TavernMessageRecord | null> {
+    const id = String(sessionId || '').trim();
+    const messageOrder = Number(order);
+    if (!id || !Number.isInteger(messageOrder) || messageOrder < 0) {return null;}
+    const existing = await tavernMessagesTable.get([id, messageOrder]);
+    if (!existing) {return null;}
+    const update: Partial<TavernMessageRecord> = {};
+    if ('content' in patch) {update.content = String(patch.content || '');}
+    if ('error' in patch) {update.error = patch.error === true;}
+    await tavernMessagesTable.update([id, messageOrder], update);
+    await tavernSessionsTable.update(id, { updatedAt: now() });
+    return await tavernMessagesTable.get([id, messageOrder]) || null;
+}
+
+export async function deleteTavernMessages(sessionId = '', orders: number[] = []): Promise<number> {
+    const id = String(sessionId || '').trim();
+    const uniqueOrders = [...new Set((Array.isArray(orders) ? orders : [])
+        .map((order) => Number(order))
+        .filter((order) => Number.isInteger(order) && order >= 0))];
+    if (!id || !uniqueOrders.length) {return 0;}
+    const existingKeys: Array<[string, number]> = [];
+    await Promise.all(uniqueOrders.map(async (order) => {
+        const existing = await tavernMessagesTable.get([id, order]);
+        if (existing) {existingKeys.push([id, order]);}
+    }));
+    if (!existingKeys.length) {return 0;}
+    await db.transaction('rw', tavernMessagesTable, tavernSessionsTable, async () => {
+        await tavernMessagesTable.bulkDelete(existingKeys);
+        await tavernSessionsTable.update(id, { updatedAt: now() });
+    });
+    return existingKeys.length;
 }
 
 export async function listTavernMessages(sessionId = ''): Promise<TavernMessageRecord[]> {

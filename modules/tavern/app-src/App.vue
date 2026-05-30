@@ -1,5 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { enhanceMarkdownContent, renderMarkdownToHtml } from '../../agent-core/ui/message-markdown.js';
+import { createAgentSettingsPanel } from '../../agent-core/ui/settings-panel.js';
+import { buildAgentSettingsPanelMarkup } from '../../agent-core/ui/settings-markup.js';
+import { normalizeAgentConfig } from '../../agent-core/config.js';
 import {
     type XbTavernContext,
     type XbTavernPresetSection,
@@ -8,6 +12,7 @@ import { buildXbTavernBrain } from '../shared/brain';
 import { createDefaultXbTavernPreset, DEFAULT_XB_TAVERN_PRESET_ID } from '../shared/presets';
 import {
     createTavernSession,
+    deleteTavernMessages,
     deriveAndActivateDefaultTavernPreset,
     getActiveTavernPresetId,
     getSelectedTavernSessionId,
@@ -16,15 +21,18 @@ import {
     listTavernSessions,
     listUserTavernPresets,
     normalizeTavernSessionState,
+    replaceTavernSessionState,
     saveTavernPreset,
     setActiveTavernPresetId,
     setSelectedTavernSessionId,
+    updateTavernMessage,
     updateTavernSessionSnapshot,
     type TavernMessageRecord,
     type TavernPresetRecord,
     type TavernSessionRecord,
 } from '../shared/session-db';
-import { buildContextHistory, runXbTavernTurn } from './runtime/run-once';
+import { buildContextHistory, deriveTavernSessionStateFromMessages, runXbTavernTurn } from './runtime/run-once';
+import { resolveXbTavernProviderConfig } from './runtime/provider';
 
 interface TavernDiagnostics {
     ok?: boolean;
@@ -36,8 +44,11 @@ interface RequestAuditSnapshot {
     rawMessagesJson?: string;
     messageCount?: number;
     messageChars?: number;
+    presetName?: string;
     provider?: string;
+    providerLabel?: string;
     model?: string;
+    toolMode?: string;
 }
 
 const SOURCE_APP = 'xb-tavern-app';
@@ -46,6 +57,9 @@ const SOURCE_HOST = 'xb-tavern-host';
 const context = ref<XbTavernContext>({});
 const diagnostics = ref<TavernDiagnostics>({});
 const agentConfig = ref<Record<string, unknown>>({});
+const apiSettingsRootRef = ref<HTMLElement | null>(null);
+const apiConfigSave = ref({ status: 'idle', requestId: '', error: '' });
+const apiConfigStatus = ref('');
 const availableCharacters = ref<Array<{ id: string; name: string; avatar?: string }>>([]);
 const selectedCharacterId = ref('');
 const statusText = ref('等待读取资料');
@@ -67,7 +81,7 @@ const presetStatus = ref('');
 const savedPresetJson = ref('');
 const selectedPresetSourceId = ref('');
 type AppView = 'home' | 'chat' | 'settings';
-type WorkspaceKey = 'snapshot' | 'world' | 'messages' | 'runtime' | 'preset';
+type WorkspaceKey = 'snapshot' | 'world' | 'messages' | 'runtime' | 'api' | 'preset';
 interface BrainCheck {
     key: WorkspaceKey;
     label: string;
@@ -79,6 +93,30 @@ const presetDirty = computed(() => !presetIsBuiltIn.value && snapshotPreset(pres
 const selectedSession = computed(() => sessions.value.find((item) => item.id === selectedSessionId.value) || null);
 const sessionRuntimeState = computed(() => normalizeTavernSessionState(selectedSession.value?.state || {}));
 const activeView = ref<AppView>('home');
+const chatScrollRef = ref<HTMLElement | null>(null);
+const chatAutoScroll = ref(true);
+const showChatScrollTop = ref(false);
+const showChatScrollBottom = ref(false);
+const chatScrollControlsActive = ref(false);
+const editingMessageKey = ref('');
+const editingMessageDraft = ref('');
+const messageActionFeedback = ref<Record<string, 'success' | 'error'>>({});
+const activeRunController = ref<AbortController | null>(null);
+const markdownHtmlCache = new Map<string, string>();
+const apiSettingsPanelState: Record<string, unknown> = {
+    config: {},
+    configDraft: null,
+    configFormSyncPending: true,
+    configPage: 'main',
+    configSave: apiConfigSave.value,
+    pullStateByProvider: {},
+    modelOptionsByProvider: {},
+};
+let apiSettingsPanel: ReturnType<typeof createAgentSettingsPanel> | null = null;
+let chatScrollHideTimer: number | null = null;
+let chatScrollTicking = false;
+let chatTouchStartY: number | null = null;
+let chatLastScrollTop = 0;
 const usingLockedSessionContext = computed(() => !!selectedSession.value?.contextSnapshot);
 const liveWorldBookCount = computed(() => context.value.worldBooks?.length || 0);
 const liveWorldEntryCount = computed(() => (context.value.worldBooks || []).reduce((sum, book) => sum + (book.entries?.length || 0), 0));
@@ -95,11 +133,16 @@ const workspaceTabs = [
     { key: 'messages', label: '3 看发送内容', hint: '确认模型实际会收到什么' },
     { key: 'runtime', label: '4 试聊一句', hint: '跑一轮验证脑子是否正常' },
 ] as const;
-const activeWorkspaceItem = computed(() => workspaceTabs.find((item) => item.key === activeWorkspace.value) || {
-    key: 'preset',
-    label: '调整小白预设',
-    hint: '修改第 3 步最终发送内容里使用的小白规则',
-});
+const workspaceFallbackItems: Record<WorkspaceKey, { key: WorkspaceKey; label: string; hint: string }> = {
+    snapshot: { key: 'snapshot', label: '1 选角色', hint: '确认小白读的是哪张卡' },
+    world: { key: 'world', label: '2 看资料', hint: '看世界书和检查结果' },
+    messages: { key: 'messages', label: '3 看发送内容', hint: '确认模型实际会收到什么' },
+    runtime: { key: 'runtime', label: '4 试聊一句', hint: '跑一轮验证脑子是否正常' },
+    api: { key: 'api', label: 'API 配置', hint: '使用小白助手和电纸书同一套模型预设' },
+    preset: { key: 'preset', label: '调整小白预设', hint: '修改第 3 步最终发送内容里使用的小白规则' },
+};
+const activeWorkspaceItem = computed(() => workspaceTabs.find((item) => item.key === activeWorkspace.value)
+    || workspaceFallbackItems[activeWorkspace.value]);
 
 const effectiveContext = computed<XbTavernContext>(() => ({
     ...(selectedSession.value?.contextSnapshot || context.value),
@@ -135,9 +178,41 @@ const effectiveHistoryCount = computed(() => effectiveContext.value.history?.len
 const lastRequestSnapshot = computed(() => selectedSession.value?.state?.lastRequestSnapshot as RequestAuditSnapshot | undefined);
 const lastRequestMatchesPreview = computed(() => !!lastRequestSnapshot.value?.rawMessagesJson
     && lastRequestSnapshot.value.rawMessagesJson === rawMessagesJson.value);
+const resolvedProviderConfig = computed(() => resolveXbTavernProviderConfig(agentConfig.value));
+const apiReady = computed(() => resolvedProviderConfig.value.readiness.ok);
+const apiReadyDetail = computed(() => resolvedProviderConfig.value.readiness.message);
+const chatMessages = computed(() => sessionMessages.value);
 const sessionMessagesForChat = computed(() => sessionMessages.value.filter((message) => !message.error));
-const latestErrorMessage = computed(() => [...sessionMessages.value].reverse().find((message) => message.error)?.content || runtimeError.value);
+const latestErrorMessage = computed(() => {
+    if (runtimeError.value) {return runtimeError.value;}
+    const lastMessage = [...sessionMessages.value].sort((left, right) => left.order - right.order).at(-1);
+    return lastMessage?.error ? lastMessage.content : '';
+});
+const chatMarkdownSignature = computed(() => sessionMessages.value
+    .map((message) => `${message.sessionId}:${message.order}:${message.error ? 1 : 0}:${markdownSignature(message.content)}`)
+    .join('|'));
 const chatReadyLabel = computed(() => selectedSessionId.value ? selectedSessionTitle.value : '未创建会话');
+const chatSubtitle = computed(() => {
+    if (!selectedSessionId.value) {return '写一句话后会自动创建独立会话。';}
+    const turn = Number(sessionRuntimeState.value.turn || 0);
+    return `${characterName.value} · 第 ${turn} 轮 · ${sessionMessagesForChat.value.length} 条可用消息`;
+});
+const lastModelLine = computed(() => {
+    const provider = String(lastRequestSnapshot.value?.providerLabel || lastRequestSnapshot.value?.provider || runtimeProvider.value || resolvedProviderConfig.value.providerLabel || '').trim();
+    const model = String(lastRequestSnapshot.value?.model || runtimeModel.value || resolvedProviderConfig.value.model || '').trim();
+    if (!provider && !model) {return '尚未发模';}
+    return `${provider || '未知通道'} / ${model || '未知模型'}`;
+});
+const apiRuntimeLine = computed(() => {
+    const config = resolvedProviderConfig.value;
+    return `共享预设「${config.currentPresetName || '默认'}」 · ${config.providerLabel} / ${config.model || '未选择模型'} · ${config.toolMode}`;
+});
+const chatTriggerSummary = computed(() => {
+    if (!currentUserMessage.value.trim()) {return '第 4 步填写试聊内容后，这里会预览世界书命中。';}
+    if (!activatedCandidateRows.value.length) {return '这句暂时没有触发世界书。';}
+    return `这句会带上 ${activatedCandidateRows.value.length} 条世界书。`;
+});
+const canSendMessage = computed(() => isRunning.value || !!currentUserMessage.value.trim());
 const brainChecks = computed<BrainCheck[]>(() => {
     const layers = buildResult.value.messageLayers;
     const topRulesLocked = layers[0]?.layer === 'lwb-system'
@@ -178,6 +253,12 @@ const brainChecks = computed<BrainCheck[]>(() => {
                 : `待试跑：当前预览 ${messagePreview.value.length} 条 / ${buildSnapshot.value.messageChars} 字`,
         },
         {
+            key: 'api',
+            label: 'API 配置',
+            ok: apiReady.value,
+            detail: apiReady.value ? apiRuntimeLine.value : apiReadyDetail.value,
+        },
+        {
             key: 'runtime',
             label: '独立会话',
             ok: !!selectedSessionId.value,
@@ -206,6 +287,7 @@ const characterFields = computed(() => {
 const diagnosticRows = computed(() => {
     const rows = [
         contextSourceDetail.value,
+        apiReady.value ? `API：${apiRuntimeLine.value}` : `API：${apiReadyDetail.value}`,
         diagnostics.value.message || statusText.value,
         characterName.value ? '' : '当前没有可用角色卡。',
         effectiveHistoryCount.value ? '' : '这次准备资料里没有聊天历史。',
@@ -470,19 +552,116 @@ async function discardPresetChanges() {
     presetStatus.value = '已放弃未保存的改动。';
 }
 
+function describeError(error: unknown) {
+    return error instanceof Error ? error.message : String(error || 'unknown_error');
+}
+
 function postToHost(type: string, payload: Record<string, unknown> = {}) {
     window.parent?.postMessage({ source: SOURCE_APP, type, payload }, window.location.origin);
+}
+
+function syncApiSettingsConfigFromAgentConfig() {
+    apiSettingsPanelState.config = normalizeAgentConfig(agentConfig.value || {});
+    apiSettingsPanelState.configDraft = null;
+    apiSettingsPanelState.configFormSyncPending = true;
+}
+
+function beginApiConfigSave(requestId = '') {
+    apiConfigSave.value = { status: 'saving', requestId, error: '' };
+    apiSettingsPanelState.configSave = apiConfigSave.value;
+    apiConfigStatus.value = '正在保存共享 API 配置...';
+    void nextTick(renderApiSettingsPanel);
+}
+
+function completeApiConfigSave(requestId = '', result: { ok?: boolean; error?: string } = {}) {
+    if (requestId && apiConfigSave.value.requestId && requestId !== apiConfigSave.value.requestId) {return;}
+    apiConfigSave.value = {
+        status: result.ok ? 'success' : 'error',
+        requestId,
+        error: result.error || '',
+    };
+    apiSettingsPanelState.configSave = apiConfigSave.value;
+    apiConfigStatus.value = result.ok ? '共享 API 配置已保存。' : `保存失败：${result.error || 'unknown_error'}`;
+    window.setTimeout(() => {
+        if (apiConfigSave.value.requestId !== requestId || apiConfigSave.value.status !== 'success') {return;}
+        apiConfigSave.value = { status: 'idle', requestId: '', error: '' };
+        apiSettingsPanelState.configSave = apiConfigSave.value;
+        apiConfigStatus.value = '';
+        void nextTick(renderApiSettingsPanel);
+    }, 1400);
+    void nextTick(renderApiSettingsPanel);
+}
+
+function handleApiConfigSave(payload: { requestId?: string; payload?: Record<string, unknown> }) {
+    const requestId = String(payload.requestId || `save-config-${Date.now()}`);
+    beginApiConfigSave(requestId);
+    postToHost('xb-tavern:save-config', {
+        requestId,
+        payload: payload.payload || {},
+    });
+}
+
+function renderApiSettingsPanel() {
+    const root = apiSettingsRootRef.value;
+    if (!root) {return;}
+    if (!apiSettingsPanel) {
+        apiSettingsPanel = createAgentSettingsPanel({
+            state: apiSettingsPanelState,
+            render: renderApiSettingsPanel,
+            describeError,
+            showToast: (message: string) => {
+                apiConfigStatus.value = String(message || '');
+            },
+            saveConfig: handleApiConfigSave,
+            getRuntimeSummaryText: () => apiRuntimeLine.value,
+        });
+    }
+    apiSettingsPanelState.configSave = apiConfigSave.value;
+    // The settings panel markup is generated by our first-party shared config renderer.
+    // eslint-disable-next-line no-unsanitized/property
+    root.innerHTML = buildAgentSettingsPanelMarkup({
+        configSave: apiConfigSave.value,
+        runtimeText: apiRuntimeLine.value,
+        inlineToastText: apiConfigStatus.value,
+        showAssistantPermissions: false,
+        showDelegateSettings: true,
+        activePage: String(apiSettingsPanelState.configPage || 'main'),
+        delegatePresetHint: '后续小白酒馆后台能力会复用这里的分身 API；当前聊天仍使用主 API。',
+        isBusy: isRunning.value,
+        canDeletePreset: Object.keys((apiSettingsPanelState.config as Record<string, unknown>)?.presets || {}).length > 1,
+    });
+    apiSettingsPanel.syncConfigToForm(root);
+    apiSettingsPanel.bindSettingsPanelEvents(root);
+}
+
+function handleApiConfigSaved(payload: Record<string, unknown>) {
+    const ok = payload.ok === true;
+    if (ok) {
+        agentConfig.value = payload.config as Record<string, unknown> || agentConfig.value;
+        syncApiSettingsConfigFromAgentConfig();
+        completeApiConfigSave(String(payload.requestId || ''), { ok: true });
+        return;
+    }
+    syncApiSettingsConfigFromAgentConfig();
+    completeApiConfigSave(String(payload.requestId || ''), {
+        ok: false,
+        error: String(payload.error || '保存失败'),
+    });
 }
 
 function applyHostPayload(payload: Record<string, unknown>) {
     context.value = payload.context as XbTavernContext || {};
     diagnostics.value = payload.diagnostics as TavernDiagnostics || {};
-    agentConfig.value = payload.agentConfig as Record<string, unknown> || agentConfig.value;
+    if ('agentConfig' in payload) {
+        agentConfig.value = payload.agentConfig as Record<string, unknown> || agentConfig.value;
+        syncApiSettingsConfigFromAgentConfig();
+    }
     availableCharacters.value = payload.availableCharacters as Array<{ id: string; name: string; avatar?: string }> || availableCharacters.value;
     selectedCharacterId.value = String(payload.selectedCharacterId || context.value.character?.id || selectedCharacterId.value || '');
     statusText.value = usingLockedSessionContext.value
         ? `${diagnostics.value.message || '宿主资料已加载'}；当前会话仍使用锁定资料。`
         : diagnostics.value.message || '宿主资料已加载';
+    void nextTick(renderApiSettingsPanel);
 }
 
 function onHostMessage(event: MessageEvent) {
@@ -495,6 +674,10 @@ function onHostMessage(event: MessageEvent) {
     }
     if (data.type === 'xb-tavern:context') {
         applyHostPayload(data.payload || {});
+        return;
+    }
+    if (data.type === 'xb-tavern:config-saved') {
+        handleApiConfigSaved(data.payload || {});
     }
 }
 
@@ -522,6 +705,19 @@ async function refreshSessions() {
         await setSelectedTavernSessionId(selectedSessionId.value);
     }
     sessionMessages.value = selectedSessionId.value ? await listTavernMessages(selectedSessionId.value) : [];
+}
+
+async function rebuildSelectedSessionRuntimeState(messages: TavernMessageRecord[] = sessionMessages.value) {
+    if (!selectedSessionId.value) {return;}
+    const state = deriveTavernSessionStateFromMessages({
+        messages,
+        contextSnapshot: selectedSession.value?.contextSnapshot || context.value,
+        preset: preset.value,
+        historyMode: historyMode.value,
+        diagnostics: diagnostics.value,
+    });
+    await replaceTavernSessionState(selectedSessionId.value, state);
+    await refreshSessions();
 }
 
 async function createSessionFromContext() {
@@ -635,6 +831,244 @@ function roleLabel(role = '') {
     return labels[role] || role || '未知';
 }
 
+function formatMessageTime(value: unknown) {
+    const timestamp = Number(value) || 0;
+    if (!timestamp) {return '';}
+    try {
+        return new Intl.DateTimeFormat('zh-CN', {
+            hour: '2-digit',
+            minute: '2-digit',
+        }).format(new Date(timestamp));
+    } catch {
+        return '';
+    }
+}
+
+function markdownSignature(text = '') {
+    const raw = String(text || '');
+    let hash = 0;
+    for (let index = 0; index < raw.length; index += 1) {
+        hash = ((hash * 31) + raw.charCodeAt(index)) >>> 0;
+    }
+    return `${raw.length}:${hash.toString(36)}`;
+}
+
+function renderChatMarkdown(text = '') {
+    // renderMarkdownToHtml sanitizes through DOMPurify when SillyTavern exposes it,
+    // matching the ebook/assistant Markdown pipeline before Vue inserts the HTML.
+    const raw = String(text || '');
+    const canCache = !/(^|\n)(`{3,}|~{3,})[ \t]*(html|htm|xhtml|xml|svg|vue|svelte)?\b/i.test(raw)
+        && !/^<!doctype\s+html/i.test(raw.trim())
+        && !/^<html[\s>]/i.test(raw.trim());
+    const cacheKey = markdownSignature(raw);
+    if (canCache && markdownHtmlCache.has(cacheKey)) {
+        return markdownHtmlCache.get(cacheKey) || '';
+    }
+    const html = renderMarkdownToHtml(raw);
+    if (canCache) {
+        markdownHtmlCache.set(cacheKey, html);
+        if (markdownHtmlCache.size > 160) {
+            const firstKey = markdownHtmlCache.keys().next().value;
+            if (firstKey) {markdownHtmlCache.delete(firstKey);}
+        }
+    }
+    return html;
+}
+
+function enhanceChatMarkdown() {
+    const root = chatScrollRef.value;
+    if (!root?.querySelectorAll) {return;}
+    root.querySelectorAll<HTMLElement>('.xb-tavern-markdown').forEach((node) => {
+        const signature = node.dataset.markdownSignature || '';
+        enhanceMarkdownContent(node, {
+            codeBlockClassName: 'xb-tavern-codeblock',
+            codeCopyClassName: 'xb-tavern-code-copy',
+        });
+        node.dataset.markdownEnhanced = signature;
+    });
+}
+
+function messageKey(message: TavernMessageRecord) {
+    return `${message.sessionId}:${message.order}`;
+}
+
+function canEditMessage(message: TavernMessageRecord) {
+    return !isRunning.value && !message.error && ['user', 'assistant'].includes(message.role);
+}
+
+function isEditingMessage(message: TavernMessageRecord) {
+    return editingMessageKey.value === messageKey(message);
+}
+
+function flashMessageAction(message: TavernMessageRecord, action: string, ok: boolean) {
+    const key = `${messageKey(message)}:${action}`;
+    messageActionFeedback.value = {
+        ...messageActionFeedback.value,
+        [key]: ok ? 'success' : 'error',
+    };
+    window.setTimeout(() => {
+        const next = { ...messageActionFeedback.value };
+        delete next[key];
+        messageActionFeedback.value = next;
+    }, 1100);
+}
+
+function actionFeedback(message: TavernMessageRecord, action: string) {
+    return messageActionFeedback.value[`${messageKey(message)}:${action}`] || '';
+}
+
+async function copyTextWithFallback(text = '') {
+    const normalized = String(text || '');
+    if (!normalized) {return false;}
+    try {
+        if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(normalized);
+            return true;
+        }
+    } catch {
+        // Fall through to the legacy path.
+    }
+    try {
+        const textarea = document.createElement('textarea');
+        textarea.value = normalized;
+        textarea.setAttribute('readonly', 'readonly');
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        textarea.style.pointerEvents = 'none';
+        document.body.appendChild(textarea);
+        textarea.select();
+        textarea.setSelectionRange(0, textarea.value.length);
+        const copied = document.execCommand('copy');
+        textarea.remove();
+        return copied;
+    } catch {
+        return false;
+    }
+}
+
+async function copyMessage(message: TavernMessageRecord) {
+    const ok = await copyTextWithFallback(message.content || '');
+    flashMessageAction(message, 'copy', ok);
+}
+
+function startEditMessage(message: TavernMessageRecord) {
+    if (!canEditMessage(message)) {return;}
+    editingMessageKey.value = messageKey(message);
+    editingMessageDraft.value = message.content || '';
+    void nextTick(() => {
+        const textarea = chatScrollRef.value?.querySelector<HTMLTextAreaElement>(`[data-message-editor="${messageKey(message)}"]`);
+        if (!textarea) {return;}
+        autoSizeTextarea(textarea);
+        textarea.focus();
+        textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    });
+}
+
+function cancelEditMessage() {
+    editingMessageKey.value = '';
+    editingMessageDraft.value = '';
+}
+
+function autoSizeTextarea(textarea: HTMLTextAreaElement | null) {
+    if (!textarea) {return;}
+    textarea.style.height = 'auto';
+    textarea.style.height = `${Math.min(Math.max(textarea.scrollHeight, 144), 420)}px`;
+}
+
+function handleEditKeydown(event: KeyboardEvent, message: TavernMessageRecord) {
+    if (event.key === 'Escape') {
+        event.preventDefault();
+        cancelEditMessage();
+        return;
+    }
+    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        void saveEditMessage(message);
+    }
+}
+
+function handleEditInput(event: Event) {
+    autoSizeTextarea(event.target as HTMLTextAreaElement);
+}
+
+function handleComposeInput(event: Event) {
+    autoSizeTextarea(event.target as HTMLTextAreaElement);
+}
+
+async function saveEditMessage(message: TavernMessageRecord, options: { rerun?: boolean } = {}) {
+    if (!canEditMessage(message)) {return;}
+    const content = editingMessageDraft.value.trim();
+    if (!content) {
+        flashMessageAction(message, 'edit', false);
+        return;
+    }
+    const updated = await updateTavernMessage(message.sessionId, message.order, { content });
+    if (updated && selectedSessionId.value) {
+        sessionMessages.value = await listTavernMessages(selectedSessionId.value);
+    }
+    cancelEditMessage();
+    flashMessageAction(updated || message, 'edit', !!updated);
+    if (updated && options.rerun) {
+        await rerunFromMessage(updated);
+    } else if (updated) {
+        await rebuildSelectedSessionRuntimeState();
+    }
+}
+
+function findDeleteOrders(message: TavernMessageRecord) {
+    if (message.role !== 'user') {return [message.order];}
+    const sorted = [...sessionMessages.value].sort((left, right) => left.order - right.order);
+    const startIndex = sorted.findIndex((item) => item.order === message.order);
+    if (startIndex < 0) {return [message.order];}
+    const orders: number[] = [];
+    for (let index = startIndex; index < sorted.length; index += 1) {
+        const item = sorted[index];
+        if (index > startIndex && item.role === 'user') {break;}
+        orders.push(item.order);
+    }
+    return orders;
+}
+
+async function deleteMessageTurn(message: TavernMessageRecord) {
+    if (isRunning.value) {return;}
+    const deleted = await deleteTavernMessages(message.sessionId, findDeleteOrders(message));
+    if (selectedSessionId.value) {
+        sessionMessages.value = await listTavernMessages(selectedSessionId.value);
+    }
+    if (deleted > 0) {
+        await rebuildSelectedSessionRuntimeState();
+    }
+    if (editingMessageKey.value.startsWith(`${message.sessionId}:`)) {
+        cancelEditMessage();
+    }
+    flashMessageAction(message, 'delete', deleted > 0);
+}
+
+async function rerunFromMessage(message: TavernMessageRecord) {
+    if (isRunning.value) {return;}
+    const sorted = [...sessionMessages.value].sort((left, right) => left.order - right.order);
+    const index = sorted.findIndex((item) => item.order === message.order);
+    const userMessage = message.role === 'user'
+        ? message
+        : [...sorted.slice(0, Math.max(0, index + 1))].reverse().find((item) => item.role === 'user');
+    if (!userMessage) {
+        flashMessageAction(message, 'rerun', false);
+        return;
+    }
+    const ordersToDelete = sorted
+        .filter((item) => item.order > userMessage.order)
+        .map((item) => item.order);
+    await deleteTavernMessages(userMessage.sessionId, ordersToDelete);
+    if (selectedSessionId.value) {
+        sessionMessages.value = await listTavernMessages(selectedSessionId.value);
+    }
+    flashMessageAction(message, 'rerun', true);
+    await runOnce({
+        messageText: userMessage.content,
+        reuseUserMessageOrder: userMessage.order,
+    });
+}
+
 function insertionTargetLabel(target = '') {
     const text = String(target || '');
     const exact: Record<string, string> = {
@@ -655,11 +1089,133 @@ function insertionTargetLabel(target = '') {
     return text || '未指定位置';
 }
 
-async function runOnce() {
-    if (!String(currentUserMessage.value || '').trim()) {
+function updateChatScrollButtons() {
+    const node = chatScrollRef.value;
+    if (!node) {
+        showChatScrollTop.value = false;
+        showChatScrollBottom.value = false;
+        return;
+    }
+    const threshold = 80;
+    showChatScrollTop.value = node.scrollTop > threshold;
+    showChatScrollBottom.value = node.scrollHeight - node.scrollTop - node.clientHeight > threshold;
+}
+
+function scheduleHideChatScrollHelpers() {
+    chatScrollControlsActive.value = true;
+    if (chatScrollHideTimer) {
+        window.clearTimeout(chatScrollHideTimer);
+    }
+    chatScrollHideTimer = window.setTimeout(() => {
+        chatScrollControlsActive.value = false;
+        chatScrollHideTimer = null;
+    }, 1500);
+}
+
+function isChatNearBottom() {
+    const node = chatScrollRef.value;
+    if (!node) {return true;}
+    return node.scrollHeight - node.scrollTop - node.clientHeight <= 56;
+}
+
+function scrollChatToBottom(force = false) {
+    if (!force && !chatAutoScroll.value) {return;}
+    if (force) {chatAutoScroll.value = true;}
+    void nextTick(() => {
+        const node = chatScrollRef.value;
+        if (!node) {return;}
+        node.scrollTop = node.scrollHeight;
+        requestAnimationFrame(() => {
+            node.scrollTop = node.scrollHeight;
+            updateChatScrollButtons();
+            scheduleHideChatScrollHelpers();
+        });
+    });
+}
+
+function scrollChatToTop() {
+    const node = chatScrollRef.value;
+    if (!node) {return;}
+    chatAutoScroll.value = false;
+    chatLastScrollTop = 0;
+    node.scrollTop = 0;
+    updateChatScrollButtons();
+    scheduleHideChatScrollHelpers();
+}
+
+function handleChatScroll() {
+    const node = chatScrollRef.value;
+    if (!node) {return;}
+    const currentScrollTop = Number(node.scrollTop || 0);
+    const scrollingTowardBottom = currentScrollTop > chatLastScrollTop;
+    chatLastScrollTop = currentScrollTop;
+    const nearBottom = isChatNearBottom();
+    if (nearBottom) {
+        if (chatAutoScroll.value !== false || scrollingTowardBottom) {
+            chatAutoScroll.value = true;
+        }
+    } else {
+        chatAutoScroll.value = false;
+    }
+    if (chatScrollTicking) {return;}
+    chatScrollTicking = true;
+    requestAnimationFrame(() => {
+        updateChatScrollButtons();
+        scheduleHideChatScrollHelpers();
+        chatScrollTicking = false;
+    });
+}
+
+function handleChatWheel(event: WheelEvent) {
+    if (Number(event.deltaY || 0) < 0) {
+        chatAutoScroll.value = false;
+    }
+}
+
+function handleChatTouchStart(event: TouchEvent) {
+    chatTouchStartY = Number(event.touches?.[0]?.clientY);
+}
+
+function handleChatTouchMove(event: TouchEvent) {
+    const currentY = Number(event.touches?.[0]?.clientY);
+    if (!Number.isFinite(Number(chatTouchStartY)) || !Number.isFinite(currentY)) {
+        chatAutoScroll.value = false;
+        return;
+    }
+    if (chatTouchStartY !== null && currentY > chatTouchStartY + 4) {
+        chatAutoScroll.value = false;
+    }
+}
+
+function handleComposeKeydown(event: KeyboardEvent) {
+    if (event.key !== 'Enter') {return;}
+    if (event.isComposing || event.shiftKey || event.altKey) {return;}
+    const shouldSend = event.ctrlKey || event.metaKey || window.innerWidth >= 760;
+    if (!shouldSend) {return;}
+    event.preventDefault();
+    void runOnce();
+}
+
+function cancelActiveRun() {
+    activeRunController.value?.abort();
+}
+
+function handleChatSubmit() {
+    void runOnce();
+}
+
+async function runOnce(options: { messageText?: string; reuseUserMessageOrder?: number } = {}) {
+    if (isRunning.value) {
+        cancelActiveRun();
+        return;
+    }
+    const messageText = String(options.messageText ?? currentUserMessage.value ?? '').trim();
+    if (!messageText) {
         runtimeError.value = '先写一句要发给角色的话。';
         return;
     }
+    const controller = new AbortController();
+    activeRunController.value = controller;
     runtimeError.value = '';
     runtimeText.value = '';
     runtimeProvider.value = '';
@@ -668,22 +1224,41 @@ async function runOnce() {
         status: 'running',
     }, null, 2);
     isRunning.value = true;
+    chatAutoScroll.value = true;
     try {
         const result = await runXbTavernTurn({
             sessionId: selectedSessionId.value,
             agentConfig: agentConfig.value,
             contextSnapshot: context.value,
             preset: preset.value,
-            currentUserMessage: currentUserMessage.value,
+            currentUserMessage: messageText,
             runtimeState: normalizeTavernSessionState(selectedSession.value?.state || {}),
             diagnostics: diagnostics.value,
             historyMode: historyMode.value,
+            signal: controller.signal,
+            reuseUserMessageOrder: options.reuseUserMessageOrder,
             onStreamProgress: (snapshot) => {
                 if (typeof snapshot.text === 'string') {runtimeText.value = snapshot.text;}
             },
+            onUserMessageSaved: async (sessionId, message) => {
+                selectedSessionId.value = sessionId;
+                await setSelectedTavernSessionId(sessionId);
+                const exists = sessionMessages.value.some((item) => item.sessionId === message.sessionId && item.order === message.order);
+                sessionMessages.value = exists ? sessionMessages.value : [...sessionMessages.value, message].sort((left, right) => left.order - right.order);
+                currentUserMessage.value = '';
+                await refreshSessions();
+                scrollChatToBottom(true);
+            },
+            onAssistantMessageSaved: async (sessionId, message) => {
+                selectedSessionId.value = sessionId;
+                const exists = sessionMessages.value.some((item) => item.sessionId === message.sessionId && item.order === message.order);
+                sessionMessages.value = exists ? sessionMessages.value : [...sessionMessages.value, message].sort((left, right) => left.order - right.order);
+                await refreshSessions();
+                scrollChatToBottom(true);
+            },
         });
         selectedSessionId.value = result.sessionId;
-        runtimeText.value = result.assistantMessage?.content || result.errorMessage?.content || '';
+        runtimeText.value = '';
         runtimeError.value = result.error || '';
         runtimeProvider.value = result.provider || '';
         runtimeModel.value = result.model || '';
@@ -697,13 +1272,43 @@ async function runOnce() {
             error: result.error || '',
         }, null, 2);
         await refreshSessions();
-        currentUserMessage.value = '';
+        scrollChatToBottom(true);
     } catch (error) {
         runtimeError.value = error instanceof Error ? error.message : String(error || 'run_failed');
     } finally {
+        if (activeRunController.value === controller) {
+            activeRunController.value = null;
+        }
         isRunning.value = false;
+        scrollChatToBottom(true);
     }
 }
+
+watch([
+    () => chatMessages.value.length,
+    () => chatMarkdownSignature.value,
+    () => runtimeText.value,
+    () => activeView.value,
+], () => {
+    if (activeView.value === 'chat') {
+        scrollChatToBottom();
+        void nextTick(() => {
+            enhanceChatMarkdown();
+            updateChatScrollButtons();
+        });
+    }
+});
+
+watch([
+    () => activeWorkspace.value,
+    () => activeView.value,
+    () => apiConfigSave.value.status,
+    () => agentConfig.value,
+], () => {
+    if (activeView.value === 'settings' && activeWorkspace.value === 'api') {
+        void nextTick(renderApiSettingsPanel);
+    }
+});
 
 onMounted(async () => {
     // onHostMessage validates origin and message source before accepting payloads.
@@ -711,11 +1316,17 @@ onMounted(async () => {
     window.addEventListener('message', onHostMessage);
     await refreshPresets();
     await refreshSessions();
+    syncApiSettingsConfigFromAgentConfig();
     postToHost('xb-tavern:frame-ready');
 });
 
 onUnmounted(() => {
     window.removeEventListener('message', onHostMessage);
+    activeRunController.value?.abort();
+    if (chatScrollHideTimer) {
+        window.clearTimeout(chatScrollHideTimer);
+        chatScrollHideTimer = null;
+    }
 });
 </script>
 
@@ -895,32 +1506,58 @@ onUnmounted(() => {
       class="tavern-chat"
     >
       <aside class="chat-side">
-        <div class="panel">
-          <h2>{{ characterName }}</h2>
-          <p class="muted compact">
-            {{ contextSourceTitle }}
-          </p>
-          <dl class="kv">
-            <dt>世界书</dt>
-            <dd>{{ worldBookCount }} 本 / {{ activatedCount }} 条</dd>
-            <dt>会话</dt>
-            <dd>{{ chatReadyLabel }}</dd>
-          </dl>
+        <section class="chat-profile">
+          <div class="avatar-orb">
+            {{ characterName.slice(0, 1) }}
+          </div>
+          <div>
+            <p class="eyebrow">
+              CHARACTER
+            </p>
+            <h2>{{ characterName }}</h2>
+            <p>{{ contextSourceTitle }}</p>
+          </div>
+        </section>
+
+        <section class="chat-side-block">
+          <div class="side-stat">
+            <span>世界书</span>
+            <strong>{{ worldBookCount }} 本 / {{ worldEntryCount }} 条</strong>
+          </div>
+          <div class="side-stat">
+            <span>会话</span>
+            <strong>第 {{ sessionRuntimeState.turn || 0 }} 轮</strong>
+          </div>
+          <div class="side-stat">
+            <span>模型</span>
+            <strong>{{ lastModelLine }}</strong>
+          </div>
+        </section>
+
+        <section
+          v-if="usingLockedSessionContext"
+          class="chat-lock-note"
+        >
+          <strong>会话资料已锁定</strong>
+          <span>角色卡或世界书改动后，需要手动刷新当前会话。</span>
           <button
             type="button"
-            @click="activeView = 'settings'; activeWorkspace = 'world'"
+            @click="refreshSelectedSessionSnapshot"
           >
-            查看本轮资料
+            刷新会话资料
           </button>
-          <button
-            type="button"
-            @click="activeView = 'home'"
-          >
-            返回首页
-          </button>
-        </div>
-        <div class="panel">
-          <h2>会话</h2>
+        </section>
+
+        <section class="chat-side-block">
+          <div class="side-block-head">
+            <strong>会话</strong>
+            <button
+              type="button"
+              @click="createSessionAndOpenChat"
+            >
+              新建
+            </button>
+          </div>
           <div class="session-list">
             <button
               v-for="session in sessions"
@@ -929,72 +1566,226 @@ onUnmounted(() => {
               :class="{ active: session.id === selectedSessionId }"
               @click="selectSession(session.id)"
             >
-              {{ session.title }}
+              <strong>{{ session.title }}</strong>
+              <small>{{ session.characterName || '未选择角色' }}</small>
             </button>
+            <p
+              v-if="!sessions.length"
+              class="muted compact"
+            >
+              还没有会话。
+            </p>
           </div>
-        </div>
+        </section>
       </aside>
 
       <section class="chat-main">
         <header class="chat-head">
           <div>
             <p class="eyebrow">
-              CHAT
+              {{ chatReadyLabel }}
             </p>
             <h2>{{ selectedSessionTitle }}</h2>
+            <p>{{ chatSubtitle }}</p>
           </div>
-          <button
-            type="button"
-            @click="createSessionAndOpenChat"
-          >
-            新会话
-          </button>
+          <div class="chat-head-actions">
+            <button
+              type="button"
+              @click="activeView = 'settings'; activeWorkspace = 'messages'"
+            >
+              看发送内容
+            </button>
+            <button
+              type="button"
+              @click="activeView = 'home'"
+            >
+              首页
+            </button>
+          </div>
         </header>
-        <div class="chat-scroll">
+        <div
+          ref="chatScrollRef"
+          class="chat-scroll"
+          @scroll="handleChatScroll"
+          @wheel.passive="handleChatWheel"
+          @touchstart.passive="handleChatTouchStart"
+          @touchmove.passive="handleChatTouchMove"
+        >
           <div
-            v-for="message in sessionMessagesForChat"
+            v-for="message in chatMessages"
             :key="`${message.sessionId}-${message.order}`"
             class="chat-bubble"
-            :class="message.role === 'user' ? 'from-user' : 'from-assistant'"
+            :class="[
+              message.role === 'user' ? 'from-user' : 'from-assistant',
+              { 'is-error': message.error },
+            ]"
           >
-            <span>{{ roleLabel(message.role) }}</span>
-            <p>{{ message.content }}</p>
+            <div class="bubble-meta">
+              <span>{{ message.error ? '错误' : roleLabel(message.role) }}</span>
+              <small>{{ formatMessageTime(message.createdAt) }}</small>
+            </div>
+            <div
+              v-if="isEditingMessage(message)"
+              class="message-edit-panel"
+            >
+              <textarea
+                v-model="editingMessageDraft"
+                class="message-edit-box"
+                rows="6"
+                :data-message-editor="messageKey(message)"
+                @input="handleEditInput"
+                @keydown="handleEditKeydown($event, message)"
+              />
+              <div class="message-edit-actions">
+                <button
+                  type="button"
+                  @click="saveEditMessage(message)"
+                >
+                  保存
+                </button>
+                <button
+                  type="button"
+                  @click="saveEditMessage(message, { rerun: true })"
+                >
+                  保存并重跑
+                </button>
+                <button
+                  type="button"
+                  @click="cancelEditMessage"
+                >
+                  取消
+                </button>
+              </div>
+            </div>
+            <div
+              v-else
+              class="xb-tavern-markdown"
+              :data-markdown-signature="markdownSignature(message.content)"
+              v-html="renderChatMarkdown(message.content)"
+            />
+            <div
+              v-if="!isEditingMessage(message)"
+              class="message-actions"
+            >
+              <button
+                type="button"
+                :class="actionFeedback(message, 'copy')"
+                title="复制"
+                aria-label="复制"
+                @click="copyMessage(message)"
+              >
+                ⧉
+              </button>
+              <button
+                type="button"
+                :disabled="!canEditMessage(message)"
+                :class="actionFeedback(message, 'edit')"
+                title="编辑"
+                aria-label="编辑"
+                @click="startEditMessage(message)"
+              >
+                ✎
+              </button>
+              <button
+                type="button"
+                :disabled="isRunning"
+                :class="actionFeedback(message, 'rerun')"
+                title="重新生成"
+                aria-label="重新生成"
+                @click="rerunFromMessage(message)"
+              >
+                ↻
+              </button>
+              <button
+                type="button"
+                :disabled="isRunning"
+                :class="actionFeedback(message, 'delete')"
+                title="删除"
+                aria-label="删除"
+                @click="deleteMessageTurn(message)"
+              >
+                🗑
+              </button>
+            </div>
           </div>
           <div
             v-if="isRunning && runtimeText"
             class="chat-bubble from-assistant streaming"
           >
-            <span>AI</span>
-            <p>{{ runtimeText }}</p>
+            <div class="bubble-meta">
+              <span>AI</span>
+              <small>生成中</small>
+            </div>
+            <div
+              class="xb-tavern-markdown"
+              :data-markdown-signature="markdownSignature(runtimeText)"
+              v-html="renderChatMarkdown(runtimeText)"
+            />
+          </div>
+          <div
+            v-if="isRunning && !runtimeText"
+            class="chat-bubble from-assistant streaming thinking"
+          >
+            <div class="bubble-meta">
+              <span>AI</span>
+              <small>生成中</small>
+            </div>
+            <p>正在组织回复...</p>
           </div>
           <p
-            v-if="!sessionMessagesForChat.length && !isRunning"
+            v-if="!chatMessages.length && !isRunning"
             class="chat-empty"
           >
-            这里还没有消息。下面写一句话，开始测试这个角色。
+            这里还没有消息。下面写一句话，开始和这个角色说话。
           </p>
-          <p
-            v-if="latestErrorMessage"
-            class="error"
+          <div
+            class="chat-scroll-helpers"
+            :class="{ active: chatScrollControlsActive }"
           >
-            {{ latestErrorMessage }}
-          </p>
+            <button
+              type="button"
+              :class="{ visible: showChatScrollTop }"
+              title="回到顶部"
+              aria-label="回到顶部"
+              @click="scrollChatToTop"
+            >
+              ▲
+            </button>
+            <button
+              type="button"
+              :class="{ visible: showChatScrollBottom }"
+              title="回到底部"
+              aria-label="回到底部"
+              @click="scrollChatToBottom(true)"
+            >
+              ▼
+            </button>
+          </div>
         </div>
         <form
           class="chat-compose"
-          @submit.prevent="runOnce"
+          @submit.prevent="handleChatSubmit"
         >
+          <div
+            v-if="latestErrorMessage"
+            class="compose-error"
+          >
+            {{ latestErrorMessage }}
+          </div>
           <textarea
             v-model="currentUserMessage"
             rows="3"
             placeholder="对角色说一句话..."
+            :disabled="isRunning"
+            @input="handleComposeInput"
+            @keydown="handleComposeKeydown"
           />
           <button
             type="submit"
             class="primary-action"
-            :disabled="isRunning"
+            :disabled="!canSendMessage"
           >
-            {{ isRunning ? '发送中' : '发送' }}
+            {{ isRunning ? '停止' : '发送' }}
           </button>
         </form>
       </section>
@@ -1026,6 +1817,15 @@ onUnmounted(() => {
           <button
             type="button"
             class="guide-step guide-step-secondary"
+            :class="{ active: activeWorkspace === 'api' }"
+            @click="activeWorkspace = 'api'"
+          >
+            <strong>API 配置</strong>
+            <span>共用小白助手和电纸书的模型预设</span>
+          </button>
+          <button
+            type="button"
+            class="guide-step guide-step-secondary"
             :class="{ active: activeWorkspace === 'preset' }"
             @click="activeWorkspace = 'preset'"
           >
@@ -1049,6 +1849,8 @@ onUnmounted(() => {
             <dd>{{ worldBookCount }} 本 / {{ worldEntryCount }} 条</dd>
             <dt>会带上</dt>
             <dd>{{ activatedCount }} 条</dd>
+            <dt>API</dt>
+            <dd>{{ apiRuntimeLine }}</dd>
           </dl>
           <label
             class="field-label"
@@ -1493,10 +2295,9 @@ onUnmounted(() => {
             </div>
             <button
               type="button"
-              :disabled="isRunning"
-              @click="runOnce"
+              @click="handleChatSubmit"
             >
-              {{ isRunning ? '试聊中' : '试聊一句' }}
+              {{ isRunning ? '停止' : '试聊一句' }}
             </button>
           </div>
           <div class="what-to-check">
@@ -1573,6 +2374,37 @@ onUnmounted(() => {
               {{ message.order + 1 }}. {{ roleLabel(message.role) }}
             </span>
           </div>
+        </div>
+
+        <div
+          v-show="activeWorkspace === 'api'"
+          class="panel step-panel api-workspace"
+        >
+          <div class="panel-head">
+            <div>
+              <h2>API 配置</h2>
+              <p class="muted compact">
+                小白酒馆使用小白助手和电纸书同一套模型预设；保存后会立刻用于后续聊天。
+              </p>
+            </div>
+            <span
+              class="pill"
+              :class="{ warning: !apiReady }"
+            >
+              {{ apiReady ? '可发模' : '需配置' }}
+            </span>
+          </div>
+          <div
+            class="what-to-check"
+            :class="{ warning: !apiReady }"
+          >
+            <strong>当前模型：</strong>
+            <span>{{ apiReady ? apiRuntimeLine : apiReadyDetail }}</span>
+          </div>
+          <div
+            ref="apiSettingsRootRef"
+            class="tavern-api-settings"
+          />
         </div>
 
         <div

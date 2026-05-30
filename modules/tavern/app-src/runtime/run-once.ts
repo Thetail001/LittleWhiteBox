@@ -1,4 +1,4 @@
-import { createAgentAdapter, resolveActiveProviderConfig } from '../../../agent-core/provider-config.js';
+import { createAgentAdapter } from '../../../agent-core/provider-config.js';
 import {
     type XbTavernBuildSnapshot,
     type XbTavernContext,
@@ -10,9 +10,12 @@ import {
 import {
     appendTavernMessage,
     createTavernSession,
+    deleteTavernMessages,
     getTavernSession,
     listTavernMessages,
+    mergeWorldEntryStates,
     normalizeTavernSessionState,
+    replaceTavernSessionState,
     updateTavernSessionState,
     updateTavernSessionSnapshot,
     type TavernMessageRecord,
@@ -20,6 +23,8 @@ import {
     type TavernSessionState,
 } from '../../shared/session-db';
 import { buildXbTavernBrain } from '../../shared/brain';
+import { createXbTavernAgentRuntime } from './agent-runtime';
+import { assertXbTavernProviderReady, resolveXbTavernProviderConfig } from './provider';
 
 export interface TavernRunOnceOptions {
     agentConfig: Record<string, unknown>;
@@ -29,8 +34,11 @@ export interface TavernRunOnceOptions {
 }
 
 export interface TavernRequestSnapshot {
+    presetName: string;
     provider: string;
+    providerLabel: string;
     model: string;
+    toolMode: string;
     messageCount: number;
     messageChars: number;
     rawMessagesJson: string;
@@ -63,6 +71,9 @@ export interface XbTavernRunTurnInput {
     historyMode?: XbTavernRuntimeState['historyMode'];
     signal?: AbortSignal;
     onStreamProgress?: (snapshot: { text?: string; thoughts?: Array<{ label?: string; text?: string }> }) => void;
+    onUserMessageSaved?: (sessionId: string, message: TavernMessageRecord) => void | Promise<void>;
+    onAssistantMessageSaved?: (sessionId: string, message: TavernMessageRecord) => void | Promise<void>;
+    reuseUserMessageOrder?: number;
     executeRunOnce?: (options: TavernRunOnceOptions) => Promise<TavernRunOnceResult>;
 }
 
@@ -82,10 +93,35 @@ export interface XbTavernRunResult {
     error?: string;
 }
 
-function resolveProviderConfig(agentConfig: Record<string, unknown> = {}): Record<string, unknown> {
-    return resolveActiveProviderConfig(agentConfig || {}, {
-        timeoutMs: 15 * 60 * 1000,
-    });
+function isAbortLikeError(error: unknown, signal?: AbortSignal): boolean {
+    if (signal?.aborted) {return true;}
+    if (!error || typeof error !== 'object') {return false;}
+    const record = error as { name?: unknown; code?: unknown; message?: unknown };
+    const name = String(record.name || '');
+    const code = String(record.code || '');
+    const message = String(record.message || '');
+    return name === 'AbortError'
+        || code === 'ABORT_ERR'
+        || /abort|aborted|cancelled|canceled/i.test(message);
+}
+
+async function notifyRunCallback(callback: (() => void | Promise<void>) | undefined): Promise<void> {
+    if (!callback) {return;}
+    try {
+        await callback();
+    } catch (error) {
+        console.warn('[LittleWhiteBox Tavern] run callback failed', error);
+    }
+}
+
+async function persistRunSessionState(
+    sessionId: string,
+    state: Partial<TavernSessionState>,
+    options: { replace?: boolean } = {},
+): Promise<TavernSessionRecord | null> {
+    return options.replace
+        ? await replaceTavernSessionState(sessionId, state)
+        : await updateTavernSessionState(sessionId, state);
 }
 
 export function buildTavernRequestSnapshot(
@@ -93,10 +129,13 @@ export function buildTavernRequestSnapshot(
     messages: XbTavernMessage[] = [],
     override: Partial<Pick<TavernRequestSnapshot, 'provider' | 'model'>> = {},
 ): TavernRequestSnapshot {
-    const providerConfig = resolveProviderConfig(agentConfig);
+    const providerConfig = resolveXbTavernProviderConfig(agentConfig);
     return {
+        presetName: providerConfig.currentPresetName,
         provider: String(override.provider || providerConfig.provider || ''),
+        providerLabel: providerConfig.providerLabel,
         model: String(override.model || providerConfig.model || ''),
+        toolMode: providerConfig.toolMode,
         messageCount: messages.length,
         messageChars: messages.reduce((sum, message) => sum + String(message.content || '').length, 0),
         rawMessagesJson: JSON.stringify(messages, null, 2),
@@ -113,6 +152,79 @@ export function buildContextHistory(messages: TavernMessageRecord[] = []): XbTav
             content: message.content,
             ...(message.name ? { name: message.name } : {}),
         }));
+}
+
+function findCompletedAssistantForUser(messages: TavernMessageRecord[] = [], userIndex = -1): TavernMessageRecord | null {
+    if (userIndex < 0) {return null;}
+    for (let index = userIndex + 1; index < messages.length; index += 1) {
+        const message = messages[index];
+        if (message.role === 'user') {break;}
+        if (message.role === 'assistant' && !message.error && String(message.content || '').trim()) {
+            return message;
+        }
+    }
+    return null;
+}
+
+export function deriveTavernSessionStateFromMessages(input: {
+    messages?: TavernMessageRecord[];
+    contextSnapshot?: XbTavernContext;
+    preset: XbTavernPreset;
+    historyMode?: XbTavernRuntimeState['historyMode'];
+    diagnostics?: TavernDiagnostics;
+}): TavernSessionState {
+    const sorted = [...(input.messages || [])].sort((left, right) => left.order - right.order);
+    const contextSnapshot = input.contextSnapshot || {};
+    const priorMessages: TavernMessageRecord[] = [];
+    let turn = 0;
+    let worldEntryStates: NonNullable<TavernSessionState['worldEntryStates']> = {};
+    let lastBuildSnapshot: XbTavernBuildSnapshot | undefined;
+    let lastRequestSnapshot: unknown;
+    let lastProvider = '';
+    let lastModel = '';
+
+    sorted.forEach((message, index) => {
+        if (message.role !== 'user' || message.error || !String(message.content || '').trim()) {
+            priorMessages.push(message);
+            return;
+        }
+        const assistant = findCompletedAssistantForUser(sorted, index);
+        if (assistant) {
+            const brain = buildXbTavernBrain({
+                context: {
+                    ...contextSnapshot,
+                    history: buildContextHistory(priorMessages),
+                },
+                preset: input.preset,
+                currentUserMessage: message.content,
+                historyMode: input.historyMode || 'squash',
+                turn,
+                entryStates: worldEntryStates,
+                diagnostics: input.diagnostics || {},
+            });
+            worldEntryStates = mergeWorldEntryStates(
+                worldEntryStates,
+                brain.buildResult.meta.worldEntryStateUpdates,
+            );
+            turn += 1;
+            lastBuildSnapshot = brain.buildSnapshot;
+            lastRequestSnapshot = assistant.requestSnapshot || message.requestSnapshot;
+            lastProvider = String(assistant.provider || '');
+            lastModel = String(assistant.model || '');
+        }
+        priorMessages.push(message);
+    });
+
+    const lastMessage = sorted[sorted.length - 1];
+    return {
+        turn,
+        worldEntryStates,
+        lastBuildSnapshot,
+        lastRequestSnapshot,
+        lastProvider,
+        lastModel,
+        lastError: lastMessage?.error ? String(lastMessage.content || '') : '',
+    };
 }
 
 async function ensureRunSession(input: XbTavernRunTurnInput, buildSnapshot?: XbTavernBuildSnapshot): Promise<TavernSessionRecord> {
@@ -136,20 +248,16 @@ async function ensureRunSession(input: XbTavernRunTurnInput, buildSnapshot?: XbT
 }
 
 export async function runTavernOnce(options: TavernRunOnceOptions): Promise<TavernRunOnceResult> {
-    const providerConfig = resolveProviderConfig(options.agentConfig);
-    const adapter = createAgentAdapter(providerConfig, {
-        missingApiKeyMessage: '请先在小白助手模型配置里填写 API Key。',
+    const providerConfig = assertXbTavernProviderReady(options.agentConfig);
+    const runtime = createXbTavernAgentRuntime(providerConfig);
+    const adapter = createAgentAdapter(providerConfig as unknown as Record<string, unknown>, {
+        missingApiKeyMessage: '请先在 API 配置里选择模型/填写 Key。',
     });
-    const result = await adapter.chat({
-        systemPrompt: '',
+    const result = await adapter.chat(runtime.buildChatTask({
         messages: options.messages,
-        tools: [],
-        toolChoice: 'none',
-        temperature: providerConfig.temperature,
-        maxTokens: providerConfig.maxTokens,
         signal: options.signal,
         onStreamProgress: options.onStreamProgress,
-    });
+    }));
     const text = String(result?.text || '');
     const provider = String(result?.provider || providerConfig.provider || '');
     const model = String(result?.model || providerConfig.model || '');
@@ -169,17 +277,43 @@ export async function runTavernOnce(options: TavernRunOnceOptions): Promise<Tave
 
 export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTavernRunResult> {
     const baseSession = await ensureRunSession(input);
-    const sessionMessages = await listTavernMessages(baseSession.id);
-    const sessionState = normalizeTavernSessionState(baseSession.state || input.runtimeState || {});
+    let sessionMessages = await listTavernMessages(baseSession.id);
     const lockedContext = baseSession.contextSnapshot || input.contextSnapshot || {};
+    const reusedOrder = Number(input.reuseUserMessageOrder);
+    const reusedUserMessage = Number.isInteger(reusedOrder) && reusedOrder >= 0
+        ? sessionMessages.find((message) => message.order === reusedOrder && message.role === 'user' && !message.error) || null
+        : null;
+    if (reusedUserMessage) {
+        await deleteTavernMessages(
+            baseSession.id,
+            sessionMessages
+                .filter((message) => message.order > reusedUserMessage.order)
+                .map((message) => message.order),
+        );
+        sessionMessages = await listTavernMessages(baseSession.id);
+    }
+    const historyMessages = reusedUserMessage
+        ? sessionMessages.filter((message) => message.order < reusedUserMessage.order)
+        : sessionMessages;
+    const sessionState = reusedUserMessage
+        ? normalizeTavernSessionState(deriveTavernSessionStateFromMessages({
+            messages: historyMessages,
+            contextSnapshot: lockedContext,
+            preset: input.preset,
+            historyMode: input.historyMode || 'squash',
+            diagnostics: input.diagnostics,
+        }))
+        : normalizeTavernSessionState(baseSession.state || input.runtimeState || {});
+    const shouldReplaceSessionState = !!reusedUserMessage;
+    const currentUserMessage = reusedUserMessage?.content || input.currentUserMessage;
     const contextForBuild: XbTavernContext = {
         ...lockedContext,
-        history: buildContextHistory(sessionMessages),
+        history: buildContextHistory(historyMessages),
     };
     const brain = buildXbTavernBrain({
         context: contextForBuild,
         preset: input.preset,
-        currentUserMessage: input.currentUserMessage,
+        currentUserMessage,
         historyMode: input.historyMode || 'squash',
         turn: sessionState.turn,
         entryStates: sessionState.worldEntryStates,
@@ -197,15 +331,22 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
     const requestSnapshot = buildTavernRequestSnapshot(input.agentConfig, buildResult.messages);
     const presetId = String(input.preset.id || session.presetId || '');
     const presetName = String(input.preset.name || session.presetName || '');
-    const userMessage = await appendTavernMessage(session.id, {
-        role: 'user',
-        content: input.currentUserMessage,
-        contextSnapshot: lockedContext,
-        buildSnapshot,
-        presetId,
-        presetName,
-        requestSnapshot,
-    });
+    const userMessage = reusedUserMessage || await appendTavernMessage(session.id, {
+            role: 'user',
+            content: currentUserMessage,
+            contextSnapshot: lockedContext,
+            buildSnapshot,
+            presetId,
+            presetName,
+            requestSnapshot,
+        });
+    await notifyRunCallback(() => input.onUserMessageSaved?.(session.id, userMessage));
+
+    let latestStreamText = '';
+    const handleStreamProgress = (snapshot: { text?: string; thoughts?: Array<{ label?: string; text?: string }> }) => {
+        if (typeof snapshot.text === 'string') {latestStreamText = snapshot.text;}
+        input.onStreamProgress?.(snapshot);
+    };
 
     try {
         const executeRunOnce = input.executeRunOnce || runTavernOnce;
@@ -213,7 +354,7 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
             agentConfig: input.agentConfig,
             messages: buildResult.messages,
             signal: input.signal,
-            onStreamProgress: input.onStreamProgress,
+            onStreamProgress: handleStreamProgress,
         });
         const assistantMessage = await appendTavernMessage(session.id, {
             role: 'assistant',
@@ -228,14 +369,19 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
             model: result.model || '',
             finishReason: result.finishReason || '',
         });
+        await notifyRunCallback(() => input.onAssistantMessageSaved?.(session.id, assistantMessage));
         const nextTurn = Number(sessionState.turn || 0) + 1;
-        await updateTavernSessionState(session.id, {
+        await persistRunSessionState(session.id, {
             turn: nextTurn,
-            worldEntryStates: buildResult.meta.worldEntryStateUpdates,
+            worldEntryStates: shouldReplaceSessionState
+                ? mergeWorldEntryStates(sessionState.worldEntryStates || {}, buildResult.meta.worldEntryStateUpdates)
+                : buildResult.meta.worldEntryStateUpdates,
             lastBuildSnapshot: buildSnapshot,
             lastRequestSnapshot: result.requestSnapshot,
             lastProvider: result.provider || '',
             lastModel: result.model || '',
+        }, {
+            replace: shouldReplaceSessionState,
         });
         return {
             sessionId: session.id,
@@ -251,10 +397,54 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
             nextTurn,
         };
     } catch (error) {
+        const aborted = isAbortLikeError(error, input.signal);
+        const partialText = String(latestStreamText || '').trim();
+        if (aborted && partialText) {
+            const errorMessage = await appendTavernMessage(session.id, {
+                role: 'assistant',
+                content: partialText,
+                error: false,
+                contextSnapshot: lockedContext,
+                buildSnapshot,
+                presetId,
+                presetName,
+                requestSnapshot,
+                provider: requestSnapshot.provider,
+                model: requestSnapshot.model,
+                finishReason: 'aborted',
+            });
+            await notifyRunCallback(() => input.onAssistantMessageSaved?.(session.id, errorMessage));
+            const nextTurn = Number(sessionState.turn || 0) + 1;
+            await persistRunSessionState(session.id, {
+                turn: nextTurn,
+                worldEntryStates: shouldReplaceSessionState
+                    ? mergeWorldEntryStates(sessionState.worldEntryStates || {}, buildResult.meta.worldEntryStateUpdates)
+                    : buildResult.meta.worldEntryStateUpdates,
+                lastBuildSnapshot: buildSnapshot,
+                lastRequestSnapshot: requestSnapshot,
+                lastProvider: requestSnapshot.provider,
+                lastModel: requestSnapshot.model,
+            }, {
+                replace: shouldReplaceSessionState,
+            });
+            return {
+                sessionId: session.id,
+                userMessage,
+                assistantMessage: errorMessage,
+                buildResult,
+                buildSnapshot,
+                requestSnapshot,
+                provider: requestSnapshot.provider,
+                model: requestSnapshot.model,
+                finishReason: 'aborted',
+                previewMatchesRequest: buildResult.meta.rawMessagesJson === requestSnapshot.rawMessagesJson,
+                nextTurn,
+            };
+        }
         const errorText = error instanceof Error ? error.message : String(error || 'run_failed');
         const errorMessage = await appendTavernMessage(session.id, {
             role: 'assistant',
-            content: errorText,
+            content: aborted ? '已停止生成。' : errorText,
             error: true,
             contextSnapshot: lockedContext,
             buildSnapshot,
@@ -263,14 +453,19 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
             requestSnapshot,
             provider: requestSnapshot.provider,
             model: requestSnapshot.model,
-            finishReason: 'error',
+            finishReason: aborted ? 'aborted' : 'error',
         });
-        await updateTavernSessionState(session.id, {
+        await notifyRunCallback(() => input.onAssistantMessageSaved?.(session.id, errorMessage));
+        await persistRunSessionState(session.id, {
+            turn: Number(sessionState.turn || 0),
+            worldEntryStates: shouldReplaceSessionState ? sessionState.worldEntryStates || {} : {},
             lastBuildSnapshot: buildSnapshot,
             lastRequestSnapshot: requestSnapshot,
             lastProvider: requestSnapshot.provider,
             lastModel: requestSnapshot.model,
-            lastError: errorText,
+            lastError: aborted ? '已停止生成。' : errorText,
+        }, {
+            replace: shouldReplaceSessionState,
         });
         return {
             sessionId: session.id,
@@ -281,10 +476,10 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
             requestSnapshot,
             provider: requestSnapshot.provider,
             model: requestSnapshot.model,
-            finishReason: 'error',
+            finishReason: aborted ? 'aborted' : 'error',
             previewMatchesRequest: buildResult.meta.rawMessagesJson === requestSnapshot.rawMessagesJson,
             nextTurn: Number(sessionState.turn || 0),
-            error: errorText,
+            error: aborted ? '已停止生成。' : errorText,
         };
     }
 }

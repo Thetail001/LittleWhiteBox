@@ -433,7 +433,7 @@ export function createEbookApp(options = {}) {
 
         const clearButton = root.querySelector('#xb-agent-clear');
         if (clearButton) {
-            const canClearConversation = !!(state.messages?.length || state.historySummary?.trim());
+            const canClearConversation = !!state.messages?.length;
             clearButton.disabled = state.isBusy || !canClearConversation;
         }
 

@@ -836,7 +836,7 @@ function normalizeEditsInput(edits) {
                     ok: true,
                     edits: parsed,
                     parsedFromString: true,
-                    warning: 'edits was provided as a JSON string and was parsed for compatibility. Pass edits as an array, not a quoted JSON string.',
+                    warning: '提醒：模型把 edits 发成了字符串；插件已解析并继续执行。下次请把 edits 直接作为数组传入，不要作为字符串。',
                 };
             }
             return {
@@ -852,7 +852,7 @@ function normalizeEditsInput(edits) {
                     ok: true,
                     edits: looseParsed,
                     parsedFromString: true,
-                    warning: 'edits was provided as a malformed JSON-like string and was repaired for compatibility. Pass edits as an array value, not a quoted string.',
+                    warning: '提醒：模型把 edits 发成了字符串，且内容不是标准 JSON；插件已尝试修复并继续执行。下次请把 edits 直接作为数组传入，不要作为字符串。',
                 };
             }
             return {

@@ -49,9 +49,26 @@ test('agent protocol maps stored tool-call history into provider messages', () =
         {
             role: 'tool',
             tool_call_id: 'call-read',
+            toolName: 'Read',
             content: '{"ok":true,"content":"demo"}',
         },
     ]);
+});
+
+test('agent protocol omits empty internal tool names from provider messages', () => {
+    const providerMessages = buildProviderMessagesFromHistory([
+        {
+            role: 'tool',
+            toolCallId: 'call-empty',
+            content: '{}',
+        },
+    ]);
+
+    assert.deepEqual(providerMessages, [{
+        role: 'tool',
+        tool_call_id: 'call-empty',
+        content: '{}',
+    }]);
 });
 
 test('agent protocol recognizes Google providerPayload function calls', () => {

@@ -2089,6 +2089,21 @@ export function injectEbookStyles(rootId = 'xb-ebook-root') {
         }
         .xb-ebook-settings-body .xb-assistant-grow { min-width: 0; }
         .xb-ebook-settings-body .xb-assistant-model-row { align-items: end; }
+        .xb-ebook-settings-body .xb-assistant-temperature-row {
+            display: grid;
+            grid-template-columns: 96px auto;
+            gap: 10px;
+            align-items: end;
+        }
+        .xb-ebook-settings-body .xb-assistant-temperature-row .xb-assistant-checkbox-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-height: 40px;
+        }
+        .xb-ebook-settings-body .xb-assistant-temperature-row input[type="number"] {
+            width: 96px;
+        }
         .xb-ebook-settings-body .xb-assistant-checkbox-control {
             display: inline-flex;
             align-items: center;

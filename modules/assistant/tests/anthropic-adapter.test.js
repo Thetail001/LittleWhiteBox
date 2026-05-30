@@ -45,6 +45,45 @@ test('Anthropic adapter groups consecutive tool results into one user message', 
     });
 });
 
+test('Anthropic adapter prefers repaired top-level tool arguments over raw preserved tool input', () => {
+    const messages = buildAnthropicMessages([
+        { role: 'user', content: 'write file' },
+        {
+            role: 'assistant',
+            content: '',
+            providerPayload: {
+                anthropicContent: [
+                    { type: 'text', text: 'I will write it.' },
+                    { type: 'tool_use', id: 'call-write', name: 'Write', input: {} },
+                ],
+            },
+            tool_calls: [{
+                id: 'call-write',
+                type: 'function',
+                function: {
+                    name: 'Write',
+                    arguments: '{"filePath":"book/chapters/001.md","content":"正文"}',
+                },
+            }],
+        },
+        { role: 'tool', tool_call_id: 'call-write', content: '{"ok":true}' },
+    ]);
+
+    assert.equal(messages[1].role, 'assistant');
+    assert.deepEqual(messages[1].content, [
+        { type: 'text', text: 'I will write it.' },
+        {
+            type: 'tool_use',
+            id: 'call-write',
+            name: 'Write',
+            input: {
+                filePath: 'book/chapters/001.md',
+                content: '正文',
+            },
+        },
+    ]);
+});
+
 test('Anthropic adapter keeps a single tool result immediately after the tool use message', () => {
     const messages = buildAnthropicMessages([
         { role: 'user', content: 'read file' },

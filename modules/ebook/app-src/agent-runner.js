@@ -329,10 +329,7 @@ export function createEbookAgentRunner(deps = {}) {
         const turnContextPrompt = buildBookTurnContextPrompt({
             book,
             files: state.files,
-            selectedPath: state.selectedPath,
-            selectedText: '',
             currentPlansText,
-            historySummary: state.historySummary,
         });
         const extraSystemMessages = [
             String(options.lightBrakeText || '').trim(),
@@ -368,13 +365,13 @@ export function createEbookAgentRunner(deps = {}) {
             currentTokens: 0,
             yieldTokens: 0,
             triggerTokens: 0,
-            status: '正在整理较早创作记录...',
+            status: '正在释放较早对话...',
             ...(state.compactionOverlay || {}),
             ...patch,
         };
     }
 
-    function scheduleCompactionOverlayHide(delayMs = 2500) {
+    function scheduleCompactionOverlayHide(delayMs = 3000) {
         const overlayId = state.compactionOverlay?.id || '';
         clearCompactionOverlayHideTimer();
         compactionOverlayHideTimer = globalThis.setTimeout(() => {
@@ -441,7 +438,7 @@ export function createEbookAgentRunner(deps = {}) {
         },
         onCompactionUnable: (event = {}) => {
             updateCompactionOverlay(event);
-            scheduleCompactionOverlayHide(1600);
+            scheduleCompactionOverlayHide();
         },
     });
 
@@ -486,7 +483,6 @@ export function createEbookAgentRunner(deps = {}) {
             book: parentRun.book || state.book,
             files: state.files,
             currentPlansText,
-            historySummary: state.historySummary,
         });
         const callerContext = String(args.context || '').trim();
         const context = [
@@ -629,7 +625,7 @@ export function createEbookAgentRunner(deps = {}) {
                     state.contextStats = {
                         usedTokens,
                         budgetTokens: EBOOK_MAX_CONTEXT_TOKENS,
-                        summaryActive: !!state.historySummary,
+                        summaryActive: false,
                         source: 'resolved',
                         stateKey,
                         updatedAt: Date.now(),

@@ -2,7 +2,7 @@
 import { extensionFolderPath } from "../../core/constants.js";
 import { createFirstPartyIframeOverlay, loadFirstPartyIframeCacheKey } from "../../core/first-party-iframe-app.js";
 import { isTrustedMessage, postToIframe } from "../../core/iframe-messaging.js";
-import { buildTavernFrameConfig } from "./host/agent-config.js";
+import { buildTavernFrameConfig, saveTavernAgentConfig } from "./host/agent-config.js";
 import { buildTavernContext } from "./host/sillytavern-context.js";
 const SOURCE_HOST = "xb-tavern-host";
 const SOURCE_APP = "xb-tavern-app";
@@ -55,6 +55,20 @@ async function sendConfigToFrame(options = {}) {
 async function refreshContext(options = {}) {
   postToFrame("xb-tavern:context", await buildTavernContext(options));
 }
+async function saveConfigFromFrame(payload = {}) {
+  const requestId = String(payload.requestId || "");
+  const configPatch = payload.payload && typeof payload.payload === "object" ? payload.payload : {};
+  const result = await saveTavernAgentConfig(configPatch, { silent: false });
+  postToFrame("xb-tavern:config-saved", {
+    requestId,
+    ok: result.ok,
+    config: result.config,
+    error: result.error || ""
+  });
+  if (result.ok) {
+    await sendConfigToFrame();
+  }
+}
 async function createOverlay() {
   return createFirstPartyIframeOverlay({
     overlayId: OVERLAY_ID,
@@ -96,6 +110,9 @@ function handleFrameMessage(event) {
       break;
     case "xb-tavern:refresh-context":
       void refreshContext(data.payload || {});
+      break;
+    case "xb-tavern:save-config":
+      void saveConfigFromFrame(data.payload || {});
       break;
     default:
       break;

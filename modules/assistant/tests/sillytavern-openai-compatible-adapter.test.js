@@ -644,6 +644,74 @@ test('sillytavern Claude adapter replays preserved anthropic content through hos
     }
 });
 
+test('sillytavern Claude replay prefers repaired top-level tool arguments over raw preserved tool input', async () => {
+    const adapter = new SillyTavernClaudeAdapter({
+        baseUrl: '',
+        apiKey: '',
+        model: 'claude-sonnet-4-0',
+    });
+    const originalFetch = globalThis.fetch;
+    const requests = [];
+    globalThis.fetch = async (url, options = {}) => {
+        requests.push({
+            url: String(url),
+            body: JSON.parse(String(options.body || '{}')),
+        });
+        return createJsonResponse({
+            content: [{ type: 'text', text: '继续完成。' }],
+            stop_reason: 'end_turn',
+            model: 'claude-sonnet-4-0',
+        });
+    };
+
+    try {
+        await adapter.chat({
+            messages: [
+                { role: 'user', content: '继续处理' },
+                {
+                    role: 'assistant',
+                    content: '',
+                    providerPayload: {
+                        anthropicContent: [
+                            { type: 'text', text: '我来写。' },
+                            { type: 'tool_use', id: 'toolu_write', name: 'Write', input: {} },
+                        ],
+                    },
+                    tool_calls: [{
+                        id: 'toolu_write',
+                        type: 'function',
+                        function: {
+                            name: 'Write',
+                            arguments: '{"filePath":"book/chapters/001.md","content":"正文"}',
+                        },
+                    }],
+                },
+                {
+                    role: 'tool',
+                    tool_call_id: 'toolu_write',
+                    content: JSON.stringify({ ok: true }),
+                },
+            ],
+            tools: [],
+        });
+
+        assert.deepEqual(requests[0].body.messages[1].content, [
+            { type: 'text', text: '我来写。' },
+            {
+                type: 'tool_use',
+                id: 'toolu_write',
+                name: 'Write',
+                input: {
+                    filePath: 'book/chapters/001.md',
+                    content: '正文',
+                },
+            },
+        ]);
+    } finally {
+        globalThis.fetch = originalFetch;
+    }
+});
+
 test('sillytavern Google adapter replays preserved google contents with host tool-call signatures', async () => {
     const adapter = new SillyTavernGoogleAdapter({
         baseUrl: '',

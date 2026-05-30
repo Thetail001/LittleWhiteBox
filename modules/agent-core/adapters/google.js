@@ -328,7 +328,9 @@ function buildConversation(messages) {
                 const toolMessage = filteredMessages[cursor];
                 parts.push({
                     functionResponse: {
-                        name: toolNameById.get(toolMessage.tool_call_id || '') || 'tool_result',
+                        name: String(toolMessage.toolName || toolMessage.tool_name || '').trim()
+                            || toolNameById.get(toolMessage.tool_call_id || '')
+                            || 'tool_result',
                         response: parseArguments(toolMessage.content),
                     },
                 });

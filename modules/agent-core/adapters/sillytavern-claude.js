@@ -29,6 +29,26 @@ function parseToolInputJson(text = '') {
     }
 }
 
+function buildAnthropicToolUseBlocksFromToolCalls(toolCalls = []) {
+    return (Array.isArray(toolCalls) ? toolCalls : [])
+        .map((toolCall) => {
+            const name = String(toolCall?.function?.name || '').trim();
+            if (!name) return null;
+            const parsed = parseToolInputJson(toolCall.function.arguments || '{}');
+            return {
+                type: 'tool_use',
+                id: String(toolCall.id || name),
+                name,
+                input: parsed.input,
+                ...(parsed.ok ? {} : {
+                    invalidInputJson: parsed.raw,
+                    inputParseError: parsed.error,
+                }),
+            };
+        })
+        .filter(Boolean);
+}
+
 function normalizeAnthropicContent(content = []) {
     const normalized = Array.isArray(content)
         ? cloneJson(content)
@@ -45,8 +65,14 @@ function buildHostClaudeMessages(task = {}) {
         if (!message || typeof message !== 'object') return;
         const cloned = cloneJson(message) || {};
         const preservedContent = normalizeAnthropicContent(cloned?.providerPayload?.anthropicContent);
+        const topLevelToolUses = buildAnthropicToolUseBlocksFromToolCalls(cloned.tool_calls);
         delete cloned.providerPayload;
-        if (cloned.role === 'assistant' && preservedContent) {
+        if (cloned.role === 'assistant' && preservedContent && topLevelToolUses.length) {
+            delete cloned.tool_calls;
+            cloned.content = preservedContent
+                .filter((block) => block?.type !== 'tool_use')
+                .concat(topLevelToolUses);
+        } else if (cloned.role === 'assistant' && preservedContent) {
             delete cloned.tool_calls;
             cloned.content = preservedContent;
         }

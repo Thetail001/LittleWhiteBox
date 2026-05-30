@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import db, {
     appendTavernMessage,
     createTavernSession,
+    deleteTavernMessages,
     deriveAndActivateDefaultTavernPreset,
     getActiveTavernPresetId,
     getSelectedTavernSessionId,
@@ -14,8 +15,10 @@ import db, {
     loadActiveTavernPreset,
     mergeWorldEntryStates,
     normalizeTavernSessionState,
+    replaceTavernSessionState,
     saveTavernPreset,
     setActiveTavernPresetId,
+    updateTavernMessage,
     updateTavernSessionState,
 } from '../shared/session-db';
 import { DEFAULT_XB_TAVERN_PRESET_ID, createDefaultXbTavernPreset } from '../shared/presets';
@@ -98,6 +101,26 @@ test('tavern session db stores only cloneable snapshots from runtime inputs', as
     assert.deepEqual(messages[0]?.requestSnapshot, { messageCount: 1 });
 });
 
+test('tavern session db updates and deletes message records by order', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Edit messages' });
+    await appendTavernMessage(session.id, { role: 'user', content: 'Original user.' });
+    await appendTavernMessage(session.id, { role: 'assistant', content: 'Original assistant.' });
+    await appendTavernMessage(session.id, { role: 'user', content: 'Next user.' });
+
+    const updated = await updateTavernMessage(session.id, 0, { content: 'Edited user.' });
+    assert.equal(updated?.content, 'Edited user.');
+
+    assert.equal(await deleteTavernMessages(session.id, [1]), 1);
+    const messages = await listTavernMessages(session.id);
+    assert.deepEqual(messages.map((message) => `${message.order}:${message.content}`), [
+        '0:Edited user.',
+        '2:Next user.',
+    ]);
+});
+
 test('tavern preset db derives, activates, edits and resets presets', async () => {
     await db.delete();
     await db.open();
@@ -176,4 +199,18 @@ test('tavern session state stores turn and merges world entry states', async () 
     }), {
         a: { stickyUntilTurn: 1, cooldownUntilTurn: 2 },
     });
+
+    await replaceTavernSessionState(session.id, {
+        turn: 1,
+        worldEntryStates: {
+            'Lore\u0000fresh': { stickyUntilTurn: 2 },
+        },
+        lastProvider: '',
+    });
+    const replaced = await getTavernSession(session.id);
+    assert.equal(replaced?.state?.turn, 1);
+    assert.deepEqual(replaced?.state?.worldEntryStates, {
+        'Lore\u0000fresh': { stickyUntilTurn: 2 },
+    });
+    assert.equal(replaced?.state?.lastProvider, '');
 });

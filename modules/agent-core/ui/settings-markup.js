@@ -104,6 +104,18 @@ export function buildAgentSettingsPanelMarkup(options = {}) {
                     <span>Model</span>
                     <input id="xb-assistant-delegate-model" type="text" />
                 </label>
+                <div class="xb-assistant-temperature-row">
+                    <label>
+                        <span>温度</span>
+                        <input id="xb-assistant-delegate-temperature" type="number" min="0" max="2" step="0.05" />
+                    </label>
+                    <label class="xb-assistant-checkbox-row">
+                        <span>允许传参</span>
+                        <span class="xb-assistant-checkbox-control">
+                            <input id="xb-assistant-delegate-send-temperature" type="checkbox" />
+                        </span>
+                    </label>
+                </div>
                 <div class="xb-assistant-inline-input xb-assistant-model-row">
                     <label class="xb-assistant-grow">
                         <span>已拉取模型</span>
@@ -173,6 +185,18 @@ export function buildAgentSettingsPanelMarkup(options = {}) {
                 <span>Model</span>
                 <input id="xb-assistant-model" type="text" />
             </label>
+            <div class="xb-assistant-temperature-row">
+                <label>
+                    <span>温度</span>
+                    <input id="xb-assistant-temperature" type="number" min="0" max="2" step="0.05" />
+                </label>
+                <label class="xb-assistant-checkbox-row">
+                    <span>允许传参</span>
+                    <span class="xb-assistant-checkbox-control">
+                        <input id="xb-assistant-send-temperature" type="checkbox" />
+                    </span>
+                </label>
+            </div>
             <div class="xb-assistant-inline-input xb-assistant-model-row">
                 <label class="xb-assistant-grow">
                     <span>已拉取模型</span>

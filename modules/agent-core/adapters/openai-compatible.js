@@ -284,6 +284,19 @@ function hasReplayableToolCalls(message) {
     return Array.isArray(preserved?.tool_calls) && preserved.tool_calls.length > 0;
 }
 
+function getReplayableToolCalls(message = {}) {
+    const topLevelToolCalls = normalizeToolCallsForReplay(message?.tool_calls);
+    if (topLevelToolCalls.length) return topLevelToolCalls;
+    const preserved = normalizeOpenAICompatibleMessage(message);
+    const preservedToolCalls = normalizeToolCallsForReplay(preserved?.tool_calls);
+    if (preservedToolCalls.length) return preservedToolCalls;
+    return [];
+}
+
+function hasValidToolCalls(message = {}) {
+    return normalizeToolCallsForReplay(message?.tool_calls).length > 0;
+}
+
 function shouldPreserveAssistantReplayMessage(message, index, lastUserIndex) {
     if (message?.role !== 'assistant') return false;
     if (index <= lastUserIndex) return false;
@@ -414,10 +427,14 @@ export function buildNativeMessages(task, model = '') {
     const sourceMessages = Array.isArray(task.messages) ? task.messages : [];
     const lastUserIndex = getLastUserMessageIndex(sourceMessages);
     const normalizedMessages = sourceMessages.map((message, index) => {
+        const topLevelToolCalls = normalizeToolCallsForReplay(message?.tool_calls);
         if (shouldPreserveAssistantReplayMessage(message, index, lastUserIndex)) {
             const preserved = normalizeOpenAICompatibleMessage(message);
-            if (preserved) {
-                return ensureReasoningContentForToolCalls(preserved, model);
+            if (hasValidToolCalls(preserved)) {
+                return ensureReasoningContentForToolCalls({
+                    ...preserved,
+                    ...(topLevelToolCalls.length ? { tool_calls: topLevelToolCalls } : {}),
+                }, model);
             }
         }
 
@@ -430,11 +447,8 @@ export function buildNativeMessages(task, model = '') {
             baseMessage.tool_call_id = message.tool_call_id;
         }
 
-        if (message.role === 'assistant' && Array.isArray(message.tool_calls) && message.tool_calls.length) {
-            const normalizedToolCalls = normalizeToolCallsForReplay(message.tool_calls);
-            if (normalizedToolCalls.length) {
-                baseMessage.tool_calls = normalizedToolCalls;
-            }
+        if (message.role === 'assistant' && topLevelToolCalls.length) {
+            baseMessage.tool_calls = topLevelToolCalls;
         }
 
         return ensureReasoningContentForToolCalls(baseMessage, model);
@@ -465,45 +479,47 @@ export function buildTaggedMessages(task) {
     const toolNameById = new Map();
     const messages = [];
     const sourceMessages = Array.isArray(task.messages) ? task.messages : [];
-    const lastUserIndex = getLastUserMessageIndex(sourceMessages);
 
-    sourceMessages.forEach((message, index) => {
-        if (shouldPreserveAssistantReplayMessage(message, index, lastUserIndex)) {
-            const preserved = normalizeOpenAICompatibleMessage(message);
-            if (preserved) {
-                messages.push(preserved);
+    sourceMessages.forEach((message) => {
+        if (message.role === 'assistant') {
+            const toolCalls = getReplayableToolCalls(message);
+            if (toolCalls.length) {
+                const preserved = normalizeOpenAICompatibleMessage(message);
+                const content = typeof preserved?.content === 'string'
+                    ? preserved.content
+                    : String(message.content || '');
+                const taggedBlocks = toolCalls.map((toolCall, index) => {
+                    const toolName = toolCall.function?.name || '';
+                    const toolId = toolCall.id || `tool-call-${index + 1}`;
+                    if (toolName) {
+                        toolNameById.set(toolId, toolName);
+                    }
+                    return `<tool_call>${JSON.stringify({
+                        id: toolId,
+                        name: toolName,
+                        arguments: safeParseArguments(toolCall.function?.arguments || '{}'),
+                    })}</tool_call>`;
+                }).join('\n');
+
+                messages.push({
+                    role: 'assistant',
+                    content: [content, taggedBlocks].filter(Boolean).join('\n\n'),
+                });
                 return;
             }
         }
 
-        if (message.role === 'assistant' && Array.isArray(message.tool_calls) && message.tool_calls.length) {
-            const taggedBlocks = message.tool_calls.map((toolCall, index) => {
-                const toolName = toolCall.function?.name || '';
-                const toolId = toolCall.id || `tool-call-${index + 1}`;
-                if (toolName) {
-                    toolNameById.set(toolId, toolName);
-                }
-                return `<tool_call>${JSON.stringify({
-                    id: toolId,
-                    name: toolName,
-                    arguments: safeParseArguments(toolCall.function?.arguments || '{}'),
-                })}</tool_call>`;
-            }).join('\n');
-
-            messages.push({
-                role: 'assistant',
-                content: [message.content || '', taggedBlocks].filter(Boolean).join('\n\n'),
-            });
-            return;
-        }
-
         if (message.role === 'tool') {
-            const toolName = toolNameById.get(message.tool_call_id || '') || 'unknown_tool';
+            const toolName = String(message.toolName || message.tool_name || '').trim()
+                || toolNameById.get(message.tool_call_id || '')
+                || 'unknown_tool';
+            if (message.tool_call_id) toolNameById.delete(message.tool_call_id);
             const toolContent = String(message.content || '');
             messages.push({
                 role: 'user',
                 content: [
                     '<tool_result>',
+                    '这是系统工具执行结果，不是用户新发言。',
                     `name: ${toolName}`,
                     'content:',
                     toolContent,
