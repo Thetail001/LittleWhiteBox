@@ -1204,6 +1204,16 @@ function createAgentRenderUnit(key = '', signature = '', buildHtml = undefined) 
     };
 }
 
+function withAgentRenderUnitKey(html = '', key = '') {
+    const safeKey = escapeHtml(key);
+    const text = String(html || '');
+    if (!safeKey || /^\s*<[a-zA-Z][^>]*\sdata-agent-unit-key=/.test(text)) return text;
+    if (/^\s*<details\b/.test(text)) {
+        return text.replace(/(<summary\b(?![^>]*\sdata-agent-unit-key=)[^>]*)(>)/, `$1 data-agent-unit-key="${safeKey}"$2`);
+    }
+    return text.replace(/^(\s*<[a-zA-Z][^>]*?)(\s*\/?>)/, `$1 data-agent-unit-key="${safeKey}"$2`);
+}
+
 function getThoughtsSignature(message = {}) {
     const thoughts = Array.isArray(message.thoughts) ? message.thoughts : [];
     if (!thoughts.length) return 'thoughts:0';
@@ -1444,7 +1454,7 @@ export function collectAgentRenderUnits(state = {}) {
 }
 
 export function renderAgentMessages(state = {}) {
-    return collectAgentRenderUnits(state).map((unit) => unit.html).join('');
+    return collectAgentRenderUnits(state).map((unit) => withAgentRenderUnitKey(unit.html, unit.key)).join('');
 }
 
 export function countMessageWindowUnits(messages = []) {

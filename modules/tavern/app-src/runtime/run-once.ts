@@ -13,6 +13,7 @@ import {
     deleteTavernMessages,
     getTavernSession,
     listTavernMessages,
+    markTavernMemoryStaleFromOrder,
     mergeWorldEntryStates,
     normalizeTavernSessionState,
     replaceTavernSessionState,
@@ -23,7 +24,17 @@ import {
     type TavernSessionState,
 } from '../../shared/session-db';
 import { buildXbTavernBrain } from '../../shared/brain';
+import {
+    buildXbTavernMemoryIgnoredTerms,
+    buildXbTavernMemoryQuery,
+    retrieveXbTavernMemoryContext,
+} from '../../shared/memory-retrieval';
 import { createXbTavernAgentRuntime } from './agent-runtime';
+import {
+    scheduleXbTavernManagerAfterTurn,
+    type XbTavernManagerOnceOptions,
+    type XbTavernManagerOnceResult,
+} from './manager';
 import { assertXbTavernProviderReady, resolveXbTavernProviderConfig } from './provider';
 
 export interface TavernRunOnceOptions {
@@ -73,8 +84,12 @@ export interface XbTavernRunTurnInput {
     onStreamProgress?: (snapshot: { text?: string; thoughts?: Array<{ label?: string; text?: string }> }) => void;
     onUserMessageSaved?: (sessionId: string, message: TavernMessageRecord) => void | Promise<void>;
     onAssistantMessageSaved?: (sessionId: string, message: TavernMessageRecord) => void | Promise<void>;
+    onManagerRunSaved?: (sessionId: string, managerRunId: string) => void | Promise<void>;
     reuseUserMessageOrder?: number;
+    awaitManager?: boolean;
+    runManager?: boolean;
     executeRunOnce?: (options: TavernRunOnceOptions) => Promise<TavernRunOnceResult>;
+    executeManagerOnce?: (options: XbTavernManagerOnceOptions) => Promise<XbTavernManagerOnceResult>;
 }
 
 export interface XbTavernRunResult {
@@ -90,6 +105,8 @@ export interface XbTavernRunResult {
     finishReason?: string;
     previewMatchesRequest: boolean;
     nextTurn: number;
+    managerRunId?: string;
+    managerStatus?: string;
     error?: string;
 }
 
@@ -284,6 +301,7 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
         ? sessionMessages.find((message) => message.order === reusedOrder && message.role === 'user' && !message.error) || null
         : null;
     if (reusedUserMessage) {
+        await markTavernMemoryStaleFromOrder(baseSession.id, reusedUserMessage.order);
         await deleteTavernMessages(
             baseSession.id,
             sessionMessages
@@ -310,6 +328,7 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
         ...lockedContext,
         history: buildContextHistory(historyMessages),
     };
+    const memoryQuery = buildXbTavernMemoryQuery(contextForBuild, currentUserMessage);
     const brain = buildXbTavernBrain({
         context: contextForBuild,
         preset: input.preset,
@@ -317,6 +336,11 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
         historyMode: input.historyMode || 'squash',
         turn: sessionState.turn,
         entryStates: sessionState.worldEntryStates,
+        memoryContext: await retrieveXbTavernMemoryContext({
+            sessionId: baseSession.id,
+            queryText: memoryQuery,
+            ignoredTerms: buildXbTavernMemoryIgnoredTerms(contextForBuild),
+        }),
         diagnostics: input.diagnostics || {},
     });
     const { buildResult, buildSnapshot } = brain;
@@ -383,6 +407,24 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
         }, {
             replace: shouldReplaceSessionState,
         });
+        let managerRunId = '';
+        let managerStatus = '';
+        if (input.runManager === true && !assistantMessage.error) {
+            const manager = await scheduleXbTavernManagerAfterTurn({
+                sessionId: session.id,
+                agentConfig: input.agentConfig,
+                userMessage,
+                assistantMessage,
+                turn: nextTurn,
+                awaitCompletion: input.awaitManager === true,
+                executeManagerOnce: input.executeManagerOnce,
+                onManagerRunSaved: async (run) => {
+                    await notifyRunCallback(() => input.onManagerRunSaved?.(session.id, run.id));
+                },
+            });
+            managerRunId = manager.managerRunId;
+            managerStatus = manager.managerStatus;
+        }
         return {
             sessionId: session.id,
             userMessage,
@@ -395,6 +437,8 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
             finishReason: result.finishReason,
             previewMatchesRequest: buildResult.meta.rawMessagesJson === result.requestSnapshot.rawMessagesJson,
             nextTurn,
+            managerRunId,
+            managerStatus,
         };
     } catch (error) {
         const aborted = isAbortLikeError(error, input.signal);
@@ -427,6 +471,24 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
             }, {
                 replace: shouldReplaceSessionState,
             });
+            let managerRunId = '';
+            let managerStatus = '';
+            if (input.runManager === true) {
+                const manager = await scheduleXbTavernManagerAfterTurn({
+                    sessionId: session.id,
+                    agentConfig: input.agentConfig,
+                    userMessage,
+                    assistantMessage: errorMessage,
+                    turn: nextTurn,
+                    awaitCompletion: input.awaitManager === true,
+                    executeManagerOnce: input.executeManagerOnce,
+                    onManagerRunSaved: async (run) => {
+                        await notifyRunCallback(() => input.onManagerRunSaved?.(session.id, run.id));
+                    },
+                });
+                managerRunId = manager.managerRunId;
+                managerStatus = manager.managerStatus;
+            }
             return {
                 sessionId: session.id,
                 userMessage,
@@ -439,6 +501,8 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
                 finishReason: 'aborted',
                 previewMatchesRequest: buildResult.meta.rawMessagesJson === requestSnapshot.rawMessagesJson,
                 nextTurn,
+                managerRunId,
+                managerStatus,
             };
         }
         const errorText = error instanceof Error ? error.message : String(error || 'run_failed');

@@ -64,3 +64,40 @@ test('xb tavern brain world setting helper normalizes state defaults', () => {
         'World\u0000entry': { cooldownUntilTurn: 4 },
     });
 });
+
+test('xb tavern brain injects memory without moving locked top prompts', () => {
+    const preset = createDefaultXbTavernPreset();
+    const brain = buildXbTavernBrain({
+        context: {
+            character: { id: 'char-1', name: 'Aster' },
+            history: [{ role: 'assistant', content: 'Old reply.' }],
+        },
+        preset,
+        currentUserMessage: 'Continue.',
+        memoryContext: {
+            episodeSummaries: [{
+                id: 'episode-1',
+                title: '初遇',
+                summary: '双方完成试探。',
+                startTurn: 1,
+                endTurn: 3,
+                keyChanges: ['信任增加'],
+            }],
+            turnSummaries: [{
+                id: 'turn-3',
+                turn: 3,
+                userOrder: 4,
+                assistantOrder: 5,
+                summary: 'Aster 接受了邀请。',
+                tags: ['邀请'],
+            }],
+        },
+    });
+
+    assert.equal(brain.buildResult.messageLayers[0]?.layer, 'lwb-system');
+    assert.equal(brain.buildResult.messageLayers[1]?.layer, 'lwb-tool');
+    const memoryLayer = brain.buildResult.messageLayers.find((layer) => layer.layer === 'memory');
+    assert.ok(memoryLayer);
+    assert.match(brain.buildResult.messages[memoryLayer.index]?.content || '', /<session_memory>/);
+    assert.match(brain.rawMessagesJson, /Aster 接受了邀请/);
+});

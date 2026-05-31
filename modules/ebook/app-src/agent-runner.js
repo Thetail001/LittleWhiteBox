@@ -496,8 +496,7 @@ export function createEbookAgentRunner(deps = {}) {
         const taskText = String(userText || '').trim();
         if (!taskText || state.isBusy || !state.book) return;
         const appendUserMessage = options.appendUserMessage !== false;
-        const runBook = { ...state.book };
-        const runBookId = runBook.id;
+        const initialBookId = state.book.id;
         state.isBusy = true;
         state.status = 'AI 正在阅读作品...';
         state.agentAutoScroll = true;
@@ -514,6 +513,31 @@ export function createEbookAgentRunner(deps = {}) {
         }
         state.activeTurnStartIndex = findLastUserMessageIndex(state.messages);
         render();
+        try {
+            if (isEditorDirty() && state.selectedPath) {
+                await upsertBookFile(initialBookId, state.selectedPath, state.editorContent);
+            }
+            await refreshBooksAndFiles();
+        } catch (error) {
+            state.isBusy = false;
+            state.status = '就绪';
+            state.messages.push({
+                role: 'assistant',
+                content: `AI 操作失败：${error?.message || error}`,
+                error: true,
+            });
+            await persistConversation?.(initialBookId);
+            render();
+            return;
+        }
+        if (!state.book) {
+            state.isBusy = false;
+            state.status = '就绪';
+            render();
+            return;
+        }
+        const runBook = { ...state.book };
+        const runBookId = runBook.id;
         await persistConversation?.(runBookId);
 
         const controller = new AbortController();
@@ -557,10 +581,6 @@ export function createEbookAgentRunner(deps = {}) {
 
         try {
             const adapter = createAdapter(providerConfig);
-            if (isEditorDirty() && state.selectedPath) {
-                await upsertBookFile(runBookId, state.selectedPath, state.editorContent);
-                await refreshBooksAndFiles();
-            }
             const runtime = createBookToolRuntime({
                 getBookId: () => runBookId,
                 onFilesChanged: refreshBooksAndFiles,

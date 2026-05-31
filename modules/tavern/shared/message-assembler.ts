@@ -154,8 +154,38 @@ export interface XbTavernRuntimeState {
     squashRole?: XbTavernRole;
     worldScanText?: string;
     worldSettings?: XbTavernWorldSettings;
+    memoryContext?: XbTavernMemoryContext;
     turn?: number;
     entryStates?: Record<string, XbTavernWorldEntryState>;
+}
+
+export interface XbTavernMemoryContext {
+    episodeSummaries?: XbTavernMemoryEpisodeSummary[];
+    turnSummaries?: XbTavernMemoryTurnSummary[];
+}
+
+export interface XbTavernMemoryEpisodeSummary {
+    id?: string;
+    title?: string;
+    summary?: string;
+    startTurn?: number;
+    endTurn?: number;
+    keyChanges?: string[];
+    unresolved?: string[];
+}
+
+export interface XbTavernMemoryTurnSummary {
+    id?: string;
+    turn?: number;
+    summary?: string;
+    episodeId?: string;
+    userOrder?: number;
+    assistantOrder?: number;
+    characterState?: string;
+    relationshipChange?: string;
+    locationTimeItems?: string;
+    hooks?: string[];
+    tags?: string[];
 }
 
 export interface XbTavernWorldEntryState {
@@ -871,6 +901,63 @@ function buildCharacterBlock(character: XbTavernCharacter = {}, user: XbTavernUs
     return fields.length ? `<character_card>\n${fields.join('\n\n')}\n</character_card>` : '';
 }
 
+function formatMemoryList(items: unknown[] = []): string {
+    return items.map((item) => normalizeText(item)).filter(Boolean).map((item) => `- ${item}`).join('\n');
+}
+
+function buildMemoryBlock(memoryContext: XbTavernMemoryContext = {}): string {
+    const episodes = Array.isArray(memoryContext.episodeSummaries) ? memoryContext.episodeSummaries : [];
+    const turns = Array.isArray(memoryContext.turnSummaries) ? memoryContext.turnSummaries : [];
+    const sections: string[] = [];
+
+    const episodeLines = episodes
+        .map((episode) => {
+            const title = normalizeText(episode.title) || '未命名阶段';
+            const range = Number.isFinite(Number(episode.startTurn)) || Number.isFinite(Number(episode.endTurn))
+                ? `turn ${Number(episode.startTurn) || 0}-${Number(episode.endTurn) || 0}`
+                : '';
+            const summary = normalizeText(episode.summary);
+            const keyChanges = formatMemoryList(episode.keyChanges || []);
+            const unresolved = formatMemoryList(episode.unresolved || []);
+            return [
+                `### ${title}${range ? ` (${range})` : ''}`,
+                summary,
+                keyChanges ? `关键变化：\n${keyChanges}` : '',
+                unresolved ? `未解决：\n${unresolved}` : '',
+            ].filter(Boolean).join('\n');
+        })
+        .filter(Boolean);
+    if (episodeLines.length) {
+        sections.push(`## 阶段大总结\n${episodeLines.join('\n\n')}`);
+    }
+
+    const turnLines = turns
+        .map((turn) => {
+            const source = [
+                Number.isFinite(Number(turn.turn)) ? `turn ${Number(turn.turn)}` : '',
+                Number.isFinite(Number(turn.userOrder)) && Number.isFinite(Number(turn.assistantOrder))
+                    ? `messages ${Number(turn.userOrder)}/${Number(turn.assistantOrder)}`
+                    : '',
+            ].filter(Boolean).join(' · ');
+            const tags = (turn.tags || []).map((tag) => normalizeText(tag)).filter(Boolean).join('、');
+            const summary = normalizeText(turn.summary);
+            if (!summary) {return '';}
+            const details = [
+                turn.characterState ? `人物状态：${normalizeText(turn.characterState)}` : '',
+                turn.relationshipChange ? `关系变化：${normalizeText(turn.relationshipChange)}` : '',
+                turn.locationTimeItems ? `时地物：${normalizeText(turn.locationTimeItems)}` : '',
+                turn.hooks?.length ? `钩子：${turn.hooks.map((hook) => normalizeText(hook)).filter(Boolean).join('、')}` : '',
+            ].filter(Boolean).join('；');
+            return `- ${source ? `${source}: ` : ''}${summary}${details ? `（${details}）` : ''}${tags ? ` [${tags}]` : ''}`;
+        })
+        .filter(Boolean);
+    if (turnLines.length) {
+        sections.push(`## 每轮小总结\n${turnLines.join('\n')}`);
+    }
+
+    return sections.length ? `<session_memory>\n${sections.join('\n\n')}\n</session_memory>` : '';
+}
+
 function normalizePresetSections(preset: XbTavernPreset = {}): NormalizedPresetSection[] {
     const source = Array.isArray(preset.sections) ? preset.sections : [];
     const sections = source.map((section) => ({
@@ -1069,6 +1156,7 @@ export function buildXbTavernMessages(
     const history = context.history || [];
     const currentUserMessage = runtimeState.currentUserMessage || '';
     const historyMode = runtimeState.historyMode || 'squash';
+    const memoryContext = runtimeState.memoryContext || {};
     const presetSections = normalizePresetSections(preset);
     const scanText = runtimeState.worldScanText || buildScanText(context, currentUserMessage);
     const worldSettings = {
@@ -1123,6 +1211,7 @@ export function buildXbTavernMessages(
         makeMessageUnit('system', renderEntryBlock('world_info_examples_top', worldBuckets.examplesTop), 'world-examples', 'world info examples top'),
         makeMessageUnit('system', renderEntryBlock('world_info_author_note_top', worldBuckets.authorNoteTop), 'world-author-note', 'world info author note top'),
         ...beforeHistorySections,
+        makeMessageUnit('system', buildMemoryBlock(memoryContext), 'memory', 'session memory'),
         ...conversationUnits,
         ...afterHistorySections,
         makeMessageUnit('system', renderEntryBlock('world_info_author_note_bottom', worldBuckets.authorNoteBottom), 'world-author-note', 'world info author note bottom'),

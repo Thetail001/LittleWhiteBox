@@ -1,3 +1,58 @@
+function isEscapedBackslash(text = '', index = 0) {
+    let count = 0;
+    for (let cursor = index - 1; cursor >= 0 && text[cursor] === '\\'; cursor -= 1) {
+        count += 1;
+    }
+    return count % 2 === 1;
+}
+
+function isHex4(value = '') {
+    return /^[0-9a-fA-F]{4}$/.test(value);
+}
+
+function isHighSurrogateHex(value = '') {
+    return /^[dD][89a-bA-B][0-9a-fA-F]{2}$/.test(value);
+}
+
+function isLowSurrogateHex(value = '') {
+    return /^[dD][c-fC-F][0-9a-fA-F]{2}$/.test(value);
+}
+
+function decodeLooseUnicodeEscapes(value = '') {
+    const text = String(value ?? '');
+    let decoded = '';
+    let index = 0;
+    while (index < text.length) {
+        const marker = text.slice(index, index + 2);
+        const hex = text.slice(index + 2, index + 6);
+        if (marker !== '\\u' || isEscapedBackslash(text, index) || !isHex4(hex)) {
+            decoded += text[index] || '';
+            index += 1;
+            continue;
+        }
+
+        const nextMarkerIndex = index + 6;
+        const lowHex = text.slice(nextMarkerIndex + 2, nextMarkerIndex + 6);
+        if (
+            isHighSurrogateHex(hex)
+            && text.slice(nextMarkerIndex, nextMarkerIndex + 2) === '\\u'
+            && !isEscapedBackslash(text, nextMarkerIndex)
+            && isLowSurrogateHex(lowHex)
+        ) {
+            const highCode = Number.parseInt(hex, 16);
+            const lowCode = Number.parseInt(lowHex, 16);
+            const codePoint = 0x10000 + ((highCode - 0xD800) << 10) + (lowCode - 0xDC00);
+            decoded += String.fromCodePoint(codePoint);
+            index += 12;
+            continue;
+        }
+
+        decoded += String.fromCharCode(Number.parseInt(hex, 16));
+        index += 6;
+    }
+    return decoded;
+}
+
 function stripLooseJsonValue(value = '') {
     let text = String(value ?? '').trim();
     if (text.endsWith(',')) text = text.slice(0, -1).trimEnd();
@@ -5,13 +60,13 @@ function stripLooseJsonValue(value = '') {
     if (text.endsWith('\\"')) text = text.slice(0, -2);
     if (text.startsWith('"')) text = text.slice(1);
     if (text.endsWith('"')) text = text.slice(0, -1);
-    return text
+    const decodedText = text
         .replace(/\r\n/g, '\n')
         .replace(/\\r/g, '\r')
         .replace(/\\n/g, '\n')
         .replace(/\\t/g, '\t')
-        .replace(/\\"/g, '"')
-        .replace(/\\\\/g, '\\');
+        .replace(/\\"/g, '"');
+    return decodeLooseUnicodeEscapes(decodedText).replace(/\\\\/g, '\\');
 }
 
 function escapeRegExp(value = '') {
@@ -19,15 +74,16 @@ function escapeRegExp(value = '') {
 }
 
 export function findLooseKeyMatch(text = '', key = '', fromIndex = 0) {
-    const pattern = new RegExp(`(?<![A-Za-z0-9_])(?:\\\\?")?${escapeRegExp(key)}(?:\\\\?")?\\s*:`, 'i');
+    const pattern = new RegExp(`(^|[^A-Za-z0-9_])(?:\\\\?")?${escapeRegExp(key)}(?:\\\\?")?\\s*:`, 'i');
     const slice = String(text || '').slice(Math.max(0, fromIndex));
     const match = slice.match(pattern);
     if (!match || match.index === undefined) return null;
-    const index = Math.max(0, fromIndex) + match.index;
+    const prefixLength = match[1]?.length || 0;
+    const index = Math.max(0, fromIndex) + match.index + prefixLength;
     return {
         key,
         index,
-        end: index + match[0].length,
+        end: Math.max(0, fromIndex) + match.index + match[0].length,
     };
 }
 
@@ -65,7 +121,7 @@ function parseLoosePrimitive(value = '') {
     if (/^true$/i.test(text)) return true;
     if (/^false$/i.test(text)) return false;
     if (/^null$/i.test(text)) return null;
-    return stripLooseJsonValue(text);
+    return text;
 }
 
 const LOOSE_ARGUMENT_KEYS_BY_TOOL = {

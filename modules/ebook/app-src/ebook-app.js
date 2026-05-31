@@ -41,10 +41,25 @@ export function captureScrollState(root, selector) {
     const node = root?.querySelector?.(selector);
     if (!node) return null;
     const distanceToBottom = node.scrollHeight - node.scrollTop - node.clientHeight;
+    const containerRect = typeof node.getBoundingClientRect === 'function'
+        ? node.getBoundingClientRect()
+        : null;
+    const anchor = containerRect && selector === '.xb-agent-main'
+        ? Array.from(node.querySelectorAll?.('[data-agent-unit-key]') || [])
+            .map((item) => ({
+                key: item?.dataset?.agentUnitKey || '',
+                rect: typeof item?.getBoundingClientRect === 'function'
+                    ? item.getBoundingClientRect()
+                    : null,
+            }))
+            .find((item) => item.key && item.rect && item.rect.bottom >= containerRect.top + 1)
+        : null;
     return {
         selector,
         scrollTop: node.scrollTop,
         nearBottom: distanceToBottom < 80,
+        anchorKey: anchor?.key || '',
+        anchorTopOffset: anchor?.rect ? anchor.rect.top - containerRect.top : 0,
     };
 }
 
@@ -68,6 +83,23 @@ export function restoreScrollState(root, snapshot, defaultSelector = null, optio
             ? options.overrideScrollTop
             : snapshot.scrollTop;
         node.scrollTop = Math.min(Math.max(0, top), node.scrollHeight);
+        if (snapshot.anchorKey) {
+            const containerRect = typeof node.getBoundingClientRect === 'function'
+                ? node.getBoundingClientRect()
+                : null;
+            const anchorNode = Array.from(node.querySelectorAll?.('[data-agent-unit-key]') || [])
+                .find((item) => item?.dataset?.agentUnitKey === snapshot.anchorKey);
+            const anchorRect = typeof anchorNode?.getBoundingClientRect === 'function'
+                ? anchorNode.getBoundingClientRect()
+                : null;
+            if (containerRect && anchorRect) {
+                const nextOffset = anchorRect.top - containerRect.top;
+                node.scrollTop = Math.min(
+                    Math.max(0, node.scrollTop + nextOffset - Number(snapshot.anchorTopOffset || 0)),
+                    node.scrollHeight,
+                );
+            }
+        }
         return;
     }
     node.scrollTop = snapshot.nearBottom
@@ -112,6 +144,9 @@ function applyAgentRenderUnits(container, previousUnits = [], unitSpecs = [], en
         }
         if (!canReuseNode && node?.nodeType === (globalThis.Node?.ELEMENT_NODE || 1)) {
             enhanceNode(node);
+        }
+        if (node?.nodeType === (globalThis.Node?.ELEMENT_NODE || 1)) {
+            node.dataset.agentUnitKey = unit.key;
         }
 
         nextUnits.push({

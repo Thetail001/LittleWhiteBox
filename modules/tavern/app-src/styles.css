@@ -278,8 +278,21 @@ textarea:disabled {
 
 .tavern-chat {
     display: grid;
-    grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+    grid-template-columns: minmax(260px, 320px) minmax(0, 1fr) minmax(300px, 380px);
     overflow: hidden;
+}
+
+.tavern-chat.chat-focus-chat {
+    grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+}
+
+.tavern-chat.chat-focus-manager {
+    grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+}
+
+.tavern-chat.chat-focus-chat .chat-manager,
+.tavern-chat.chat-focus-manager .chat-main {
+    display: none;
 }
 
 .chat-side {
@@ -334,6 +347,25 @@ textarea:disabled {
 .chat-lock-note {
     border-bottom: 1px solid var(--xb-line);
     padding-bottom: 16px;
+}
+
+.chat-workspace-switch {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+}
+
+.chat-workspace-switch button {
+    min-height: 32px;
+    border-radius: 999px;
+    padding: 5px 8px;
+    font-size: 12px;
+}
+
+.chat-workspace-switch button.active {
+    border-color: rgba(143, 183, 202, 0.48);
+    background: rgba(143, 183, 202, 0.14);
+    color: var(--xb-cyan);
 }
 
 .side-stat {
@@ -394,6 +426,33 @@ textarea:disabled {
     justify-self: start;
 }
 
+.chat-map-panel {
+    display: grid;
+    gap: 10px;
+    border-bottom: 1px solid var(--xb-line);
+    padding-bottom: 16px;
+}
+
+.chat-map-panel strong {
+    color: var(--xb-text-main);
+    font-size: 13px;
+}
+
+.map-placeholder {
+    display: grid;
+    place-items: center;
+    min-height: 132px;
+    border: 1px solid var(--xb-line);
+    border-radius: 8px;
+    background:
+        linear-gradient(90deg, rgba(143, 183, 202, 0.07) 1px, transparent 1px),
+        linear-gradient(180deg, rgba(143, 183, 202, 0.07) 1px, transparent 1px),
+        rgba(255, 255, 255, 0.026);
+    background-size: 24px 24px;
+    color: var(--xb-text-muted);
+    font-size: 12px;
+}
+
 .trigger-list {
     display: grid;
     gap: 8px;
@@ -432,6 +491,139 @@ textarea:disabled {
     display: grid;
     grid-template-rows: auto minmax(0, 1fr) auto;
     background: var(--xb-bg-editor);
+}
+
+.chat-manager {
+    min-width: 0;
+    min-height: 0;
+    overflow: auto;
+    border-left: 1px solid var(--xb-line);
+    background:
+        linear-gradient(180deg, rgba(32, 35, 45, 0.90), rgba(28, 31, 42, 0.98)),
+        var(--xb-bg-agent);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.manager-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    border-bottom: 1px solid var(--xb-line);
+    padding-bottom: 16px;
+}
+
+.manager-head h2 {
+    margin: 2px 0 6px;
+    color: var(--xb-text-main);
+    font: 650 22px/1.18 var(--xb-font-serif);
+}
+
+.manager-head p {
+    margin: 0;
+    color: var(--xb-text-muted);
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.manager-head button {
+    min-height: 30px;
+    border-radius: 999px;
+    padding: 5px 10px;
+    font-size: 12px;
+}
+
+.manager-section {
+    display: grid;
+    gap: 10px;
+    border-bottom: 1px solid var(--xb-line);
+    padding-bottom: 16px;
+}
+
+.manager-section:last-child {
+    border-bottom: 0;
+}
+
+.manager-section .side-block-head span {
+    color: var(--xb-text-muted);
+    font-size: 12px;
+}
+
+.manager-card {
+    display: grid;
+    gap: 6px;
+    border: 1px solid var(--xb-line);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.035);
+    padding: 10px 11px;
+}
+
+.manager-card.is-failed {
+    border-color: rgba(216, 132, 144, 0.34);
+    background: rgba(216, 132, 144, 0.07);
+}
+
+.manager-card.is-running,
+.manager-card.is-queued {
+    border-color: rgba(143, 183, 202, 0.34);
+}
+
+.manager-card strong {
+    color: var(--xb-text-main);
+    font-size: 13px;
+}
+
+.manager-card small {
+    color: var(--xb-text-muted);
+    font-size: 11px;
+}
+
+.manager-card p {
+    margin: 0;
+    color: var(--xb-text-body);
+    font-size: 12px;
+    line-height: 1.55;
+    overflow-wrap: anywhere;
+}
+
+.manager-card details {
+    color: var(--xb-text-muted);
+    font-size: 12px;
+}
+
+.manager-card summary {
+    cursor: pointer;
+}
+
+.manager-card pre {
+    max-height: 220px;
+    overflow: auto;
+    margin: 6px 0 0;
+    border: 1px solid var(--xb-line);
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.18);
+    color: var(--xb-text-body);
+    padding: 8px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.manager-card button {
+    justify-self: start;
+    min-height: 28px;
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 12px;
+}
+
+.manager-run-title {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
 }
 
 .chat-head {
@@ -2290,6 +2482,23 @@ pre {
 
     .chat-main {
         min-height: 66vh;
+    }
+
+    .chat-manager {
+        min-height: 66vh;
+        border-left: 0;
+        border-top: 1px solid var(--xb-line);
+    }
+
+    .tavern-chat.chat-focus-chat .chat-manager,
+    .tavern-chat.chat-focus-chat .chat-side,
+    .tavern-chat.chat-focus-manager .chat-main,
+    .tavern-chat.chat-focus-manager .chat-side {
+        display: none;
+    }
+
+    .tavern-chat.chat-focus-balanced .chat-manager {
+        display: none;
     }
 
     .chat-compose {

@@ -3,6 +3,7 @@ import {
     createXbTavernBuildSnapshot,
     type XbTavernBuildSnapshot,
     type XbTavernContext,
+    type XbTavernMemoryContext,
     type XbTavernMessageBuildResult,
     type XbTavernPreset,
     type XbTavernRuntimeState,
@@ -23,6 +24,7 @@ export interface XbTavernBrainBuildInput {
     historyMode?: XbTavernRuntimeState['historyMode'];
     turn?: number;
     entryStates?: Record<string, XbTavernWorldEntryState>;
+    memoryContext?: XbTavernMemoryContext;
     diagnostics?: unknown;
 }
 
@@ -52,6 +54,7 @@ export function createXbTavernRuntimeState(input: XbTavernBrainBuildInput): XbTa
             turn: input.turn,
             entryStates: input.entryStates,
         }),
+        memoryContext: input.memoryContext,
     };
 }
 

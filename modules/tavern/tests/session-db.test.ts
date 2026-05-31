@@ -10,8 +10,12 @@ import db, {
     getActiveTavernPresetId,
     getSelectedTavernSessionId,
     getTavernSession,
+    listTavernEpisodeSummaries,
+    listTavernManagerRuns,
     listUserTavernPresets,
     listTavernMessages,
+    listTavernTurnSummaries,
+    markTavernMemoryStaleFromOrder,
     loadActiveTavernPreset,
     mergeWorldEntryStates,
     normalizeTavernSessionState,
@@ -19,10 +23,18 @@ import db, {
     saveTavernPreset,
     setActiveTavernPresetId,
     updateTavernMessage,
+    updateTavernManagerRun,
     updateTavernSessionState,
+    upsertTavernEpisodeSummary,
+    upsertTavernTurnSummary,
+    createTavernManagerRun,
 } from '../shared/session-db';
 import { DEFAULT_XB_TAVERN_PRESET_ID, createDefaultXbTavernPreset } from '../shared/presets';
 import { buildXbTavernMessages, createXbTavernBuildSnapshot } from '../shared/message-assembler';
+import {
+    parseXbTavernManagerResult,
+    runXbTavernManagerAfterTurn,
+} from '../app-src/runtime/manager';
 
 test('tavern session db stores independent sessions and messages', async () => {
     await db.delete();
@@ -213,4 +225,208 @@ test('tavern session state stores turn and merges world entry states', async () 
         'Lore\u0000fresh': { stickyUntilTurn: 2 },
     });
     assert.equal(replaced?.state?.lastProvider, '');
+});
+
+test('tavern memory db stores turn summaries, episodes, and manager runs', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Memory' });
+    const turnSummary = await upsertTavernTurnSummary({
+        sessionId: session.id,
+        turn: 1,
+        userOrder: 0,
+        assistantOrder: 1,
+        summary: '两人确认了共同目标。',
+        hooks: ['下一步去码头'],
+        tags: ['目标'],
+    });
+    const episode = await upsertTavernEpisodeSummary({
+        sessionId: session.id,
+        title: '码头前夜',
+        summary: '阶段围绕出发前的试探。',
+        startTurn: 1,
+        endTurn: 1,
+        turnSummaryIds: [turnSummary.id],
+        keyChanges: ['关系缓和'],
+    });
+    const run = await createTavernManagerRun({
+        sessionId: session.id,
+        turn: 1,
+        userOrder: 0,
+        assistantOrder: 1,
+        status: 'queued',
+    });
+    await updateTavernManagerRun(run.id, {
+        status: 'completed',
+        parsedAction: 'create_new_episode',
+    });
+
+    assert.equal((await listTavernTurnSummaries(session.id))[0]?.episodeId, episode.id);
+    assert.equal((await listTavernEpisodeSummaries(session.id))[0]?.title, '码头前夜');
+    assert.equal((await listTavernManagerRuns(session.id))[0]?.status, 'completed');
+
+    assert.equal(await markTavernMemoryStaleFromOrder(session.id, 0), 1);
+    assert.equal((await listTavernTurnSummaries(session.id)).length, 0);
+    assert.equal((await listTavernTurnSummaries(session.id, { includeStale: true }))[0]?.status, 'stale');
+    assert.equal((await listTavernEpisodeSummaries(session.id, { includeStale: true }))[0]?.status, 'stale');
+});
+
+test('tavern manager accepts older active summaries without accepting fake ids', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Bounded manager' });
+    const userMessage = await appendTavernMessage(session.id, { role: 'user', content: '去码头。' });
+    const assistantMessage = await appendTavernMessage(session.id, { role: 'assistant', content: '她答应了。' });
+    const summaries: Array<Awaited<ReturnType<typeof upsertTavernTurnSummary>>> = [];
+    for (let index = 0; index < 6; index += 1) {
+        summaries.push(await upsertTavernTurnSummary({
+            sessionId: session.id,
+            turn: index + 1,
+            userOrder: 10 + index * 2,
+            assistantOrder: 11 + index * 2,
+            summary: `第 ${index + 1} 条摘要。`,
+        }));
+    }
+
+    await runXbTavernManagerAfterTurn({
+        sessionId: session.id,
+        agentConfig: {},
+        userMessage,
+        assistantMessage,
+        turn: 7,
+        recentTurnSummaries: summaries,
+        recentEpisodeSummaries: [],
+        executeManagerOnce: async () => ({
+            text: JSON.stringify({
+                turnSummary: {
+                    summary: '本轮决定去码头。',
+                },
+                episodeDecision: {
+                    action: 'create_new_episode',
+                    title: '码头',
+                    summary: '最近几轮开始转向码头。',
+                    turnSummaryIds: [summaries[0]?.id, summaries[5]?.id, 'not-real'],
+                },
+            }),
+        }),
+    });
+
+    const episodes = await listTavernEpisodeSummaries(session.id);
+    assert.equal(episodes.length, 1);
+    assert.equal(episodes[0]?.turnSummaryIds.includes(summaries[0]?.id || ''), true);
+    assert.equal(episodes[0]?.turnSummaryIds.includes(summaries[5]?.id || ''), true);
+    assert.equal(episodes[0]?.turnSummaryIds.includes('not-real'), false);
+});
+
+test('tavern manager refuses to write memory when source messages changed', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Stale source' });
+    const userMessage = await appendTavernMessage(session.id, { role: 'user', content: '原句。' });
+    const assistantMessage = await appendTavernMessage(session.id, { role: 'assistant', content: '原回复。' });
+    await updateTavernMessage(session.id, assistantMessage.order, { content: '新回复。' });
+
+    const result = await runXbTavernManagerAfterTurn({
+        sessionId: session.id,
+        agentConfig: {},
+        userMessage,
+        assistantMessage,
+        turn: 1,
+        executeManagerOnce: async () => ({
+            text: JSON.stringify({
+                turnSummary: { summary: '不应该写入。' },
+            }),
+        }),
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.error, 'manager_source_messages_changed');
+    assert.equal((await listTavernTurnSummaries(session.id)).length, 0);
+    assert.equal((await listTavernManagerRuns(session.id))[0]?.status, 'failed');
+});
+
+test('tavern manager keeps raw output when JSON parsing fails', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Bad JSON' });
+    const userMessage = await appendTavernMessage(session.id, { role: 'user', content: '继续。' });
+    const assistantMessage = await appendTavernMessage(session.id, { role: 'assistant', content: '她继续。' });
+
+    const result = await runXbTavernManagerAfterTurn({
+        sessionId: session.id,
+        agentConfig: {},
+        userMessage,
+        assistantMessage,
+        turn: 1,
+        executeManagerOnce: async () => ({
+            provider: 'fake-manager',
+            model: 'memory-model',
+            text: '这不是 JSON',
+        }),
+    });
+
+    const runs = await listTavernManagerRuns(session.id);
+    assert.equal(result.ok, false);
+    assert.equal(runs[0]?.status, 'failed');
+    assert.equal(runs[0]?.outputText, '这不是 JSON');
+    assert.equal(runs[0]?.provider, 'fake-manager');
+    assert.equal(runs[0]?.model, 'memory-model');
+});
+
+test('tavern manager append does not create hallucinated episode ids', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Episode guard' });
+    const userMessage = await appendTavernMessage(session.id, { role: 'user', content: '继续码头线。' });
+    const assistantMessage = await appendTavernMessage(session.id, { role: 'assistant', content: '她看向码头。' });
+    const recentSummary = await upsertTavernTurnSummary({
+        sessionId: session.id,
+        turn: 1,
+        userOrder: 0,
+        assistantOrder: 1,
+        summary: '已有摘要。',
+    });
+    const existingEpisode = await upsertTavernEpisodeSummary({
+        sessionId: session.id,
+        title: '真实阶段',
+        summary: '已有阶段。',
+        startTurn: 1,
+        endTurn: 1,
+        turnSummaryIds: [recentSummary.id],
+    });
+
+    await runXbTavernManagerAfterTurn({
+        sessionId: session.id,
+        agentConfig: {},
+        userMessage,
+        assistantMessage,
+        turn: 2,
+        recentTurnSummaries: [recentSummary],
+        recentEpisodeSummaries: [existingEpisode],
+        executeManagerOnce: async () => ({
+            text: JSON.stringify({
+                turnSummary: { summary: '继续同一阶段。' },
+                episodeDecision: {
+                    action: 'append_to_existing',
+                    episodeId: 'episode-summary-not-real',
+                    title: '不该创建',
+                    summary: '不应创建新阶段。',
+                },
+            }),
+        }),
+    });
+
+    const episodes = await listTavernEpisodeSummaries(session.id);
+    assert.equal(episodes.length, 1);
+    assert.equal(episodes[0]?.id, existingEpisode.id);
+    assert.equal(episodes[0]?.title, '真实阶段');
+});
+
+test('tavern manager result parser requires a small summary', () => {
+    assert.throws(() => parseXbTavernManagerResult('{}'), /manager_turn_summary_required/);
 });

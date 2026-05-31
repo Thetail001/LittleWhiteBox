@@ -9,6 +9,11 @@ import {
     type XbTavernPresetSection,
 } from '../shared/message-assembler';
 import { buildXbTavernBrain } from '../shared/brain';
+import {
+    buildXbTavernMemoryIgnoredTerms,
+    buildXbTavernMemoryQuery,
+    selectXbTavernMemoryContext,
+} from '../shared/memory-retrieval';
 import { createDefaultXbTavernPreset, DEFAULT_XB_TAVERN_PRESET_ID } from '../shared/presets';
 import {
     createTavernSession,
@@ -16,10 +21,14 @@ import {
     deriveAndActivateDefaultTavernPreset,
     getActiveTavernPresetId,
     getSelectedTavernSessionId,
+    listTavernEpisodeSummaries,
+    listTavernManagerRuns,
     loadActiveTavernPreset,
     listTavernMessages,
     listTavernSessions,
+    listTavernTurnSummaries,
     listUserTavernPresets,
+    markTavernMemoryStaleFromOrder,
     normalizeTavernSessionState,
     replaceTavernSessionState,
     saveTavernPreset,
@@ -27,11 +36,15 @@ import {
     setSelectedTavernSessionId,
     updateTavernMessage,
     updateTavernSessionSnapshot,
+    type TavernEpisodeSummaryRecord,
+    type TavernManagerRunRecord,
     type TavernMessageRecord,
     type TavernPresetRecord,
     type TavernSessionRecord,
+    type TavernTurnSummaryRecord,
 } from '../shared/session-db';
 import { buildContextHistory, deriveTavernSessionStateFromMessages, runXbTavernTurn } from './runtime/run-once';
+import { runXbTavernManagerAfterTurn } from './runtime/manager';
 import { resolveXbTavernProviderConfig } from './runtime/provider';
 
 interface TavernDiagnostics {
@@ -74,14 +87,20 @@ const isRunning = ref(false);
 const sessions = ref<TavernSessionRecord[]>([]);
 const selectedSessionId = ref('');
 const sessionMessages = ref<TavernMessageRecord[]>([]);
+const turnSummaries = ref<TavernTurnSummaryRecord[]>([]);
+const episodeSummaries = ref<TavernEpisodeSummaryRecord[]>([]);
+const managerRuns = ref<TavernManagerRunRecord[]>([]);
+const managerActionStatus = ref('');
 const preset = ref(createDefaultXbTavernPreset());
 const userPresets = ref<TavernPresetRecord[]>([]);
 const activePresetId = ref(DEFAULT_XB_TAVERN_PRESET_ID);
 const presetStatus = ref('');
 const savedPresetJson = ref('');
 const selectedPresetSourceId = ref('');
-type AppView = 'home' | 'chat' | 'settings';
+type AppView = 'home' | 'chat' | 'inspect' | 'settings';
 type WorkspaceKey = 'snapshot' | 'world' | 'messages' | 'runtime' | 'api' | 'preset';
+type SettingsWorkspaceKey = 'api' | 'preset';
+type ChatFocus = 'chat' | 'balanced' | 'manager';
 interface BrainCheck {
     key: WorkspaceKey;
     label: string;
@@ -93,6 +112,8 @@ const presetDirty = computed(() => !presetIsBuiltIn.value && snapshotPreset(pres
 const selectedSession = computed(() => sessions.value.find((item) => item.id === selectedSessionId.value) || null);
 const sessionRuntimeState = computed(() => normalizeTavernSessionState(selectedSession.value?.state || {}));
 const activeView = ref<AppView>('home');
+const activeSettingsWorkspace = ref<SettingsWorkspaceKey>('api');
+const chatFocus = ref<ChatFocus>('balanced');
 const chatScrollRef = ref<HTMLElement | null>(null);
 const chatAutoScroll = ref(true);
 const showChatScrollTop = ref(false);
@@ -128,18 +149,18 @@ const contextSourceDetail = computed(() => usingLockedSessionContext.value
     : `正在使用酒馆最新读取资料：${context.value.character?.name || '未选择角色'} / 世界书 ${liveWorldBookCount.value} 本 ${liveWorldEntryCount.value} 条。`);
 const activeWorkspace = ref<WorkspaceKey>('snapshot');
 const workspaceTabs = [
-    { key: 'snapshot', label: '1 选角色', hint: '确认小白读的是哪张卡' },
-    { key: 'world', label: '2 看资料', hint: '看世界书和检查结果' },
-    { key: 'messages', label: '3 看发送内容', hint: '确认模型实际会收到什么' },
-    { key: 'runtime', label: '4 试聊一句', hint: '跑一轮验证脑子是否正常' },
+    { key: 'snapshot', label: '资料', hint: '角色卡和会话快照' },
+    { key: 'world', label: '世界书', hint: '读到的资料和命中条目' },
+    { key: 'messages', label: '发送内容', hint: '最终 messages' },
+    { key: 'runtime', label: '运行记录', hint: '试跑和 payload' },
 ] as const;
 const workspaceFallbackItems: Record<WorkspaceKey, { key: WorkspaceKey; label: string; hint: string }> = {
-    snapshot: { key: 'snapshot', label: '1 选角色', hint: '确认小白读的是哪张卡' },
-    world: { key: 'world', label: '2 看资料', hint: '看世界书和检查结果' },
-    messages: { key: 'messages', label: '3 看发送内容', hint: '确认模型实际会收到什么' },
-    runtime: { key: 'runtime', label: '4 试聊一句', hint: '跑一轮验证脑子是否正常' },
+    snapshot: { key: 'snapshot', label: '资料', hint: '角色卡和会话快照' },
+    world: { key: 'world', label: '世界书', hint: '读到的资料和命中条目' },
+    messages: { key: 'messages', label: '发送内容', hint: '最终 messages' },
+    runtime: { key: 'runtime', label: '运行记录', hint: '试跑和 payload' },
     api: { key: 'api', label: 'API 配置', hint: '使用小白助手和电纸书同一套模型预设' },
-    preset: { key: 'preset', label: '调整小白预设', hint: '修改第 3 步最终发送内容里使用的小白规则' },
+    preset: { key: 'preset', label: '小白预设', hint: '修改最终发送内容里使用的小白规则' },
 };
 const activeWorkspaceItem = computed(() => workspaceTabs.find((item) => item.key === activeWorkspace.value)
     || workspaceFallbackItems[activeWorkspace.value]);
@@ -150,6 +171,12 @@ const effectiveContext = computed<XbTavernContext>(() => ({
         ? buildContextHistory(sessionMessages.value)
         : context.value.history,
 }));
+const memoryContext = computed(() => selectXbTavernMemoryContext({
+    episodeSummaries: episodeSummaries.value,
+    turnSummaries: turnSummaries.value,
+    queryText: buildXbTavernMemoryQuery(effectiveContext.value, currentUserMessage.value),
+    ignoredTerms: buildXbTavernMemoryIgnoredTerms(effectiveContext.value),
+}));
 
 const brainBuild = computed(() => buildXbTavernBrain({
     context: effectiveContext.value,
@@ -158,6 +185,7 @@ const brainBuild = computed(() => buildXbTavernBrain({
     historyMode: historyMode.value,
     turn: sessionRuntimeState.value.turn,
     entryStates: sessionRuntimeState.value.worldEntryStates,
+    memoryContext: memoryContext.value,
     diagnostics: diagnostics.value,
 }));
 const buildResult = computed(() => brainBuild.value.buildResult);
@@ -188,6 +216,18 @@ const latestErrorMessage = computed(() => {
     const lastMessage = [...sessionMessages.value].sort((left, right) => left.order - right.order).at(-1);
     return lastMessage?.error ? lastMessage.content : '';
 });
+const latestManagerRun = computed(() => managerRuns.value[0] || null);
+const managerBusy = computed(() => managerRuns.value.some((run) => ['queued', 'running'].includes(run.status)));
+const recentTurnSummaries = computed(() => [...turnSummaries.value].reverse().slice(0, 8));
+const managerStatusLine = computed(() => {
+    if (managerActionStatus.value) {return managerActionStatus.value;}
+    const latest = latestManagerRun.value;
+    if (!latest) {return '暂无工作记录';}
+    if (latest.status === 'failed') {return `失败：${latest.error || 'manager_failed'}`;}
+    if (latest.status === 'completed') {return `最近完成：第 ${latest.turn} 轮`; }
+    if (latest.status === 'running') {return `正在整理：第 ${latest.turn} 轮`; }
+    return `排队中：第 ${latest.turn} 轮`;
+});
 const chatMarkdownSignature = computed(() => sessionMessages.value
     .map((message) => `${message.sessionId}:${message.order}:${message.error ? 1 : 0}:${markdownSignature(message.content)}`)
     .join('|'));
@@ -208,7 +248,7 @@ const apiRuntimeLine = computed(() => {
     return `共享预设「${config.currentPresetName || '默认'}」 · ${config.providerLabel} / ${config.model || '未选择模型'} · ${config.toolMode}`;
 });
 const chatTriggerSummary = computed(() => {
-    if (!currentUserMessage.value.trim()) {return '第 4 步填写试聊内容后，这里会预览世界书命中。';}
+    if (!currentUserMessage.value.trim()) {return '填写输入后，这里会预览世界书命中。';}
     if (!activatedCandidateRows.value.length) {return '这句暂时没有触发世界书。';}
     return `这句会带上 ${activatedCandidateRows.value.length} 条世界书。`;
 });
@@ -688,6 +728,16 @@ function refreshSelectedCharacter() {
     });
 }
 
+function openBrainCheck(check: BrainCheck) {
+    if (check.key === 'api') {
+        activeView.value = 'settings';
+        activeSettingsWorkspace.value = 'api';
+        return;
+    }
+    activeView.value = 'inspect';
+    activeWorkspace.value = check.key;
+}
+
 async function useLiveContextForPreview() {
     selectedSessionId.value = '';
     sessionMessages.value = [];
@@ -705,6 +755,26 @@ async function refreshSessions() {
         await setSelectedTavernSessionId(selectedSessionId.value);
     }
     sessionMessages.value = selectedSessionId.value ? await listTavernMessages(selectedSessionId.value) : [];
+    await refreshManagerRecords(selectedSessionId.value);
+}
+
+async function refreshManagerRecords(sessionId = selectedSessionId.value) {
+    const id = String(sessionId || '').trim();
+    if (!id) {
+        turnSummaries.value = [];
+        episodeSummaries.value = [];
+        managerRuns.value = [];
+        return;
+    }
+    const [turns, episodes, runs] = await Promise.all([
+        listTavernTurnSummaries(id),
+        listTavernEpisodeSummaries(id),
+        listTavernManagerRuns(id, { limit: 18 }),
+    ]);
+    if (id !== selectedSessionId.value) {return;}
+    turnSummaries.value = turns;
+    episodeSummaries.value = episodes.reverse();
+    managerRuns.value = runs;
 }
 
 async function rebuildSelectedSessionRuntimeState(messages: TavernMessageRecord[] = sessionMessages.value) {
@@ -779,6 +849,7 @@ async function selectSession(sessionId: string) {
     selectedSessionId.value = sessionId;
     await setSelectedTavernSessionId(sessionId);
     sessionMessages.value = await listTavernMessages(sessionId);
+    await refreshManagerRecords(sessionId);
     activeView.value = 'chat';
 }
 
@@ -800,6 +871,58 @@ function statusLabel(status = '') {
         probability_failed: '概率判定未带上',
     };
     return labels[status] || status || '未知';
+}
+
+function managerStatusLabel(status = '') {
+    const labels: Record<string, string> = {
+        queued: '排队',
+        running: '运行中',
+        completed: '完成',
+        failed: '失败',
+    };
+    return labels[status] || status || '未知';
+}
+
+function formatManagerSource(run: TavernManagerRunRecord) {
+    return `第 ${run.turn || 0} 轮 · ${run.userOrder}/${run.assistantOrder}`;
+}
+
+function formatSummarySource(summary: TavernTurnSummaryRecord) {
+    return `第 ${summary.turn || 0} 轮 · ${summary.userOrder}/${summary.assistantOrder}`;
+}
+
+function formatRunModelLine(run: TavernManagerRunRecord) {
+    const provider = String(run.provider || '').trim();
+    const model = String(run.model || '').trim();
+    return [provider, model].filter(Boolean).join(' / ') || '未记录模型';
+}
+
+async function retryManagerRun(run: TavernManagerRunRecord) {
+    if (!selectedSessionId.value || managerBusy.value) {return;}
+    const messages = await listTavernMessages(selectedSessionId.value);
+    const userMessage = messages.find((message) => message.order === run.userOrder && message.role === 'user');
+    const assistantMessage = messages.find((message) => message.order === run.assistantOrder && message.role === 'assistant' && !message.error);
+    if (!userMessage || !assistantMessage) {
+        managerActionStatus.value = '原文楼层不存在，无法重试。';
+        await refreshManagerRecords();
+        return;
+    }
+    managerActionStatus.value = '后台管理者正在重试。';
+    try {
+        const result = await runXbTavernManagerAfterTurn({
+            sessionId: selectedSessionId.value,
+            agentConfig: agentConfig.value,
+            userMessage,
+            assistantMessage,
+            turn: run.turn,
+            trigger: 'manual_retry',
+        });
+        managerActionStatus.value = result.ok ? '' : `失败：${result.error || 'manager_retry_failed'}`;
+    } catch (error) {
+        managerActionStatus.value = error instanceof Error ? error.message : String(error || 'manager_retry_failed');
+    } finally {
+        await refreshManagerRecords();
+    }
 }
 
 function candidateReason(entry: { status?: string; activationReason?: string; budgetShortfall?: number; budgetRemainingBefore?: number; matchedKeys?: string[]; matchedSecondaryKeys?: string[] }) {
@@ -1003,8 +1126,12 @@ async function saveEditMessage(message: TavernMessageRecord, options: { rerun?: 
         return;
     }
     const updated = await updateTavernMessage(message.sessionId, message.order, { content });
+    if (updated) {
+        await markTavernMemoryStaleFromOrder(message.sessionId, message.order);
+    }
     if (updated && selectedSessionId.value) {
         sessionMessages.value = await listTavernMessages(selectedSessionId.value);
+        await refreshManagerRecords(selectedSessionId.value);
     }
     cancelEditMessage();
     flashMessageAction(updated || message, 'edit', !!updated);
@@ -1032,8 +1159,12 @@ function findDeleteOrders(message: TavernMessageRecord) {
 async function deleteMessageTurn(message: TavernMessageRecord) {
     if (isRunning.value) {return;}
     const deleted = await deleteTavernMessages(message.sessionId, findDeleteOrders(message));
+    if (deleted > 0) {
+        await markTavernMemoryStaleFromOrder(message.sessionId, message.order);
+    }
     if (selectedSessionId.value) {
         sessionMessages.value = await listTavernMessages(selectedSessionId.value);
+        await refreshManagerRecords(selectedSessionId.value);
     }
     if (deleted > 0) {
         await rebuildSelectedSessionRuntimeState();
@@ -1059,8 +1190,10 @@ async function rerunFromMessage(message: TavernMessageRecord) {
         .filter((item) => item.order > userMessage.order)
         .map((item) => item.order);
     await deleteTavernMessages(userMessage.sessionId, ordersToDelete);
+    await markTavernMemoryStaleFromOrder(userMessage.sessionId, userMessage.order);
     if (selectedSessionId.value) {
         sessionMessages.value = await listTavernMessages(selectedSessionId.value);
+        await refreshManagerRecords(selectedSessionId.value);
     }
     flashMessageAction(message, 'rerun', true);
     await runOnce({
@@ -1237,6 +1370,7 @@ async function runOnce(options: { messageText?: string; reuseUserMessageOrder?: 
             historyMode: historyMode.value,
             signal: controller.signal,
             reuseUserMessageOrder: options.reuseUserMessageOrder,
+            runManager: true,
             onStreamProgress: (snapshot) => {
                 if (typeof snapshot.text === 'string') {runtimeText.value = snapshot.text;}
             },
@@ -1256,6 +1390,9 @@ async function runOnce(options: { messageText?: string; reuseUserMessageOrder?: 
                 await refreshSessions();
                 scrollChatToBottom(true);
             },
+            onManagerRunSaved: async (sessionId) => {
+                await refreshManagerRecords(sessionId);
+            },
         });
         selectedSessionId.value = result.sessionId;
         runtimeText.value = '';
@@ -1272,6 +1409,7 @@ async function runOnce(options: { messageText?: string; reuseUserMessageOrder?: 
             error: result.error || '',
         }, null, 2);
         await refreshSessions();
+        await refreshManagerRecords(result.sessionId);
         scrollChatToBottom(true);
     } catch (error) {
         runtimeError.value = error instanceof Error ? error.message : String(error || 'run_failed');
@@ -1301,11 +1439,12 @@ watch([
 
 watch([
     () => activeWorkspace.value,
+    () => activeSettingsWorkspace.value,
     () => activeView.value,
     () => apiConfigSave.value.status,
     () => agentConfig.value,
 ], () => {
-    if (activeView.value === 'settings' && activeWorkspace.value === 'api') {
+    if (activeView.value === 'settings' && activeSettingsWorkspace.value === 'api') {
         void nextTick(renderApiSettingsPanel);
     }
 });
@@ -1338,9 +1477,6 @@ onUnmounted(() => {
           LittleWhiteBox Tavern
         </p>
         <h1>小白酒馆</h1>
-        <p class="top-subtitle">
-          选角色，开会话，检查资料，然后进入独立聊天。
-        </p>
       </div>
       <nav
         class="view-tabs"
@@ -1359,6 +1495,13 @@ onUnmounted(() => {
           @click="activeView = 'chat'"
         >
           聊天
+        </button>
+        <button
+          type="button"
+          :class="{ active: activeView === 'inspect' }"
+          @click="activeView = 'inspect'"
+        >
+          检查
         </button>
         <button
           type="button"
@@ -1385,11 +1528,11 @@ onUnmounted(() => {
       <div class="home-hero">
         <div>
           <p class="eyebrow">
-            独立会话
+            首页
           </p>
-          <h2>{{ characterName }}</h2>
+          <h2>小白酒馆</h2>
           <p>
-            {{ contextSourceDetail }}
+            {{ characterName }} · {{ chatReadyLabel }}
           </p>
         </div>
         <div class="home-actions">
@@ -1402,82 +1545,41 @@ onUnmounted(() => {
           </button>
           <button
             type="button"
-            @click="refreshSelectedCharacter"
-          >
-            从酒馆重新读取
-          </button>
-          <button
-            v-if="usingLockedSessionContext"
-            type="button"
-            @click="useLiveContextForPreview"
-          >
-            改用刚读取资料
-          </button>
-        </div>
-      </div>
-
-      <div class="home-grid">
-        <article class="home-card">
-          <span>当前角色</span>
-          <strong>{{ characterName }}</strong>
-          <small>{{ userName }} · 历史 {{ effectiveHistoryCount }} 条</small>
-          <label
-            class="field-label"
-            for="xb-home-character-select"
-          >切换角色卡</label>
-          <select
-            id="xb-home-character-select"
-            v-model="selectedCharacterId"
-            @change="refreshSelectedCharacter"
-          >
-            <option
-              v-for="character in availableCharacters"
-              :key="character.id"
-              :value="character.id"
-            >
-              {{ character.name }}
-            </option>
-          </select>
-        </article>
-
-        <article class="home-card">
-          <span>资料状态</span>
-          <strong>{{ worldBookCount }} 本世界书</strong>
-          <small>{{ worldBookEntryRows.length }} 个条目 · 本次会带上 {{ activatedCount }} 条</small>
-          <button
-            type="button"
-            @click="activeView = 'settings'; activeWorkspace = 'world'"
-          >
-            查看资料
-          </button>
-        </article>
-
-        <article class="home-card">
-          <span>会话</span>
-          <strong>{{ chatReadyLabel }}</strong>
-          <small>{{ sessionMessagesForChat.length }} 条消息</small>
-          <button
-            type="button"
             @click="createSessionAndOpenChat"
           >
             新开会话
           </button>
-        </article>
-      </div>
-
-      <section class="session-board">
-        <div class="panel-head">
-          <div>
-            <h2>会话列表</h2>
-            <p class="muted compact">
-              选择一个会话后直接进入聊天页。
-            </p>
-          </div>
+          <button
+            type="button"
+            @click="activeView = 'inspect'; activeWorkspace = 'snapshot'"
+          >
+            选择角色
+          </button>
+          <button
+            type="button"
+            @click="activeView = 'inspect'; activeWorkspace = 'world'"
+          >
+            资料检查
+          </button>
           <button
             type="button"
             @click="activeView = 'settings'"
           >
             设置
+          </button>
+        </div>
+      </div>
+
+      <section class="session-board">
+        <div class="panel-head">
+          <div>
+            <h2>最近会话</h2>
+          </div>
+          <button
+            type="button"
+            @click="createSessionAndOpenChat"
+          >
+            新开会话
           </button>
         </div>
         <div class="home-session-list">
@@ -1504,6 +1606,7 @@ onUnmounted(() => {
     <section
       v-if="activeView === 'chat'"
       class="tavern-chat"
+      :class="`chat-focus-${chatFocus}`"
     >
       <aside class="chat-side">
         <section class="chat-profile">
@@ -1512,7 +1615,7 @@ onUnmounted(() => {
           </div>
           <div>
             <p class="eyebrow">
-              CHARACTER
+              角色
             </p>
             <h2>{{ characterName }}</h2>
             <p>{{ contextSourceTitle }}</p>
@@ -1520,17 +1623,50 @@ onUnmounted(() => {
         </section>
 
         <section class="chat-side-block">
+          <div class="chat-workspace-switch">
+            <button
+              type="button"
+              :class="{ active: chatFocus === 'chat' }"
+              @click="chatFocus = 'chat'"
+            >
+              聊天
+            </button>
+            <button
+              type="button"
+              :class="{ active: chatFocus === 'balanced' }"
+              @click="chatFocus = 'balanced'"
+            >
+              平衡
+            </button>
+            <button
+              type="button"
+              :class="{ active: chatFocus === 'manager' }"
+              @click="chatFocus = 'manager'"
+            >
+              管理
+            </button>
+          </div>
+        </section>
+
+        <section class="chat-side-block">
           <div class="side-stat">
-            <span>世界书</span>
-            <strong>{{ worldBookCount }} 本 / {{ worldEntryCount }} 条</strong>
+            <span>状态</span>
+            <strong>{{ selectedSessionTitle }}</strong>
           </div>
           <div class="side-stat">
-            <span>会话</span>
+            <span>轮次</span>
             <strong>第 {{ sessionRuntimeState.turn || 0 }} 轮</strong>
           </div>
           <div class="side-stat">
-            <span>模型</span>
-            <strong>{{ lastModelLine }}</strong>
+            <span>位置</span>
+            <strong>地图预留</strong>
+          </div>
+        </section>
+
+        <section class="chat-map-panel">
+          <strong>地图</strong>
+          <div class="map-placeholder">
+            <span>位置预留</span>
           </div>
         </section>
 
@@ -1591,9 +1727,15 @@ onUnmounted(() => {
           <div class="chat-head-actions">
             <button
               type="button"
-              @click="activeView = 'settings'; activeWorkspace = 'messages'"
+              @click="chatFocus = 'manager'"
             >
-              看发送内容
+              管理
+            </button>
+            <button
+              type="button"
+              @click="activeView = 'inspect'; activeWorkspace = 'messages'"
+            >
+              检查
             </button>
             <button
               type="button"
@@ -1789,18 +1931,130 @@ onUnmounted(() => {
           </button>
         </form>
       </section>
+
+      <aside class="chat-manager">
+        <header class="manager-head">
+          <div>
+            <p class="eyebrow">
+              管理
+            </p>
+            <h2>后台管理者</h2>
+            <p>{{ managerStatusLine }}</p>
+          </div>
+          <button
+            type="button"
+            @click="refreshManagerRecords()"
+          >
+            刷新
+          </button>
+          <button
+            type="button"
+            @click="chatFocus = 'chat'"
+          >
+            聊天
+          </button>
+        </header>
+
+        <section class="manager-section">
+          <div class="side-block-head">
+            <strong>阶段大总结</strong>
+            <span>{{ episodeSummaries.length }}</span>
+          </div>
+          <article
+            v-for="episode in episodeSummaries"
+            :key="episode.id"
+            class="manager-card"
+          >
+            <strong>{{ episode.title }}</strong>
+            <small>第 {{ episode.startTurn }}-{{ episode.endTurn }} 轮</small>
+            <p>{{ episode.summary || '暂无摘要。' }}</p>
+            <p v-if="episode.unresolved?.length">
+              未解决：{{ episode.unresolved.join('、') }}
+            </p>
+          </article>
+          <p
+            v-if="!episodeSummaries.length"
+            class="muted compact"
+          >
+            还没有阶段大总结。
+          </p>
+        </section>
+
+        <section class="manager-section">
+          <div class="side-block-head">
+            <strong>每轮小总结</strong>
+            <span>{{ turnSummaries.length }}</span>
+          </div>
+          <article
+            v-for="summary in recentTurnSummaries"
+            :key="summary.id"
+            class="manager-card"
+          >
+            <strong>{{ formatSummarySource(summary) }}</strong>
+            <small>{{ summary.tags?.join('、') || '无标签' }}</small>
+            <p>{{ summary.summary }}</p>
+          </article>
+          <p
+            v-if="!turnSummaries.length"
+            class="muted compact"
+          >
+            还没有小总结。
+          </p>
+        </section>
+
+        <section class="manager-section">
+          <div class="side-block-head">
+            <strong>工作记录</strong>
+            <span>{{ managerRuns.length }}</span>
+          </div>
+          <article
+            v-for="run in managerRuns"
+            :key="run.id"
+            class="manager-card"
+            :class="`is-${run.status}`"
+          >
+            <div class="manager-run-title">
+              <strong>{{ managerStatusLabel(run.status) }}</strong>
+              <small>{{ formatManagerSource(run) }}</small>
+            </div>
+            <p>{{ run.inputSummary }}</p>
+            <small>{{ formatRunModelLine(run) }}</small>
+            <p v-if="run.parsedAction">
+              动作：{{ run.parsedAction }}
+            </p>
+            <details v-if="run.outputText">
+              <summary>输出</summary>
+              <pre>{{ run.outputText }}</pre>
+            </details>
+            <p v-if="run.error">
+              {{ run.error }}
+            </p>
+            <button
+              v-if="run.status === 'failed'"
+              type="button"
+              :disabled="managerBusy"
+              @click="retryManagerRun(run)"
+            >
+              重试
+            </button>
+          </article>
+          <p
+            v-if="!managerRuns.length"
+            class="muted compact"
+          >
+            还没有工作记录。
+          </p>
+        </section>
+      </aside>
     </section>
 
     <section
-      v-if="activeView === 'settings'"
+      v-if="activeView === 'inspect'"
       class="xb-layout"
     >
       <aside class="xb-sidebar">
         <div class="panel guide-card">
-          <h2>你现在要做什么</h2>
-          <p class="muted">
-            按顺序看完四步。只要有一步不对，就先停下来修脑子，不进入正式聊天。
-          </p>
+          <h2>检查</h2>
           <div class="guide-steps">
             <button
               v-for="tab in workspaceTabs"
@@ -1814,24 +2068,6 @@ onUnmounted(() => {
               <span>{{ tab.hint }}</span>
             </button>
           </div>
-          <button
-            type="button"
-            class="guide-step guide-step-secondary"
-            :class="{ active: activeWorkspace === 'api' }"
-            @click="activeWorkspace = 'api'"
-          >
-            <strong>API 配置</strong>
-            <span>共用小白助手和电纸书的模型预设</span>
-          </button>
-          <button
-            type="button"
-            class="guide-step guide-step-secondary"
-            :class="{ active: activeWorkspace === 'preset' }"
-            @click="activeWorkspace = 'preset'"
-          >
-            <strong>调预设</strong>
-            <span>需要改小白规则时再打开</span>
-          </button>
         </div>
 
         <div class="panel">
@@ -1955,7 +2191,7 @@ onUnmounted(() => {
               type="button"
               class="brain-check"
               :class="{ ok: check.ok, warn: !check.ok }"
-              @click="activeWorkspace = check.key"
+              @click="openBrainCheck(check)"
             >
               <span class="check-mark">{{ check.ok ? '✓' : '!' }}</span>
               <span>
@@ -1972,7 +2208,7 @@ onUnmounted(() => {
         >
           <div class="panel-head">
             <div>
-              <h2>1. 选角色卡</h2>
+              <h2>资料</h2>
               <p class="muted compact">
                 先确认小白酒馆读到的是你想测试的角色，不要在错角色上继续验。
               </p>
@@ -2067,9 +2303,9 @@ onUnmounted(() => {
         >
           <div class="panel-head">
             <div>
-              <h2>2. 看它读到了哪些资料</h2>
+              <h2>世界书</h2>
               <p class="muted compact">
-                先看小白读到了哪些世界书；本次试聊会带上哪些条目，会由第 4 步那句话决定。
+                先看小白读到了哪些世界书；本次会带上哪些条目，会由输入决定。
               </p>
             </div>
             <div class="panel-pills">
@@ -2150,7 +2386,7 @@ onUnmounted(() => {
           </div>
           <div class="message-group-head world-send-head">
             <strong>本次试聊会带上的世界书</strong>
-            <span>由第 4 步输入决定</span>
+            <span>由输入决定</span>
           </div>
           <div class="world-list">
             <article
@@ -2181,7 +2417,7 @@ onUnmounted(() => {
               v-if="!activatedCandidateRows.length"
               class="muted"
             >
-              当前这句试聊输入没有触发世界书条目。这不代表没读到世界书；去第 4 步换一句包含关键词的话，再回来看会带上哪些条目。
+              当前输入没有触发世界书条目。
             </p>
           </div>
           <details
@@ -2216,7 +2452,7 @@ onUnmounted(() => {
         >
           <div class="panel-head">
             <div>
-              <h2>3. 看最终会发给模型什么</h2>
+              <h2>发送内容</h2>
               <p class="muted compact">
                 小白会把固定规则、预设、角色卡、世界书、历史和你的本次输入组装成这些内容。
               </p>
@@ -2242,8 +2478,8 @@ onUnmounted(() => {
             <span>{{ contextSourceDetail }}</span>
           </p>
           <div class="test-message-preview">
-            <strong>本次试聊输入</strong>
-            <p>{{ currentUserMessage || '还没填写。去第 4 步写一句要对角色说的话。' }}</p>
+            <strong>本次输入</strong>
+            <p>{{ currentUserMessage || '还没填写。' }}</p>
             <button
               type="button"
               @click="activeWorkspace = 'runtime'"
@@ -2288,7 +2524,7 @@ onUnmounted(() => {
         >
           <div class="panel-head">
             <div>
-              <h2>4. 试聊一句</h2>
+              <h2>运行记录</h2>
               <p class="muted compact">
                 只跑一轮验证消息结构和模型通道，结果写入小白酒馆自己的会话。
               </p>
@@ -2297,12 +2533,12 @@ onUnmounted(() => {
               type="button"
               @click="handleChatSubmit"
             >
-              {{ isRunning ? '停止' : '试聊一句' }}
+              {{ isRunning ? '停止' : '运行' }}
             </button>
           </div>
           <div class="what-to-check">
             <strong>你要判断：</strong>
-            <span>回复是否像这张角色、是否读到了该读的世界书、是否没有暴露调试信息。</span>
+            <span>回复是否像这张角色、是否读到了该读的世界书、是否没有暴露检查内容。</span>
           </div>
           <div
             v-if="usingLockedSessionContext"
@@ -2322,7 +2558,7 @@ onUnmounted(() => {
               <strong>怎么试：</strong>
               <ol>
                 <li>在下面写一句你要对角色说的话。</li>
-                <li>点“试聊一句”。</li>
+                <li>点“运行”。</li>
                 <li>看回复像不像这个角色、有没有吃到世界书。</li>
               </ol>
             </div>
@@ -2375,9 +2611,42 @@ onUnmounted(() => {
             </span>
           </div>
         </div>
+      </section>
+    </section>
 
+    <section
+      v-if="activeView === 'settings'"
+      class="xb-layout settings-layout"
+    >
+      <aside class="xb-sidebar settings-sidebar">
+        <div class="panel guide-card">
+          <h2>设置</h2>
+          <div class="guide-steps">
+            <button
+              type="button"
+              class="guide-step"
+              :class="{ active: activeSettingsWorkspace === 'api' }"
+              @click="activeSettingsWorkspace = 'api'"
+            >
+              <strong>API 配置</strong>
+              <span>模型预设</span>
+            </button>
+            <button
+              type="button"
+              class="guide-step"
+              :class="{ active: activeSettingsWorkspace === 'preset' }"
+              @click="activeSettingsWorkspace = 'preset'"
+            >
+              <strong>小白预设</strong>
+              <span>规则</span>
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      <section class="xb-main">
         <div
-          v-show="activeWorkspace === 'api'"
+          v-show="activeSettingsWorkspace === 'api'"
           class="panel step-panel api-workspace"
         >
           <div class="panel-head">
@@ -2408,14 +2677,14 @@ onUnmounted(() => {
         </div>
 
         <div
-          v-show="activeWorkspace === 'preset'"
+          v-show="activeSettingsWorkspace === 'preset'"
           class="panel step-panel preset-workspace"
         >
           <div class="panel-head drawer-head">
             <div>
               <h2>调整小白预设</h2>
               <p class="muted compact">
-                这里会影响第 3 步里最终发给模型的内容。默认规则不能直接改，需要先复制一份。
+                这里会影响最终发给模型的内容。默认规则不能直接改，需要先复制一份。
               </p>
             </div>
             <div class="panel-pills">

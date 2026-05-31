@@ -6,10 +6,19 @@ import db, {
     createTavernSession,
     deleteTavernMessages,
     getTavernSession,
+    listTavernEpisodeSummaries,
+    listTavernManagerRuns,
     listTavernMessages,
+    listTavernTurnSummaries,
     updateTavernSessionSnapshot,
+    upsertTavernTurnSummary,
 } from '../shared/session-db';
 import { createDefaultXbTavernPreset } from '../shared/presets';
+import {
+    buildXbTavernMemoryIgnoredTerms,
+    buildXbTavernMemoryQuery,
+    selectXbTavernMemoryContext,
+} from '../shared/memory-retrieval';
 import {
     buildContextHistory,
     buildTavernRequestSnapshot,
@@ -74,6 +83,209 @@ test('xb tavern run turn saves user and assistant messages and updates session s
     assert.equal(session?.state?.turn, 1);
     assert.equal(Object.keys(session?.state?.worldEntryStates || {}).some((key) => key.includes('sticky-entry')), true);
     assert.equal(session?.state?.lastProvider, 'fake-provider');
+});
+
+test('xb tavern run turn can trigger manager summary with delegate config', async () => {
+    await resetDb();
+    const preset = createDefaultXbTavernPreset();
+    let managerProvider = '';
+    let managerPrompt = '';
+    const result = await runXbTavernTurn({
+        agentConfig: {
+            currentPresetName: '主聊天',
+            delegatePresetName: '后台管理者',
+            presets: {
+                主聊天: {
+                    provider: 'sillytavern-claude',
+                    modelConfigs: {
+                        'sillytavern-claude': { model: 'main-model' },
+                    },
+                },
+            },
+            delegateConfig: {
+                provider: 'sillytavern-openai-compatible',
+                modelConfigs: {
+                    'sillytavern-openai-compatible': { model: 'manager-model' },
+                },
+            },
+        },
+        contextSnapshot: {
+            character: { id: 'char-1', name: 'Aster' },
+        },
+        preset,
+        currentUserMessage: '我们去码头。',
+        runManager: true,
+        awaitManager: true,
+        executeRunOnce: async (options: TavernRunOnceOptions) => ({
+            text: '她点头，把灯吹灭。',
+            provider: 'sillytavern-claude',
+            model: 'main-model',
+            requestSnapshot: buildTavernRequestSnapshot(options.agentConfig, options.messages, {
+                provider: 'sillytavern-claude',
+                model: 'main-model',
+            }),
+        }),
+        executeManagerOnce: async (options) => {
+            managerPrompt = JSON.stringify(options.messages);
+            const delegateConfig = options.agentConfig.delegateConfig as { provider?: string } | undefined;
+            managerProvider = String(delegateConfig?.provider || '');
+            return {
+                provider: 'sillytavern-openai-compatible',
+                model: 'manager-model',
+                text: JSON.stringify({
+                    turnSummary: {
+                        summary: '两人决定去码头，Aster 接受行动。',
+                        characterState: 'Aster 更主动。',
+                        relationshipChange: '信任增加。',
+                        locationTimeItems: '目标地点变成码头。',
+                        hooks: ['抵达码头'],
+                        tags: ['码头'],
+                    },
+                    episodeDecision: {
+                        action: 'create_new_episode',
+                        title: '去码头',
+                        summary: '本阶段围绕两人前往码头展开。',
+                        keyChanges: ['行动目标确定'],
+                        unresolved: ['码头有什么'],
+                    },
+                }),
+            };
+        },
+    });
+
+    assert.equal(result.managerStatus, 'completed');
+    assert.ok(result.managerRunId);
+    assert.equal(managerProvider, 'sillytavern-openai-compatible');
+    assert.match(managerPrompt, /后台管理者/);
+    const summaries = await listTavernTurnSummaries(result.sessionId);
+    assert.equal(summaries.length, 1);
+    assert.equal(summaries[0]?.userOrder, 0);
+    assert.equal(summaries[0]?.assistantOrder, 1);
+    assert.match(summaries[0]?.summary || '', /码头/);
+    const episodes = await listTavernEpisodeSummaries(result.sessionId);
+    assert.equal(episodes.length, 1);
+    assert.equal(episodes[0]?.title, '去码头');
+    const runs = await listTavernManagerRuns(result.sessionId);
+    assert.equal(runs[0]?.status, 'completed');
+    assert.equal(runs[0]?.model, 'manager-model');
+});
+
+test('xb tavern run turn retrieves relevant old memory beyond recent summaries', async () => {
+    await resetDb();
+    const preset = createDefaultXbTavernPreset();
+    const session = await createTavernSession({
+        title: 'Memory retrieval',
+        contextSnapshot: {
+            character: { id: 'char-1', name: 'Aster' },
+        },
+    });
+    await upsertTavernTurnSummary({
+        sessionId: session.id,
+        turn: 1,
+        userOrder: 0,
+        assistantOrder: 1,
+        summary: 'Aster 把银钥匙藏在码头钟楼下面。',
+        tags: ['银钥匙', '码头钟楼'],
+    });
+    for (let index = 2; index <= 13; index += 1) {
+        await upsertTavernTurnSummary({
+            sessionId: session.id,
+            turn: index,
+            userOrder: index * 2,
+            assistantOrder: index * 2 + 1,
+            summary: `无关闲聊 ${index}。`,
+        });
+    }
+
+    let rawMessagesJson = '';
+    await runXbTavernTurn({
+        sessionId: session.id,
+        agentConfig: { provider: 'fake-provider', model: 'fake-model' },
+        contextSnapshot: session.contextSnapshot || {},
+        preset,
+        currentUserMessage: '她还记得银钥匙放在哪里吗？',
+        executeRunOnce: async (options: TavernRunOnceOptions) => {
+            rawMessagesJson = JSON.stringify(options.messages);
+            return {
+                text: '她记得。',
+                provider: 'fake-provider',
+                model: 'fake-model',
+                requestSnapshot: buildTavernRequestSnapshot(options.agentConfig, options.messages, {
+                    provider: 'fake-provider',
+                    model: 'fake-model',
+                }),
+            };
+        },
+    });
+
+    assert.match(rawMessagesJson, /银钥匙藏在码头钟楼下面/);
+});
+
+test('xb tavern memory recall reuses tokenizer terms without letting user and character names recall everything', () => {
+    const context = {
+        character: { name: 'Aster' },
+        user: { name: 'Player' },
+        history: [] as Array<{ role: 'assistant'; content: string }>,
+    };
+    const queryText = buildXbTavernMemoryQuery(context, 'Player：Aster 还记得银钥匙吗？');
+    const ignoredTerms = buildXbTavernMemoryIgnoredTerms(context);
+    const turnSummaries = [
+        {
+            id: 'old-key',
+            sessionId: 'session',
+            turn: 1,
+            userOrder: 0,
+            assistantOrder: 1,
+            summary: 'Aster 把银钥匙藏在码头钟楼下面。',
+            tags: ['银钥匙', '码头钟楼'],
+            status: 'active' as const,
+            createdAt: 1,
+            updatedAt: 1,
+        },
+        ...Array.from({ length: 12 }, (_, index) => ({
+            id: `noise-${index}`,
+            sessionId: 'session',
+            turn: index + 2,
+            userOrder: (index + 2) * 2,
+            assistantOrder: (index + 2) * 2 + 1,
+            summary: `Aster 和 Player 进行无关闲聊 ${index}。`,
+            status: 'active' as const,
+            createdAt: index + 2,
+            updatedAt: index + 2,
+        })),
+    ];
+
+    const memory = selectXbTavernMemoryContext({
+        turnSummaries,
+        queryText,
+        ignoredTerms,
+        recentTurnCount: 0,
+        recentEpisodeCount: 0,
+    });
+
+    assert.deepEqual(memory.turnSummaries?.map((summary) => summary.id), ['old-key']);
+});
+
+test('xb tavern memory recall handles Japanese text through the shared tokenizer path plus CJK subterms', () => {
+    const memory = selectXbTavernMemoryContext({
+        turnSummaries: [{
+            id: 'ja-omamori',
+            sessionId: 'session',
+            turn: 1,
+            userOrder: 0,
+            assistantOrder: 1,
+            summary: '凛は古い神社で赤いお守りを隠した。',
+            tags: ['赤いお守り', '神社'],
+            status: 'active' as const,
+            createdAt: 1,
+            updatedAt: 1,
+        }],
+        queryText: '赤いお守りはどこ？',
+        recentTurnCount: 0,
+        recentEpisodeCount: 0,
+    });
+
+    assert.deepEqual(memory.turnSummaries?.map((summary) => summary.id), ['ja-omamori']);
 });
 
 test('xb tavern provider resolver reports shared API readiness and request audit metadata', () => {

@@ -27,6 +27,9 @@ export interface TavernSessionState {
     [key: string]: unknown;
 }
 
+export type TavernMemoryRecordStatus = 'active' | 'stale';
+export type TavernManagerRunStatus = 'queued' | 'running' | 'completed' | 'failed';
+
 export interface TavernMessageRecord {
     sessionId: string;
     order: number;
@@ -44,6 +47,57 @@ export interface TavernMessageRecord {
     presetId?: string;
     presetName?: string;
     requestSnapshot?: unknown;
+}
+
+export interface TavernTurnSummaryRecord {
+    id: string;
+    sessionId: string;
+    turn: number;
+    userOrder: number;
+    assistantOrder: number;
+    episodeId?: string;
+    summary: string;
+    characterState?: string;
+    relationshipChange?: string;
+    locationTimeItems?: string;
+    hooks?: string[];
+    tags?: string[];
+    status: TavernMemoryRecordStatus;
+    createdAt: number;
+    updatedAt: number;
+}
+
+export interface TavernEpisodeSummaryRecord {
+    id: string;
+    sessionId: string;
+    title: string;
+    summary: string;
+    startTurn: number;
+    endTurn: number;
+    turnSummaryIds: string[];
+    keyChanges?: string[];
+    unresolved?: string[];
+    status: TavernMemoryRecordStatus;
+    createdAt: number;
+    updatedAt: number;
+}
+
+export interface TavernManagerRunRecord {
+    id: string;
+    sessionId: string;
+    turn: number;
+    userOrder: number;
+    assistantOrder: number;
+    trigger: string;
+    status: TavernManagerRunStatus;
+    provider?: string;
+    model?: string;
+    inputSummary?: string;
+    outputText?: string;
+    parsedAction?: string;
+    error?: string;
+    createdAt: number;
+    updatedAt: number;
 }
 
 export type TavernAppendMessageInput = XbTavernMessage & {
@@ -82,6 +136,9 @@ class TavernDatabase extends Dexie {
     messages!: DexieTable<TavernMessageRecord>;
     meta!: DexieTable<TavernMetaRecord>;
     presets!: DexieTable<TavernPresetRecord>;
+    turnSummaries!: DexieTable<TavernTurnSummaryRecord>;
+    episodeSummaries!: DexieTable<TavernEpisodeSummaryRecord>;
+    managerRuns!: DexieTable<TavernManagerRunRecord>;
 
     constructor() {
         super('LittleWhiteBox_Tavern');
@@ -96,6 +153,15 @@ class TavernDatabase extends Dexie {
             meta: 'key',
             presets: 'id, updatedAt, sourcePresetId',
         });
+        this.version(3).stores({
+            sessions: 'id, updatedAt, characterId, characterName',
+            messages: '[sessionId+order], sessionId, order',
+            meta: 'key',
+            presets: 'id, updatedAt, sourcePresetId',
+            turnSummaries: 'id, sessionId, episodeId, turn, userOrder, assistantOrder, status, updatedAt',
+            episodeSummaries: 'id, sessionId, status, updatedAt, startTurn, endTurn',
+            managerRuns: 'id, sessionId, status, turn, updatedAt',
+        });
     }
 }
 
@@ -105,6 +171,9 @@ export const tavernSessionsTable = db.sessions;
 export const tavernMessagesTable = db.messages;
 export const tavernMetaTable = db.meta;
 export const tavernPresetsTable = db.presets;
+export const tavernTurnSummariesTable = db.turnSummaries;
+export const tavernEpisodeSummariesTable = db.episodeSummaries;
+export const tavernManagerRunsTable = db.managerRuns;
 
 function now(): number {
     return Date.now();
@@ -135,6 +204,28 @@ function cloneSerializable<T>(value: T, fallback: T): T {
 function normalizePresetName(value = '', fallback = '我的小白酒馆预设'): string {
     const normalized = String(value || '').trim();
     return normalized.slice(0, 120) || fallback;
+}
+
+function normalizeStringArray(value: unknown, limit = 12): string[] {
+    const items = Array.isArray(value) ? value : typeof value === 'string' ? [value] : [];
+    return items
+        .map((item) => String(item || '').trim())
+        .filter(Boolean)
+        .slice(0, limit);
+}
+
+function createTurnSummaryId(sessionId = '', userOrder = -1, assistantOrder = -1): string {
+    return `turn-summary-${sessionId}-${userOrder}-${assistantOrder}`;
+}
+
+function normalizeMemoryStatus(value: unknown): TavernMemoryRecordStatus {
+    return value === 'stale' ? 'stale' : 'active';
+}
+
+function normalizeManagerRunStatus(value: unknown): TavernManagerRunStatus {
+    return ['queued', 'running', 'completed', 'failed'].includes(String(value || ''))
+        ? value as TavernManagerRunStatus
+        : 'queued';
 }
 
 function normalizeWorldEntryStates(value: unknown): Record<string, XbTavernWorldEntryState> {
@@ -364,6 +455,183 @@ export async function listTavernMessages(sessionId = ''): Promise<TavernMessageR
     const id = String(sessionId || '').trim();
     if (!id) {return [];}
     return tavernMessagesTable.where('sessionId').equals(id).sortBy('order');
+}
+
+export async function upsertTavernTurnSummary(input: Partial<TavernTurnSummaryRecord> = {}): Promise<TavernTurnSummaryRecord> {
+    const sessionId = String(input.sessionId || '').trim();
+    const userOrder = Number(input.userOrder);
+    const assistantOrder = Number(input.assistantOrder);
+    if (!sessionId || !Number.isInteger(userOrder) || !Number.isInteger(assistantOrder)) {
+        throw new Error('turn_summary_source_required');
+    }
+    const timestamp = now();
+    const id = String(input.id || createTurnSummaryId(sessionId, userOrder, assistantOrder));
+    const existing = await tavernTurnSummariesTable.get(id);
+    const record: TavernTurnSummaryRecord = {
+        id,
+        sessionId,
+        turn: Math.max(0, Number(input.turn ?? existing?.turn) || 0),
+        userOrder,
+        assistantOrder,
+        episodeId: String(input.episodeId ?? existing?.episodeId ?? ''),
+        summary: String(input.summary ?? existing?.summary ?? '').trim(),
+        characterState: String(input.characterState ?? existing?.characterState ?? '').trim(),
+        relationshipChange: String(input.relationshipChange ?? existing?.relationshipChange ?? '').trim(),
+        locationTimeItems: String(input.locationTimeItems ?? existing?.locationTimeItems ?? '').trim(),
+        hooks: normalizeStringArray(input.hooks ?? existing?.hooks),
+        tags: normalizeStringArray(input.tags ?? existing?.tags),
+        status: normalizeMemoryStatus(input.status ?? existing?.status),
+        createdAt: Number(existing?.createdAt) || timestamp,
+        updatedAt: timestamp,
+    };
+    await tavernTurnSummariesTable.put(record);
+    await tavernSessionsTable.update(sessionId, { updatedAt: timestamp });
+    return record;
+}
+
+export async function listTavernTurnSummaries(sessionId = '', options: {
+    includeStale?: boolean;
+    limit?: number;
+} = {}): Promise<TavernTurnSummaryRecord[]> {
+    const id = String(sessionId || '').trim();
+    if (!id) {return [];}
+    const rows = await tavernTurnSummariesTable.where('sessionId').equals(id).sortBy('turn');
+    const filtered = options.includeStale ? rows : rows.filter((row) => row.status !== 'stale');
+    const limit = Math.max(0, Number(options.limit) || 0);
+    return limit ? filtered.slice(-limit) : filtered;
+}
+
+export async function upsertTavernEpisodeSummary(input: Partial<TavernEpisodeSummaryRecord> = {}): Promise<TavernEpisodeSummaryRecord> {
+    const sessionId = String(input.sessionId || '').trim();
+    if (!sessionId) {throw new Error('episode_summary_session_required');}
+    const timestamp = now();
+    const id = String(input.id || createId('episode-summary'));
+    const existing = await tavernEpisodeSummariesTable.get(id);
+    const turnSummaryIds = normalizeStringArray(input.turnSummaryIds ?? existing?.turnSummaryIds, 100);
+    const startTurn = Math.max(0, Number(input.startTurn ?? existing?.startTurn) || 0);
+    const endTurn = Math.max(startTurn, Number(input.endTurn ?? existing?.endTurn ?? startTurn) || startTurn);
+    const record: TavernEpisodeSummaryRecord = {
+        id,
+        sessionId,
+        title: normalizeTitle(String(input.title ?? existing?.title ?? ''), '未命名阶段'),
+        summary: String(input.summary ?? existing?.summary ?? '').trim(),
+        startTurn,
+        endTurn,
+        turnSummaryIds,
+        keyChanges: normalizeStringArray(input.keyChanges ?? existing?.keyChanges, 20),
+        unresolved: normalizeStringArray(input.unresolved ?? existing?.unresolved, 20),
+        status: normalizeMemoryStatus(input.status ?? existing?.status),
+        createdAt: Number(existing?.createdAt) || timestamp,
+        updatedAt: timestamp,
+    };
+    await tavernEpisodeSummariesTable.put(record);
+    await Promise.all(turnSummaryIds.map(async (summaryId) => {
+        const summary = await tavernTurnSummariesTable.get(summaryId);
+        if (summary?.sessionId === sessionId) {
+            await tavernTurnSummariesTable.update(summaryId, { episodeId: id, updatedAt: timestamp });
+        }
+    }));
+    await tavernSessionsTable.update(sessionId, { updatedAt: timestamp });
+    return record;
+}
+
+export async function listTavernEpisodeSummaries(sessionId = '', options: {
+    includeStale?: boolean;
+    limit?: number;
+} = {}): Promise<TavernEpisodeSummaryRecord[]> {
+    const id = String(sessionId || '').trim();
+    if (!id) {return [];}
+    const rows = await tavernEpisodeSummariesTable.where('sessionId').equals(id).sortBy('updatedAt');
+    const filtered = options.includeStale ? rows : rows.filter((row) => row.status !== 'stale');
+    const limit = Math.max(0, Number(options.limit) || 0);
+    return limit ? filtered.slice(-limit) : filtered;
+}
+
+export async function createTavernManagerRun(input: Partial<TavernManagerRunRecord> = {}): Promise<TavernManagerRunRecord> {
+    const sessionId = String(input.sessionId || '').trim();
+    if (!sessionId) {throw new Error('manager_run_session_required');}
+    const timestamp = now();
+    const record: TavernManagerRunRecord = {
+        id: String(input.id || createId('manager-run')),
+        sessionId,
+        turn: Math.max(0, Number(input.turn) || 0),
+        userOrder: Number.isInteger(Number(input.userOrder)) ? Number(input.userOrder) : -1,
+        assistantOrder: Number.isInteger(Number(input.assistantOrder)) ? Number(input.assistantOrder) : -1,
+        trigger: String(input.trigger || 'after_turn'),
+        status: normalizeManagerRunStatus(input.status),
+        provider: String(input.provider || ''),
+        model: String(input.model || ''),
+        inputSummary: String(input.inputSummary || ''),
+        outputText: String(input.outputText || ''),
+        parsedAction: String(input.parsedAction || ''),
+        error: String(input.error || ''),
+        createdAt: Number(input.createdAt) || timestamp,
+        updatedAt: timestamp,
+    };
+    await tavernManagerRunsTable.put(record);
+    await tavernSessionsTable.update(sessionId, { updatedAt: timestamp });
+    return record;
+}
+
+export async function updateTavernManagerRun(
+    managerRunId = '',
+    patch: Partial<TavernManagerRunRecord> = {},
+): Promise<TavernManagerRunRecord | null> {
+    const id = String(managerRunId || '').trim();
+    if (!id) {return null;}
+    const existing = await tavernManagerRunsTable.get(id);
+    if (!existing) {return null;}
+    const update: Partial<TavernManagerRunRecord> = {
+        updatedAt: now(),
+    };
+    if ('status' in patch) {update.status = normalizeManagerRunStatus(patch.status);}
+    ['provider', 'model', 'inputSummary', 'outputText', 'parsedAction', 'error', 'trigger'].forEach((key) => {
+        if (key in patch) {
+            (update as Record<string, unknown>)[key] = String((patch as Record<string, unknown>)[key] || '');
+        }
+    });
+    if ('turn' in patch) {update.turn = Math.max(0, Number(patch.turn) || 0);}
+    if ('userOrder' in patch) {update.userOrder = Number(patch.userOrder);}
+    if ('assistantOrder' in patch) {update.assistantOrder = Number(patch.assistantOrder);}
+    await tavernManagerRunsTable.update(id, update);
+    await tavernSessionsTable.update(existing.sessionId, { updatedAt: now() });
+    return await tavernManagerRunsTable.get(id) || null;
+}
+
+export async function listTavernManagerRuns(sessionId = '', options: {
+    limit?: number;
+} = {}): Promise<TavernManagerRunRecord[]> {
+    const id = String(sessionId || '').trim();
+    if (!id) {return [];}
+    const rows = await tavernManagerRunsTable.where('sessionId').equals(id).sortBy('updatedAt');
+    const limit = Math.max(0, Number(options.limit) || 0);
+    return (limit ? rows.slice(-limit) : rows).reverse();
+}
+
+export async function markTavernMemoryStaleFromOrder(sessionId = '', fromOrder = 0): Promise<number> {
+    const id = String(sessionId || '').trim();
+    const order = Number(fromOrder);
+    if (!id || !Number.isFinite(order)) {return 0;}
+    const timestamp = now();
+    const summaries = await tavernTurnSummariesTable.where('sessionId').equals(id).toArray();
+    const affected = summaries.filter((summary) => summary.userOrder >= order || summary.assistantOrder >= order);
+    if (!affected.length) {return 0;}
+    await db.transaction('rw', tavernTurnSummariesTable, tavernEpisodeSummariesTable, tavernSessionsTable, async () => {
+        await Promise.all(affected.map((summary) => tavernTurnSummariesTable.update(summary.id, {
+            status: 'stale',
+            updatedAt: timestamp,
+        })));
+        const affectedIds = new Set(affected.map((summary) => summary.id));
+        const episodes = await tavernEpisodeSummariesTable.where('sessionId').equals(id).toArray();
+        await Promise.all(episodes
+            .filter((episode) => episode.turnSummaryIds.some((summaryId) => affectedIds.has(summaryId)))
+            .map((episode) => tavernEpisodeSummariesTable.update(episode.id, {
+                status: 'stale',
+                updatedAt: timestamp,
+            })));
+        await tavernSessionsTable.update(id, { updatedAt: timestamp });
+    });
+    return affected.length;
 }
 
 export function createUserPresetFromBuiltIn(name = '我的小白酒馆预设'): XbTavernPreset {

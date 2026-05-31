@@ -53,8 +53,20 @@ function createEslintDisableBannerPlugin() {
     };
 }
 
+function createDiffCheckSafeBundlePlugin() {
+    return {
+        name: 'tavern-diff-check-safe-bundle',
+        generateBundle(_options, bundle) {
+            Object.values(bundle).forEach((item) => {
+                if (item.type !== 'chunk' || typeof item.code !== 'string') return;
+                item.code = item.code.replace(/` \n\\r\t`/g, '" \\n\\r\\t"');
+            });
+        },
+    };
+}
+
 export default defineConfig({
-    plugins: [vue(), createEslintDisableBannerPlugin(), createTavernBuildInfoPlugin()],
+    plugins: [vue(), createEslintDisableBannerPlugin(), createDiffCheckSafeBundlePlugin(), createTavernBuildInfoPlugin()],
     define: {
         'process.env.NODE_ENV': JSON.stringify('production'),
         global: 'globalThis',

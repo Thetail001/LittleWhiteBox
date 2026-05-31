@@ -11,11 +11,19 @@ function readHashInput(filePath) {
     }
 }
 
+function normalizeGeneratedEbookChunk(code = '') {
+    const whitespaceTemplateLiteral = ['` ', '\\r\t`'].join('\n');
+    return String(code || '').replaceAll(whitespaceTemplateLiteral, '" \\\\n\\\\r\\\\t"');
+}
+
 function createEbookBuildInfoPlugin() {
     return {
         name: 'ebook-build-info',
         generateBundle(_options, bundle) {
             const appChunk = bundle['ebook-app.js'];
+            if (appChunk && typeof appChunk.code === 'string') {
+                appChunk.code = normalizeGeneratedEbookChunk(appChunk.code);
+            }
             const source = typeof appChunk?.code === 'string'
                 ? appChunk.code
                 : String(appChunk?.source || '');

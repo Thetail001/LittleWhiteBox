@@ -19,6 +19,7 @@ const messageMarkdownModule = await import('../../agent-core/ui/message-markdown
 const lightBrakeModule = await import('../../agent-core/runtime/light-brake.js');
 const textEditModule = await import('../../agent-core/tools/text-edit.js');
 const openAICompatibleAdapterModule = await import('../../agent-core/adapters/openai-compatible.js');
+const looseToolArgumentsModule = await import('../../agent-core/runtime/loose-tool-arguments.js');
 
 const {
     default: db,
@@ -72,6 +73,7 @@ const {
     countMessageWindowUnits,
     buildConversationContextMeterStateKey,
     renderEbookShell,
+    renderAgentMessages,
     renderConversationContextMeterLabel,
     renderConversationContextMeterTitle,
 } = rendererModule;
@@ -80,6 +82,7 @@ const { HTML_PREVIEW_SANDBOX, renderMarkdownToHtml } = messageMarkdownModule;
 const { createLightBrakeController } = lightBrakeModule;
 const { applyTextEdits } = textEditModule;
 const { buildTaggedMessages } = openAICompatibleAdapterModule;
+const { repairLooseToolArguments } = looseToolArgumentsModule;
 
 async function resetDb() {
     await db.delete();
@@ -635,6 +638,46 @@ test('Book Grep defaults to literal text search and only uses regex when request
     });
     assert.equal(regex.count, 1);
     assert.equal(regex.results[0].lineNumber, 3);
+});
+
+test('Book Grep works after loose JSON argument repair decodes unicode escapes', async () => {
+    await resetDb();
+    const book = await createBook('Grep Unicode 修复测试');
+    await upsertBookFile(book.id, 'book/state.md', [
+        '# 状态追踪',
+        '第99章：当前进度已经写到这里。',
+        '**下一步应写**：第二三场结构。',
+    ].join('\n'));
+    const runtime = createBookToolRuntime({ bookId: book.id });
+    const repaired = repairLooseToolArguments(
+        '{pattern:"\\u7b2c99\\u7ae0", path:"book/"}',
+        EBOOK_TOOL_NAMES.GREP,
+    );
+    const args = JSON.parse(repaired);
+    assert.equal(args.pattern, '第99章');
+
+    const result = await runtime.execute(EBOOK_TOOL_NAMES.GREP, args);
+    assert.equal(result.ok, true);
+    assert.equal(result.count, 1);
+    assert.equal(result.results[0].path, 'book/state.md');
+    assert.equal(result.results[0].lineNumber, 2);
+
+    const nextStepArgs = JSON.parse(repairLooseToolArguments(
+        '{pattern:"\\u4e0b\\u4e00\\u6b65", path:"book/"}',
+        EBOOK_TOOL_NAMES.GREP,
+    ));
+    const nextStepResult = await runtime.execute(EBOOK_TOOL_NAMES.GREP, nextStepArgs);
+    assert.equal(nextStepResult.count, 1);
+    assert.equal(nextStepResult.results[0].lineNumber, 3);
+});
+
+test('Loose JSON repair keeps deliberately escaped unicode literals', () => {
+    const repaired = repairLooseToolArguments(
+        String.raw`{filePath:"book/notes/escape.md", content:"literal \\u7b2c99\\u7ae0"}`,
+        EBOOK_TOOL_NAMES.WRITE,
+    );
+    const args = JSON.parse(repaired);
+    assert.equal(args.content, 'literal \\u7b2c99\\u7ae0');
 });
 
 test('Book runtime exposes Tavily web search only when configured', async () => {
@@ -4648,6 +4691,58 @@ test('Book app preserves manual agent scroll even when previous position was nea
     assert.equal(agentMain.scrollTop, 1200);
 });
 
+test('Book app anchors manual agent scroll across lower render changes', () => {
+    let anchorDocumentTop = 560;
+    const anchor = {
+        dataset: { agentUnitKey: 'message:3' },
+        getBoundingClientRect() {
+            return {
+                top: anchorDocumentTop - agentMain.scrollTop,
+                bottom: anchorDocumentTop - agentMain.scrollTop + 80,
+            };
+        },
+    };
+    const agentMain = {
+        scrollTop: 500,
+        scrollHeight: 2000,
+        clientHeight: 400,
+        getBoundingClientRect() {
+            return { top: 0, bottom: 400 };
+        },
+        querySelectorAll(selector) {
+            return selector === '[data-agent-unit-key]' ? [anchor] : [];
+        },
+    };
+    const root = {
+        querySelector(selector) {
+            return selector === '.xb-agent-main' ? agentMain : null;
+        },
+    };
+    const snapshot = captureScrollState(root, '.xb-agent-main');
+    assert.equal(snapshot.anchorKey, 'message:3');
+    assert.equal(snapshot.anchorTopOffset, 60);
+
+    anchorDocumentTop = 680;
+    agentMain.scrollTop = 0;
+    restoreScrollState(root, snapshot, '.xb-agent-main', {
+        defaultToBottom: false,
+        preserveScrollTop: true,
+    });
+    assert.equal(agentMain.scrollTop, 620);
+});
+
+test('Book renderer includes scroll anchor keys in full agent message markup', () => {
+    const html = renderAgentMessages({
+        messages: [
+            { role: 'user', content: '上面的消息' },
+            { role: 'assistant', content: '下面的消息' },
+        ],
+    });
+
+    assert.match(html, /data-agent-unit-key="message:0"/);
+    assert.match(html, /data-agent-unit-key="message:1"/);
+});
+
 test('Book renderer keeps streaming assistant thoughts expanded before final delivery', async () => {
     await resetDb();
     const book = await createBook('流式思考展开测试');
@@ -5560,6 +5655,134 @@ test('Book agent stores a multi-tool batch only after all tool results exist', a
     assert.equal(state.messages.filter((message) => message.role === 'tool').length, 2);
     assert.equal(state.toolTrace.length, 0);
     assert.equal(state.activeTurnStartIndex, -1);
+});
+
+test('Book agent refreshes file snapshot before first model request', async () => {
+    await resetDb();
+    const book = await createBook('首轮注入刷新测试');
+    await upsertBookFile(book.id, 'book/state.md', '# 状态追踪\n\n旧状态。');
+    const staleFiles = await listBookFiles(book.id);
+    await upsertBookFile(book.id, 'book/state.md', '# 状态追踪\n\n新状态。');
+    const state = {
+        config: {},
+        book,
+        books: [book],
+        files: staleFiles,
+        selectedPath: 'book/chapters/001.md',
+        readerPath: '',
+        viewMode: 'studio',
+        editorContent: '',
+        savedContent: '',
+        messages: [],
+        toolTrace: [],
+        historySummary: '',
+        archivedTurnCount: 0,
+        isBusy: false,
+        activeController: null,
+        status: '就绪',
+        toast: '',
+    };
+    let firstUserPrompt = '';
+    let refreshCount = 0;
+    const runner = createEbookAgentRunner({
+        state,
+        async refreshBooksAndFiles() {
+            refreshCount += 1;
+            state.files = await listBookFiles(book.id);
+        },
+        render() {},
+        showToast() {},
+        persistConversation() {},
+        isEditorDirty() {
+            return false;
+        },
+        getActiveProviderConfig() {
+            return {
+                provider: 'test',
+                temperature: 0.2,
+                maxTokens: 1000,
+                reasoningEnabled: false,
+                reasoningEffort: 'medium',
+            };
+        },
+        createAdapter() {
+            return {
+                async chat(task) {
+                    const userMessage = task.messages.find((message) => message.role === 'user');
+                    firstUserPrompt = String(userMessage?.content || '');
+                    return {
+                        text: '已确认状态。',
+                        toolCalls: [],
+                    };
+                },
+            };
+        },
+    });
+
+    await runner.runAgent('看一下状态。');
+
+    assert.equal(refreshCount >= 2, true);
+    assert.match(firstUserPrompt, /新状态/);
+    assert.doesNotMatch(firstUserPrompt, /旧状态/);
+});
+
+test('Book agent keeps the user message if first snapshot refresh fails', async () => {
+    await resetDb();
+    const book = await createBook('首轮刷新失败保留用户消息');
+    const state = {
+        config: {},
+        book,
+        books: [book],
+        files: await listBookFiles(book.id),
+        selectedPath: 'book/chapters/001.md',
+        readerPath: '',
+        viewMode: 'studio',
+        editorContent: '',
+        savedContent: '',
+        messages: [],
+        toolTrace: [],
+        historySummary: '',
+        archivedTurnCount: 0,
+        isBusy: false,
+        activeController: null,
+        status: '就绪',
+        toast: '',
+    };
+    let persistedBookId = '';
+    const runner = createEbookAgentRunner({
+        state,
+        async refreshBooksAndFiles() {
+            throw new Error('refresh_failed_for_test');
+        },
+        render() {},
+        showToast() {},
+        persistConversation(bookId) {
+            persistedBookId = bookId;
+        },
+        isEditorDirty() {
+            return false;
+        },
+        getActiveProviderConfig() {
+            return {
+                provider: 'test',
+                temperature: 0.2,
+                maxTokens: 1000,
+                reasoningEnabled: false,
+                reasoningEffort: 'medium',
+            };
+        },
+        createAdapter() {
+            throw new Error('adapter_should_not_be_created');
+        },
+    });
+
+    await runner.runAgent('这句话不能丢。');
+
+    assert.deepEqual(state.messages.map((message) => message.role), ['user', 'assistant']);
+    assert.equal(state.messages[0].content, '这句话不能丢。');
+    assert.match(state.messages[1].content, /refresh_failed_for_test/);
+    assert.equal(state.isBusy, false);
+    assert.equal(persistedBookId, book.id);
 });
 
 test('Book agent renders read-only tool progress through local surfaces', async () => {

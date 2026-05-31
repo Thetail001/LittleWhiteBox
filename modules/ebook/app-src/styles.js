@@ -574,7 +574,7 @@ export function injectEbookStyles(rootId = 'xb-ebook-root') {
         .xb-mobile-drawer-handle {
             display: none;
         }
-        .xb-sidebar { 
+        .xb-sidebar {
             position: relative;
             z-index: 3;
             width: 250px;
