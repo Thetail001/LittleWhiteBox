@@ -162,6 +162,15 @@ export interface XbTavernRuntimeState {
 export interface XbTavernMemoryContext {
     episodeSummaries?: XbTavernMemoryEpisodeSummary[];
     turnSummaries?: XbTavernMemoryTurnSummary[];
+    memoryFiles?: XbTavernMemoryFileSummary[];
+}
+
+export interface XbTavernMemoryFileSummary {
+    path?: string;
+    title?: string;
+    content?: string;
+    recallReason?: string;
+    recallScore?: number;
 }
 
 export interface XbTavernMemoryEpisodeSummary {
@@ -172,6 +181,8 @@ export interface XbTavernMemoryEpisodeSummary {
     endTurn?: number;
     keyChanges?: string[];
     unresolved?: string[];
+    recallReason?: string;
+    recallScore?: number;
 }
 
 export interface XbTavernMemoryTurnSummary {
@@ -186,6 +197,8 @@ export interface XbTavernMemoryTurnSummary {
     locationTimeItems?: string;
     hooks?: string[];
     tags?: string[];
+    recallReason?: string;
+    recallScore?: number;
 }
 
 export interface XbTavernWorldEntryState {
@@ -908,27 +921,50 @@ function formatMemoryList(items: unknown[] = []): string {
 function buildMemoryBlock(memoryContext: XbTavernMemoryContext = {}): string {
     const episodes = Array.isArray(memoryContext.episodeSummaries) ? memoryContext.episodeSummaries : [];
     const turns = Array.isArray(memoryContext.turnSummaries) ? memoryContext.turnSummaries : [];
+    const memoryFiles = Array.isArray(memoryContext.memoryFiles) ? memoryContext.memoryFiles : [];
     const sections: string[] = [];
 
-    const episodeLines = episodes
-        .map((episode) => {
-            const title = normalizeText(episode.title) || '未命名阶段';
-            const range = Number.isFinite(Number(episode.startTurn)) || Number.isFinite(Number(episode.endTurn))
-                ? `turn ${Number(episode.startTurn) || 0}-${Number(episode.endTurn) || 0}`
-                : '';
-            const summary = normalizeText(episode.summary);
-            const keyChanges = formatMemoryList(episode.keyChanges || []);
-            const unresolved = formatMemoryList(episode.unresolved || []);
-            return [
-                `### ${title}${range ? ` (${range})` : ''}`,
-                summary,
-                keyChanges ? `关键变化：\n${keyChanges}` : '',
-                unresolved ? `未解决：\n${unresolved}` : '',
-            ].filter(Boolean).join('\n');
+    const fileLines = memoryFiles
+        .map((file) => {
+            const path = normalizeText(file.path);
+            const title = normalizeText(file.title) || path || '记忆档案';
+            const content = normalizeText(file.content);
+            return content ? `### ${title}${path ? ` (${path})` : ''}\n${content}` : '';
         })
         .filter(Boolean);
-    if (episodeLines.length) {
-        sections.push(`## 阶段大总结\n${episodeLines.join('\n\n')}`);
+    if (fileLines.length) {
+        sections.push(`## 固定记忆档案\n${fileLines.join('\n\n')}`);
+    }
+
+    const formatEpisodeLine = (episode: XbTavernMemoryEpisodeSummary) => {
+        const title = normalizeText(episode.title) || '未命名阶段';
+        const range = Number.isFinite(Number(episode.startTurn)) || Number.isFinite(Number(episode.endTurn))
+            ? `turn ${Number(episode.startTurn) || 0}-${Number(episode.endTurn) || 0}`
+            : '';
+        const summary = normalizeText(episode.summary);
+        const keyChanges = formatMemoryList(episode.keyChanges || []);
+        const unresolved = formatMemoryList(episode.unresolved || []);
+        return [
+            `### ${title}${range ? ` (${range})` : ''}`,
+            summary,
+            keyChanges ? `关键变化：\n${keyChanges}` : '',
+            unresolved ? `未解决：\n${unresolved}` : '',
+        ].filter(Boolean).join('\n');
+    };
+    const fixedEpisodeLines = episodes
+        .filter((episode) => ['current', 'open'].includes(String(episode.recallReason || '')))
+        .map(formatEpisodeLine)
+        .filter(Boolean);
+    if (fixedEpisodeLines.length) {
+        sections.push(`## 当前/未解决阶段\n${fixedEpisodeLines.join('\n\n')}`);
+    }
+
+    const matchedEpisodeLines = episodes
+        .filter((episode) => !['current', 'open'].includes(String(episode.recallReason || '')))
+        .map(formatEpisodeLine)
+        .filter(Boolean);
+    if (matchedEpisodeLines.length) {
+        sections.push(`## 召回命中阶段\n${matchedEpisodeLines.join('\n\n')}`);
     }
 
     const turnLines = turns
@@ -952,7 +988,7 @@ function buildMemoryBlock(memoryContext: XbTavernMemoryContext = {}): string {
         })
         .filter(Boolean);
     if (turnLines.length) {
-        sections.push(`## 每轮小总结\n${turnLines.join('\n')}`);
+        sections.push(`## 召回命中小总结\n${turnLines.join('\n')}`);
     }
 
     return sections.length ? `<session_memory>\n${sections.join('\n\n')}\n</session_memory>` : '';
@@ -1199,6 +1235,15 @@ export function buildXbTavernMessages(
         layer: message.role === 'user' ? 'current-user/history' : 'history',
         label: message.role === 'user' && message.content === currentUserMessage ? 'current user message' : `history ${index + 1}`,
     }));
+    let currentUserUnitIndex = -1;
+    for (let index = conversationUnits.length - 1; index >= 0; index -= 1) {
+        if (conversationUnits[index]?.label === 'current user message') {
+            currentUserUnitIndex = index;
+            break;
+        }
+    }
+    const historyUnits = currentUserUnitIndex >= 0 ? conversationUnits.slice(0, currentUserUnitIndex) : conversationUnits;
+    const currentUserUnits = currentUserUnitIndex >= 0 ? conversationUnits.slice(currentUserUnitIndex) : [];
     const compacted = compactMessageUnits([
         makeMessageUnit('system', preset.systemPrompt, 'lwb-system', 'LittleWhiteBox top system', {}, 'lwb-system'),
         makeMessageUnit('system', preset.toolPrompt, 'lwb-tool', 'LittleWhiteBox tool rules', {}, 'lwb-tool'),
@@ -1211,8 +1256,9 @@ export function buildXbTavernMessages(
         makeMessageUnit('system', renderEntryBlock('world_info_examples_top', worldBuckets.examplesTop), 'world-examples', 'world info examples top'),
         makeMessageUnit('system', renderEntryBlock('world_info_author_note_top', worldBuckets.authorNoteTop), 'world-author-note', 'world info author note top'),
         ...beforeHistorySections,
+        ...historyUnits,
         makeMessageUnit('system', buildMemoryBlock(memoryContext), 'memory', 'session memory'),
-        ...conversationUnits,
+        ...currentUserUnits,
         ...afterHistorySections,
         makeMessageUnit('system', renderEntryBlock('world_info_author_note_bottom', worldBuckets.authorNoteBottom), 'world-author-note', 'world info author note bottom'),
         makeMessageUnit('system', renderEntryBlock('world_info_examples_bottom', worldBuckets.examplesBottom), 'world-examples', 'world info examples bottom'),

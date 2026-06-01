@@ -1,5 +1,6 @@
 export interface DexieTable<T = Record<string, unknown>> {
     put(value: T): Promise<unknown>;
+    bulkPut(values: T[]): Promise<unknown>;
     get(key: unknown): Promise<T | undefined>;
     update(key: unknown, changes: Partial<T>): Promise<number>;
     delete(key: unknown): Promise<void>;

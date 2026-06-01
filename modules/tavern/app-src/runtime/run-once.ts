@@ -127,7 +127,7 @@ async function notifyRunCallback(callback: (() => void | Promise<void>) | undefi
     try {
         await callback();
     } catch (error) {
-        console.warn('[LittleWhiteBox Tavern] run callback failed', error);
+        console.warn('[小白酒馆] run callback failed', error);
     }
 }
 

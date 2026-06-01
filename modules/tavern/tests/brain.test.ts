@@ -97,7 +97,13 @@ test('xb tavern brain injects memory without moving locked top prompts', () => {
     assert.equal(brain.buildResult.messageLayers[0]?.layer, 'lwb-system');
     assert.equal(brain.buildResult.messageLayers[1]?.layer, 'lwb-tool');
     const memoryLayer = brain.buildResult.messageLayers.find((layer) => layer.layer === 'memory');
+    const currentUserLayer = brain.buildResult.messageLayers.find((layer) => layer.label === 'current user message');
+    const historyLayer = brain.buildResult.messageLayers.find((layer) => layer.label === 'history 1');
     assert.ok(memoryLayer);
+    assert.ok(currentUserLayer);
+    assert.ok(historyLayer);
+    assert.ok(memoryLayer.index > historyLayer.index);
+    assert.ok(memoryLayer.index < currentUserLayer.index);
     assert.match(brain.buildResult.messages[memoryLayer.index]?.content || '', /<session_memory>/);
     assert.match(brain.rawMessagesJson, /Aster 接受了邀请/);
 });

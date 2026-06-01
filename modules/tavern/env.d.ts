@@ -15,6 +15,7 @@ interface TavernAgentAdapterChatResult {
     model?: string;
     provider?: string;
     finishReason?: string;
+    toolCalls?: unknown[];
     providerPayload?: unknown;
 }
 
@@ -55,6 +56,24 @@ declare module '*.js' {
         config: Record<string, unknown>,
         options?: Record<string, unknown>,
     ): Record<string, unknown>;
+    export function applyTextEdits(content: string, edits: unknown): {
+        ok: boolean;
+        content: string;
+        appliedCount?: number;
+        warning?: string;
+        results?: unknown;
+    };
+    export function buildProviderAssistantToolCallMessage(
+        result?: Record<string, unknown>,
+        toolCalls?: unknown[],
+        options?: Record<string, unknown>,
+    ): Record<string, unknown>;
+    export function hasVisibleText(text: unknown): boolean;
+    export function resolveResultToolCalls(
+        result?: Record<string, unknown>,
+        providerConfig?: Record<string, unknown>,
+        options?: Record<string, unknown>,
+    ): Array<{ id: string; name: string; arguments: string }>;
     export function renderMarkdownToHtml(text: string): string;
     export function enhanceMarkdownContent(rootNode: ParentNode, options?: Record<string, unknown>): ParentNode;
     export function createAgentSettingsPanel(deps?: Record<string, unknown>): {

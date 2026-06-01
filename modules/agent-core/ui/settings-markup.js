@@ -81,10 +81,10 @@ export function buildAgentSettingsPanelMarkup(options = {}) {
                     <span>Provider</span>
                     <select id="xb-assistant-delegate-provider">
                         <option value="openai-responses">OpenAI Responses</option>
-                        <option value="openai-compatible">OpenAI-compatible</option>
-                        <option value="sillytavern-openai-compatible">SillyTavern OpenAI-compatible</option>
-                        <option value="sillytavern-claude">SillyTavern Claude</option>
-                        <option value="sillytavern-google">SillyTavern Google AI</option>
+                        <option value="openai-compatible">OpenAI 兼容</option>
+                        <option value="sillytavern-openai-compatible">酒馆 OpenAI 兼容</option>
+                        <option value="sillytavern-claude">酒馆 Claude</option>
+                        <option value="sillytavern-google">酒馆 Google AI</option>
                         <option value="anthropic">Anthropic</option>
                         <option value="google">Google AI</option>
                     </select>
@@ -162,10 +162,10 @@ export function buildAgentSettingsPanelMarkup(options = {}) {
                 <span>Provider</span>
                 <select id="xb-assistant-provider">
                     <option value="openai-responses">OpenAI Responses</option>
-                    <option value="openai-compatible">OpenAI-compatible</option>
-                    <option value="sillytavern-openai-compatible">SillyTavern OpenAI-compatible</option>
-                    <option value="sillytavern-claude">SillyTavern Claude</option>
-                    <option value="sillytavern-google">SillyTavern Google AI</option>
+                    <option value="openai-compatible">OpenAI 兼容</option>
+                    <option value="sillytavern-openai-compatible">酒馆 OpenAI 兼容</option>
+                    <option value="sillytavern-claude">酒馆 Claude</option>
+                    <option value="sillytavern-google">酒馆 Google AI</option>
                     <option value="anthropic">Anthropic</option>
                     <option value="google">Google AI</option>
                 </select>

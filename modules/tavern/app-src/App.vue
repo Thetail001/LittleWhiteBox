@@ -13,8 +13,14 @@ import { buildXbTavernBrain } from '../shared/brain';
 import {
     buildXbTavernMemoryIgnoredTerms,
     buildXbTavernMemoryQuery,
+    getXbTavernMemoryTokenizerStatus,
+    preloadXbTavernMemoryTokenizer,
     selectXbTavernMemoryContext,
 } from '../shared/memory-retrieval';
+import {
+    getTavernMemoryIndex,
+    listTavernMemoryFiles,
+} from '../shared/memory-files';
 import { createDefaultXbTavernPreset, DEFAULT_XB_TAVERN_PRESET_ID } from '../shared/presets';
 import {
     createTavernSession,
@@ -39,6 +45,8 @@ import {
     updateTavernSessionSnapshot,
     type TavernEpisodeSummaryRecord,
     type TavernManagerRunRecord,
+    type TavernMemoryFileRecord,
+    type TavernMemoryIndexRecord,
     type TavernMessageRecord,
     type TavernPresetRecord,
     type TavernSessionRecord,
@@ -93,6 +101,10 @@ const sessionMessages = ref<TavernMessageRecord[]>([]);
 const turnSummaries = ref<TavernTurnSummaryRecord[]>([]);
 const episodeSummaries = ref<TavernEpisodeSummaryRecord[]>([]);
 const managerRuns = ref<TavernManagerRunRecord[]>([]);
+const memoryFiles = ref<TavernMemoryFileRecord[]>([]);
+const memoryIndex = ref<TavernMemoryIndexRecord | null>(null);
+const memoryTokenizerStatus = ref(getXbTavernMemoryTokenizerStatus());
+const selectedMemoryFilePath = ref('');
 const managerActionStatus = ref('');
 const preset = ref(createDefaultXbTavernPreset());
 const userPresets = ref<TavernPresetRecord[]>([]);
@@ -151,25 +163,25 @@ const usingLockedSessionContext = computed(() => !!selectedSession.value?.contex
 const liveWorldBookCount = computed(() => context.value.worldBooks?.length || 0);
 const liveWorldEntryCount = computed(() => (context.value.worldBooks || []).reduce((sum, book) => sum + (book.entries?.length || 0), 0));
 const contextSourceTitle = computed(() => usingLockedSessionContext.value
-    ? '当前显示和试聊：会话锁定资料'
-    : '当前显示和试聊：刚读取的酒馆资料');
+    ? '使用会话资料'
+    : '使用刚读取资料');
 const contextSourceDetail = computed(() => usingLockedSessionContext.value
-    ? `会话锁定了 ${selectedSession.value?.characterName || '未选择角色'} 的资料。你刚改角色卡或世界书后，需要刷新会话资料，或者改用刚读取资料重新试聊。`
-    : `正在使用酒馆最新读取资料：${context.value.character?.name || '未选择角色'} / 世界书 ${liveWorldBookCount.value} 本 ${liveWorldEntryCount.value} 条。`);
+    ? `这次会话锁定在 ${selectedSession.value?.characterName || '未选择角色'} 创建时的角色和世界书。改过资料后，可手动刷新。`
+    : `当前角色：${context.value.character?.name || '未选择角色'}；世界书 ${liveWorldBookCount.value} 本 ${liveWorldEntryCount.value} 条。`);
 const activeWorkspace = ref<WorkspaceKey>('snapshot');
 const workspaceTabs = [
-    { key: 'snapshot', label: '资料', hint: '角色卡和会话快照' },
-    { key: 'world', label: '世界书', hint: '读到的资料和命中条目' },
-    { key: 'messages', label: '发送内容', hint: '最终 messages' },
-    { key: 'runtime', label: '运行记录', hint: '试跑和 payload' },
+    { key: 'snapshot', label: '资料', hint: '角色与会话' },
+    { key: 'world', label: '世界书', hint: '读入与触发' },
+    { key: 'messages', label: '本轮内容', hint: '模型将看到什么' },
+    { key: 'runtime', label: '试聊记录', hint: '回复、错误和调用记录' },
 ] as const;
 const workspaceFallbackItems: Record<WorkspaceKey, { key: WorkspaceKey; label: string; hint: string }> = {
-    snapshot: { key: 'snapshot', label: '资料', hint: '角色卡和会话快照' },
-    world: { key: 'world', label: '世界书', hint: '读到的资料和命中条目' },
-    messages: { key: 'messages', label: '发送内容', hint: '最终 messages' },
-    runtime: { key: 'runtime', label: '运行记录', hint: '试跑和 payload' },
+    snapshot: { key: 'snapshot', label: '资料', hint: '角色与会话' },
+    world: { key: 'world', label: '世界书', hint: '读入与触发' },
+    messages: { key: 'messages', label: '本轮内容', hint: '模型将看到什么' },
+    runtime: { key: 'runtime', label: '试聊记录', hint: '回复、错误和调用记录' },
     api: { key: 'api', label: 'API 配置', hint: '使用小白助手和电纸书同一套模型预设' },
-    preset: { key: 'preset', label: '小白预设', hint: '修改最终发送内容里使用的小白规则' },
+    preset: { key: 'preset', label: '小白预设', hint: '聊天前的补充规则' },
 };
 const activeWorkspaceItem = computed(() => workspaceTabs.find((item) => item.key === activeWorkspace.value)
     || workspaceFallbackItems[activeWorkspace.value]);
@@ -180,12 +192,16 @@ const effectiveContext = computed<XbTavernContext>(() => ({
         ? buildContextHistory(sessionMessages.value)
         : context.value.history,
 }));
-const memoryContext = computed(() => selectXbTavernMemoryContext({
-    episodeSummaries: episodeSummaries.value,
-    turnSummaries: turnSummaries.value,
-    queryText: buildXbTavernMemoryQuery(effectiveContext.value, currentUserMessage.value),
-    ignoredTerms: buildXbTavernMemoryIgnoredTerms(effectiveContext.value),
-}));
+const memoryContext = computed(() => {
+    if (memoryTokenizerStatus.value.status !== 'ready') {return {};}
+    return selectXbTavernMemoryContext({
+        episodeSummaries: episodeSummaries.value,
+        turnSummaries: turnSummaries.value,
+        memoryFiles: memoryFiles.value,
+        queryText: buildXbTavernMemoryQuery(effectiveContext.value, currentUserMessage.value),
+        ignoredTerms: buildXbTavernMemoryIgnoredTerms(effectiveContext.value),
+    });
+});
 
 const brainBuild = computed(() => buildXbTavernBrain({
     context: effectiveContext.value,
@@ -228,6 +244,25 @@ const latestErrorMessage = computed(() => {
 const latestManagerRun = computed(() => managerRuns.value[0] || null);
 const managerBusy = computed(() => managerRuns.value.some((run) => ['queued', 'running'].includes(run.status)));
 const recentTurnSummaries = computed(() => [...turnSummaries.value].reverse().slice(0, 8));
+const activeMemoryFiles = computed(() => memoryFiles.value.filter((file) => file.status !== 'stale'));
+const selectedMemoryFile = computed(() => (
+    memoryFiles.value.find((file) => file.path === selectedMemoryFilePath.value)
+    || memoryFiles.value[0]
+    || null
+));
+const memoryIndexStatusLine = computed(() => {
+    const tokenizer = memoryTokenizerStatus.value;
+    if (tokenizer.status !== 'ready') {
+        if (tokenizer.status === 'failed') {return `记忆检索准备失败：${tokenizer.error || 'memory_tokenizer_failed'}`;}
+        if (tokenizer.status === 'loading') {return '记忆检索准备中';}
+        return '记忆检索尚未准备好';
+    }
+    const index = memoryIndex.value;
+    if (!index) {return '还没有可检索记忆';}
+    if (index.status === 'ready') {return '记忆可检索';}
+    if (index.status === 'failed') {return `记忆整理失败：${index.error || 'memory_index_failed'}`;}
+    return '记忆正在整理';
+});
 const managerStatusLine = computed(() => {
     if (managerActionStatus.value) {return managerActionStatus.value;}
     const latest = latestManagerRun.value;
@@ -249,12 +284,12 @@ const chatSubtitle = computed(() => {
 const lastModelLine = computed(() => {
     const provider = String(lastRequestSnapshot.value?.providerLabel || lastRequestSnapshot.value?.provider || runtimeProvider.value || resolvedProviderConfig.value.providerLabel || '').trim();
     const model = String(lastRequestSnapshot.value?.model || runtimeModel.value || resolvedProviderConfig.value.model || '').trim();
-    if (!provider && !model) {return '尚未发模';}
+    if (!provider && !model) {return '还没有调用记录';}
     return `${provider || '未知通道'} / ${model || '未知模型'}`;
 });
 const apiRuntimeLine = computed(() => {
     const config = resolvedProviderConfig.value;
-    return `共享预设「${config.currentPresetName || '默认'}」 · ${config.providerLabel} / ${config.model || '未选择模型'} · ${config.toolMode}`;
+    return `预设「${config.currentPresetName || '默认'}」 · ${config.providerLabel} / ${config.model || '未选择模型'}`;
 });
 const chatTriggerSummary = computed(() => {
     if (!currentUserMessage.value.trim()) {return '填写输入后，这里会预览世界书命中。';}
@@ -283,7 +318,7 @@ const brainChecks = computed<BrainCheck[]>(() => {
             key: 'messages',
             label: '顶层规则',
             ok: topRulesLocked,
-            detail: topRulesLocked ? '小白 system 和工具边界固定在最前两条' : '最前两条规则异常',
+            detail: topRulesLocked ? '核心规则固定在最前面' : '核心规则位置异常',
         },
         {
             key: 'world',
@@ -293,13 +328,13 @@ const brainChecks = computed<BrainCheck[]>(() => {
         },
         {
             key: 'messages',
-            label: '发送内容',
+            label: '本轮内容',
             ok: lastRequestMatchesPreview.value,
             detail: hasRequestAudit
                 ? (lastRequestMatchesPreview.value
-                    ? `上次试跑和当前预览一致：${lastRequestSnapshot.value?.messageCount || messagePreview.value.length} 条`
-                    : '当前预览已经不同于上次实际发送，需要重新试跑')
-                : `待试跑：当前预览 ${messagePreview.value.length} 条 / ${buildSnapshot.value.messageChars} 字`,
+                    ? `上次调用和当前内容一致：${lastRequestSnapshot.value?.messageCount || messagePreview.value.length} 条`
+                    : '当前内容已经变动，需要重新试聊')
+                : `待试聊：当前内容 ${messagePreview.value.length} 条 / ${buildSnapshot.value.messageChars} 字`,
         },
         {
             key: 'api',
@@ -311,7 +346,7 @@ const brainChecks = computed<BrainCheck[]>(() => {
             key: 'runtime',
             label: '独立会话',
             ok: !!selectedSessionId.value,
-            detail: selectedSessionId.value ? '试跑会写入小白酒馆会话' : '还没创建小白酒馆会话',
+            detail: selectedSessionId.value ? '回复会写入当前会话' : '还没创建会话',
         },
     ];
 });
@@ -363,7 +398,7 @@ type MessagePreviewRow = (typeof messageRows.value)[number];
 
 const messageGroups = computed(() => {
     const labels: Record<string, string> = {
-        'lwb-system': '最高优先级规则',
+        'lwb-system': '核心规则',
         'lwb-tool': '工具和行为边界',
         top: '开场规则',
         preset: '补充规则',
@@ -824,17 +859,27 @@ async function refreshManagerRecords(sessionId = selectedSessionId.value) {
         turnSummaries.value = [];
         episodeSummaries.value = [];
         managerRuns.value = [];
+        memoryFiles.value = [];
+        memoryIndex.value = null;
+        selectedMemoryFilePath.value = '';
         return;
     }
-    const [turns, episodes, runs] = await Promise.all([
+    const [turns, episodes, runs, files, index] = await Promise.all([
         listTavernTurnSummaries(id),
         listTavernEpisodeSummaries(id),
         listTavernManagerRuns(id, { limit: 18 }),
+        listTavernMemoryFiles(id, { includeStale: true }),
+        getTavernMemoryIndex(id),
     ]);
     if (id !== selectedSessionId.value) {return;}
     turnSummaries.value = turns;
     episodeSummaries.value = episodes.reverse();
     managerRuns.value = runs;
+    memoryFiles.value = files;
+    memoryIndex.value = index;
+    if (!files.some((file) => file.path === selectedMemoryFilePath.value)) {
+        selectedMemoryFilePath.value = files[0]?.path || '';
+    }
 }
 
 async function rebuildSelectedSessionRuntimeState(messages: TavernMessageRecord[] = sessionMessages.value) {
@@ -957,6 +1002,22 @@ function formatRunModelLine(run: TavernManagerRunRecord) {
     return [provider, model].filter(Boolean).join(' / ') || '未记录模型';
 }
 
+function memoryFileStatusLabel(status = '') {
+    return status === 'stale' ? '过期' : '可用';
+}
+
+function formatMemoryFileMeta(file: TavernMemoryFileRecord) {
+    return `${memoryFileStatusLabel(file.status)} · ${Math.max(0, String(file.content || '').length)} 字`;
+}
+
+function formatDebugJson(value: unknown) {
+    try {
+        return JSON.stringify(value ?? null, null, 2);
+    } catch {
+        return String(value || '');
+    }
+}
+
 async function retryManagerRun(run: TavernManagerRunRecord) {
     if (!selectedSessionId.value || managerBusy.value) {return;}
     const messages = await listTavernMessages(selectedSessionId.value);
@@ -1007,8 +1068,8 @@ function candidateReason(entry: { status?: string; activationReason?: string; bu
 function roleLabel(role = '') {
     const labels: Record<string, string> = {
         system: '规则',
-        user: '用户',
-        assistant: 'AI',
+        user: '你',
+        assistant: '角色',
         tool: '工具结果',
     };
     return labels[role] || role || '未知';
@@ -1397,6 +1458,15 @@ function handleChatSubmit() {
     void runOnce();
 }
 
+async function warmupMemoryTokenizer() {
+    memoryTokenizerStatus.value = getXbTavernMemoryTokenizerStatus();
+    const ok = await preloadXbTavernMemoryTokenizer();
+    memoryTokenizerStatus.value = getXbTavernMemoryTokenizerStatus();
+    if (!ok) {
+        managerActionStatus.value = `记忆检索准备失败：${memoryTokenizerStatus.value.error || 'memory_tokenizer_failed'}`;
+    }
+}
+
 async function runOnce(options: { messageText?: string; reuseUserMessageOrder?: number } = {}) {
     if (isRunning.value) {
         cancelActiveRun();
@@ -1513,6 +1583,7 @@ onMounted(async () => {
     // onHostMessage validates origin and message source before accepting payloads.
     // eslint-disable-next-line no-restricted-syntax
     window.addEventListener('message', onHostMessage);
+    void warmupMemoryTokenizer();
     await refreshPresets();
     await refreshSessions();
     syncApiSettingsConfigFromAgentConfig();
@@ -1540,9 +1611,12 @@ onUnmounted(() => {
     <header class="xb-topbar">
       <div>
         <p class="eyebrow">
-          LittleWhiteBox Tavern
+          角色共演
         </p>
         <h1>小白酒馆</h1>
+        <p class="top-subtitle">
+          {{ characterName }} · {{ chatReadyLabel }}
+        </p>
       </div>
       <nav
         class="view-tabs"
@@ -1594,46 +1668,55 @@ onUnmounted(() => {
       <div class="home-hero">
         <div>
           <p class="eyebrow">
-            首页
+            小白酒馆
           </p>
-          <h2>小白酒馆</h2>
+          <h2>{{ characterName }}</h2>
           <p>
-            {{ characterName }} · {{ chatReadyLabel }}
+            {{ selectedSessionId ? selectedSessionTitle : '选择角色，开一段新的对话。' }}
           </p>
         </div>
-        <div class="home-actions">
+        <div class="home-primary-actions">
           <button
             type="button"
-            class="primary-action"
+            class="home-action-main"
             @click="selectedSessionId ? activeView = 'chat' : createSessionAndOpenChat()"
           >
-            {{ selectedSessionId ? '进入聊天' : '开始聊天' }}
+            <strong>{{ selectedSessionId ? '继续聊天' : '开始聊天' }}</strong>
+            <span>{{ selectedSessionId ? selectedSessionTitle : characterName }}</span>
           </button>
           <button
             type="button"
+            class="home-action-main"
             @click="createSessionAndOpenChat"
           >
-            新开会话
-          </button>
-          <button
-            type="button"
-            @click="activeView = 'inspect'; activeWorkspace = 'snapshot'"
-          >
-            选择角色
-          </button>
-          <button
-            type="button"
-            @click="activeView = 'inspect'; activeWorkspace = 'world'"
-          >
-            资料检查
-          </button>
-          <button
-            type="button"
-            @click="activeView = 'settings'"
-          >
-            设置
+            <strong>新开会话</strong>
+            <span>{{ characterName }}</span>
           </button>
         </div>
+      </div>
+
+      <div class="home-route-grid">
+        <button
+          type="button"
+          @click="activeView = 'inspect'; activeWorkspace = 'snapshot'"
+        >
+          <strong>选择角色</strong>
+          <span>{{ contextSourceTitle }}</span>
+        </button>
+        <button
+          type="button"
+          @click="activeView = 'inspect'; activeWorkspace = 'world'"
+        >
+          <strong>资料检查</strong>
+          <span>{{ worldBookCount }} 本世界书 · {{ worldEntryCount }} 条候选</span>
+        </button>
+        <button
+          type="button"
+          @click="activeView = 'settings'"
+        >
+          <strong>设置</strong>
+          <span>{{ apiReady ? apiRuntimeLine : apiReadyDetail }}</span>
+        </button>
       </div>
 
       <section class="session-board">
@@ -1663,7 +1746,7 @@ onUnmounted(() => {
             v-if="!sessions.length"
             class="muted"
           >
-            还没有小白酒馆会话。
+            还没有会话。
           </p>
         </div>
       </section>
@@ -1702,14 +1785,14 @@ onUnmounted(() => {
               :class="{ active: chatFocus === 'balanced' }"
               @click="chatFocus = 'balanced'"
             >
-              平衡
+              并排
             </button>
             <button
               type="button"
               :class="{ active: chatFocus === 'manager' }"
               @click="chatFocus = 'manager'"
             >
-              管理
+              记忆
             </button>
           </div>
         </section>
@@ -1717,7 +1800,7 @@ onUnmounted(() => {
         <section class="chat-side-block">
           <div class="side-stat">
             <span>状态</span>
-            <strong>{{ selectedSessionTitle }}</strong>
+            <strong>{{ chatReadyLabel }}</strong>
           </div>
           <div class="side-stat">
             <span>轮次</span>
@@ -1725,14 +1808,14 @@ onUnmounted(() => {
           </div>
           <div class="side-stat">
             <span>位置</span>
-            <strong>地图预留</strong>
+            <strong>未记录</strong>
           </div>
         </section>
 
         <section class="chat-map-panel">
-          <strong>地图</strong>
+          <strong>场景</strong>
           <div class="map-placeholder">
-            <span>位置预留</span>
+            <span>未记录</span>
           </div>
         </section>
 
@@ -1795,7 +1878,7 @@ onUnmounted(() => {
               type="button"
               @click="chatFocus = 'manager'"
             >
-              管理
+              记忆
             </button>
             <button
               type="button"
@@ -1921,7 +2004,7 @@ onUnmounted(() => {
             class="chat-bubble from-assistant streaming"
           >
             <div class="bubble-meta">
-              <span>AI</span>
+              <span>角色</span>
               <small>生成中</small>
             </div>
             <div
@@ -1935,7 +2018,7 @@ onUnmounted(() => {
             class="chat-bubble from-assistant streaming thinking"
           >
             <div class="bubble-meta">
-              <span>AI</span>
+              <span>角色</span>
               <small>生成中</small>
             </div>
             <p>正在组织回复...</p>
@@ -2002,9 +2085,9 @@ onUnmounted(() => {
         <header class="manager-head">
           <div>
             <p class="eyebrow">
-              管理
+              记忆
             </p>
-            <h2>后台管理者</h2>
+            <h2>记忆管理</h2>
             <p>{{ managerStatusLine }}</p>
           </div>
           <button
@@ -2020,6 +2103,58 @@ onUnmounted(() => {
             聊天
           </button>
         </header>
+
+        <section class="manager-section">
+          <div class="side-block-head">
+            <strong>记忆档案</strong>
+            <span>{{ activeMemoryFiles.length }}/{{ memoryFiles.length }}</span>
+          </div>
+          <p class="manager-index-line">
+            {{ memoryIndexStatusLine }}
+          </p>
+          <div
+            v-if="memoryFiles.length"
+            class="memory-file-grid"
+          >
+            <div class="memory-file-list">
+              <button
+                v-for="file in memoryFiles"
+                :key="file.path"
+                type="button"
+                :class="{ active: selectedMemoryFile?.path === file.path, stale: file.status === 'stale' }"
+                @click="selectedMemoryFilePath = file.path"
+              >
+                <strong>{{ file.path }}</strong>
+                <span>{{ formatMemoryFileMeta(file) }}</span>
+              </button>
+            </div>
+            <article
+              v-if="selectedMemoryFile"
+              class="manager-card memory-file-preview"
+              :class="{ 'is-stale': selectedMemoryFile.status === 'stale' }"
+            >
+              <div class="manager-run-title">
+                <strong>{{ selectedMemoryFile.path }}</strong>
+                <small>{{ memoryFileStatusLabel(selectedMemoryFile.status) }}</small>
+              </div>
+              <div
+                class="xb-tavern-markdown memory-file-markdown"
+                :data-markdown-signature="markdownSignature(selectedMemoryFile.content)"
+                v-html="renderChatMarkdown(selectedMemoryFile.content)"
+              />
+              <details>
+                <summary>查看 Markdown 原文</summary>
+                <pre>{{ selectedMemoryFile.content }}</pre>
+              </details>
+            </article>
+          </div>
+          <p
+            v-else
+            class="muted compact"
+          >
+            还没有记忆档案。
+          </p>
+        </section>
 
         <section class="manager-section">
           <div class="side-block-head">
@@ -2088,9 +2223,16 @@ onUnmounted(() => {
             <p v-if="run.parsedAction">
               动作：{{ run.parsedAction }}
             </p>
+            <p v-if="run.changedFiles?.length">
+              文件：{{ run.changedFiles.join('、') }}
+            </p>
             <details v-if="run.outputText">
-              <summary>输出</summary>
+              <summary>工作结论</summary>
               <pre>{{ run.outputText }}</pre>
+            </details>
+            <details v-if="run.toolTrace">
+              <summary>改动记录</summary>
+              <pre>{{ formatDebugJson(run.toolTrace) }}</pre>
             </details>
             <p v-if="run.error">
               {{ run.error }}
@@ -2434,7 +2576,7 @@ onUnmounted(() => {
           </section>
           <div class="world-debug-grid">
             <details class="debug-box">
-              <summary>开发查看：用于匹配世界书的文本 · {{ buildResult.meta.scanTextChars }} 字</summary>
+              <summary>高级查看：匹配用文本 · {{ buildResult.meta.scanTextChars }} 字</summary>
               <pre>{{ shortText(scanTextPreview, 2400) }}</pre>
             </details>
             <div class="debug-box">
@@ -2518,7 +2660,7 @@ onUnmounted(() => {
         >
           <div class="panel-head">
             <div>
-              <h2>发送内容</h2>
+              <h2>本轮内容</h2>
               <p class="muted compact">
                 小白会把固定规则、预设、角色卡、世界书、历史和你的本次输入组装成这些内容。
               </p>
@@ -2561,7 +2703,7 @@ onUnmounted(() => {
             >
               <div class="message-group-head">
                 <strong>{{ group.label }}</strong>
-                <span>{{ group.rows.length }} 条 · {{ group.chars }} 字 · ~{{ group.tokenEstimate }} tokens</span>
+                <span>{{ group.rows.length }} 条 · {{ group.chars }} 字 · 约 {{ group.tokenEstimate }}</span>
               </div>
               <details
                 v-for="row in group.rows"
@@ -2572,14 +2714,14 @@ onUnmounted(() => {
               >
                 <summary>
                   <span>{{ row.index + 1 }} · {{ roleLabel(row.message.role) }} · {{ row.label }}</span>
-                  <small>{{ row.chars }} 字 · ~{{ row.tokenEstimate }} tokens</small>
+                  <small>{{ row.chars }} 字 · 约 {{ row.tokenEstimate }}</small>
                 </summary>
                 <pre>{{ row.message.content }}</pre>
               </details>
             </section>
           </div>
           <details class="raw-json">
-            <summary>开发查看：原始 messages</summary>
+            <summary>高级查看：完整入模内容</summary>
             <pre>{{ rawMessagesJson }}</pre>
           </details>
         </div>
@@ -2590,9 +2732,9 @@ onUnmounted(() => {
         >
           <div class="panel-head">
             <div>
-              <h2>运行记录</h2>
+              <h2>试聊记录</h2>
               <p class="muted compact">
-                只跑一轮验证消息结构和模型通道，结果写入小白酒馆自己的会话。
+                跑一轮看看角色回复，结果会写入当前会话。
               </p>
             </div>
             <button
@@ -2649,24 +2791,24 @@ onUnmounted(() => {
             v-if="runtimeProvider || runtimeModel"
             class="muted"
           >
-            模型通道：{{ runtimeProvider || '未知通道' }} / {{ runtimeModel || '未知模型' }}
+            本次调用：{{ runtimeProvider || '未知通道' }} / {{ runtimeModel || '未知模型' }}
           </p>
           <p
             v-if="lastRequestSnapshot?.rawMessagesJson"
             class="muted"
           >
-            发送内容检查：{{ lastRequestMatchesPreview ? '当前预览和上次实际发送一致' : '当前预览已变化，需要重新试聊' }}
+            本轮内容：{{ lastRequestMatchesPreview ? '和上次调用一致' : '已经变化，需要重新试聊' }}
           </p>
-          <pre class="runtime">{{ runtimeText || '这里显示 AI 的试跑回复。' }}</pre>
+          <pre class="runtime">{{ runtimeText || '这里显示角色回复。' }}</pre>
           <details
             v-if="runtimeSnapshotJson"
             class="raw-json"
           >
-            <summary>开发查看：本次发送记录</summary>
+            <summary>高级查看：本次调用记录</summary>
             <pre>{{ runtimeSnapshotJson }}</pre>
           </details>
           <p class="muted">
-            这里只写入小白酒馆自己的会话，不会改动原酒馆聊天。
+            这里只写入当前会话，不会改动原聊天。
           </p>
           <div class="session-messages">
             <span
@@ -2750,7 +2892,7 @@ onUnmounted(() => {
             <div>
               <h2>调整小白预设</h2>
               <p class="muted compact">
-                这里会影响最终发给模型的内容。默认规则不能直接改，需要先复制一份。
+                这里会影响聊天前给模型的补充规则。默认规则不能直接改，需要先复制一份。
               </p>
             </div>
             <div class="panel-pills">

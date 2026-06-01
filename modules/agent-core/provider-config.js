@@ -23,10 +23,10 @@ export const REASONING_EFFORT_OPTIONS = Object.freeze([
 
 export const PROVIDER_OPTIONS = Object.freeze([
     { value: 'openai-responses', label: 'OpenAI Responses' },
-    { value: 'openai-compatible', label: 'OpenAI-Compatible' },
-    { value: 'sillytavern-openai-compatible', label: 'SillyTavern OpenAI-Compatible' },
-    { value: 'sillytavern-claude', label: 'SillyTavern Claude' },
-    { value: 'sillytavern-google', label: 'SillyTavern Google AI' },
+    { value: 'openai-compatible', label: 'OpenAI 兼容' },
+    { value: 'sillytavern-openai-compatible', label: '酒馆 OpenAI 兼容' },
+    { value: 'sillytavern-claude', label: '酒馆 Claude' },
+    { value: 'sillytavern-google', label: '酒馆 Google AI' },
     { value: 'anthropic', label: 'Anthropic' },
     { value: 'google', label: 'Google AI' },
 ]);

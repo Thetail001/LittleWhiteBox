@@ -168,24 +168,21 @@ textarea:disabled {
 
 .tavern-home {
     overflow: auto;
-    padding: clamp(18px, 3vw, 34px);
+    padding: clamp(22px, 4vw, 54px);
 }
 
 .home-hero {
     width: min(1160px, 100%);
-    min-height: 240px;
-    margin: 0 auto 18px;
-    border: 1px solid var(--xb-line);
-    border-radius: 16px;
+    min-height: 260px;
+    margin: 0 auto 22px;
     background:
-        linear-gradient(135deg, rgba(143, 180, 189, 0.13), rgba(179, 173, 202, 0.08) 42%, rgba(184, 178, 166, 0.06)),
-        var(--xb-bg-agent);
+        linear-gradient(135deg, rgba(143, 180, 189, 0.11), rgba(179, 173, 202, 0.04) 44%, transparent 70%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent);
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 430px);
     align-items: end;
     gap: 22px;
-    padding: clamp(22px, 4vw, 44px);
-    box-shadow: var(--xb-shadow);
+    padding: clamp(18px, 4vw, 42px) 0 clamp(18px, 4vw, 42px);
 }
 
 .home-hero h2 {
@@ -201,19 +198,65 @@ textarea:disabled {
     line-height: 1.65;
 }
 
-.home-actions {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    gap: 10px;
+.home-primary-actions {
+    display: grid;
+    gap: 12px;
 }
 
-.home-grid {
+.home-action-main,
+.home-route-grid button {
+    min-width: 0;
+    text-align: left;
+    border-radius: 12px;
+    border-color: var(--xb-line);
+    background: rgba(255, 255, 255, 0.038);
+}
+
+.home-action-main {
+    display: grid;
+    gap: 8px;
+    min-height: 96px;
+    align-content: center;
+    padding: 18px 20px;
+}
+
+.home-action-main strong {
+    color: var(--xb-text-main);
+    font: 650 22px/1.2 var(--xb-font-serif);
+}
+
+.home-action-main span,
+.home-route-grid span {
+    min-width: 0;
+    color: var(--xb-text-muted);
+    font-size: 12px;
+    overflow-wrap: anywhere;
+}
+
+.home-action-main:first-child {
+    border-color: rgba(143, 183, 202, 0.44);
+    background: rgba(143, 183, 202, 0.12);
+}
+
+.home-route-grid {
     width: min(1160px, 100%);
     margin: 0 auto 18px;
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 14px;
+    gap: 12px;
+}
+
+.home-route-grid button {
+    display: grid;
+    gap: 6px;
+    min-height: 74px;
+    align-content: center;
+    padding: 14px 16px;
+}
+
+.home-route-grid strong {
+    color: var(--xb-text-main);
+    font-size: 14px;
 }
 
 .home-card,
@@ -552,6 +595,58 @@ textarea:disabled {
     font-size: 12px;
 }
 
+.manager-index-line {
+    margin: 0;
+    color: var(--xb-text-muted);
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.memory-file-grid {
+    display: grid;
+    gap: 10px;
+}
+
+.memory-file-list {
+    display: grid;
+    gap: 6px;
+}
+
+.memory-file-list button {
+    min-width: 0;
+    min-height: 42px;
+    border-radius: 8px;
+    padding: 8px 10px;
+    text-align: left;
+}
+
+.memory-file-list button.active {
+    border-color: rgba(143, 183, 202, 0.48);
+    background: rgba(143, 183, 202, 0.13);
+}
+
+.memory-file-list button.stale {
+    opacity: 0.62;
+}
+
+.memory-file-list strong,
+.memory-file-list span {
+    display: block;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.memory-file-list strong {
+    color: var(--xb-text-main);
+    font-size: 12px;
+}
+
+.memory-file-list span {
+    margin-top: 3px;
+    color: var(--xb-text-muted);
+    font-size: 11px;
+}
+
 .manager-card {
     display: grid;
     gap: 6px;
@@ -564,6 +659,10 @@ textarea:disabled {
 .manager-card.is-failed {
     border-color: rgba(216, 132, 144, 0.34);
     background: rgba(216, 132, 144, 0.07);
+}
+
+.manager-card.is-stale {
+    border-color: rgba(206, 179, 122, 0.28);
 }
 
 .manager-card.is-running,
@@ -609,6 +708,19 @@ textarea:disabled {
     padding: 8px;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+}
+
+.memory-file-preview pre {
+    max-height: min(44vh, 420px);
+}
+
+.memory-file-markdown {
+    max-height: min(44vh, 420px);
+    overflow: auto;
+    border: 1px solid var(--xb-line);
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.12);
+    padding: 10px;
 }
 
 .manager-card button {
@@ -2465,10 +2577,8 @@ pre {
         min-height: 0;
     }
 
-    .home-actions {
-        justify-content: flex-start;
-    }
-
+    .home-primary-actions,
+    .home-route-grid,
     .home-grid,
     .tavern-chat {
         grid-template-columns: 1fr;

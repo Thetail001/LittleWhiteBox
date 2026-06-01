@@ -20,10 +20,10 @@ export interface XbTavernResolvedProvider {
 
 const PROVIDER_LABELS: Record<string, string> = {
     'openai-responses': 'OpenAI Responses',
-    'openai-compatible': 'OpenAI-Compatible',
-    'sillytavern-openai-compatible': 'SillyTavern OpenAI-Compatible',
-    'sillytavern-claude': 'SillyTavern Claude',
-    'sillytavern-google': 'SillyTavern Google AI',
+    'openai-compatible': 'OpenAI 兼容',
+    'sillytavern-openai-compatible': '酒馆 OpenAI 兼容',
+    'sillytavern-claude': '酒馆 Claude',
+    'sillytavern-google': '酒馆 Google AI',
     anthropic: 'Anthropic',
     google: 'Google AI',
 };

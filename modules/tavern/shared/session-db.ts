@@ -95,8 +95,34 @@ export interface TavernManagerRunRecord {
     inputSummary?: string;
     outputText?: string;
     parsedAction?: string;
+    toolTrace?: unknown;
+    changedFiles?: string[];
     error?: string;
     createdAt: number;
+    updatedAt: number;
+}
+
+export type TavernMemoryFileStatus = 'active' | 'stale';
+export type TavernMemoryIndexStatus = 'ready' | 'stale' | 'failed';
+
+export interface TavernMemoryFileRecord {
+    sessionId: string;
+    path: string;
+    content: string;
+    status: TavernMemoryFileStatus;
+    createdAt: number;
+    updatedAt: number;
+    source?: string;
+    staleFromOrder?: number;
+}
+
+export interface TavernMemoryIndexRecord {
+    sessionId: string;
+    kind: string;
+    status: TavernMemoryIndexStatus;
+    error?: string;
+    sourceFingerprint?: string;
+    derivedAt?: number;
     updatedAt: number;
 }
 
@@ -139,6 +165,8 @@ class TavernDatabase extends Dexie {
     turnSummaries!: DexieTable<TavernTurnSummaryRecord>;
     episodeSummaries!: DexieTable<TavernEpisodeSummaryRecord>;
     managerRuns!: DexieTable<TavernManagerRunRecord>;
+    memoryFiles!: DexieTable<TavernMemoryFileRecord>;
+    memoryIndexes!: DexieTable<TavernMemoryIndexRecord>;
 
     constructor() {
         super('LittleWhiteBox_Tavern');
@@ -162,6 +190,17 @@ class TavernDatabase extends Dexie {
             episodeSummaries: 'id, sessionId, status, updatedAt, startTurn, endTurn',
             managerRuns: 'id, sessionId, status, turn, updatedAt',
         });
+        this.version(4).stores({
+            sessions: 'id, updatedAt, characterId, characterName',
+            messages: '[sessionId+order], sessionId, order',
+            meta: 'key',
+            presets: 'id, updatedAt, sourcePresetId',
+            turnSummaries: 'id, sessionId, episodeId, turn, userOrder, assistantOrder, status, updatedAt',
+            episodeSummaries: 'id, sessionId, status, updatedAt, startTurn, endTurn',
+            managerRuns: 'id, sessionId, status, turn, updatedAt',
+            memoryFiles: '[sessionId+path], sessionId, path, status, updatedAt',
+            memoryIndexes: '[sessionId+kind], sessionId, kind, status, updatedAt',
+        });
     }
 }
 
@@ -174,6 +213,8 @@ export const tavernPresetsTable = db.presets;
 export const tavernTurnSummariesTable = db.turnSummaries;
 export const tavernEpisodeSummariesTable = db.episodeSummaries;
 export const tavernManagerRunsTable = db.managerRuns;
+export const tavernMemoryFilesTable = db.memoryFiles;
+export const tavernMemoryIndexesTable = db.memoryIndexes;
 
 function now(): number {
     return Date.now();
@@ -564,6 +605,8 @@ export async function createTavernManagerRun(input: Partial<TavernManagerRunReco
         inputSummary: String(input.inputSummary || ''),
         outputText: String(input.outputText || ''),
         parsedAction: String(input.parsedAction || ''),
+        toolTrace: 'toolTrace' in input ? cloneSerializable(input.toolTrace, undefined) : undefined,
+        changedFiles: normalizeStringArray(input.changedFiles, 100),
         error: String(input.error || ''),
         createdAt: Number(input.createdAt) || timestamp,
         updatedAt: timestamp,
@@ -590,6 +633,8 @@ export async function updateTavernManagerRun(
             (update as Record<string, unknown>)[key] = String((patch as Record<string, unknown>)[key] || '');
         }
     });
+    if ('toolTrace' in patch) {update.toolTrace = cloneSerializable(patch.toolTrace, undefined);}
+    if ('changedFiles' in patch) {update.changedFiles = normalizeStringArray(patch.changedFiles, 100);}
     if ('turn' in patch) {update.turn = Math.max(0, Number(patch.turn) || 0);}
     if ('userOrder' in patch) {update.userOrder = Number(patch.userOrder);}
     if ('assistantOrder' in patch) {update.assistantOrder = Number(patch.assistantOrder);}
@@ -615,10 +660,22 @@ export async function markTavernMemoryStaleFromOrder(sessionId = '', fromOrder =
     const timestamp = now();
     const summaries = await tavernTurnSummariesTable.where('sessionId').equals(id).toArray();
     const affected = summaries.filter((summary) => summary.userOrder >= order || summary.assistantOrder >= order);
-    if (!affected.length) {return 0;}
-    await db.transaction('rw', tavernTurnSummariesTable, tavernEpisodeSummariesTable, tavernSessionsTable, async () => {
+    const memoryFiles = await tavernMemoryFilesTable.where('sessionId').equals(id).toArray();
+    const affectedMemoryFiles = memoryFiles.filter((file) => {
+        const path = String(file.path || '');
+        const match = path.match(/^memory\/turns\/.+-(\d+)\.md$/);
+        const pathOrder = match ? Number(match[1]) : Number(file.staleFromOrder);
+        return Number.isFinite(pathOrder) && pathOrder >= order;
+    });
+    if (!affected.length && !affectedMemoryFiles.length) {return 0;}
+    await db.transaction('rw', tavernTurnSummariesTable, tavernEpisodeSummariesTable, tavernMemoryFilesTable, tavernMemoryIndexesTable, tavernSessionsTable, async () => {
         await Promise.all(affected.map((summary) => tavernTurnSummariesTable.update(summary.id, {
             status: 'stale',
+            updatedAt: timestamp,
+        })));
+        await Promise.all(affectedMemoryFiles.map((file) => tavernMemoryFilesTable.update([id, file.path], {
+            status: 'stale',
+            staleFromOrder: order,
             updatedAt: timestamp,
         })));
         const affectedIds = new Set(affected.map((summary) => summary.id));
@@ -629,9 +686,18 @@ export async function markTavernMemoryStaleFromOrder(sessionId = '', fromOrder =
                 status: 'stale',
                 updatedAt: timestamp,
             })));
+        await tavernMemoryIndexesTable.put({
+            sessionId: id,
+            kind: 'markdown-derived',
+            status: 'stale',
+            error: '',
+            sourceFingerprint: '',
+            derivedAt: timestamp,
+            updatedAt: timestamp,
+        });
         await tavernSessionsTable.update(id, { updatedAt: timestamp });
     });
-    return affected.length;
+    return affected.length + affectedMemoryFiles.length;
 }
 
 export function createUserPresetFromBuiltIn(name = '我的小白酒馆预设'): XbTavernPreset {

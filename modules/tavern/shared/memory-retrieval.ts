@@ -3,11 +3,13 @@ import type {
     XbTavernMemoryContext,
 } from './message-assembler';
 import { extensionFolderPath } from '../../../core/constants.js';
+import { listTavernMemoryFiles } from './memory-files';
 import * as stopwordsBase from '../../story-summary/vector/utils/stopwords-base.js';
 import * as stopwordsPatch from '../../story-summary/vector/utils/stopwords-patch.js';
 import {
     listTavernEpisodeSummaries,
     listTavernTurnSummaries,
+    type TavernMemoryFileRecord,
     type TavernEpisodeSummaryRecord,
     type TavernTurnSummaryRecord,
 } from './session-db';
@@ -15,16 +17,25 @@ import {
 export interface XbTavernMemorySelectionInput {
     episodeSummaries?: TavernEpisodeSummaryRecord[];
     turnSummaries?: TavernTurnSummaryRecord[];
+    memoryFiles?: TavernMemoryFileRecord[];
     queryText?: string;
     ignoredTerms?: string[];
     recentEpisodeCount?: number;
     recentTurnCount?: number;
+    recentMemoryFileCount?: number;
 }
 
 interface MemoryDocument {
     id: string;
     text: string;
     tokens: Set<string>;
+    termWeights: Map<string, number>;
+    weightedLength: number;
+}
+
+interface WeightedMemoryField {
+    text: string;
+    weight: number;
 }
 
 type JiebaModule = {
@@ -36,6 +47,8 @@ type TinySegmenterInstance = {
     segment: (text: string) => string[];
 };
 
+type MemoryTokenizerStatus = 'idle' | 'loading' | 'ready' | 'failed' | 'unavailable';
+
 const STOP_WORDS = new Set<string>([
     ...(((stopwordsBase as { BASE_STOP_WORDS?: string[] }).BASE_STOP_WORDS) || []),
     ...(((stopwordsPatch as { DOMAIN_STOP_WORDS?: string[] }).DOMAIN_STOP_WORDS) || []),
@@ -46,6 +59,33 @@ const KEEP_WORDS = new Set<string>((((stopwordsPatch as { KEEP_WORDS?: string[] 
 let jiebaCut: ((text: string, hmm?: boolean) => unknown[]) | null = null;
 let tinySegmenter: TinySegmenterInstance | null = null;
 let tokenizerPreload: Promise<boolean> | null = null;
+let tokenizerStatus: MemoryTokenizerStatus = 'idle';
+let tokenizerError = '';
+const MEMORY_QUERY_CONTEXT_MESSAGE_COUNT = 2;
+const MEMORY_RECALL_MIN_SCORE = 3.2;
+
+export function getXbTavernMemoryTokenizerStatus(): { status: MemoryTokenizerStatus; error: string } {
+    return {
+        status: tokenizerStatus,
+        error: tokenizerError,
+    };
+}
+
+export function isXbTavernMemoryTokenizerReady(): boolean {
+    return tokenizerStatus === 'ready' && !!jiebaCut && !!tinySegmenter;
+}
+
+function formatTokenizerError(error: unknown): string {
+    if (error instanceof Error) {return error.message;}
+    return String(error || 'memory_tokenizer_failed');
+}
+
+function makeTokenizerError(code: string, reason = ''): Error {
+    const message = reason ? `${code}: ${reason}` : code;
+    const error = new Error(message) as Error & { code?: string };
+    error.code = code;
+    return error;
+}
 
 function normalizeText(value: unknown = ''): string {
     return String(value || '')
@@ -153,44 +193,31 @@ function tokenizeLatin(text: string): string[] {
         .filter((word) => word.length >= 3);
 }
 
-function tokenizeAsianFallback(text: string): string[] {
-    const tokens: string[] = [];
-    const parts = String(text || '').split(/[\s，。！？、；：""''（）【】《》…—\-,.!?;:'"()[\]{}<>/\\|@#$%^&*+=~`]+/);
-    parts.forEach((part) => {
-        const trimmed = normalizeText(part);
-        if (!trimmed) {return;}
-        if (trimmed.length >= 2 && trimmed.length <= 6) {
-            tokens.push(trimmed);
-            return;
-        }
-        for (let index = 0; index <= trimmed.length - 4; index += 2) {
-            tokens.push(trimmed.slice(index, index + 4));
-        }
-        tokens.push(trimmed.slice(0, 6));
-    });
-    return tokens;
-}
-
 function tokenizeAsian(text: string): string[] {
-    if (detectAsianLanguage(text) === 'ja' && tinySegmenter) {
+    const language = detectAsianLanguage(text);
+    if (language === 'ja') {
+        if (!tinySegmenter) {
+            throw makeTokenizerError('memory_tokenizer_not_ready', 'tiny_segmenter_not_ready');
+        }
         try {
             return tinySegmenter.segment(text)
                 .map((word) => normalizeText(word))
                 .filter((word) => word.length >= 2);
-        } catch {
-            return tokenizeAsianFallback(text);
+        } catch (error) {
+            throw makeTokenizerError('memory_tokenizer_failed', formatTokenizerError(error));
         }
     }
+    if (language === 'other') {return [];}
     if (jiebaCut) {
         try {
             return Array.from(jiebaCut(text, true))
                 .map((word) => normalizeText(word))
                 .filter((word) => word.length >= 2);
-        } catch {
-            return tokenizeAsianFallback(text);
+        } catch (error) {
+            throw makeTokenizerError('memory_tokenizer_failed', formatTokenizerError(error));
         }
     }
-    return tokenizeAsianFallback(text);
+    throw makeTokenizerError('memory_tokenizer_not_ready', 'jieba_wasm_not_ready');
 }
 
 function tokenizeByScript(text: string): string[] {
@@ -233,10 +260,18 @@ function tokenizeForMemoryIndex(text: string): string[] {
 }
 
 export async function preloadXbTavernMemoryTokenizer(): Promise<boolean> {
-    if (typeof window === 'undefined') {return false;}
+    if (typeof window === 'undefined') {
+        tokenizerStatus = 'unavailable';
+        tokenizerError = 'browser_required';
+        return false;
+    }
+    if (isXbTavernMemoryTokenizerReady()) {return true;}
     if (tokenizerPreload) {return await tokenizerPreload;}
+    tokenizerStatus = 'loading';
+    tokenizerError = '';
     tokenizerPreload = (async () => {
-        let loaded = false;
+        let nextTinySegmenter: TinySegmenterInstance | null = null;
+        let nextJiebaCut: ((text: string, hmm?: boolean) => unknown[]) | null = null;
         try {
             // eslint-disable-next-line no-unsanitized/method
             const tinyModule = await import(
@@ -244,12 +279,16 @@ export async function preloadXbTavernMemoryTokenizer(): Promise<boolean> {
                 `/${extensionFolderPath}/libs/tiny-segmenter.js`
             ) as { TinySegmenter?: new () => TinySegmenterInstance; default?: new () => TinySegmenterInstance };
             const TinySegmenter = tinyModule.TinySegmenter || tinyModule.default;
-            if (TinySegmenter) {
-                tinySegmenter = new TinySegmenter();
-                loaded = true;
+            if (!TinySegmenter) {
+                throw new Error('TinySegmenter constructor missing');
             }
-        } catch {
+            nextTinySegmenter = new TinySegmenter();
+        } catch (error) {
+            tokenizerStatus = 'failed';
+            tokenizerError = `tiny_segmenter_load_failed: ${formatTokenizerError(error)}`;
             tinySegmenter = null;
+            jiebaCut = null;
+            return false;
         }
         try {
             const wasmPath = `/${extensionFolderPath}/libs/jieba-wasm/jieba_rs_wasm_bg.wasm`;
@@ -261,44 +300,57 @@ export async function preloadXbTavernMemoryTokenizer(): Promise<boolean> {
             if (typeof jiebaModule.default === 'function') {
                 await jiebaModule.default({ module_or_path: wasmPath });
             }
-            if (typeof jiebaModule.cut === 'function') {
-                jiebaCut = jiebaModule.cut;
-                loaded = true;
+            if (typeof jiebaModule.cut !== 'function') {
+                throw new Error('jieba cut function missing');
             }
-        } catch {
+            nextJiebaCut = jiebaModule.cut;
+        } catch (error) {
+            tokenizerStatus = 'failed';
+            tokenizerError = `jieba_wasm_load_failed: ${formatTokenizerError(error)}`;
             jiebaCut = null;
+            tinySegmenter = null;
+            return false;
         }
-        return loaded;
+        tinySegmenter = nextTinySegmenter;
+        jiebaCut = nextJiebaCut;
+        tokenizerStatus = 'ready';
+        tokenizerError = '';
+        return true;
     })();
-    return await tokenizerPreload;
+    try {
+        return await tokenizerPreload;
+    } finally {
+        tokenizerPreload = null;
+    }
 }
 
-function addCjkSubterms(tokens: Set<string>, text: string): void {
-    const normalized = compactText(text);
-    const runs = normalized.match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]{2,}/gu) || [];
-    runs.forEach((run) => {
-        if (run.length <= 8) {tokens.add(run);}
-        for (let size = 2; size <= 4; size += 1) {
-            if (run.length < size) {continue;}
-            for (let index = 0; index <= run.length - size; index += 1) {
-                tokens.add(run.slice(index, index + size));
-            }
-        }
-    });
+export function setXbTavernMemoryTokenizerForTest(input: {
+    jiebaCut?: ((text: string, hmm?: boolean) => unknown[]) | null;
+    tinySegmenter?: TinySegmenterInstance | null;
+} = {}): void {
+    jiebaCut = input.jiebaCut || null;
+    tinySegmenter = input.tinySegmenter || null;
+    tokenizerPreload = null;
+    tokenizerError = '';
+    tokenizerStatus = jiebaCut && tinySegmenter ? 'ready' : 'idle';
+}
+
+async function ensureXbTavernMemoryTokenizerReady(): Promise<void> {
+    if (typeof window === 'undefined') {return;}
+    const ready = await preloadXbTavernMemoryTokenizer();
+    if (!ready) {
+        throw makeTokenizerError('memory_tokenizer_not_ready', tokenizerError || 'preload_failed');
+    }
 }
 
 function tokenizeMemoryText(value: unknown = '', ignoredTerms: Set<string> = new Set()): string[] {
     const cleaned = stripIgnoredTerms(cleanMemoryText(value), ignoredTerms);
     const tokens = new Set<string>();
 
-    if (typeof window !== 'undefined' && !tokenizerPreload) {
-        void preloadXbTavernMemoryTokenizer();
-    }
     tokenizeForMemoryIndex(cleaned)
         .map((token) => normalizeTerm(token))
         .filter(Boolean)
         .forEach((token) => tokens.add(token));
-    addCjkSubterms(tokens, cleaned);
 
     return [...tokens].filter((token) => {
         if (token.length < 2) {return false;}
@@ -311,13 +363,30 @@ function tokenizeMemoryText(value: unknown = '', ignoredTerms: Set<string> = new
     });
 }
 
-function buildMemoryDocuments<T extends { id: string }>(records: T[], getText: (record: T) => string): MemoryDocument[] {
+function buildMemoryDocuments<T>(
+    records: T[],
+    getFields: (record: T) => WeightedMemoryField[],
+    getId: (record: T) => string,
+): MemoryDocument[] {
     return records.map((record) => {
-        const text = getText(record);
+        const fields = getFields(record);
+        const text = fields.map((field) => field.text).join('\n');
+        const termWeights = new Map<string, number>();
+        let weightedLength = 0;
+        fields.forEach((field) => {
+            const weight = Math.max(0.1, Number(field.weight) || 1);
+            const tokens = tokenizeMemoryText(field.text);
+            weightedLength += tokens.length * weight;
+            tokens.forEach((token) => {
+                termWeights.set(token, (termWeights.get(token) || 0) + weight);
+            });
+        });
         return {
-            id: record.id,
+            id: getId(record),
             text,
-            tokens: new Set(tokenizeMemoryText(text)),
+            tokens: new Set(termWeights.keys()),
+            termWeights,
+            weightedLength,
         };
     });
 }
@@ -342,32 +411,74 @@ function tokenWeight(token: string, idf: Map<string, number>): number {
     return lengthWeight * (idf.get(token) || 1);
 }
 
-function scoreDocument(document: MemoryDocument | undefined, queryTokens: string[] = [], idf: Map<string, number>): number {
+function averageWeightedLength(documents: MemoryDocument[]): number {
+    if (!documents.length) {return 1;}
+    return Math.max(1, documents.reduce((sum, document) => sum + Math.max(1, document.weightedLength), 0) / documents.length);
+}
+
+function scoreDocument(
+    document: MemoryDocument | undefined,
+    queryTokens: string[] = [],
+    idf: Map<string, number>,
+    averageLength = 1,
+): number {
     if (!document) {return 0;}
     if (!queryTokens.length) {return 0;}
-    return queryTokens.reduce((score, token) => (
-        document.tokens.has(token) ? score + tokenWeight(token, idf) : score
-    ), 0);
+    const k1 = 1.2;
+    const b = 0.2;
+    const lengthNorm = k1 * (1 - b + b * (Math.max(1, document.weightedLength) / Math.max(1, averageLength)));
+    return queryTokens.reduce((score, token) => {
+        const termFrequency = document.termWeights.get(token) || 0;
+        if (termFrequency <= 0) {return score;}
+        const bm25Like = (termFrequency * (k1 + 1)) / (termFrequency + lengthNorm);
+        return score + tokenWeight(token, idf) * bm25Like;
+    }, 0);
 }
 
-function episodeText(episode: TavernEpisodeSummaryRecord): string {
-    return [
-        episode.title,
-        episode.summary,
-        ...(episode.keyChanges || []),
-        ...(episode.unresolved || []),
-    ].join('\n');
+function weightedField(text: unknown, weight: number): WeightedMemoryField {
+    return {
+        text: String(text || ''),
+        weight,
+    };
 }
 
-function turnText(summary: TavernTurnSummaryRecord): string {
+function episodeFields(episode: TavernEpisodeSummaryRecord): WeightedMemoryField[] {
     return [
-        summary.summary,
-        summary.characterState,
-        summary.relationshipChange,
-        summary.locationTimeItems,
-        ...(summary.hooks || []),
-        ...(summary.tags || []),
-    ].join('\n');
+        weightedField(episode.title, 2.2),
+        weightedField((episode.unresolved || []).join('\n'), 2.0),
+        weightedField((episode.keyChanges || []).join('\n'), 1.6),
+        weightedField(episode.summary, 1.0),
+    ];
+}
+
+function turnFields(summary: TavernTurnSummaryRecord): WeightedMemoryField[] {
+    return [
+        weightedField((summary.tags || []).join('\n'), 2.2),
+        weightedField((summary.hooks || []).join('\n'), 1.8),
+        weightedField(summary.summary, 1.2),
+        weightedField(summary.relationshipChange, 1.1),
+        weightedField(summary.locationTimeItems, 1.1),
+        weightedField(summary.characterState, 1.0),
+    ];
+}
+
+function memoryFileTitle(file: TavernMemoryFileRecord): string {
+    const heading = String(file.content || '').match(/^\s*#\s+(.+?)\s*$/m)?.[1];
+    return String(heading || file.path.split('/').pop() || file.path).trim();
+}
+
+function memoryFileFields(file: TavernMemoryFileRecord): WeightedMemoryField[] {
+    return [
+        weightedField(file.path, 1.4),
+        weightedField(memoryFileTitle(file), 1.4),
+        weightedField(file.content, 1.0),
+    ];
+}
+
+function isRecallMemoryFile(file: TavernMemoryFileRecord): boolean {
+    const path = String(file.path || '');
+    if (file.status === 'stale') {return false;}
+    return ['memory/session.md', 'memory/state.md', 'memory/inbox.md'].includes(path);
 }
 
 function byTurn(left: TavernTurnSummaryRecord, right: TavernTurnSummaryRecord): number {
@@ -393,7 +504,7 @@ export function buildXbTavernMemoryIgnoredTerms(context: XbTavernContext = {}): 
 }
 
 export function buildXbTavernMemoryQuery(context: XbTavernContext = {}, currentUserMessage = ''): string {
-    const history = Array.isArray(context.history) ? context.history.slice(-8) : [];
+    const history = Array.isArray(context.history) ? context.history.slice(-MEMORY_QUERY_CONTEXT_MESSAGE_COUNT) : [];
     const names = buildXbTavernMemoryIgnoredTerms(context);
     const cleanLine = (value: unknown) => stripSpeakerPrefixes(cleanMemoryText(value), names);
     return [
@@ -405,44 +516,91 @@ export function buildXbTavernMemoryQuery(context: XbTavernContext = {}, currentU
 export function selectXbTavernMemoryContext(input: XbTavernMemorySelectionInput = {}): XbTavernMemoryContext {
     const episodes = [...(input.episodeSummaries || [])].sort(byEpisode);
     const turns = [...(input.turnSummaries || [])].sort(byTurn);
-    const recentEpisodeCount = Math.max(0, Number(input.recentEpisodeCount ?? 4) || 0);
-    const recentTurnCount = Math.max(0, Number(input.recentTurnCount ?? 10) || 0);
+    const memoryFiles = [...(input.memoryFiles || [])]
+        .filter(isRecallMemoryFile)
+        .sort((left, right) => left.path.localeCompare(right.path));
+    const recentEpisodeCount = Math.max(0, Number(input.recentEpisodeCount ?? 1) || 0);
     const ignoredTerms = normalizeIgnoredTerms(input.ignoredTerms || []);
     const queryTokens = tokenizeMemoryText(input.queryText, ignoredTerms);
     const episodeDocuments = buildMemoryDocuments(
         episodes,
-        (record) => episodeText(record),
+        (record) => episodeFields(record),
+        (record) => record.id,
     );
     const turnDocuments = buildMemoryDocuments(
         turns,
-        (record) => turnText(record),
+        (record) => turnFields(record),
+        (record) => record.id,
     );
-    const idf = buildIdf([...episodeDocuments, ...turnDocuments]);
+    const memoryFileDocuments = buildMemoryDocuments(
+        memoryFiles,
+        (record) => memoryFileFields(record),
+        (record) => record.path,
+    );
+    const allDocuments = [...episodeDocuments, ...turnDocuments, ...memoryFileDocuments];
+    const idf = buildIdf(allDocuments);
+    const averageLength = averageWeightedLength(allDocuments);
     const episodeDocumentById = new Map(episodeDocuments.map((document) => [document.id, document]));
     const turnDocumentById = new Map(turnDocuments.map((document) => [document.id, document]));
+    const memoryFileDocumentById = new Map(memoryFileDocuments.map((document) => [document.id, document]));
 
     const recentEpisodeIds = new Set(sliceRecent(episodes, recentEpisodeCount).map((episode) => episode.id));
     const selectedEpisodes = episodes
         .map((episode) => ({
             episode,
-            score: scoreDocument(episodeDocumentById.get(episode.id), queryTokens, idf),
+            score: scoreDocument(episodeDocumentById.get(episode.id), queryTokens, idf, averageLength),
             hasOpenThread: (episode.unresolved || []).some((item) => normalizeText(item)),
         }))
-        .filter((item) => recentEpisodeIds.has(item.episode.id) || item.score > 0 || item.hasOpenThread)
+        .filter((item) => recentEpisodeIds.has(item.episode.id) || item.score >= MEMORY_RECALL_MIN_SCORE || item.hasOpenThread)
+        .map((item) => ({
+            ...item,
+            reason: recentEpisodeIds.has(item.episode.id) ? 'current'
+                : item.hasOpenThread ? 'open'
+                    : 'matched',
+        }))
         .sort((left, right) => byEpisode(left.episode, right.episode))
-        .map((item) => item.episode);
+        .map((item) => ({
+            ...item.episode,
+            recallReason: item.reason,
+            recallScore: item.score,
+        }));
 
-    const recentTurnIds = new Set(sliceRecent(turns, recentTurnCount).map((summary) => summary.id));
     const selectedTurns = turns
         .map((summary) => ({
             summary,
-            score: scoreDocument(turnDocumentById.get(summary.id), queryTokens, idf),
+            score: scoreDocument(turnDocumentById.get(summary.id), queryTokens, idf, averageLength),
         }))
-        .filter((item) => recentTurnIds.has(item.summary.id) || item.score > 0)
+        .filter((item) => item.score >= MEMORY_RECALL_MIN_SCORE)
         .sort((left, right) => byTurn(left.summary, right.summary))
-        .map((item) => item.summary);
+        .map((item) => ({
+            ...item.summary,
+            recallReason: 'matched',
+            recallScore: item.score,
+        }));
+
+    const alwaysKeepMemoryPaths = new Set(['memory/session.md', 'memory/state.md', 'memory/inbox.md']);
+    const selectedMemoryFiles = memoryFiles
+        .map((file) => ({
+            file,
+            id: file.path,
+            score: scoreDocument(memoryFileDocumentById.get(file.path), queryTokens, idf, averageLength),
+        }))
+        .filter((item) => alwaysKeepMemoryPaths.has(item.file.path))
+        .sort((left, right) => left.file.path.localeCompare(right.file.path))
+        .map((item) => ({
+            ...item.file,
+            recallReason: 'fixed',
+            recallScore: item.score,
+        }));
 
     return {
+        memoryFiles: selectedMemoryFiles.map((file) => ({
+            path: file.path,
+            title: memoryFileTitle(file),
+            content: String(file.content || '').slice(0, 2400),
+            recallReason: file.recallReason,
+            recallScore: file.recallScore,
+        })),
         episodeSummaries: selectedEpisodes.map((episode) => ({
             id: episode.id,
             title: episode.title,
@@ -451,6 +609,8 @@ export function selectXbTavernMemoryContext(input: XbTavernMemorySelectionInput 
             endTurn: episode.endTurn,
             keyChanges: episode.keyChanges || [],
             unresolved: episode.unresolved || [],
+            recallReason: episode.recallReason,
+            recallScore: episode.recallScore,
         })),
         turnSummaries: selectedTurns.map((summary) => ({
             id: summary.id,
@@ -464,6 +624,8 @@ export function selectXbTavernMemoryContext(input: XbTavernMemorySelectionInput 
             locationTimeItems: summary.locationTimeItems || '',
             hooks: summary.hooks || [],
             tags: summary.tags || [],
+            recallReason: summary.recallReason,
+            recallScore: summary.recallScore,
         })),
     };
 }
@@ -475,13 +637,17 @@ export async function retrieveXbTavernMemoryContext(input: {
 }): Promise<XbTavernMemoryContext> {
     const sessionId = String(input.sessionId || '').trim();
     if (!sessionId) {return {};}
-    const [episodeSummaries, turnSummaries] = await Promise.all([
+    const [episodeSummaries, turnSummaries, memoryFiles] = await Promise.all([
         listTavernEpisodeSummaries(sessionId),
         listTavernTurnSummaries(sessionId),
+        listTavernMemoryFiles(sessionId),
     ]);
+    if (!episodeSummaries.length && !turnSummaries.length && !memoryFiles.some(isRecallMemoryFile)) {return {};}
+    await ensureXbTavernMemoryTokenizerReady();
     return selectXbTavernMemoryContext({
         episodeSummaries,
         turnSummaries,
+        memoryFiles,
         queryText: input.queryText,
         ignoredTerms: input.ignoredTerms,
     });
