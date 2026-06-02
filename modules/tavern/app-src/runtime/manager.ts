@@ -5,6 +5,7 @@ import {
     resolveResultToolCalls,
 } from '../../../agent-core/runtime/protocol.js';
 import type { XbTavernMessage } from '../../shared/message-assembler';
+import { createDefaultTavernAssistantPreset, type TavernAssistantPreset } from '../../shared/assistant-presets';
 import {
     ensureTavernMemoryDefaults,
     executeTavernMemoryTool,
@@ -71,6 +72,7 @@ export interface XbTavernManagerRunInput {
     managerRunId?: string;
     recentTurnSummaries?: TavernTurnSummaryRecord[];
     recentEpisodeSummaries?: TavernEpisodeSummaryRecord[];
+    assistantPreset?: TavernAssistantPreset;
     signal?: AbortSignal;
     executeManagerOnce?: (options: XbTavernManagerOnceOptions) => Promise<XbTavernManagerOnceResult>;
 }
@@ -195,16 +197,12 @@ export function parseXbTavernManagerResult(text = ''): XbTavernManagerParsedResu
     };
 }
 
-function buildManagerSystemPrompt(): string {
-    return [
-        '你是小白酒馆的后台管理者，只维护当前会话的 Markdown 记忆档案，不参与角色扮演。',
-        '主聊天助手负责 RP；你负责读写 memory/... 下的会话档案，让以后召回有可读、可编辑、可审计的来源。',
-        '你必须使用 MemoryList / MemoryRead / MemoryWrite / MemoryEdit / MemoryGrep 工具维护档案；不要只在最终回复里给摘要。',
-        '工具只能访问当前会话的 memory/... Markdown 文件。不要尝试修改聊天原文、角色卡、世界书、预设或插件源码。',
-        '每轮至少维护一份 memory/turns/YYYYMMDD-NNNN.md，写明 Turn、Source messages userOrder/assistantOrder、Summary、State、Relationship、Location Time Items、Hooks、Tags。',
-        '需要时同步更新 memory/session.md、memory/state.md、memory/episodes/*.md 或 memory/inbox.md。',
-        '最终回复只写简短工作结论：改了哪些记忆文件，还有什么待判断。不要输出 JSON，不要写小说正文。',
-    ].join('\n');
+function buildManagerSystemPrompt(assistantPreset: TavernAssistantPreset | undefined): string {
+    return String(
+        assistantPreset?.memoryManagerPrompt
+        || createDefaultTavernAssistantPreset().memoryManagerPrompt
+        || '',
+    ).trim();
 }
 
 function buildManagerUserPrompt(input: {
@@ -236,7 +234,7 @@ function buildManagerUserPrompt(input: {
             tags: summary.tags,
         }))),
         '',
-        '[最近阶段大总结]',
+        '[最近阶段总结]',
         safeJson(input.recentEpisodeSummaries.slice(-4).map((episode) => ({
             id: episode.id,
             title: episode.title,
@@ -429,7 +427,7 @@ export async function runXbTavernManagerAfterTurn(input: XbTavernManagerRunInput
     const recentEpisodeSummaries = input.recentEpisodeSummaries || await listTavernEpisodeSummaries(sessionId, { limit: 6 });
     const memoryFiles = await listTavernMemoryFiles(sessionId, { includeStale: true });
     const messages: XbTavernMessage[] = [
-        { role: 'system', content: buildManagerSystemPrompt() },
+        { role: 'system', content: buildManagerSystemPrompt(input.assistantPreset) },
         {
             role: 'user',
             content: buildManagerUserPrompt({

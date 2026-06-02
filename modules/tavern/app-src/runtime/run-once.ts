@@ -4,9 +4,10 @@ import {
     type XbTavernContext,
     type XbTavernMessage,
     type XbTavernMessageBuildResult,
-    type XbTavernPreset,
+    type TavernChatPromptPresetBundle,
     type XbTavernRuntimeState,
 } from '../../shared/message-assembler';
+import type { TavernAssistantPreset } from '../../shared/assistant-presets';
 import {
     appendTavernMessage,
     createTavernSession,
@@ -40,6 +41,7 @@ import { assertXbTavernProviderReady, resolveXbTavernProviderConfig } from './pr
 export interface TavernRunOnceOptions {
     agentConfig: Record<string, unknown>;
     messages: XbTavernMessage[];
+    chatPreset?: TavernChatPromptPresetBundle;
     signal?: AbortSignal;
     onStreamProgress?: (snapshot: { text?: string; thoughts?: Array<{ label?: string; text?: string }> }) => void;
 }
@@ -54,6 +56,8 @@ export interface TavernRequestInspection {
 
 export interface TavernRequestSnapshot {
     presetName: string;
+    chatPresetName: string;
+    apiPresetName: string;
     provider: string;
     providerLabel: string;
     model: string;
@@ -87,7 +91,9 @@ export interface XbTavernRunTurnInput {
     sessionId?: string;
     agentConfig: Record<string, unknown>;
     contextSnapshot: XbTavernContext;
-    preset: XbTavernPreset;
+    chatPreset?: TavernChatPromptPresetBundle;
+    preset?: TavernChatPromptPresetBundle;
+    assistantPreset?: TavernAssistantPreset;
     currentUserMessage: string;
     runtimeState?: TavernSessionState;
     diagnostics?: TavernDiagnostics;
@@ -126,7 +132,8 @@ export interface XbTavernSimulateRequestInput {
     sessionId?: string;
     agentConfig: Record<string, unknown>;
     contextSnapshot: XbTavernContext;
-    preset: XbTavernPreset;
+    chatPreset?: TavernChatPromptPresetBundle;
+    preset?: TavernChatPromptPresetBundle;
     currentUserMessage: string;
     runtimeState?: TavernSessionState;
     diagnostics?: TavernDiagnostics;
@@ -172,15 +179,43 @@ async function persistRunSessionState(
         : await updateTavernSessionState(sessionId, state);
 }
 
+function hasUsableTavernContext(context?: XbTavernContext | null): boolean {
+    const name = String(context?.character?.name || '').trim();
+    return !!name && !/^(sillytavern\s+system|system)\b/i.test(name);
+}
+
+function resolveSessionContext(
+    session?: Pick<TavernSessionRecord, 'contextSnapshot'> | null,
+    fallbackContext: XbTavernContext = {},
+): XbTavernContext {
+    return hasUsableTavernContext(session?.contextSnapshot)
+        ? session?.contextSnapshot || {}
+        : fallbackContext || {};
+}
+
+function assertUsableTavernContext(context: XbTavernContext = {}): void {
+    if (hasUsableTavernContext(context)) {return;}
+    throw new Error('当前没有可用角色资料，请先选择角色或刷新当前资料。');
+}
+
+function resolveInputChatPreset(input: {
+    chatPreset?: TavernChatPromptPresetBundle;
+    preset?: TavernChatPromptPresetBundle;
+} = {}): TavernChatPromptPresetBundle {
+    return input.chatPreset || input.preset || {};
+}
+
 export function buildTavernRequestSnapshot(
     agentConfig: Record<string, unknown> = {},
     messages: XbTavernMessage[] = [],
     override: Partial<Pick<TavernRequestSnapshot, 'provider' | 'model' | 'requestKind'>> & {
         requestInspection?: TavernRequestInspection | null;
+        chatPreset?: TavernChatPromptPresetBundle;
     } = {},
 ): TavernRequestSnapshot {
     const providerConfig = resolveXbTavernProviderConfig(agentConfig);
     const requestInspection = override.requestInspection || null;
+    const chatPresetName = String(override.chatPreset?.name || '').trim();
     const rawMessagesJson = JSON.stringify(messages, null, 2);
     const requestForJson = requestInspection || {
         provider: String(override.provider || providerConfig.provider || ''),
@@ -191,7 +226,9 @@ export function buildTavernRequestSnapshot(
         },
     };
     return {
-        presetName: providerConfig.currentPresetName,
+        presetName: chatPresetName || providerConfig.currentPresetName,
+        chatPresetName,
+        apiPresetName: providerConfig.currentPresetName,
         provider: String(override.provider || providerConfig.provider || ''),
         providerLabel: providerConfig.providerLabel,
         model: String(override.model || providerConfig.model || ''),
@@ -209,6 +246,7 @@ export function buildTavernRequestSnapshot(
 async function inspectTavernRequest(input: {
     agentConfig: Record<string, unknown>;
     messages: XbTavernMessage[];
+    chatPreset?: TavernChatPromptPresetBundle;
     signal?: AbortSignal;
     onStreamProgress?: TavernRunOnceOptions['onStreamProgress'];
     requestKind?: TavernRequestSnapshot['requestKind'];
@@ -243,6 +281,7 @@ async function inspectTavernRequest(input: {
             model: String(requestInspection?.model || providerConfig.model || ''),
             requestInspection,
             requestKind: input.requestKind || 'actual',
+            chatPreset: input.chatPreset,
         }),
     };
 }
@@ -274,10 +313,12 @@ function findCompletedAssistantForUser(messages: TavernMessageRecord[] = [], use
 export function deriveTavernSessionStateFromMessages(input: {
     messages?: TavernMessageRecord[];
     contextSnapshot?: XbTavernContext;
-    preset: XbTavernPreset;
+    chatPreset?: TavernChatPromptPresetBundle;
+    preset?: TavernChatPromptPresetBundle;
     historyMode?: XbTavernRuntimeState['historyMode'];
     diagnostics?: TavernDiagnostics;
 }): TavernSessionState {
+    const chatPreset = resolveInputChatPreset(input);
     const sorted = [...(input.messages || [])].sort((left, right) => left.order - right.order);
     const contextSnapshot = input.contextSnapshot || {};
     const priorMessages: TavernMessageRecord[] = [];
@@ -300,9 +341,9 @@ export function deriveTavernSessionStateFromMessages(input: {
                     ...contextSnapshot,
                     history: buildContextHistory(priorMessages),
                 },
-                preset: input.preset,
+                chatPreset,
                 currentUserMessage: message.content,
-                historyMode: input.historyMode || 'squash',
+                historyMode: input.historyMode || 'raw',
                 turn,
                 entryStates: worldEntryStates,
                 diagnostics: input.diagnostics || {},
@@ -335,6 +376,7 @@ export function deriveTavernSessionStateFromMessages(input: {
 async function ensureRunSession(input: XbTavernRunTurnInput, buildSnapshot?: XbTavernBuildSnapshot): Promise<TavernSessionRecord> {
     const existing = await getTavernSession(input.sessionId || '');
     if (existing) {return existing;}
+    const chatPreset = resolveInputChatPreset(input);
     const contextSnapshot = input.contextSnapshot || {};
     const character = contextSnapshot.character || {};
     return await createTavernSession({
@@ -343,8 +385,10 @@ async function ensureRunSession(input: XbTavernRunTurnInput, buildSnapshot?: XbT
         characterName: String(character.name || '未选择角色'),
         contextSnapshot,
         buildSnapshot,
-        presetId: String(input.preset.id || ''),
-        presetName: String(input.preset.name || ''),
+        chatPresetId: String(chatPreset.id || ''),
+        chatPresetName: String(chatPreset.name || ''),
+        presetId: String(chatPreset.id || ''),
+        presetName: String(chatPreset.name || ''),
         state: {
             turn: 0,
             worldEntryStates: {},
@@ -356,6 +400,7 @@ export async function runTavernOnce(options: TavernRunOnceOptions): Promise<Tave
     const inspected = await inspectTavernRequest({
         agentConfig: options.agentConfig,
         messages: options.messages,
+        chatPreset: options.chatPreset,
         signal: options.signal,
         onStreamProgress: options.onStreamProgress,
         requestKind: 'actual',
@@ -371,6 +416,7 @@ export async function runTavernOnce(options: TavernRunOnceOptions): Promise<Tave
                 model: String(requestInspection.model || inspected.providerConfig.model || ''),
                 requestInspection,
                 requestKind: 'actual',
+                chatPreset: options.chatPreset,
             });
         }
         throw error;
@@ -391,14 +437,17 @@ export async function runTavernOnce(options: TavernRunOnceOptions): Promise<Tave
             model,
             requestInspection: finalInspection,
             requestKind: 'actual',
+            chatPreset: options.chatPreset,
         }),
     };
 }
 
 export async function simulateXbTavernRequest(input: XbTavernSimulateRequestInput): Promise<XbTavernSimulateRequestResult> {
+    const chatPreset = resolveInputChatPreset(input);
     const session = input.sessionId ? await getTavernSession(input.sessionId) : null;
     const sessionMessages = session ? await listTavernMessages(session.id) : [];
-    const lockedContext = session?.contextSnapshot || input.contextSnapshot || {};
+    const lockedContext = resolveSessionContext(session, input.contextSnapshot);
+    assertUsableTavernContext(lockedContext);
     const sessionState = normalizeTavernSessionState(session?.state || input.runtimeState || {});
     const contextForBuild: XbTavernContext = {
         ...lockedContext,
@@ -407,9 +456,9 @@ export async function simulateXbTavernRequest(input: XbTavernSimulateRequestInpu
     const memoryQuery = buildXbTavernMemoryQuery(contextForBuild, input.currentUserMessage);
     const brain = buildXbTavernBrain({
         context: contextForBuild,
-        preset: input.preset,
+        chatPreset,
         currentUserMessage: input.currentUserMessage,
-        historyMode: input.historyMode || 'squash',
+        historyMode: input.historyMode || 'raw',
         turn: sessionState.turn,
         entryStates: sessionState.worldEntryStates,
         memoryContext: session
@@ -424,6 +473,7 @@ export async function simulateXbTavernRequest(input: XbTavernSimulateRequestInpu
     const inspected = await inspectTavernRequest({
         agentConfig: input.agentConfig,
         messages: brain.buildResult.messages,
+        chatPreset,
         onStreamProgress: () => {},
         requestKind: 'simulated',
     });
@@ -439,9 +489,14 @@ export async function simulateXbTavernRequest(input: XbTavernSimulateRequestInpu
 }
 
 export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTavernRunResult> {
+    const chatPreset = resolveInputChatPreset(input);
+    if (!input.sessionId) {
+        assertUsableTavernContext(input.contextSnapshot || {});
+    }
     const baseSession = await ensureRunSession(input);
     let sessionMessages = await listTavernMessages(baseSession.id);
-    const lockedContext = baseSession.contextSnapshot || input.contextSnapshot || {};
+    const lockedContext = resolveSessionContext(baseSession, input.contextSnapshot);
+    assertUsableTavernContext(lockedContext);
     const reusedOrder = Number(input.reuseUserMessageOrder);
     const reusedUserMessage = Number.isInteger(reusedOrder) && reusedOrder >= 0
         ? sessionMessages.find((message) => message.order === reusedOrder && message.role === 'user' && !message.error) || null
@@ -463,8 +518,8 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
         ? normalizeTavernSessionState(deriveTavernSessionStateFromMessages({
             messages: historyMessages,
             contextSnapshot: lockedContext,
-            preset: input.preset,
-            historyMode: input.historyMode || 'squash',
+            chatPreset: input.chatPreset,
+            historyMode: input.historyMode || 'raw',
             diagnostics: input.diagnostics,
         }))
         : normalizeTavernSessionState(baseSession.state || input.runtimeState || {});
@@ -477,9 +532,9 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
     const memoryQuery = buildXbTavernMemoryQuery(contextForBuild, currentUserMessage);
     const brain = buildXbTavernBrain({
         context: contextForBuild,
-        preset: input.preset,
+        chatPreset,
         currentUserMessage,
-        historyMode: input.historyMode || 'squash',
+        historyMode: input.historyMode || 'raw',
         turn: sessionState.turn,
         entryStates: sessionState.worldEntryStates,
         memoryContext: await retrieveXbTavernMemoryContext({
@@ -495,8 +550,10 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
         : await updateTavernSessionSnapshot(baseSession.id, {
             contextSnapshot: lockedContext,
             buildSnapshot,
-            presetId: String(input.preset.id || baseSession.presetId || ''),
-            presetName: String(input.preset.name || baseSession.presetName || ''),
+            chatPresetId: String(chatPreset.id || baseSession.chatPresetId || baseSession.presetId || ''),
+            chatPresetName: String(chatPreset.name || baseSession.chatPresetName || baseSession.presetName || ''),
+            presetId: String(chatPreset.id || baseSession.presetId || ''),
+            presetName: String(chatPreset.name || baseSession.presetName || ''),
         }) || baseSession;
 
     let latestStreamText = '';
@@ -505,26 +562,32 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
         input.onStreamProgress?.(snapshot);
     };
 
-    let requestSnapshot = buildTavernRequestSnapshot(input.agentConfig, buildResult.messages);
+    let requestSnapshot = buildTavernRequestSnapshot(input.agentConfig, buildResult.messages, {
+        chatPreset,
+    });
     try {
         requestSnapshot = (await inspectTavernRequest({
             agentConfig: input.agentConfig,
             messages: buildResult.messages,
+            chatPreset,
             onStreamProgress: handleStreamProgress,
             requestKind: 'actual',
         })).requestSnapshot;
     } catch {
         requestSnapshot = buildTavernRequestSnapshot(input.agentConfig, buildResult.messages, {
             requestKind: 'fallback',
+            chatPreset,
         });
     }
-    const presetId = String(input.preset.id || session.presetId || '');
-    const presetName = String(input.preset.name || session.presetName || '');
+    const presetId = String(chatPreset.id || session.chatPresetId || session.presetId || '');
+    const presetName = String(chatPreset.name || session.chatPresetName || session.presetName || '');
     const userMessage = reusedUserMessage || await appendTavernMessage(session.id, {
             role: 'user',
             content: currentUserMessage,
             contextSnapshot: lockedContext,
             buildSnapshot,
+            chatPresetId: presetId,
+            chatPresetName: presetName,
             presetId,
             presetName,
             requestSnapshot,
@@ -536,6 +599,7 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
         const result = await executeRunOnce({
             agentConfig: input.agentConfig,
             messages: buildResult.messages,
+            chatPreset,
             signal: input.signal,
             onStreamProgress: handleStreamProgress,
         });
@@ -545,6 +609,8 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
             providerPayload: result.providerPayload,
             contextSnapshot: lockedContext,
             buildSnapshot,
+            chatPresetId: presetId,
+            chatPresetName: presetName,
             presetId,
             presetName,
             requestSnapshot: result.requestSnapshot,
@@ -575,6 +641,7 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
                 userMessage,
                 assistantMessage,
                 turn: nextTurn,
+                assistantPreset: input.assistantPreset,
                 awaitCompletion: input.awaitManager === true,
                 executeManagerOnce: input.executeManagerOnce,
                 onManagerRunSaved: async (run) => {
@@ -613,6 +680,8 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
                 error: false,
                 contextSnapshot: lockedContext,
                 buildSnapshot,
+                chatPresetId: presetId,
+                chatPresetName: presetName,
                 presetId,
                 presetName,
                 requestSnapshot,
@@ -643,6 +712,7 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
                     userMessage,
                     assistantMessage: errorMessage,
                     turn: nextTurn,
+                    assistantPreset: input.assistantPreset,
                     awaitCompletion: input.awaitManager === true,
                     executeManagerOnce: input.executeManagerOnce,
                     onManagerRunSaved: async (run) => {
@@ -675,6 +745,8 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
             error: true,
             contextSnapshot: lockedContext,
             buildSnapshot,
+            chatPresetId: presetId,
+            chatPresetName: presetName,
             presetId,
             presetName,
             requestSnapshot,

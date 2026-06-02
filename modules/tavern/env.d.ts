@@ -25,6 +25,26 @@ declare module '*.js' {
     export const extensionFolderPath: string;
     export function getRequestHeaders(): Record<string, string>;
     export function getContext(): Record<string, unknown>;
+    export function saveSettingsDebounced(): void;
+    export function getPresetManager(apiId?: string): {
+        getSelectedPresetName?: () => string;
+        getAllPresets?: () => string[];
+        getCompletionPresetByName?: (name: string) => unknown;
+        getPresetSettings?: (name?: string) => unknown;
+        savePreset?: (name: string, preset?: unknown) => Promise<void>;
+        findPreset?: (name: string) => unknown;
+        selectPreset?: (value: unknown) => void;
+    } | null;
+    export const promptManager: {
+        serviceSettings?: Record<string, unknown>;
+        getPromptCollection?: (generationType?: string) => { collection?: unknown[] };
+        saveServiceSettings?: () => Promise<void> | void;
+        render?: (force?: boolean) => void;
+    } | null;
+    export const context_presets: Array<Record<string, unknown>>;
+    export const instruct_presets: Array<Record<string, unknown>>;
+    export const system_prompts: Array<Record<string, unknown>>;
+    export const power_user: Record<string, Record<string, unknown>>;
     export const AssistantStorage: {
         get<T = unknown>(key: string, fallback?: T): Promise<T>;
         load(): Promise<Record<string, unknown>>;

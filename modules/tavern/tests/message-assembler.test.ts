@@ -47,12 +47,10 @@ test('xb tavern default preset uses editable sections without hidden top prompts
     });
 
     assert.equal(preset.id, DEFAULT_XB_TAVERN_PRESET_ID);
-    assert.equal(preset.name, '小白酒馆默认角色扮演预设');
-    assert.equal(preset.version, '1.0.0');
+    assert.equal(preset.name, '酒馆当前聊天预设');
     assert.equal(listBuiltInXbTavernPresets()[0]?.id, DEFAULT_XB_TAVERN_PRESET_ID);
-    assert.equal(result.messageLayers[0]?.layer, 'preset');
-    assert.equal(result.messageLayers[0]?.sourceId, 'source-priority');
-    assert.match(result.messages[0]?.content || '', /你正在小白酒馆中进行角色扮演/);
+    assert.equal(result.messageLayers[0]?.layer, 'character-card');
+    assert.doesNotMatch(result.messages.map((message) => message.content).join('\n'), /小白酒馆默认角色扮演预设|你正在小白酒馆中进行角色扮演/);
 });
 
 test('xb tavern preset labels are debug metadata only', () => {
@@ -743,15 +741,31 @@ test('xb tavern assembler can squash chat history like a controlled preset layer
         { role: 'user', content: 'Open the door.' },
         { role: 'assistant', content: 'The door opens.' },
     ], {
-        role: 'assistant',
         userName: 'Mira',
         characterName: 'Aster',
     });
 
     assert.deepEqual(squashed, [{
-        role: 'assistant',
-        content: 'Mira: Open the door.\n\nAster: The door opens.',
+        role: 'system',
+        content: '<conversation_history>\n<message role="user">\nOpen the door.\n</message>\n\n<message role="assistant">\nThe door opens.\n</message>\n</conversation_history>',
     }]);
+    assert.equal(squashed[0]?.content.includes('Mira:'), false);
+    assert.equal(squashed[0]?.content.includes('Aster:'), false);
+});
+
+test('xb tavern assembler keeps history roles raw by default', () => {
+    const result = buildXbTavernMessages({
+        history: [
+            { role: 'assistant', content: '*You wake with a start.*' },
+            { role: 'user', content: 'o ~' },
+        ],
+    }, {}, {
+        currentUserMessage: '继续。',
+    });
+
+    const historyAssistant = result.messages.find((message) => message.content === '*You wake with a start.*');
+    assert.equal(historyAssistant?.role, 'assistant');
+    assert.equal(result.messages.some((message) => message.content.includes('<conversation_history>')), false);
 });
 
 test('xb tavern assembler supports preset placements around history', () => {

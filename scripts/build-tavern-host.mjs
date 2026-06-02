@@ -4,6 +4,7 @@ await build({
     entryPoints: [
         'modules/tavern/tavern.ts',
         'modules/tavern/host/agent-config.ts',
+        'modules/tavern/host/chat-presets.ts',
         'modules/tavern/host/sillytavern-context.ts',
     ],
     outbase: 'modules/tavern',

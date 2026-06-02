@@ -4,6 +4,68 @@ import { getRequestHeaders } from "../../../../../../../script.js";
 function normalizeText(value = "") {
   return String(value || "").trim();
 }
+function isSystemCharacterName(value = "") {
+  return /^(sillytavern\s+system|system)\b/i.test(normalizeText(value));
+}
+function toAbsoluteAvatarUrl(value = "") {
+  const text = normalizeText(value);
+  if (!text) {
+    return "";
+  }
+  if (/^(data:|blob:|https?:)/i.test(text)) {
+    return text;
+  }
+  const origin = typeof location !== "undefined" && location.origin ? location.origin : "";
+  if (text.startsWith("User Avatars/")) {
+    return `${origin}/${text}`;
+  }
+  const encoded = text.replace(/^\/+/, "").split("/").map((segment) => encodeURIComponent(segment)).join("/");
+  return `${origin}/${encoded}`;
+}
+function normalizeCharacterAvatar(value = "") {
+  const text = normalizeText(value);
+  if (!text) {
+    return "";
+  }
+  if (/^(data:|blob:|https?:)/i.test(text)) {
+    return text;
+  }
+  if (text === "none") {
+    return "";
+  }
+  if (text.startsWith("img/")) {
+    return toAbsoluteAvatarUrl(text);
+  }
+  return `/thumbnail?type=avatar&file=${encodeURIComponent(text)}`;
+}
+function pickUserAvatarFromDom() {
+  const selectors = ["#user_avatar_block img", "#avatar_user img", ".user_avatar img", "img#avatar_user", ".st-user-avatar img"];
+  for (const selector of selectors) {
+    const element = document.querySelector(selector);
+    if (!(element instanceof HTMLImageElement)) {
+      continue;
+    }
+    const highRes = element.getAttribute("data-izoomify-url");
+    if (highRes) {
+      return highRes;
+    }
+    if (element.src) {
+      return element.src;
+    }
+  }
+  return "";
+}
+function normalizeUserAvatar() {
+  let avatar = pickUserAvatarFromDom() || readGlobalString("default_user_avatar");
+  const personaMatch = String(avatar).match(/\/thumbnail\?type=persona&file=([^&]+)/i);
+  if (personaMatch) {
+    avatar = decodeURIComponent(personaMatch[1] || "");
+  }
+  if (avatar && !/^(data:|blob:|https?:)/i.test(String(avatar)) && !String(avatar).startsWith("img/")) {
+    return `/thumbnail?type=persona&file=${encodeURIComponent(String(avatar))}`;
+  }
+  return toAbsoluteAvatarUrl(avatar);
+}
 function asArray(value) {
   return Array.isArray(value) ? value : [];
 }
@@ -79,6 +141,9 @@ function dedupeWorldBooks(books = []) {
 function getWindowRecord() {
   return window;
 }
+function readGlobalString(name = "") {
+  return normalizeText(getWindowRecord()[name]);
+}
 function resolveCharacterId(ctx = getContext?.() || {}, options = {}) {
   return options.characterId ?? ctx.characterId ?? ctx.this_chid;
 }
@@ -103,10 +168,15 @@ function getCurrentCharacter(ctx = getContext?.() || {}, options = {}) {
 function normalizeCharacter(ctx = getContext?.() || {}, options = {}) {
   const character = getCurrentCharacter(ctx, options) || {};
   const data = asRecord(character.data) || character;
+  const name = [
+    character.name,
+    data.name,
+    ctx.name2
+  ].map((value) => normalizeText(value)).find((value) => value && !isSystemCharacterName(value)) || "";
   return {
     id: normalizeText(resolveCharacterId(ctx, options)),
-    name: normalizeText(character.name || data.name || ctx.name2),
-    avatar: normalizeText(character.avatar || data.avatar),
+    name,
+    avatar: normalizeCharacterAvatar(character.avatar || data.avatar || readGlobalString("default_avatar")),
     description: normalizeText(data.description || character.description),
     personality: normalizeText(data.personality || character.personality),
     scenario: normalizeText(data.scenario || character.scenario),
@@ -119,6 +189,7 @@ function normalizeCharacter(ctx = getContext?.() || {}, options = {}) {
 function normalizeUser(ctx = getContext?.() || {}) {
   return {
     name: normalizeText(ctx.name1) || "User",
+    avatar: normalizeUserAvatar(),
     persona: normalizeText(ctx.userPersona || ctx.persona)
   };
 }
@@ -185,7 +256,7 @@ function listCharacters(ctx = getContext?.() || {}) {
     return {
       id: String(index),
       name: normalizeText(character?.name || data.name || `Character ${index + 1}`),
-      avatar: normalizeText(character?.avatar || data.avatar),
+      avatar: normalizeCharacterAvatar(character?.avatar || data.avatar || readGlobalString("default_avatar")),
       description: normalizeText(data.description || character.description),
       personality: normalizeText(data.personality || character.personality),
       scenario: normalizeText(data.scenario || character.scenario),

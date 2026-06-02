@@ -3,11 +3,20 @@ import type {
     XbTavernBuildSnapshot,
     XbTavernContext,
     XbTavernMessage,
-    XbTavernPreset,
-    XbTavernPresetSection,
+    TavernChatPromptPresetBundle,
     XbTavernWorldEntryState,
 } from './message-assembler';
-import { createDefaultXbTavernPreset, DEFAULT_XB_TAVERN_PRESET_ID } from './presets';
+import {
+    createDefaultTavernAssistantPreset,
+    DEFAULT_TAVERN_ASSISTANT_PRESET_ID,
+    normalizeTavernAssistantPreset,
+    type TavernAssistantPreset,
+} from './assistant-presets';
+import {
+    createFallbackTavernChatPromptPresetBundle,
+    FALLBACK_TAVERN_CHAT_PRESET_ID,
+    normalizeTavernChatPromptPresetBundle,
+} from './chat-presets';
 
 export interface TavernSessionRecord {
     id: string;
@@ -18,6 +27,8 @@ export interface TavernSessionRecord {
     updatedAt: number;
     contextSnapshot?: XbTavernContext;
     buildSnapshot?: XbTavernBuildSnapshot;
+    chatPresetId?: string;
+    chatPresetName?: string;
     presetId?: string;
     presetName?: string;
     summary?: string;
@@ -32,6 +43,25 @@ export interface TavernSessionState {
     lastProvider?: string;
     lastModel?: string;
     [key: string]: unknown;
+}
+
+interface DexieUpgradeTable {
+    clear(): Promise<unknown>;
+    where(index: string): {
+        equals(value: unknown): {
+            delete(): Promise<unknown>;
+        };
+    };
+}
+
+interface DexieUpgradeTransaction {
+    table(name: string): DexieUpgradeTable;
+}
+
+interface DexieVersionWithUpgrade {
+    stores(schema: Record<string, string>): {
+        upgrade(callback: (tx: DexieUpgradeTransaction) => Promise<void> | void): void;
+    };
 }
 
 export type TavernMemoryRecordStatus = 'active' | 'stale';
@@ -51,6 +81,8 @@ export interface TavernMessageRecord {
     providerPayload?: unknown;
     contextSnapshot?: XbTavernContext;
     buildSnapshot?: XbTavernBuildSnapshot;
+    chatPresetId?: string;
+    chatPresetName?: string;
     presetId?: string;
     presetName?: string;
     requestSnapshot?: unknown;
@@ -141,6 +173,8 @@ export type TavernAppendMessageInput = XbTavernMessage & {
     providerPayload?: unknown;
     contextSnapshot?: XbTavernContext;
     buildSnapshot?: XbTavernBuildSnapshot;
+    chatPresetId?: string;
+    chatPresetName?: string;
     presetId?: string;
     presetName?: string;
     requestSnapshot?: unknown;
@@ -161,7 +195,18 @@ export interface TavernPresetRecord {
     isBuiltIn?: boolean;
     createdAt: number;
     updatedAt: number;
-    preset: XbTavernPreset;
+    preset: TavernChatPromptPresetBundle;
+}
+
+export interface TavernAssistantPresetRecord {
+    id: string;
+    name: string;
+    description?: string;
+    version?: string;
+    isBuiltIn?: boolean;
+    createdAt: number;
+    updatedAt: number;
+    preset: TavernAssistantPreset;
 }
 
 class TavernDatabase extends Dexie {
@@ -174,6 +219,7 @@ class TavernDatabase extends Dexie {
     managerRuns!: DexieTable<TavernManagerRunRecord>;
     memoryFiles!: DexieTable<TavernMemoryFileRecord>;
     memoryIndexes!: DexieTable<TavernMemoryIndexRecord>;
+    assistantPresets!: DexieTable<TavernAssistantPresetRecord>;
 
     constructor() {
         super('LittleWhiteBox_Tavern');
@@ -208,6 +254,21 @@ class TavernDatabase extends Dexie {
             memoryFiles: '[sessionId+path], sessionId, path, status, updatedAt',
             memoryIndexes: '[sessionId+kind], sessionId, kind, status, updatedAt',
         });
+        (this.version(5) as unknown as DexieVersionWithUpgrade).stores({
+            sessions: 'id, updatedAt, characterId, characterName',
+            messages: '[sessionId+order], sessionId, order',
+            meta: 'key',
+            presets: 'id, updatedAt, sourcePresetId',
+            turnSummaries: 'id, sessionId, episodeId, turn, userOrder, assistantOrder, status, updatedAt',
+            episodeSummaries: 'id, sessionId, status, updatedAt, startTurn, endTurn',
+            managerRuns: 'id, sessionId, status, turn, updatedAt',
+            memoryFiles: '[sessionId+path], sessionId, path, status, updatedAt',
+            memoryIndexes: '[sessionId+kind], sessionId, kind, status, updatedAt',
+            assistantPresets: 'id, updatedAt',
+        }).upgrade(async (tx: DexieUpgradeTransaction) => {
+            await tx.table('presets').clear();
+            await tx.table('meta').where('key').equals('activePresetId').delete();
+        });
     }
 }
 
@@ -222,6 +283,7 @@ export const tavernEpisodeSummariesTable = db.episodeSummaries;
 export const tavernManagerRunsTable = db.managerRuns;
 export const tavernMemoryFilesTable = db.memoryFiles;
 export const tavernMemoryIndexesTable = db.memoryIndexes;
+export const tavernAssistantPresetsTable = db.assistantPresets;
 
 function now(): number {
     return Date.now();
@@ -234,6 +296,16 @@ function createId(prefix = 'tavern-session'): string {
 function normalizeTitle(value = '', fallback = '小白酒馆会话'): string {
     const normalized = String(value || '').trim();
     return normalized.slice(0, 120) || fallback;
+}
+
+function cleanSessionDisplayText(value = ''): string {
+    const cleaned = String(value || '')
+        .replace(/\s*[·-]\s*小白酒馆\s*$/g, '')
+        .replace(/\s*[·-]\s*会话\s*$/g, '')
+        .replace(/^小白酒馆会话$/g, '')
+        .replace(/\s*·\s*第\s*\d+\s*轮\s*·\s*\d+\s*条可用消息\s*$/g, '')
+        .trim();
+    return /^(sillytavern\s+system|system)\b/i.test(cleaned) ? '' : cleaned;
 }
 
 function cloneJson<T>(value: T): T {
@@ -249,35 +321,13 @@ function cloneSerializable<T>(value: T, fallback: T): T {
     }
 }
 
-function normalizePresetName(value = '', fallback = '我的小白酒馆预设'): string {
+function normalizePresetName(value = '', fallback = '酒馆聊天预设'): string {
     const normalized = String(value || '').trim();
     return normalized.slice(0, 120) || fallback;
 }
 
-function normalizeTavernPresetSchema(preset: XbTavernPreset = {}): XbTavernPreset {
-    const normalized: XbTavernPreset = {
-        id: String(preset.id || '').trim(),
-        name: normalizePresetName(preset.name),
-        description: String(preset.description || ''),
-        version: String(preset.version || ''),
-        stylePrompt: String(preset.stylePrompt || ''),
-        postHistoryPrompt: String(preset.postHistoryPrompt || ''),
-        assistantPrefill: String(preset.assistantPrefill || ''),
-        historySeparator: String(preset.historySeparator || ''),
-        sections: Array.isArray(preset.sections)
-            ? preset.sections.map((section): XbTavernPresetSection => ({
-                id: String(section?.id || '').trim(),
-                label: String(section?.label || '').trim(),
-                locked: section?.locked !== false,
-                enabled: section?.enabled !== false,
-                role: section?.role,
-                content: String(section?.content || ''),
-                placement: section?.placement,
-            }))
-            : [],
-    };
-    if (!normalized.id) {delete normalized.id;}
-    return normalized;
+function normalizeTavernPresetSchema(preset: TavernChatPromptPresetBundle = {}): TavernChatPromptPresetBundle {
+    return normalizeTavernChatPromptPresetBundle(preset);
 }
 
 function normalizeStringArray(value: unknown, limit = 12): string[] {
@@ -348,15 +398,19 @@ export function mergeWorldEntryStates(
 
 export async function createTavernSession(input: Partial<TavernSessionRecord> = {}): Promise<TavernSessionRecord> {
     const timestamp = now();
+    const characterName = cleanSessionDisplayText(input.characterName || '');
+    const title = cleanSessionDisplayText(input.title || '');
     const session: TavernSessionRecord = {
         id: String(input.id || createId()),
-        title: normalizeTitle(input.title, input.characterName ? `${input.characterName} · 会话` : '小白酒馆会话'),
+        title: normalizeTitle(title, characterName || '未选择角色'),
         characterId: String(input.characterId || ''),
-        characterName: String(input.characterName || ''),
+        characterName,
         createdAt: Number(input.createdAt) || timestamp,
         updatedAt: timestamp,
         contextSnapshot: cloneSerializable(input.contextSnapshot, undefined),
         buildSnapshot: cloneSerializable(input.buildSnapshot, undefined),
+        chatPresetId: String(input.chatPresetId || input.presetId || ''),
+        chatPresetName: String(input.chatPresetName || input.presetName || ''),
         presetId: String(input.presetId || ''),
         presetName: String(input.presetName || ''),
         summary: String(input.summary || ''),
@@ -386,6 +440,53 @@ export async function getTavernSession(sessionId = ''): Promise<TavernSessionRec
     const id = String(sessionId || '').trim();
     if (!id) {return null;}
     return await tavernSessionsTable.get(id) || null;
+}
+
+export async function deleteTavernSession(sessionId = ''): Promise<number> {
+    const id = String(sessionId || '').trim();
+    if (!id) {return 0;}
+    const existing = await getTavernSession(id);
+    if (!existing) {return 0;}
+    await db.transaction(
+        'rw',
+        tavernSessionsTable,
+        tavernMessagesTable,
+        tavernTurnSummariesTable,
+        tavernEpisodeSummariesTable,
+        tavernManagerRunsTable,
+        tavernMemoryFilesTable,
+        tavernMemoryIndexesTable,
+        tavernMetaTable,
+        async () => {
+            const [messages, turns, episodes, runs, files, indexes] = await Promise.all([
+                tavernMessagesTable.where('sessionId').equals(id).toArray(),
+                tavernTurnSummariesTable.where('sessionId').equals(id).toArray(),
+                tavernEpisodeSummariesTable.where('sessionId').equals(id).toArray(),
+                tavernManagerRunsTable.where('sessionId').equals(id).toArray(),
+                tavernMemoryFilesTable.where('sessionId').equals(id).toArray(),
+                tavernMemoryIndexesTable.where('sessionId').equals(id).toArray(),
+            ]);
+            await Promise.all([
+                messages.length ? tavernMessagesTable.bulkDelete(messages.map((message) => [message.sessionId, message.order])) : 0,
+                turns.length ? tavernTurnSummariesTable.bulkDelete(turns.map((summary) => summary.id)) : 0,
+                episodes.length ? tavernEpisodeSummariesTable.bulkDelete(episodes.map((episode) => episode.id)) : 0,
+                runs.length ? tavernManagerRunsTable.bulkDelete(runs.map((run) => run.id)) : 0,
+                files.length ? tavernMemoryFilesTable.bulkDelete(files.map((file) => [file.sessionId, file.path])) : 0,
+                indexes.length ? tavernMemoryIndexesTable.bulkDelete(indexes.map((index) => [index.sessionId, index.kind])) : 0,
+            ]);
+            await tavernSessionsTable.delete(id);
+            const selected = await tavernMetaTable.get('selectedSessionId');
+            if (String(selected?.value || '') === id) {
+                const [nextSession] = await tavernSessionsTable.orderBy('updatedAt').reverse().toArray();
+                await tavernMetaTable.put({
+                    key: 'selectedSessionId',
+                    value: nextSession?.id || '',
+                    updatedAt: now(),
+                });
+            }
+        },
+    );
+    return 1;
 }
 
 export async function updateTavernSessionState(sessionId = '', patch: Partial<TavernSessionState> = {}): Promise<TavernSessionRecord | null> {
@@ -433,6 +534,8 @@ export async function replaceTavernSessionState(sessionId = '', stateInput: Part
 export async function updateTavernSessionSnapshot(sessionId = '', patch: {
     contextSnapshot?: XbTavernContext;
     buildSnapshot?: XbTavernBuildSnapshot;
+    chatPresetId?: string;
+    chatPresetName?: string;
     presetId?: string;
     presetName?: string;
     characterId?: string;
@@ -448,6 +551,8 @@ export async function updateTavernSessionSnapshot(sessionId = '', patch: {
         updatedAt: now(),
         contextSnapshot: cloneSerializable(contextSnapshot, undefined),
         buildSnapshot: cloneSerializable('buildSnapshot' in patch ? patch.buildSnapshot : existing.buildSnapshot, undefined),
+        chatPresetId: 'chatPresetId' in patch ? String(patch.chatPresetId || '') : existing.chatPresetId,
+        chatPresetName: 'chatPresetName' in patch ? String(patch.chatPresetName || '') : existing.chatPresetName,
         presetId: 'presetId' in patch ? String(patch.presetId || '') : existing.presetId,
         presetName: 'presetName' in patch ? String(patch.presetName || '') : existing.presetName,
         characterId: 'characterId' in patch ? String(patch.characterId || '') : String(character.id || existing.characterId || ''),
@@ -477,6 +582,8 @@ export async function appendTavernMessage(sessionId: string, message: TavernAppe
         providerPayload: 'providerPayload' in message ? cloneSerializable(message.providerPayload, undefined) : undefined,
         contextSnapshot: 'contextSnapshot' in message ? cloneSerializable(message.contextSnapshot, undefined) : undefined,
         buildSnapshot: 'buildSnapshot' in message ? cloneSerializable(message.buildSnapshot, undefined) : undefined,
+        chatPresetId: 'chatPresetId' in message ? String(message.chatPresetId || '') : String(message.presetId || ''),
+        chatPresetName: 'chatPresetName' in message ? String(message.chatPresetName || '') : String(message.presetName || ''),
         presetId: 'presetId' in message ? String(message.presetId || '') : undefined,
         presetName: 'presetName' in message ? String(message.presetName || '') : undefined,
         requestSnapshot: 'requestSnapshot' in message ? cloneSerializable(message.requestSnapshot, undefined) : undefined,
@@ -733,68 +840,116 @@ export async function markTavernMemoryStaleFromOrder(sessionId = '', fromOrder =
     return affected.length + affectedMemoryFiles.length;
 }
 
-export function createUserPresetFromBuiltIn(name = '我的小白酒馆预设'): XbTavernPreset {
-    const preset = cloneJson(createDefaultXbTavernPreset());
-    preset.id = `user-preset-${now()}-${Math.random().toString(36).slice(2, 8)}`;
-    preset.name = normalizePresetName(name);
-    preset.description = `从 ${createDefaultXbTavernPreset().name} 派生。`;
-    return preset;
+export function createUserPresetFromBuiltIn(name = '酒馆聊天预设'): TavernChatPromptPresetBundle {
+    return normalizeTavernChatPromptPresetBundle({
+        ...createFallbackTavernChatPromptPresetBundle(),
+        name: normalizePresetName(name),
+    });
 }
 
-export async function saveTavernPreset(preset: XbTavernPreset, options: {
+export async function saveTavernPreset(preset: TavernChatPromptPresetBundle, options: {
     sourcePresetId?: string;
     isBuiltIn?: boolean;
 } = {}): Promise<TavernPresetRecord> {
     const timestamp = now();
-    const id = String(preset.id || createId('tavern-preset'));
     const normalizedPreset = normalizeTavernPresetSchema(cloneSerializable({
         ...preset,
-        id,
+        id: FALLBACK_TAVERN_CHAT_PRESET_ID,
         name: normalizePresetName(preset.name),
-    }, createDefaultXbTavernPreset()));
-    const existing = await tavernPresetsTable.get(id);
-    const record: TavernPresetRecord = {
-        id,
+    }, createFallbackTavernChatPromptPresetBundle()));
+    return {
+        id: FALLBACK_TAVERN_CHAT_PRESET_ID,
         name: normalizePresetName(normalizedPreset.name),
         description: String(normalizedPreset.description || ''),
         version: String(normalizedPreset.version || ''),
-        sourcePresetId: String(options.sourcePresetId || existing?.sourcePresetId || DEFAULT_XB_TAVERN_PRESET_ID),
+        sourcePresetId: String(options.sourcePresetId || FALLBACK_TAVERN_CHAT_PRESET_ID),
         isBuiltIn: options.isBuiltIn === true,
-        createdAt: Number(existing?.createdAt) || timestamp,
+        createdAt: timestamp,
         updatedAt: timestamp,
         preset: normalizedPreset,
     };
-    await tavernPresetsTable.put(record);
-    return record;
 }
 
 export async function listUserTavernPresets(): Promise<TavernPresetRecord[]> {
-    return tavernPresetsTable.orderBy('updatedAt').reverse().toArray();
+    return [];
 }
 
 export async function getActiveTavernPresetId(): Promise<string> {
-    const entry = await tavernMetaTable.get('activePresetId');
-    return String(entry?.value || DEFAULT_XB_TAVERN_PRESET_ID).trim() || DEFAULT_XB_TAVERN_PRESET_ID;
+    return FALLBACK_TAVERN_CHAT_PRESET_ID;
 }
 
-export async function setActiveTavernPresetId(presetId = DEFAULT_XB_TAVERN_PRESET_ID): Promise<string> {
-    const value = String(presetId || DEFAULT_XB_TAVERN_PRESET_ID).trim() || DEFAULT_XB_TAVERN_PRESET_ID;
-    await tavernMetaTable.put({ key: 'activePresetId', value, updatedAt: now() });
+export async function setActiveTavernPresetId(presetId = FALLBACK_TAVERN_CHAT_PRESET_ID): Promise<string> {
+    void presetId;
+    await tavernMetaTable.delete('activePresetId');
+    return FALLBACK_TAVERN_CHAT_PRESET_ID;
+}
+
+export async function loadActiveTavernPreset(): Promise<TavernChatPromptPresetBundle> {
+    return createFallbackTavernChatPromptPresetBundle();
+}
+
+export async function deriveAndActivateDefaultTavernPreset(name = '酒馆聊天预设'): Promise<TavernPresetRecord> {
+    const preset = createUserPresetFromBuiltIn(name);
+    return saveTavernPreset(preset, { sourcePresetId: FALLBACK_TAVERN_CHAT_PRESET_ID });
+}
+
+export async function getActiveTavernAssistantPresetId(): Promise<string> {
+    const entry = await tavernMetaTable.get('activeAssistantPresetId');
+    return String(entry?.value || DEFAULT_TAVERN_ASSISTANT_PRESET_ID).trim() || DEFAULT_TAVERN_ASSISTANT_PRESET_ID;
+}
+
+export async function setActiveTavernAssistantPresetId(
+    presetId = DEFAULT_TAVERN_ASSISTANT_PRESET_ID,
+): Promise<string> {
+    const value = String(presetId || DEFAULT_TAVERN_ASSISTANT_PRESET_ID).trim()
+        || DEFAULT_TAVERN_ASSISTANT_PRESET_ID;
+    await tavernMetaTable.put({ key: 'activeAssistantPresetId', value, updatedAt: now() });
     return value;
 }
 
-export async function loadActiveTavernPreset(): Promise<XbTavernPreset> {
-    const activeId = await getActiveTavernPresetId();
-    if (activeId === DEFAULT_XB_TAVERN_PRESET_ID) {return createDefaultXbTavernPreset();}
-    const record = await tavernPresetsTable.get(activeId);
-    return record?.preset ? normalizeTavernPresetSchema(cloneJson(record.preset)) : createDefaultXbTavernPreset();
+export async function saveTavernAssistantPreset(
+    preset: Partial<TavernAssistantPreset>,
+    options: { isBuiltIn?: boolean } = {},
+): Promise<TavernAssistantPresetRecord> {
+    const timestamp = now();
+    const id = String(preset.id || createId('assistant-preset'));
+    const existing = await tavernAssistantPresetsTable.get(id);
+    const normalized = normalizeTavernAssistantPreset({
+        ...preset,
+        id,
+        updatedAt: timestamp,
+    });
+    const record: TavernAssistantPresetRecord = {
+        id,
+        name: normalized.name,
+        description: normalized.description,
+        version: normalized.version,
+        isBuiltIn: options.isBuiltIn === true,
+        createdAt: Number(existing?.createdAt) || timestamp,
+        updatedAt: timestamp,
+        preset: normalized,
+    };
+    await tavernAssistantPresetsTable.put(record);
+    return record;
 }
 
-export async function deriveAndActivateDefaultTavernPreset(name = '我的小白酒馆预设'): Promise<TavernPresetRecord> {
-    const preset = createUserPresetFromBuiltIn(name);
-    const record = await saveTavernPreset(preset, { sourcePresetId: DEFAULT_XB_TAVERN_PRESET_ID });
-    await setActiveTavernPresetId(record.id);
-    return record;
+export async function ensureDefaultTavernAssistantPreset(): Promise<TavernAssistantPresetRecord> {
+    const existing = await tavernAssistantPresetsTable.get(DEFAULT_TAVERN_ASSISTANT_PRESET_ID);
+    if (existing) {return existing;}
+    return saveTavernAssistantPreset(createDefaultTavernAssistantPreset(), { isBuiltIn: true });
+}
+
+export async function listTavernAssistantPresets(): Promise<TavernAssistantPresetRecord[]> {
+    await ensureDefaultTavernAssistantPreset();
+    return tavernAssistantPresetsTable.orderBy('updatedAt').reverse().toArray();
+}
+
+export async function loadActiveTavernAssistantPreset(): Promise<TavernAssistantPreset> {
+    await ensureDefaultTavernAssistantPreset();
+    const activeId = await getActiveTavernAssistantPresetId();
+    const record = await tavernAssistantPresetsTable.get(activeId)
+        || await tavernAssistantPresetsTable.get(DEFAULT_TAVERN_ASSISTANT_PRESET_ID);
+    return normalizeTavernAssistantPreset(record?.preset || createDefaultTavernAssistantPreset());
 }
 
 export default db;

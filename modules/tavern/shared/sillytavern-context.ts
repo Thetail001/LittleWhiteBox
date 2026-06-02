@@ -37,6 +37,10 @@ function normalizeText(value: unknown = ''): string {
     return String(value || '').trim();
 }
 
+function isSystemCharacterName(value: unknown = ''): boolean {
+    return /^(sillytavern\s+system|system)\b/i.test(normalizeText(value));
+}
+
 function cloneJson<T>(value: T): T {
     try {
         return JSON.parse(JSON.stringify(value)) as T;
@@ -75,9 +79,14 @@ function pickData(character: Record<string, unknown>): Record<string, unknown> {
 export function normalizeSillyTavernCharacter(source: SillyTavernContextSource = {}): XbTavernCharacter {
     const character = pickCharacter(source);
     const data = pickData(character);
+    const name = [
+        character.name,
+        data.name,
+        source.name2,
+    ].map((value) => normalizeText(value)).find((value) => value && !isSystemCharacterName(value)) || '';
     return {
         id: normalizeText(source.characterId ?? source.this_chid),
-        name: normalizeText(character.name || data.name || source.name2),
+        name,
         avatar: normalizeText(character.avatar || data.avatar),
         description: normalizeText(data.description || character.description),
         personality: normalizeText(data.personality || character.personality),

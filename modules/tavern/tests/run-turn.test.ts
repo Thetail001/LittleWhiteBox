@@ -652,6 +652,111 @@ test('xb tavern simulated request builds raw API JSON without saving chat messag
     assert.deepEqual(await listTavernMessages(session.id), []);
 });
 
+test('xb tavern simulated request ignores unusable empty session snapshots', async () => {
+    await resetDb();
+    const preset = createDefaultXbTavernPreset();
+    const session = await createTavernSession({
+        title: '旧空会话',
+        characterId: '',
+        characterName: '',
+        contextSnapshot: {},
+        presetId: preset.id,
+        presetName: preset.name,
+    });
+    const result = await simulateXbTavernRequest({
+        sessionId: session.id,
+        agentConfig: {
+            currentPresetName: '酒馆 OpenAI',
+            presets: {
+                '酒馆 OpenAI': {
+                    provider: 'sillytavern-openai-compatible',
+                    modelConfigs: {
+                        'sillytavern-openai-compatible': {
+                            model: 'gpt-test',
+                        },
+                    },
+                },
+            },
+        },
+        contextSnapshot: {
+            character: {
+                id: 'char-live',
+                name: 'Live Aster',
+                description: 'Live character card.',
+            },
+            worldBooks: [{
+                name: 'Live Lore',
+                entries: [{
+                    uid: 'live-lore',
+                    content: 'Live constant lore.',
+                    constant: true,
+                }],
+            }],
+        },
+        preset,
+        currentUserMessage: '模拟当前资料。',
+    });
+
+    assert.match(result.requestSnapshot.rawRequestJson, /<character_card>/);
+    assert.match(result.requestSnapshot.rawRequestJson, /Live Aster/);
+    assert.match(result.requestSnapshot.rawRequestJson, /Live constant lore/);
+});
+
+test('xb tavern simulated request ignores system-name session snapshots', async () => {
+    await resetDb();
+    const preset = createDefaultXbTavernPreset();
+    const session = await createTavernSession({
+        title: '坏快照',
+        characterId: 'system',
+        characterName: 'SillyTavern System',
+        contextSnapshot: {
+            character: {
+                id: 'system',
+                name: 'SillyTavern System',
+            },
+        },
+        presetId: preset.id,
+        presetName: preset.name,
+    });
+    const result = await simulateXbTavernRequest({
+        sessionId: session.id,
+        agentConfig: {
+            currentPresetName: '酒馆 OpenAI',
+            presets: {
+                '酒馆 OpenAI': {
+                    provider: 'sillytavern-openai-compatible',
+                    modelConfigs: {
+                        'sillytavern-openai-compatible': {
+                            model: 'gpt-test',
+                        },
+                    },
+                },
+            },
+        },
+        contextSnapshot: {
+            character: {
+                id: 'seraphina',
+                name: 'Seraphina',
+                description: 'A real character card.',
+            },
+            worldBooks: [{
+                name: 'Seraphina Lore',
+                entries: [{
+                    uid: 'seraphina-lore',
+                    content: 'Seraphina constant lore.',
+                    constant: true,
+                }],
+            }],
+        },
+        preset,
+        currentUserMessage: '继续。',
+    });
+
+    assert.doesNotMatch(result.requestSnapshot.rawRequestJson, /SillyTavern System/);
+    assert.match(result.requestSnapshot.rawRequestJson, /Seraphina/);
+    assert.match(result.requestSnapshot.rawRequestJson, /Seraphina constant lore/);
+});
+
 test('xb tavern runtime keeps capability registry empty until agent tools are added', () => {
     const provider = resolveXbTavernProviderConfig({
         currentPresetName: '默认',

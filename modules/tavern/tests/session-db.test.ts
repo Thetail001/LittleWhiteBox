@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import db, {
     appendTavernMessage,
     createTavernSession,
+    deleteTavernSession,
     deleteTavernMessages,
     deriveAndActivateDefaultTavernPreset,
     getActiveTavernPresetId,
@@ -84,6 +85,24 @@ test('tavern session db stores independent sessions and messages', async () => {
     assert.deepEqual(messages[1]?.requestSnapshot, { messageCount: buildResult.messages.length });
 });
 
+test('tavern session db keeps session display names clean', async () => {
+    await db.delete();
+    await db.open();
+
+    const titled = await createTavernSession({
+        title: 'Seraphina · 小白酒馆',
+        characterName: 'SillyTavern System · 第 96 轮 · 134 条可用消息',
+    });
+    assert.equal(titled.title, 'Seraphina');
+    assert.equal(titled.characterName, '');
+
+    const named = await createTavernSession({
+        characterName: 'Seraphina · 会话',
+    });
+    assert.equal(named.title, 'Seraphina');
+    assert.equal(named.characterName, 'Seraphina');
+});
+
 test('tavern session db stores only cloneable snapshots from runtime inputs', async () => {
     await db.delete();
     await db.open();
@@ -118,6 +137,44 @@ test('tavern session db stores only cloneable snapshots from runtime inputs', as
     assert.deepEqual(messages[0]?.requestSnapshot, { messageCount: 1 });
 });
 
+test('tavern session db deletes sessions with related records', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Delete me', characterName: 'Aster' });
+    const other = await createTavernSession({ title: 'Keep me', characterName: 'Nia' });
+    const userMessage = await appendTavernMessage(session.id, { role: 'user', content: 'Hi.' });
+    const assistantMessage = await appendTavernMessage(session.id, { role: 'assistant', content: 'Hello.' });
+    await upsertTavernTurnSummary({
+        sessionId: session.id,
+        turn: 1,
+        userOrder: userMessage.order,
+        assistantOrder: assistantMessage.order,
+        summary: 'They greeted each other.',
+    });
+    await upsertTavernEpisodeSummary({
+        sessionId: session.id,
+        id: 'episode-delete',
+        title: 'Greeting',
+        summary: 'Greeting.',
+    });
+    await createTavernManagerRun({
+        sessionId: session.id,
+        turn: 1,
+        userOrder: userMessage.order,
+        assistantOrder: assistantMessage.order,
+        trigger: 'after_turn',
+    });
+
+    assert.equal(await deleteTavernSession(session.id), 1);
+    assert.equal(await getTavernSession(session.id), null);
+    assert.equal((await listTavernMessages(session.id)).length, 0);
+    assert.equal((await listTavernTurnSummaries(session.id)).length, 0);
+    assert.equal((await listTavernEpisodeSummaries(session.id)).length, 0);
+    assert.equal((await listTavernManagerRuns(session.id)).length, 0);
+    assert.equal(await getSelectedTavernSessionId(), other.id);
+});
+
 test('tavern session db updates and deletes message records by order', async () => {
     await db.delete();
     await db.open();
@@ -138,7 +195,7 @@ test('tavern session db updates and deletes message records by order', async () 
     ]);
 });
 
-test('tavern preset db derives, activates, edits and resets presets', async () => {
+test('tavern chat preset compatibility wrappers do not create local prompt presets', async () => {
     await db.delete();
     await db.open();
 
@@ -146,9 +203,9 @@ test('tavern preset db derives, activates, edits and resets presets', async () =
     assert.equal((await loadActiveTavernPreset()).id, DEFAULT_XB_TAVERN_PRESET_ID);
 
     const derived = await deriveAndActivateDefaultTavernPreset('我的测试预设');
-    assert.notEqual(derived.id, DEFAULT_XB_TAVERN_PRESET_ID);
-    assert.equal(await getActiveTavernPresetId(), derived.id);
-    assert.equal((await listUserTavernPresets()).length, 1);
+    assert.equal(derived.id, DEFAULT_XB_TAVERN_PRESET_ID);
+    assert.equal(await getActiveTavernPresetId(), DEFAULT_XB_TAVERN_PRESET_ID);
+    assert.equal((await listUserTavernPresets()).length, 0);
 
     const edited = {
         ...derived.preset,
@@ -164,10 +221,12 @@ test('tavern preset db derives, activates, edits and resets presets', async () =
             },
         ],
     };
-    await saveTavernPreset(edited);
-    assert.equal((await loadActiveTavernPreset()).name, '改过的预设');
+    const saved = await saveTavernPreset(edited);
+    assert.equal(saved.name, '改过的预设');
+    assert.equal((await loadActiveTavernPreset()).name, '酒馆当前聊天预设');
+    assert.equal((await listUserTavernPresets()).length, 0);
 
-    await setActiveTavernPresetId(DEFAULT_XB_TAVERN_PRESET_ID);
+    await setActiveTavernPresetId('legacy-local-preset-id');
     assert.deepEqual(await loadActiveTavernPreset(), createDefaultXbTavernPreset());
 });
 

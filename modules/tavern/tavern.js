@@ -4,6 +4,12 @@ import { extensionFolderPath } from "../../core/constants.js";
 import { createFirstPartyIframeOverlay, loadFirstPartyIframeCacheKey } from "../../core/first-party-iframe-app.js";
 import { isTrustedMessage, postToIframe } from "../../core/iframe-messaging.js";
 import { buildTavernFrameConfig, saveTavernAgentConfig } from "./host/agent-config.js";
+import {
+  getTavernChatPresetBundle,
+  listTavernChatPresetBundles,
+  saveTavernChatPresetBundle,
+  selectTavernChatPresetBundle
+} from "./host/chat-presets.js";
 import { buildTavernContext } from "./host/sillytavern-context.js";
 const SOURCE_HOST = "xb-tavern-host";
 const SOURCE_APP = "xb-tavern-app";
@@ -82,6 +88,33 @@ function handleHostRequestHeaders(payload = {}) {
     hostRequestHeaders: getRequestHeaders?.() || {}
   });
 }
+async function handleChatPresetRequest(type, payload = {}) {
+  const requestId = String(payload.requestId || "");
+  try {
+    let result;
+    if (type === "xb-tavern:list-chat-presets") {
+      result = listTavernChatPresetBundles();
+    } else if (type === "xb-tavern:get-chat-preset") {
+      result = getTavernChatPresetBundle();
+    } else if (type === "xb-tavern:save-chat-preset") {
+      result = await saveTavernChatPresetBundle(payload.payload);
+    } else if (type === "xb-tavern:select-chat-preset") {
+      result = await selectTavernChatPresetBundle(payload.payload);
+    }
+    replyHostResult(requestId, {
+      ok: true,
+      result
+    });
+    if (type !== "xb-tavern:list-chat-presets") {
+      await sendConfigToFrame();
+    }
+  } catch (error) {
+    replyHostResult(requestId, {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error || "chat_preset_failed")
+    });
+  }
+}
 async function createOverlay() {
   return createFirstPartyIframeOverlay({
     overlayId: OVERLAY_ID,
@@ -129,6 +162,12 @@ function handleFrameMessage(event) {
       break;
     case "xb-tavern:get-host-request-headers":
       handleHostRequestHeaders(data.payload || {});
+      break;
+    case "xb-tavern:list-chat-presets":
+    case "xb-tavern:get-chat-preset":
+    case "xb-tavern:save-chat-preset":
+    case "xb-tavern:select-chat-preset":
+      void handleChatPresetRequest(data.type, data.payload || {});
       break;
     default:
       break;

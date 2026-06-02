@@ -28,6 +28,7 @@ function createTavernBuildInfoPlugin() {
                 readHashInput(path.resolve('modules/tavern/tavern.html')),
                 readHashInput(path.resolve('modules/tavern/tavern.ts')),
                 readHashInput(path.resolve('modules/tavern/host/agent-config.ts')),
+                readHashInput(path.resolve('modules/tavern/host/chat-presets.ts')),
                 readHashInput(path.resolve('modules/tavern/host/sillytavern-context.ts')),
             ].join('\n/* tavern-build-boundary */\n');
             const hash = createHash('sha256').update(hashInput).digest('hex').slice(0, 16);

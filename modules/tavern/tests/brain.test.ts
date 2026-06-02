@@ -59,7 +59,7 @@ test('xb tavern brain world setting helper normalizes state defaults', () => {
 
     assert.equal(worldSettings.turn, 0);
     assert.equal(runtimeState.currentUserMessage, 'Hello.');
-    assert.equal(runtimeState.historyMode, 'squash');
+    assert.equal(runtimeState.historyMode, 'raw');
     assert.deepEqual(runtimeState.worldSettings?.entryStates, {
         'World\u0000entry': { cooldownUntilTurn: 4 },
     });

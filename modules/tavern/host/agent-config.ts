@@ -6,6 +6,7 @@ import {
     normalizeJsApiPermission,
     normalizePresetName,
 } from '../../agent-core/config.js';
+import { getTavernChatPresetBundle, listTavernChatPresetBundles } from './chat-presets.js';
 
 const SERVER_FILE_KEY = 'settings';
 
@@ -70,6 +71,8 @@ export async function saveTavernAgentConfig(patch: Record<string, unknown> = {},
 export async function buildTavernFrameConfig(contextPayload: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
     return {
         agentConfig: await loadTavernAgentConfig(),
+        chatPreset: getTavernChatPresetBundle(),
+        chatPresetList: listTavernChatPresetBundles(),
         hostRequestHeaders: getRequestHeaders?.() || {},
         ...contextPayload,
     };

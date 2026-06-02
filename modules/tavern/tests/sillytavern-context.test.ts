@@ -50,6 +50,14 @@ test('sillytavern context adapter returns an empty diagnostic-safe shape when da
     assert.deepEqual(context.worldEntries, []);
 });
 
+test('sillytavern context adapter does not treat system name as a character card', () => {
+    const context = buildXbTavernContextFromSillyTavern({
+        name2: 'SillyTavern System',
+    }, {});
+
+    assert.equal(context.character?.name, '');
+});
+
 test('sillytavern context adapter switches character snapshots by id', () => {
     const source = {
         characterId: 1,

@@ -5,7 +5,7 @@ import {
     type XbTavernContext,
     type XbTavernMemoryContext,
     type XbTavernMessageBuildResult,
-    type XbTavernPreset,
+    type TavernChatPromptPresetBundle,
     type XbTavernRuntimeState,
     type XbTavernWorldEntryState,
     type XbTavernWorldSettings,
@@ -19,7 +19,8 @@ export const DEFAULT_XB_TAVERN_WORLD_SETTINGS = Object.freeze({
 
 export interface XbTavernBrainBuildInput {
     context: XbTavernContext;
-    preset: XbTavernPreset;
+    chatPreset?: TavernChatPromptPresetBundle;
+    preset?: TavernChatPromptPresetBundle;
     currentUserMessage: string;
     historyMode?: XbTavernRuntimeState['historyMode'];
     turn?: number;
@@ -49,7 +50,7 @@ export function createXbTavernWorldSettings(input: {
 export function createXbTavernRuntimeState(input: XbTavernBrainBuildInput): XbTavernRuntimeState {
     return {
         currentUserMessage: String(input.currentUserMessage || ''),
-        historyMode: input.historyMode || 'squash',
+        historyMode: input.historyMode || 'raw',
         worldSettings: createXbTavernWorldSettings({
             turn: input.turn,
             entryStates: input.entryStates,
@@ -60,10 +61,10 @@ export function createXbTavernRuntimeState(input: XbTavernBrainBuildInput): XbTa
 
 export function buildXbTavernBrain(input: XbTavernBrainBuildInput): XbTavernBrainBuildResult {
     const context = input.context || {};
-    const preset = input.preset || {};
+    const chatPreset = input.chatPreset || input.preset || {};
     const runtimeState = createXbTavernRuntimeState(input);
-    const buildResult = buildXbTavernMessages(context, preset, runtimeState);
-    const buildSnapshot = createXbTavernBuildSnapshot(context, preset, buildResult, input.diagnostics);
+    const buildResult = buildXbTavernMessages(context, chatPreset, runtimeState);
+    const buildSnapshot = createXbTavernBuildSnapshot(context, chatPreset, buildResult, input.diagnostics);
     return {
         runtimeState,
         buildResult,

@@ -49,6 +49,7 @@ export interface XbTavernCharacter {
 export interface XbTavernUser {
     id?: string;
     name?: string;
+    avatar?: string;
     persona?: string;
     description?: string;
 }
@@ -116,7 +117,7 @@ export interface XbTavernContext {
     sessionMeta?: Record<string, unknown>;
 }
 
-export type XbTavernPresetPlacement =
+export type TavernChatPromptPlacement =
     | 'top'
     | 'beforeCharacter'
     | 'afterCharacter'
@@ -124,27 +125,64 @@ export type XbTavernPresetPlacement =
     | 'afterHistory'
     | 'assistantPrefill';
 
-export interface XbTavernPresetSection {
+export interface TavernChatPromptSection {
     id?: string;
     label?: string;
     locked?: boolean;
     enabled?: boolean;
     role?: XbTavernRole | XBTavernPromptRole | number | string;
     content?: string;
-    placement?: XbTavernPresetPlacement;
+    placement?: TavernChatPromptPlacement;
+    source?: 'promptManager' | 'systemPrompt' | 'contextTemplate' | 'instructTemplate' | 'manual' | string;
 }
 
-export interface XbTavernPreset {
+export interface TavernChatPromptPresetBundle {
     id?: string;
     name?: string;
     description?: string;
     version?: string;
-    stylePrompt?: string;
-    postHistoryPrompt?: string;
-    assistantPrefill?: string;
+    source?: 'sillytavern' | string;
+    selected?: boolean;
+    promptManager?: {
+        name?: string;
+        prompts?: unknown[];
+        promptOrder?: unknown;
+    };
+    systemPrompt?: {
+        name?: string;
+        enabled?: boolean;
+        content?: string;
+        postHistory?: string;
+    };
+    contextTemplate?: {
+        name?: string;
+        storyString?: string;
+        chatStart?: string;
+        exampleSeparator?: string;
+    };
+    instructTemplate?: {
+        name?: string;
+        enabled?: boolean;
+        inputSequence?: string;
+        inputSuffix?: string;
+        outputSequence?: string;
+        outputSuffix?: string;
+        systemSequence?: string;
+        systemSuffix?: string;
+        firstInputSequence?: string;
+        lastInputSequence?: string;
+        firstOutputSequence?: string;
+        lastOutputSequence?: string;
+        stopSequence?: string;
+    };
     historySeparator?: string;
-    sections?: XbTavernPresetSection[];
+    sections?: TavernChatPromptSection[];
+    updatedAt?: number;
 }
+
+export type XbTavernPresetPlacement = TavernChatPromptPlacement;
+export type XbTavernPresetSection = TavernChatPromptSection;
+export type XbTavernPreset = TavernChatPromptPresetBundle;
 
 export interface XbTavernRuntimeState {
     currentUserMessage?: string;
@@ -294,6 +332,8 @@ export interface XbTavernMessageBuildResult {
 }
 
 export interface XbTavernBuildSnapshot {
+    chatPresetId: string;
+    chatPresetName: string;
     presetId: string;
     presetName: string;
     characterId: string;
@@ -364,11 +404,11 @@ const PLACEMENT_ORDER = [
 interface NormalizedPresetSection {
     id?: string;
     label?: string;
-    locked: boolean;
     enabled: boolean;
     role: XbTavernRole;
     content: string;
-    placement: XbTavernPresetPlacement;
+    placement: TavernChatPromptPlacement;
+    source?: string;
 }
 
 function normalizeText(value: unknown = ''): string {
@@ -992,36 +1032,17 @@ function buildMemoryBlock(memoryContext: XbTavernMemoryContext = {}): string {
     return sections.length ? `<session_memory>\n${sections.join('\n\n')}\n</session_memory>` : '';
 }
 
-function normalizePresetSections(preset: XbTavernPreset = {}): NormalizedPresetSection[] {
-    const source = Array.isArray(preset.sections) ? preset.sections : [];
+function normalizeChatPromptSections(chatPreset: TavernChatPromptPresetBundle = {}): NormalizedPresetSection[] {
+    const source = Array.isArray(chatPreset.sections) ? chatPreset.sections : [];
     const sections = source.map((section) => ({
         id: normalizeText(section.id),
         label: normalizeText(section.label),
-        locked: section.locked !== false,
         enabled: section.enabled !== false,
         role: normalizeRole(section.role, 'system'),
         content: normalizeText(section.content),
         placement: PLACEMENT_ORDER.includes(section.placement as never) ? section.placement! : 'beforeHistory',
+        source: normalizeText(section.source),
     })).filter((section) => section.enabled && section.content) as NormalizedPresetSection[];
-
-    [
-        ['stylePrompt', 'beforeHistory', 'system', 'Style prompt'],
-        ['postHistoryPrompt', 'afterHistory', 'system', 'Post-history prompt'],
-        ['assistantPrefill', 'assistantPrefill', 'assistant', 'Assistant prefill'],
-    ].forEach(([key, placement, role]) => {
-        const content = normalizeText((preset as Record<string, unknown>)[key]);
-        if (content) {
-            sections.push({
-                id: normalizeText(key),
-                label: normalizeText(key),
-                locked: true,
-                enabled: true,
-                role: normalizeRole(role),
-                content,
-                placement: placement as NormalizedPresetSection['placement'],
-            });
-        }
-    });
 
     return sections;
 }
@@ -1061,15 +1082,13 @@ export function squashChatHistory(history: XbTavernHistoryMessage[] = [], option
     if (!messages.length) {return [];}
 
     const separator = options.separator || '\n\n';
-    const userName = normalizeText(options.userName) || 'User';
-    const characterName = normalizeText(options.characterName) || 'Assistant';
-    const role = normalizeRole(options.role, 'assistant');
+    const role = normalizeRole(options.role, 'system');
     const content = messages.map((message) => {
-        const label = message.role === 'user' ? userName : characterName;
-        return `${label}: ${message.content}`;
+        const historyRole = message.role === 'user' ? 'user' : 'assistant';
+        return `<message role="${historyRole}">\n${message.content}\n</message>`;
     }).join(separator);
 
-    return [makeMessage(role, content)].filter((message): message is XbTavernMessage => !!message);
+    return [makeMessage(role, `<conversation_history>\n${content}\n</conversation_history>`)].filter((message): message is XbTavernMessage => !!message);
 }
 
 function buildHistoryMessages(history: XbTavernHistoryMessage[] = [], options: {
@@ -1182,16 +1201,16 @@ function dedupeWorldEntries(entries: XbTavernWorldEntry[] = []): XbTavernWorldEn
 
 export function buildXbTavernMessages(
     context: XbTavernContext = {},
-    preset: XbTavernPreset = {},
+    chatPreset: TavernChatPromptPresetBundle = {},
     runtimeState: XbTavernRuntimeState = {},
 ): XbTavernMessageBuildResult {
     const character = context.character || {};
     const user = context.user || {};
     const history = context.history || [];
     const currentUserMessage = runtimeState.currentUserMessage || '';
-    const historyMode = runtimeState.historyMode || 'squash';
+    const historyMode = runtimeState.historyMode || 'raw';
     const memoryContext = runtimeState.memoryContext || {};
-    const presetSections = normalizePresetSections(preset);
+    const presetSections = normalizeChatPromptSections(chatPreset);
     const scanText = runtimeState.worldScanText || buildScanText(context, currentUserMessage);
     const worldSettings = {
         ...runtimeState.worldSettings,
@@ -1210,10 +1229,10 @@ export function buildXbTavernMessages(
     const worldBuckets = groupWorldEntries(activatedWorldEntries);
     const historyMessages = buildHistoryMessages(history, {
         mode: historyMode,
-        role: runtimeState.squashRole || 'assistant',
+        role: runtimeState.squashRole || 'system',
         userName: user.name,
         characterName: character.name,
-        separator: preset.historySeparator,
+        separator: chatPreset.historySeparator,
     });
     const currentUser = makeMessage('user', currentUserMessage);
 
@@ -1293,7 +1312,7 @@ export function buildXbTavernMessages(
 
 export function createXbTavernBuildSnapshot(
     context: XbTavernContext = {},
-    preset: XbTavernPreset = {},
+    chatPreset: TavernChatPromptPresetBundle = {},
     result: XbTavernMessageBuildResult,
     diagnostics: unknown = undefined,
 ): XbTavernBuildSnapshot {
@@ -1302,8 +1321,10 @@ export function createXbTavernBuildSnapshot(
     const worldBooks = Array.isArray(context.worldBooks) ? context.worldBooks : [];
     const candidateByKey = new Map(result.worldEntryCandidates.map((entry) => [entry.activationKey, entry]));
     return {
-        presetId: normalizeText(preset.id),
-        presetName: normalizeText(preset.name),
+        chatPresetId: normalizeText(chatPreset.id),
+        chatPresetName: normalizeText(chatPreset.name),
+        presetId: normalizeText(chatPreset.id),
+        presetName: normalizeText(chatPreset.name),
         characterId: normalizeText(character.id),
         characterName: normalizeText(character.name),
         userName: normalizeText(user.name),
