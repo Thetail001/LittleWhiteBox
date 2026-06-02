@@ -3144,7 +3144,7 @@ test('Reader skips a duplicated first chapter heading without suppressing body h
         books: [],
         files: [{
             path: 'book/chapters/001.md',
-            content: '# 第 1 章\n\n正文第一段。\n\n## 正文小标题',
+            content: '# 第 001 章。\n\n正文第一段。\n\n## 正文小标题',
         }],
         selectedPath: 'book/chapters/001.md',
         readerPath: 'book/chapters/001.md',
@@ -3163,7 +3163,7 @@ test('Reader skips a duplicated first chapter heading without suppressing body h
     });
 
     assert.match(html, /<h2>第 1 章<\/h2>/);
-    assert.doesNotMatch(html, /<h1[^>]*>第 1 章<\/h1>/);
+    assert.doesNotMatch(html, /<h1[^>]*>第 001 章。<\/h1>/);
     assert.match(html, /正文第一段。/);
     assert.match(html, /<h2[^>]*>正文小标题<\/h2>/);
 });
@@ -4739,17 +4739,14 @@ test('Book agent chat disables streaming auto-scroll on manual upward intent', (
 
     listeners['main:wheel']({ deltaY: -24 });
     assert.equal(state.agentAutoScroll, false);
-    assert.equal(state.agentScrollLockTop, 616);
 
     agentMain.scrollTop = 656;
     listeners['main:scroll']();
     assert.equal(state.agentAutoScroll, false);
-    assert.equal(state.agentScrollLockTop, 616);
 
     agentMain.scrollTop = 700;
     listeners['main:scroll']();
     assert.equal(state.agentAutoScroll, true);
-    assert.equal(state.agentScrollLockTop, null);
 
     state.agentAutoScroll = true;
     listeners['main:wheel']({ deltaY: 24 });
@@ -4836,9 +4833,8 @@ test('Book app preserves manual agent scroll even when previous position was nea
     restoreScrollState(root, snapshot, '.xb-agent-main', {
         defaultToBottom: false,
         preserveScrollTop: true,
-        overrideScrollTop: 420,
     });
-    assert.equal(agentMain.scrollTop, 420);
+    assert.equal(agentMain.scrollTop, 680);
 
     restoreScrollState(root, snapshot, '.xb-agent-main', {
         forceBottom: true,
@@ -4886,6 +4882,46 @@ test('Book app anchors manual agent scroll across lower render changes', () => {
     assert.equal(agentMain.scrollTop, 620);
 });
 
+test('Book app anchors reader scroll across unrelated renders', () => {
+    let anchorDocumentTop = 740;
+    const anchor = {
+        dataset: { readerBlockKey: 'reader-block:12' },
+        getBoundingClientRect() {
+            return {
+                top: anchorDocumentTop - readerPaper.scrollTop,
+                bottom: anchorDocumentTop - readerPaper.scrollTop + 120,
+            };
+        },
+    };
+    const readerPaper = {
+        scrollTop: 660,
+        scrollHeight: 3600,
+        clientHeight: 620,
+        getBoundingClientRect() {
+            return { top: 0, bottom: 620 };
+        },
+        querySelectorAll(selector) {
+            return selector === '[data-reader-block-key]' ? [anchor] : [];
+        },
+    };
+    const root = {
+        querySelector(selector) {
+            return selector === '.xb-reader-paper' ? readerPaper : null;
+        },
+    };
+    const snapshot = captureScrollState(root, '.xb-reader-paper');
+    assert.equal(snapshot.anchorKey, 'reader-block:12');
+    assert.equal(snapshot.anchorTopOffset, 80);
+
+    anchorDocumentTop = 910;
+    readerPaper.scrollTop = 0;
+    restoreScrollState(root, snapshot, '.xb-reader-paper', {
+        defaultToBottom: false,
+        preserveScrollTop: true,
+    });
+    assert.equal(readerPaper.scrollTop, 830);
+});
+
 test('Book renderer includes scroll anchor keys in full agent message markup', () => {
     const html = renderAgentMessages({
         messages: [
@@ -4896,6 +4932,34 @@ test('Book renderer includes scroll anchor keys in full agent message markup', (
 
     assert.match(html, /data-agent-unit-key="message:0"/);
     assert.match(html, /data-agent-unit-key="message:1"/);
+});
+
+test('Book renderer includes reader scroll anchor keys in chapter prose', () => {
+    const state = {
+        book: { id: 'book-reader-anchor', title: '阅读锚点测试' },
+        books: [],
+        files: [{
+            path: 'book/chapters/001.md',
+            content: '第一段。\n\n第二段。',
+        }],
+        selectedPath: 'book/chapters/001.md',
+        readerPath: 'book/chapters/001.md',
+        viewMode: 'reader',
+        messages: [],
+        toolTrace: [],
+        isBusy: false,
+        colorTheme: 'dark',
+        toast: '',
+    };
+
+    const html = renderEbookShell({
+        state,
+        providerConfig: { provider: 'test', model: 'demo' },
+        dirty: false,
+    });
+
+    assert.match(html, /data-reader-block-key="reader-block:0"/);
+    assert.match(html, /data-reader-block-key="reader-block:1"/);
 });
 
 test('Book renderer keeps streaming assistant thoughts expanded before final delivery', async () => {
@@ -6072,6 +6136,84 @@ test('Book agent renders read-only tool progress through local surfaces', async 
     assert.match(state.messages[2].content, /book\/outline\.md/);
     assert.equal(secondRoundMessages.filter((message) => message.role === 'tool').length, 1);
     assert.equal(secondRoundMessages.find((message) => message.role === 'tool')?.content, state.messages[2].content);
+});
+
+test('Book agent streaming updates do not full-render the reader screen', async () => {
+    await resetDb();
+    const book = await createBook('阅读器流式刷新测试');
+    const state = {
+        config: {},
+        book,
+        books: [book],
+        files: await listBookFiles(book.id),
+        selectedPath: 'book/chapters/001.md',
+        readerPath: 'book/chapters/001.md',
+        viewMode: 'reader',
+        editorContent: '',
+        savedContent: '',
+        messages: [],
+        toolTrace: [],
+        historySummary: '',
+        archivedTurnCount: 0,
+        isBusy: false,
+        activeController: null,
+        status: '就绪',
+        toast: '',
+    };
+    let fullRenders = 0;
+    let agentSurfaces = 0;
+    let passiveSurfaces = 0;
+    const runner = createEbookAgentRunner({
+        state,
+        async refreshBooksAndFiles() {
+            state.files = await listBookFiles(book.id);
+        },
+        render() {
+            fullRenders += 1;
+        },
+        renderAgentSurface() {
+            agentSurfaces += 1;
+            return false;
+        },
+        renderPassiveSurface() {
+            passiveSurfaces += 1;
+            return true;
+        },
+        showToast() {},
+        persistConversation() {},
+        isEditorDirty() {
+            return false;
+        },
+        getActiveProviderConfig() {
+            return {
+                provider: 'test',
+                temperature: 0.2,
+                maxTokens: 1000,
+                reasoningEnabled: false,
+                reasoningEffort: 'medium',
+            };
+        },
+        createAdapter() {
+            return {
+                async chat(task) {
+                    task.onStreamProgress?.({ text: '半句' });
+                    await new Promise((resolve) => setTimeout(resolve, 100));
+                    return {
+                        text: '完整回复。',
+                        toolCalls: [],
+                    };
+                },
+            };
+        },
+    });
+
+    await runner.runAgent('继续写。');
+
+    assert.equal(fullRenders, 2);
+    assert.equal(agentSurfaces >= 2, true);
+    assert.equal(passiveSurfaces >= 2, true);
+    assert.deepEqual(state.messages.map((message) => message.role), ['user', 'assistant']);
+    assert.equal(state.messages[1].content, '完整回复。');
 });
 
 test('Book agent refreshes file surfaces for write tools without extra full renders', async () => {

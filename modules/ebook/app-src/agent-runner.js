@@ -282,6 +282,7 @@ export function createEbookAgentRunner(deps = {}) {
         refreshBooksAndFiles,
         render,
         renderAgentSurface,
+        renderPassiveSurface,
         renderToolTraceSurface,
         renderFilesSurface,
         renderEditorFileSurface,
@@ -294,7 +295,9 @@ export function createEbookAgentRunner(deps = {}) {
     } = deps;
     const renderStreamingSurface = typeof renderAgentSurface === 'function'
         ? () => {
-            if (!renderAgentSurface()) render();
+            if (renderAgentSurface()) return;
+            if (typeof renderPassiveSurface === 'function' && renderPassiveSurface()) return;
+            render();
         }
         : render;
     const renderToolSurface = typeof renderToolTraceSurface === 'function'
@@ -511,7 +514,6 @@ export function createEbookAgentRunner(deps = {}) {
         state.isBusy = true;
         state.status = 'AI 正在阅读作品...';
         state.agentAutoScroll = true;
-        state.agentScrollLockTop = null;
         resetMessageWindow(state);
         compactionController.resetCompactionState();
         clearCompactionOverlayHideTimer();

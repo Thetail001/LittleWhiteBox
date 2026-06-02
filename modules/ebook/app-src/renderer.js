@@ -801,7 +801,7 @@ function renderReaderMarkdownBlock(text = '', paragraphIndex = 0) {
         html = renderReaderMarkdownFallback(raw);
     }
     if (!html) return '';
-    return `<div class="xb-reader-md${paragraphIndex === 0 ? ' xb-reader-drop' : ''}">${html}</div>`;
+    return `<div class="xb-reader-md${paragraphIndex === 0 ? ' xb-reader-drop' : ''}" data-reader-block-key="reader-block:${paragraphIndex}">${html}</div>`;
 }
 
 function renderBookCards(state = {}) {
@@ -1720,6 +1720,8 @@ function normalizeReaderHeadingText(text = '') {
     return String(text || '')
         .replace(/[*_`~]/g, '')
         .replace(/[《》「」『』“”"'\s]/g, '')
+        .replace(/[。.!！?？：:；;、，,]+$/g, '')
+        .replace(/^第0*(\d+)章$/i, '第$1章')
         .trim();
 }
 

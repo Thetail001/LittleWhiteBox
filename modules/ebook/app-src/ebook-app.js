@@ -37,6 +37,22 @@ function stripEbookImageMarkers(content = '') {
     return String(content || '').replace(EBOOK_IMAGE_MARKER_REGEX, '').trim();
 }
 
+function getScrollAnchorConfig(selector = '') {
+    if (selector === '.xb-agent-main') {
+        return {
+            attr: 'data-agent-unit-key',
+            datasetKey: 'agentUnitKey',
+        };
+    }
+    if (selector === '.xb-reader-paper') {
+        return {
+            attr: 'data-reader-block-key',
+            datasetKey: 'readerBlockKey',
+        };
+    }
+    return null;
+}
+
 export function captureScrollState(root, selector) {
     const node = root?.querySelector?.(selector);
     if (!node) return null;
@@ -44,10 +60,11 @@ export function captureScrollState(root, selector) {
     const containerRect = typeof node.getBoundingClientRect === 'function'
         ? node.getBoundingClientRect()
         : null;
-    const anchor = containerRect && selector === '.xb-agent-main'
-        ? Array.from(node.querySelectorAll?.('[data-agent-unit-key]') || [])
+    const anchorConfig = getScrollAnchorConfig(selector);
+    const anchor = containerRect && anchorConfig
+        ? Array.from(node.querySelectorAll?.(`[${anchorConfig.attr}]`) || [])
             .map((item) => ({
-                key: item?.dataset?.agentUnitKey || '',
+                key: item?.dataset?.[anchorConfig.datasetKey] || '',
                 rect: typeof item?.getBoundingClientRect === 'function'
                     ? item.getBoundingClientRect()
                     : null,
@@ -79,16 +96,16 @@ export function restoreScrollState(root, snapshot, defaultSelector = null, optio
         return;
     }
     if (options.preserveScrollTop) {
-        const top = Number.isFinite(options.overrideScrollTop)
-            ? options.overrideScrollTop
-            : snapshot.scrollTop;
-        node.scrollTop = Math.min(Math.max(0, top), node.scrollHeight);
+        node.scrollTop = Math.min(Math.max(0, snapshot.scrollTop), node.scrollHeight);
         if (snapshot.anchorKey) {
+            const anchorConfig = getScrollAnchorConfig(selector);
             const containerRect = typeof node.getBoundingClientRect === 'function'
                 ? node.getBoundingClientRect()
                 : null;
-            const anchorNode = Array.from(node.querySelectorAll?.('[data-agent-unit-key]') || [])
-                .find((item) => item?.dataset?.agentUnitKey === snapshot.anchorKey);
+            const anchorNode = anchorConfig
+                ? Array.from(node.querySelectorAll?.(`[${anchorConfig.attr}]`) || [])
+                    .find((item) => item?.dataset?.[anchorConfig.datasetKey] === snapshot.anchorKey)
+                : null;
             const anchorRect = typeof anchorNode?.getBoundingClientRect === 'function'
                 ? anchorNode.getBoundingClientRect()
                 : null;
@@ -476,9 +493,6 @@ export function createEbookApp(options = {}) {
             forceBottom: shouldAutoScrollAgent,
             defaultToBottom: shouldAutoScrollAgent,
             preserveScrollTop: !shouldAutoScrollAgent,
-            overrideScrollTop: !shouldAutoScrollAgent && Number.isFinite(state.agentScrollLockTop)
-                ? state.agentScrollLockTop
-                : undefined,
         });
         updateAgentScrollButtons(root);
         bumpRenderPerfCounter('agentSurface');
@@ -696,6 +710,15 @@ export function createEbookApp(options = {}) {
         return true;
     }
 
+    function renderPassiveSurface() {
+        const root = document.getElementById(rootId);
+        if (!root) return false;
+        if (state.viewMode !== 'reader') return false;
+        renderToastSurface();
+        renderSettingsSurface();
+        return true;
+    }
+
     function renderProtocolNoticeSurface() {
         const root = document.getElementById(rootId);
         if (!root || state.viewMode !== 'studio') return false;
@@ -718,6 +741,7 @@ export function createEbookApp(options = {}) {
         if (!root) return;
         bumpRenderPerfCounter('fullRender');
         const agentScroll = captureScrollState(root, '.xb-agent-main');
+        const readerScroll = captureScrollState(root, '.xb-reader-paper');
         const settingsScroll = captureScrollState(root, '.xb-ebook-settings-body');
         const focusState = captureFocusState(root);
         const wasSettingsOpen = !!root.querySelector('.xb-ebook-settings-body');
@@ -758,9 +782,10 @@ export function createEbookApp(options = {}) {
             forceBottom: shouldAutoScrollAgent,
             defaultToBottom: shouldAutoScrollAgent,
             preserveScrollTop: !shouldAutoScrollAgent,
-            overrideScrollTop: !shouldAutoScrollAgent && Number.isFinite(state.agentScrollLockTop)
-                ? state.agentScrollLockTop
-                : undefined,
+        });
+        restoreScrollState(root, readerScroll, '.xb-reader-paper', {
+            defaultToBottom: false,
+            preserveScrollTop: true,
         });
         if (state.isSettingsOpen) {
             const settingsBody = root.querySelector('.xb-ebook-settings-body');
@@ -793,6 +818,7 @@ export function createEbookApp(options = {}) {
         refreshBooksAndFiles: bookController.refreshBooksAndFiles,
         render,
         renderAgentSurface,
+        renderPassiveSurface,
         renderToolTraceSurface,
         renderFilesSurface,
         renderEditorFileSurface,
