@@ -130,6 +130,7 @@ export interface TavernChatPromptSection {
     label?: string;
     locked?: boolean;
     enabled?: boolean;
+    marker?: boolean;
     role?: XbTavernRole | XBTavernPromptRole | number | string;
     content?: string;
     placement?: TavernChatPromptPlacement;
@@ -147,6 +148,9 @@ export interface TavernChatPromptPresetBundle {
         name?: string;
         prompts?: unknown[];
         promptOrder?: unknown;
+        rawPreset?: Record<string, unknown>;
+        activeCharacterId?: string | number;
+        activeOrder?: unknown[];
     };
     systemPrompt?: {
         name?: string;
@@ -405,6 +409,7 @@ interface NormalizedPresetSection {
     id?: string;
     label?: string;
     enabled: boolean;
+    marker: boolean;
     role: XbTavernRole;
     content: string;
     placement: TavernChatPromptPlacement;
@@ -952,6 +957,11 @@ function buildCharacterBlock(character: XbTavernCharacter = {}, user: XbTavernUs
     return fields.length ? `<character_card>\n${fields.join('\n\n')}\n</character_card>` : '';
 }
 
+function buildSingleCharacterFieldBlock(title: string, content: unknown): string {
+    const text = normalizeText(content);
+    return text ? `## ${title}\n${text}` : '';
+}
+
 function formatMemoryList(items: unknown[] = []): string {
     return items.map((item) => normalizeText(item)).filter(Boolean).map((item) => `- ${item}`).join('\n');
 }
@@ -1038,11 +1048,12 @@ function normalizeChatPromptSections(chatPreset: TavernChatPromptPresetBundle = 
         id: normalizeText(section.id),
         label: normalizeText(section.label),
         enabled: section.enabled !== false,
+        marker: section.marker === true,
         role: normalizeRole(section.role, 'system'),
         content: normalizeText(section.content),
         placement: PLACEMENT_ORDER.includes(section.placement as never) ? section.placement! : 'beforeHistory',
         source: normalizeText(section.source),
-    })).filter((section) => section.enabled && section.content) as NormalizedPresetSection[];
+    })).filter((section) => section.enabled && (section.content || section.marker)) as NormalizedPresetSection[];
 
     return sections;
 }
@@ -1062,6 +1073,109 @@ function presetSectionUnits(
         label: section.label || `preset ${placementLabel} ${index + 1}`,
         sourceId: section.id || undefined,
     }));
+}
+
+type XbTavernWorldBuckets = ReturnType<typeof groupWorldEntries>;
+
+function promptMarkerIdentifier(section: NormalizedPresetSection = {} as NormalizedPresetSection): string {
+    return normalizeText(section.id).replace(/^prompt-manager:/, '');
+}
+
+function buildPromptManagerOrderedUnits(options: {
+    presetSections: NormalizedPresetSection[];
+    character: XbTavernCharacter;
+    user: XbTavernUser;
+    worldBuckets: XbTavernWorldBuckets;
+    historyUnits: XbTavernMessageUnit[];
+    currentUserUnits: XbTavernMessageUnit[];
+    memoryContext: XbTavernMemoryContext;
+}): XbTavernMessageUnit[] {
+    const {
+        presetSections,
+        character,
+        user,
+        worldBuckets,
+        historyUnits,
+        currentUserUnits,
+        memoryContext,
+    } = options;
+    const data = character.data || {};
+    const usedMarkers = new Set<string>();
+    const units: XbTavernMessageUnit[] = [];
+    const pushMarker = (marker: string, markerUnits: XbTavernMessageUnit[]) => {
+        usedMarkers.add(marker);
+        units.push(...markerUnits);
+    };
+
+    presetSections.forEach((section, index) => {
+        const marker = promptMarkerIdentifier(section);
+        if (section.marker) {
+            switch (marker) {
+                case 'worldInfoBefore':
+                    pushMarker(marker, [makeMessageUnit('system', renderEntryBlock('world_info_before_character', worldBuckets.before), 'world-before', section.label || 'World Info (before)', {}, section.id)]);
+                    return;
+                case 'worldInfoAfter':
+                    pushMarker(marker, [makeMessageUnit('system', renderEntryBlock('world_info_after_character', worldBuckets.after), 'world-after', section.label || 'World Info (after)', {}, section.id)]);
+                    return;
+                case 'charDescription':
+                    pushMarker(marker, [makeMessageUnit(section.role, buildSingleCharacterFieldBlock('Description', character.description || pickNestedString(data, ['description'])), 'character-card', section.label || 'Char Description', {}, section.id)]);
+                    return;
+                case 'charPersonality':
+                    pushMarker(marker, [makeMessageUnit(section.role, buildSingleCharacterFieldBlock('Personality', character.personality || pickNestedString(data, ['personality'])), 'character-card', section.label || 'Char Personality', {}, section.id)]);
+                    return;
+                case 'scenario':
+                    pushMarker(marker, [makeMessageUnit(section.role, buildSingleCharacterFieldBlock('Scenario', character.scenario || pickNestedString(data, ['scenario'])), 'character-card', section.label || 'Scenario', {}, section.id)]);
+                    return;
+                case 'personaDescription':
+                    pushMarker(marker, [makeMessageUnit(section.role, buildSingleCharacterFieldBlock('User Persona', user.persona || user.description), 'character-card', section.label || 'Persona Description', {}, section.id)]);
+                    return;
+                case 'dialogueExamples':
+                    pushMarker(marker, [makeMessageUnit(section.role, buildSingleCharacterFieldBlock('Message Examples', character.mesExample || character.mes_example || pickNestedString(data, ['mes_example'])), 'character-card', section.label || 'Chat Examples', {}, section.id)]);
+                    return;
+                case 'chatHistory':
+                    pushMarker(marker, [
+                        makeMessageUnit('system', renderEntryBlock('world_info_examples_top', worldBuckets.examplesTop), 'world-examples', 'world info examples top'),
+                        makeMessageUnit('system', renderEntryBlock('world_info_author_note_top', worldBuckets.authorNoteTop), 'world-author-note', 'world info author note top'),
+                        ...historyUnits,
+                        makeMessageUnit('system', buildMemoryBlock(memoryContext), 'memory', 'session memory'),
+                        ...currentUserUnits,
+                    ]);
+                    return;
+                default:
+                    return;
+            }
+        }
+        units.push({
+            message: makeMessage(section.role, section.content),
+            layer: section.source === 'promptManager' ? 'preset' : 'preset',
+            label: section.label || `preset ordered ${index + 1}`,
+            sourceId: section.id || undefined,
+        });
+    });
+
+    if (!usedMarkers.has('worldInfoBefore')) {
+        units.push(makeMessageUnit('system', renderEntryBlock('world_info_before_character', worldBuckets.before), 'world-before', 'world info before character'));
+    }
+    if (!usedMarkers.has('charDescription') && !usedMarkers.has('charPersonality') && !usedMarkers.has('scenario') && !usedMarkers.has('personaDescription') && !usedMarkers.has('dialogueExamples')) {
+        units.push(makeMessageUnit('system', buildCharacterBlock(character, user), 'character-card', 'character card'));
+    }
+    if (!usedMarkers.has('worldInfoAfter')) {
+        units.push(makeMessageUnit('system', renderEntryBlock('world_info_after_character', worldBuckets.after), 'world-after', 'world info after character'));
+    }
+    if (!usedMarkers.has('chatHistory')) {
+        units.push(
+            makeMessageUnit('system', renderEntryBlock('world_info_examples_top', worldBuckets.examplesTop), 'world-examples', 'world info examples top'),
+            makeMessageUnit('system', renderEntryBlock('world_info_author_note_top', worldBuckets.authorNoteTop), 'world-author-note', 'world info author note top'),
+            ...historyUnits,
+            makeMessageUnit('system', buildMemoryBlock(memoryContext), 'memory', 'session memory'),
+            ...currentUserUnits,
+        );
+    }
+    units.push(
+        makeMessageUnit('system', renderEntryBlock('world_info_author_note_bottom', worldBuckets.authorNoteBottom), 'world-author-note', 'world info author note bottom'),
+        makeMessageUnit('system', renderEntryBlock('world_info_examples_bottom', worldBuckets.examplesBottom), 'world-examples', 'world info examples bottom'),
+    );
+    return units;
 }
 
 function normalizeHistoryMessage(message: XbTavernHistoryMessage = {}): XbTavernMessage | null {
@@ -1247,6 +1361,7 @@ export function buildXbTavernMessages(
     const beforeHistorySections = presetSectionUnits(pickSections(presetSections, 'beforeHistory'), 'before history');
     const afterHistorySections = presetSectionUnits(pickSections(presetSections, 'afterHistory'), 'after history');
     const assistantPrefillSections = presetSectionUnits(pickSections(presetSections, 'assistantPrefill'), 'assistant prefill', 'assistant-prefill');
+    const hasPromptManagerOrder = presetSections.some((section) => section.source === 'promptManager');
     const conversationUnits = conversationMessages.map((message, index) => ({
         message,
         layer: message.role === 'user' ? 'current-user/history' : 'history',
@@ -1261,7 +1376,18 @@ export function buildXbTavernMessages(
     }
     const historyUnits = currentUserUnitIndex >= 0 ? conversationUnits.slice(0, currentUserUnitIndex) : conversationUnits;
     const currentUserUnits = currentUserUnitIndex >= 0 ? conversationUnits.slice(currentUserUnitIndex) : [];
-    const compacted = compactMessageUnits([
+    const orderedPromptUnits = hasPromptManagerOrder
+        ? buildPromptManagerOrderedUnits({
+            presetSections,
+            character,
+            user,
+            worldBuckets,
+            historyUnits,
+            currentUserUnits,
+            memoryContext,
+        })
+        : null;
+    const compacted = compactMessageUnits(orderedPromptUnits || [
         ...topSections,
         makeMessageUnit('system', renderEntryBlock('world_info_before_character', worldBuckets.before), 'world-before', 'world info before character'),
         ...beforeCharacterSections,

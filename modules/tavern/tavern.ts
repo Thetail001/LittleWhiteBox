@@ -39,6 +39,7 @@ let tavernCacheKey = '';
 let frameReady = false;
 let pendingMessages: PendingFrameMessage[] = [];
 let messageHandlerInstalled = false;
+let overlayResizeHandler: (() => void) | null = null;
 
 async function loadTavernCacheKey(): Promise<string> {
     if (tavernCacheKey) {return tavernCacheKey;}
@@ -49,6 +50,70 @@ async function loadTavernCacheKey(): Promise<string> {
 function getIframe(): HTMLIFrameElement | null {
     const iframe = document.getElementById(IFRAME_ID);
     return iframe instanceof HTMLIFrameElement ? iframe : null;
+}
+
+function isTavernMobileDevice(): boolean {
+    const mobileTypes = ['mobile', 'tablet'];
+    try {
+        const bowser = globalThis as typeof globalThis & {
+            Bowser?: { parse?: (userAgent: string) => { platform?: { type?: string } } };
+        };
+        const platformType = bowser.Bowser?.parse?.(navigator.userAgent)?.platform?.type;
+        if (mobileTypes.includes(platformType)) {
+            return true;
+        }
+    } catch {
+        // Fall back to pointer/screen heuristics below.
+    }
+    return window.matchMedia('(pointer: coarse)').matches && window.matchMedia('(max-width: 900px)').matches;
+}
+
+function getTavernMobileTopOffset(): number {
+    const rawValue = getComputedStyle(document.documentElement).getPropertyValue('--topBarBlockSize').trim();
+    const parsedValue = Number.parseFloat(rawValue);
+    return Number.isFinite(parsedValue) ? Math.max(0, parsedValue) : 0;
+}
+
+function getTavernMobileViewportHeight(): number {
+    return Math.max(240, window.innerHeight - getTavernMobileTopOffset());
+}
+
+function applyTavernOverlayViewport(overlay = document.getElementById(OVERLAY_ID)): void {
+    if (!(overlay instanceof HTMLElement)) {return;}
+    overlay.style.left = '0';
+    overlay.style.right = '0';
+    overlay.style.width = '100vw';
+    if (!isTavernMobileDevice()) {
+        overlay.style.top = '0';
+        overlay.style.height = '100vh';
+        overlay.style.padding = '0';
+        overlay.classList.remove('is-mobile');
+        return;
+    }
+    const topOffset = getTavernMobileTopOffset();
+    const viewportHeight = getTavernMobileViewportHeight();
+    overlay.style.top = `${topOffset}px`;
+    overlay.style.height = `${viewportHeight}px`;
+    overlay.style.padding = 'env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px)';
+    overlay.classList.add('is-mobile');
+}
+
+function installOverlayResizeHandler(overlay: HTMLElement): void {
+    if (overlayResizeHandler) {return;}
+    overlayResizeHandler = () => applyTavernOverlayViewport(overlay);
+    window.addEventListener('resize', overlayResizeHandler);
+    window.addEventListener('orientationchange', overlayResizeHandler);
+    window.visualViewport?.addEventListener('resize', overlayResizeHandler);
+    window.visualViewport?.addEventListener('scroll', overlayResizeHandler);
+}
+
+function removeOverlayResizeHandler(): void {
+    if (!overlayResizeHandler) {return;}
+    window.removeEventListener('resize', overlayResizeHandler);
+    window.removeEventListener('orientationchange', overlayResizeHandler);
+    window.visualViewport?.removeEventListener('resize', overlayResizeHandler);
+    window.visualViewport?.removeEventListener('scroll', overlayResizeHandler);
+    overlayResizeHandler = null;
 }
 
 function postToFrame(type: string, payload: Record<string, unknown> = {}): boolean {
@@ -139,16 +204,51 @@ async function handleChatPresetRequest(type: string, payload: Record<string, unk
 }
 
 async function createOverlay(): Promise<HTMLElement> {
-    return createFirstPartyIframeOverlay({
+    const overlay = await createFirstPartyIframeOverlay({
         overlayId: OVERLAY_ID,
         iframeId: IFRAME_ID,
         htmlPath: HTML_PATH,
         version: await loadTavernCacheKey(),
+        overlayCss: `
+            position: fixed !important;
+            left: 0 !important;
+            right: 0 !important;
+            top: 0;
+            bottom: auto !important;
+            width: 100vw !important;
+            height: 100vh;
+            height: 100dvh;
+            z-index: 100001 !important;
+            display: flex !important;
+            align-items: stretch !important;
+            justify-content: stretch !important;
+            overflow: hidden !important;
+            box-sizing: border-box !important;
+            background: #171512 !important;
+            overscroll-behavior: none;
+            touch-action: manipulation;
+        `,
+        iframeCss: `
+            display: block !important;
+            width: 100% !important;
+            height: 100% !important;
+            min-width: 0 !important;
+            min-height: 0 !important;
+            border: none !important;
+            background: transparent !important;
+        `,
     });
+    applyTavernOverlayViewport(overlay);
+    installOverlayResizeHandler(overlay);
+    return overlay;
 }
 
 async function openTavern(): Promise<void> {
-    if (document.getElementById(OVERLAY_ID)) {return;}
+    const existingOverlay = document.getElementById(OVERLAY_ID);
+    if (existingOverlay) {
+        applyTavernOverlayViewport(existingOverlay);
+        return;
+    }
     frameReady = false;
     pendingMessages = [];
     installMessageHandler();
@@ -156,6 +256,7 @@ async function openTavern(): Promise<void> {
 }
 
 function closeTavern(): void {
+    removeOverlayResizeHandler();
     const overlay = document.getElementById(OVERLAY_ID);
     if (overlay) {overlay.remove();}
     frameReady = false;

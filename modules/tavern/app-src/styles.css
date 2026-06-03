@@ -7440,6 +7440,177 @@ body {
     opacity: 0.56;
 }
 
+.prompt-manager-list {
+    display: grid;
+    gap: 1px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.075);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.065);
+}
+
+.prompt-manager-row {
+    display: grid;
+    grid-template-columns: 42px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    min-height: 58px;
+    background: rgba(11, 12, 15, 0.82);
+    padding: 8px 10px;
+    cursor: pointer;
+    transition: background 0.16s ease, box-shadow 0.16s ease;
+}
+
+.prompt-manager-row:hover,
+.prompt-manager-row.selected {
+    background:
+        linear-gradient(90deg, rgba(115, 222, 200, 0.13), rgba(255, 255, 255, 0.030)),
+        #111719;
+    box-shadow: inset 2px 0 0 rgba(115, 222, 200, 0.78);
+}
+
+.prompt-manager-row.disabled {
+    opacity: 0.56;
+}
+
+.prompt-manager-row.marker .prompt-row-index {
+    color: #f5d58a;
+}
+
+.prompt-row-index {
+    width: 30px;
+    height: 30px;
+    min-height: 30px;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 8px;
+    color: var(--xb-cyan);
+    background: rgba(255, 255, 255, 0.035);
+    padding: 0;
+    font-size: 12px;
+    font-weight: 760;
+}
+
+.prompt-row-main {
+    display: grid;
+    min-width: 0;
+    gap: 3px;
+}
+
+.prompt-row-main strong {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--xb-text-main);
+    font-size: 13px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.prompt-row-main small {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--xb-text-muted);
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.prompt-row-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.prompt-row-actions button {
+    width: 30px;
+    height: 30px;
+    min-height: 30px;
+    border-radius: 8px;
+    padding: 0;
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.prompt-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+}
+
+.prompt-toggle input {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--xb-cyan);
+}
+
+.prompt-detail-panel {
+    align-content: start;
+}
+
+.prompt-detail-form {
+    display: grid;
+    gap: 12px;
+}
+
+.prompt-detail-form label:not(.inline-check),
+.preset-advanced-json .preset-text-field {
+    display: grid;
+    gap: 7px;
+    color: var(--xb-text-muted);
+    font-size: 12px;
+    font-weight: 650;
+}
+
+.prompt-detail-form input,
+.prompt-detail-form select {
+    width: 100%;
+    min-width: 0;
+    border: 1px solid rgba(255, 255, 255, 0.115);
+    border-radius: 8px;
+    color: var(--xb-text-main);
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.040), rgba(255, 255, 255, 0.016)),
+        #0d0f12;
+    padding: 9px 10px;
+}
+
+.prompt-enabled-check {
+    justify-content: flex-start;
+}
+
+.prompt-detail-form textarea:disabled {
+    opacity: 0.72;
+    cursor: not-allowed;
+}
+
+.preset-advanced-json {
+    border: 1px solid rgba(255, 255, 255, 0.075);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.022);
+    padding: 10px 12px;
+}
+
+.preset-advanced-json > summary {
+    cursor: pointer;
+    color: var(--xb-text-muted);
+    font-size: 13px;
+    font-weight: 720;
+}
+
+.preset-advanced-json[open] > summary {
+    margin-bottom: 10px;
+}
+
+.compact-preview {
+    max-height: 260px;
+    overflow: auto;
+}
+
+.compact-preview .preset-order-row {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 48px;
+}
+
 .preset-preview-content {
     display: grid;
     gap: 9px;
@@ -7500,6 +7671,28 @@ body {
 .preset-meta-strip textarea {
     resize: vertical;
     line-height: 1.55;
+}
+
+.assistant-preset-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 14px;
+}
+
+.assistant-preset-grid .preset-edit-card {
+    padding: 14px;
+}
+
+.assistant-preset-grid .preset-card-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.assistant-preset-grid .preset-card-head small {
+    color: var(--xb-text-muted);
+    font-size: 12px;
+    line-height: 1.45;
 }
 
 .preset-list-panel,
@@ -7739,6 +7932,7 @@ body {
     .preset-studio,
     .preset-form-grid,
     .preset-meta-strip,
+    .assistant-preset-grid,
     .preset-workspace .preset-edit-grid {
         grid-template-columns: minmax(0, 1fr);
     }

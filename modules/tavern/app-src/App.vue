@@ -58,7 +58,12 @@ import {
     type TavernSessionRecord,
     type TavernTurnSummaryRecord,
 } from '../shared/session-db';
-import { normalizeTavernAssistantPreset, type TavernAssistantPreset } from '../shared/assistant-presets';
+import {
+    buildTavernManagerSystemPrompt,
+    createDefaultTavernAssistantPreset,
+    normalizeTavernAssistantPreset,
+    type TavernAssistantPreset,
+} from '../shared/assistant-presets';
 import { buildContextHistory, deriveTavernSessionStateFromMessages, runXbTavernTurn, simulateXbTavernRequest } from './runtime/run-once';
 import { runXbTavernManagerAfterTurn } from './runtime/manager';
 import { resolveXbTavernProviderConfig } from './runtime/provider';
@@ -81,6 +86,38 @@ interface RequestAuditSnapshot {
     providerLabel?: string;
     model?: string;
     toolMode?: string;
+}
+
+interface PromptEditorRow {
+    identifier: string;
+    name: string;
+    role: string;
+    content: string;
+    enabled: boolean;
+    marker: boolean;
+    systemPrompt: boolean;
+    injectionPosition: number;
+    injectionDepth: number | string;
+    source: string;
+    orderEntry: Record<string, unknown>;
+    prompt: Record<string, unknown>;
+    listed: boolean;
+}
+
+type AssistantPresetSectionKey =
+    | 'managerIdentityPrompt'
+    | 'managerContextPrompt'
+    | 'managerToolPrompt'
+    | 'managerMemoryPrompt'
+    | 'managerWorkflowPrompt'
+    | 'managerOutputPrompt'
+    | 'managerCustomPrompt';
+
+interface AssistantPresetSectionRow {
+    key: AssistantPresetSectionKey;
+    label: string;
+    summary: string;
+    rows: number;
 }
 
 interface TavernCharacterOption {
@@ -137,16 +174,22 @@ const managerInputStatus = ref('');
 const managerLocalMessages = ref<Array<{ id: string; role: 'user' | 'assistant'; content: string; createdAt: number }>>([]);
 const isManagerAssistantRunning = ref(false);
 const initialChatPreset = createFallbackTavernChatPromptPresetBundle();
-const initialAssistantPreset: TavernAssistantPreset = {
-    id: '',
-    name: '',
-    memoryManagerPrompt: '',
-};
+const initialAssistantPreset: TavernAssistantPreset = createDefaultTavernAssistantPreset();
+const assistantPresetSections: AssistantPresetSectionRow[] = [
+    { key: 'managerIdentityPrompt', label: '身份与边界', summary: '它是谁，和主聊天助手如何分工。', rows: 6 },
+    { key: 'managerContextPrompt', label: '信息来源', summary: '它默认拿到什么，哪些信息要自己再查。', rows: 5 },
+    { key: 'managerToolPrompt', label: '工具纪律', summary: '它可以怎么用工具，不能碰什么。', rows: 6 },
+    { key: 'managerMemoryPrompt', label: '记忆档案规则', summary: '各个 memory 文件分别负责什么。', rows: 6 },
+    { key: 'managerWorkflowPrompt', label: '维护流程', summary: '每轮维护记忆时的工作顺序。', rows: 6 },
+    { key: 'managerOutputPrompt', label: '输出规则', summary: '它结束时该怎么交代结果。', rows: 4 },
+    { key: 'managerCustomPrompt', label: '补充规则', summary: '留给你单独补充的额外口径。', rows: 5 },
+];
 const preset = ref<TavernChatPromptPresetBundle>(initialChatPreset);
 const activeChatPreset = ref<TavernChatPromptPresetBundle>(initialChatPreset);
 const chatPresetList = ref<Record<string, unknown>>({});
 const presetStatus = ref('');
 const savedPresetJson = ref(JSON.stringify(initialChatPreset));
+const selectedPromptIdentifier = ref('');
 const assistantPreset = ref<TavernAssistantPreset>(initialAssistantPreset);
 const activeAssistantPreset = ref<TavernAssistantPreset>(initialAssistantPreset);
 const assistantPresets = ref<TavernAssistantPresetRecord[]>([]);
@@ -180,6 +223,7 @@ interface PendingHostRequest {
 const pendingHostRequests = new Map<string, PendingHostRequest>();
 const presetDirty = computed(() => snapshotPreset(preset.value) !== savedPresetJson.value);
 const assistantPresetDirty = computed(() => snapshotAssistantPreset(assistantPreset.value) !== savedAssistantPresetJson.value);
+const assistantPromptPreview = computed(() => buildTavernManagerSystemPrompt(assistantPreset.value));
 const selectedSession = computed(() => sessions.value.find((item) => item.id === selectedSessionId.value) || null);
 const sessionRuntimeState = computed(() => normalizeTavernSessionState(selectedSession.value?.state || {}));
 const activeView = ref<AppView>(readInitialView());
@@ -617,17 +661,128 @@ const placementLabels: Record<string, string> = {
     afterHistory: '历史后',
     assistantPrefill: '回复开头',
 };
+function promptRecord(value: unknown): Record<string, unknown> {
+    return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function clonePromptJson<T>(value: T): T {
+    try {
+        return JSON.parse(JSON.stringify(value)) as T;
+    } catch {
+        return value;
+    }
+}
+
+function getPromptManagerDraft(): Record<string, unknown> {
+    return promptRecord(preset.value.promptManager);
+}
+
+function getRawPresetDraft(): Record<string, unknown> {
+    const manager = getPromptManagerDraft();
+    return promptRecord(manager.rawPreset);
+}
+
+function getPromptArrayDraft(): Record<string, unknown>[] {
+    const raw = getRawPresetDraft();
+    const manager = getPromptManagerDraft();
+    const source = Array.isArray(raw.prompts)
+        ? raw.prompts
+        : Array.isArray(manager.prompts)
+            ? manager.prompts
+            : [];
+    return source.map((item) => promptRecord(item)).filter((item) => String(item.identifier || item.id || '').trim());
+}
+
+function getPromptOrderContainersDraft(): Record<string, unknown>[] {
+    const raw = getRawPresetDraft();
+    const manager = getPromptManagerDraft();
+    const source = Array.isArray(raw.prompt_order)
+        ? raw.prompt_order
+        : Array.isArray(manager.promptOrder)
+            ? manager.promptOrder
+            : [];
+    return source.map((item) => promptRecord(item));
+}
+
+function getActivePromptOrderDraft(): Record<string, unknown>[] {
+    const manager = getPromptManagerDraft();
+    const activeOrder = Array.isArray(manager.activeOrder) ? manager.activeOrder.map((item) => promptRecord(item)) : [];
+    if (activeOrder.length) {return activeOrder;}
+    const activeCharacterId = String(manager.activeCharacterId ?? '').trim();
+    if (!activeCharacterId) {return [];}
+    const containers = getPromptOrderContainersDraft();
+    const activeContainer = containers.find((item) => String(item.character_id ?? '') === activeCharacterId);
+    return Array.isArray(activeContainer?.order) ? activeContainer.order.map((item) => promptRecord(item)) : [];
+}
+
+function getActivePromptCharacterId(): string {
+    return String(getPromptManagerDraft().activeCharacterId ?? '').trim();
+}
+
+const canEditPromptOrder = computed(() => Boolean(getActivePromptCharacterId()));
+
+const promptEditorRows = computed<PromptEditorRow[]>(() => {
+    const prompts = getPromptArrayDraft();
+    const promptById = new Map(prompts.map((prompt, index) => [
+        String(prompt.identifier || prompt.id || `prompt-${index + 1}`).trim(),
+        prompt,
+    ]));
+    const order = getActivePromptOrderDraft();
+    const seen = new Set<string>();
+    const rows: PromptEditorRow[] = [];
+
+    order.forEach((entry) => {
+        const identifier = String(entry.identifier || '').trim();
+        if (!identifier || seen.has(identifier)) {return;}
+        const prompt = promptById.get(identifier) || { identifier, name: identifier };
+        seen.add(identifier);
+        rows.push({
+            identifier,
+            name: String(prompt.name || prompt.label || identifier),
+            role: String(prompt.role || 'system'),
+            content: String(prompt.content || ''),
+            enabled: entry.enabled !== false,
+            marker: prompt.marker === true,
+            systemPrompt: prompt.system_prompt === true,
+            injectionPosition: Number(prompt.injection_position ?? 0),
+            injectionDepth: Number.isFinite(Number(prompt.injection_depth)) ? Number(prompt.injection_depth) : '',
+            source: prompt.extension ? '扩展' : prompt.system_prompt ? '系统' : '预设',
+            orderEntry: entry,
+            prompt,
+            listed: true,
+        });
+    });
+
+    return rows;
+});
+const selectedPromptRow = computed(() => promptEditorRows.value.find((row) => row.identifier === selectedPromptIdentifier.value) || promptEditorRows.value[0] || null);
+const activePromptOrderLabel = computed(() => {
+    const activeCharacterId = getActivePromptCharacterId();
+    return activeCharacterId ? `当前角色 ${activeCharacterId}` : '未取得当前角色顺序';
+});
 const presetRows = computed(() => (preset.value.sections || [])
     .map((section, index) => ({
         ...section,
         previewId: section.id || `chat-preset-section-${index}`,
         previewLabel: section.label || section.source || `提示词 ${index + 1}`,
-        previewPlacement: placementLabels[section.placement || 'beforeHistory'] || section.placement || '历史前',
+        previewPlacement: section.source === 'promptManager'
+            ? (section.marker ? '酒馆标记' : '酒馆顺序')
+            : (placementLabels[section.placement || 'beforeHistory'] || section.placement || '历史前'),
         sectionIndex: index,
         chars: String(section.content || '').length,
     }))
-    .filter((row) => row.content && row.enabled !== false));
+    .filter((row) => (row.content || row.marker) && row.enabled !== false));
 const presetTotalChars = computed(() => presetRows.value.reduce((sum, row) => sum + row.chars, 0));
+
+watch(promptEditorRows, (rows) => {
+    if (!rows.length) {
+        selectedPromptIdentifier.value = '';
+        return;
+    }
+    if (!rows.some((row) => row.identifier === selectedPromptIdentifier.value)) {
+        selectedPromptIdentifier.value = rows[0]?.identifier || '';
+    }
+}, { immediate: true });
 
 function snapshotPreset(value = preset.value) {
     return JSON.stringify(value || {});
@@ -679,6 +834,10 @@ async function refreshChatPresetFromHost() {
 }
 
 async function saveCurrentPreset() {
+    if (!canEditPromptOrder.value) {
+        presetStatus.value = '未取得当前角色顺序，请刷新后再保存';
+        return;
+    }
     presetStatus.value = '正在保存';
     const result = await requestHost('xb-tavern:save-chat-preset', {
         payload: preset.value as unknown as Record<string, unknown>,
@@ -719,6 +878,118 @@ function updateChatPresetComponent(
     });
 }
 
+function commitPromptManagerDraft(rawPreset: Record<string, unknown>, patch: Record<string, unknown> = {}) {
+    const prompts = Array.isArray(rawPreset.prompts) ? rawPreset.prompts : [];
+    const promptOrder = Array.isArray(rawPreset.prompt_order) ? rawPreset.prompt_order : [];
+    updateChatPresetComponent('promptManager', {
+        rawPreset,
+        prompts,
+        promptOrder,
+        ...patch,
+    });
+}
+
+function updatePromptByIdentifier(identifier: string, patch: Record<string, unknown>) {
+    const targetId = String(identifier || '').trim();
+    if (!targetId) {return;}
+    const rawPreset = clonePromptJson(getRawPresetDraft());
+    const prompts = getPromptArrayDraft().map((prompt) => ({ ...prompt }));
+    const index = prompts.findIndex((prompt) => String(prompt.identifier || prompt.id || '').trim() === targetId);
+    if (index >= 0) {
+        prompts[index] = {
+            ...prompts[index],
+            ...patch,
+            identifier: targetId,
+        };
+    } else {
+        prompts.push({
+            identifier: targetId,
+            name: targetId,
+            role: 'system',
+            content: '',
+            ...patch,
+        });
+    }
+    rawPreset.prompts = prompts;
+    commitPromptManagerDraft(rawPreset);
+}
+
+function setActivePromptOrder(nextOrder: Record<string, unknown>[]) {
+    const rawPreset = clonePromptJson(getRawPresetDraft());
+    const manager = getPromptManagerDraft();
+    const containers = getPromptOrderContainersDraft().map((item) => ({ ...item }));
+    const activeCharacterId = String(manager.activeCharacterId ?? '').trim();
+    if (!activeCharacterId) {
+        presetStatus.value = '未取得当前角色顺序，请刷新后再保存';
+        return;
+    }
+    let targetIndex = containers.findIndex((item) => String(item.character_id ?? '') === activeCharacterId);
+    if (targetIndex < 0) {
+        targetIndex = containers.length;
+        containers.push({
+            character_id: activeCharacterId,
+            order: [],
+        });
+    }
+    containers[targetIndex] = {
+        ...containers[targetIndex],
+        order: nextOrder,
+    };
+    rawPreset.prompt_order = containers;
+    commitPromptManagerDraft(rawPreset, { activeOrder: nextOrder });
+}
+
+function buildCurrentPromptOrderFromRows(rows = promptEditorRows.value): Record<string, unknown>[] {
+    return rows
+        .filter((row) => row.listed)
+        .map((row) => ({
+            ...row.orderEntry,
+            identifier: row.identifier,
+            enabled: row.enabled,
+        }));
+}
+
+function updatePromptOrderEntry(identifier: string, patch: Record<string, unknown>) {
+    const targetId = String(identifier || '').trim();
+    if (!canEditPromptOrder.value) {
+        presetStatus.value = '未取得当前角色顺序，请刷新后再保存';
+        return;
+    }
+    if (!targetId) {return;}
+    const rows = promptEditorRows.value;
+    const nextOrder = buildCurrentPromptOrderFromRows(rows).map((entry) => (
+        String(entry.identifier || '').trim() === targetId
+            ? { ...entry, ...patch, identifier: targetId }
+            : entry
+    ));
+    setActivePromptOrder(nextOrder);
+}
+
+function movePromptRow(identifier: string, direction: -1 | 1) {
+    if (!canEditPromptOrder.value) {
+        presetStatus.value = '未取得当前角色顺序，请刷新后再保存';
+        return;
+    }
+    const rows = promptEditorRows.value;
+    const index = rows.findIndex((row) => row.identifier === identifier);
+    const nextIndex = index + direction;
+    if (index < 0 || nextIndex < 0 || nextIndex >= rows.length) {return;}
+    const nextRows = rows.slice();
+    const [item] = nextRows.splice(index, 1);
+    if (!item) {return;}
+    nextRows.splice(nextIndex, 0, item);
+    setActivePromptOrder(buildCurrentPromptOrderFromRows(nextRows));
+    selectedPromptIdentifier.value = identifier;
+}
+
+function togglePromptRow(identifier: string, enabled: boolean) {
+    updatePromptOrderEntry(identifier, { enabled });
+}
+
+function promptRoleDisplay(role = ''): string {
+    return String(role || 'system').trim() || 'system';
+}
+
 function updateAssistantPresetPatch(patch: Partial<TavernAssistantPreset>) {
     assistantPreset.value = {
         ...assistantPreset.value,
@@ -726,14 +997,12 @@ function updateAssistantPresetPatch(patch: Partial<TavernAssistantPreset>) {
     };
 }
 
-function updatePromptManagerPromptsJson(value = '') {
-    try {
-        const parsed = JSON.parse(value || '[]');
-        updateChatPresetComponent('promptManager', { prompts: Array.isArray(parsed) ? parsed : [] });
-        presetStatus.value = '';
-    } catch {
-        presetStatus.value = 'Prompt Manager JSON 格式错误';
-    }
+function readAssistantPresetField(key: AssistantPresetSectionKey): string {
+    return String(assistantPreset.value[key] || '');
+}
+
+function updateAssistantPresetField(key: AssistantPresetSectionKey, value = '') {
+    updateAssistantPresetPatch({ [key]: value } as Partial<TavernAssistantPreset>);
 }
 
 async function selectAssistantPreset(presetId: string) {
@@ -3008,6 +3277,7 @@ onUnmounted(() => {
                 </button>
                 <button
                   type="button"
+                  :disabled="!canEditPromptOrder"
                   @click="saveCurrentPreset"
                 >
                   保存
@@ -3025,74 +3295,147 @@ onUnmounted(() => {
               <section class="preset-edit-main">
                 <div class="preset-form-grid">
                   <label>
-                    <span>Prompt Manager</span>
+                    <span>酒馆 OpenAI 预设</span>
                     <input
                       :value="preset.promptManager?.name || ''"
-                      @input="updateChatPresetComponent('promptManager', { name: ($event.target as HTMLInputElement).value })"
+                      readonly
                     >
                   </label>
                   <label>
-                    <span>System Prompt</span>
+                    <span>顺序</span>
                     <input
-                      :value="preset.systemPrompt?.name || ''"
-                      @input="updateChatPresetComponent('systemPrompt', { name: ($event.target as HTMLInputElement).value })"
-                    >
-                  </label>
-                  <label>
-                    <span>Context Template</span>
-                    <input
-                      :value="preset.contextTemplate?.name || ''"
-                      @input="updateChatPresetComponent('contextTemplate', { name: ($event.target as HTMLInputElement).value })"
-                    >
-                  </label>
-                  <label>
-                    <span>Instruct Template</span>
-                    <input
-                      :value="preset.instructTemplate?.name || ''"
-                      @input="updateChatPresetComponent('instructTemplate', { name: ($event.target as HTMLInputElement).value })"
+                      :value="activePromptOrderLabel"
+                      readonly
                     >
                   </label>
                 </div>
-                <label class="preset-text-field">
-                  <span>System Prompt 内容</span>
-                  <textarea
-                    :value="preset.systemPrompt?.content || ''"
-                    rows="8"
-                    @input="updateChatPresetComponent('systemPrompt', { content: ($event.target as HTMLTextAreaElement).value })"
-                  />
-                </label>
-                <label class="preset-text-field">
-                  <span>Context Story String</span>
-                  <textarea
-                    :value="preset.contextTemplate?.storyString || ''"
-                    rows="8"
-                    @input="updateChatPresetComponent('contextTemplate', { storyString: ($event.target as HTMLTextAreaElement).value })"
-                  />
-                </label>
-                <label class="preset-text-field">
-                  <span>Prompt Manager prompts JSON</span>
-                  <textarea
-                    :value="JSON.stringify(preset.promptManager?.prompts || [], null, 2)"
-                    rows="14"
-                    spellcheck="false"
-                    @input="updatePromptManagerPromptsJson(($event.target as HTMLTextAreaElement).value)"
-                  />
-                </label>
+                <div class="prompt-manager-list">
+                  <div
+                    v-for="(row, index) in promptEditorRows"
+                    :key="row.identifier"
+                    class="prompt-manager-row"
+                    :class="{ selected: selectedPromptIdentifier === row.identifier, disabled: !row.enabled, marker: row.marker }"
+                    @click="selectedPromptIdentifier = row.identifier"
+                  >
+                    <button
+                      type="button"
+                      class="prompt-row-index"
+                      title="选择"
+                      @click.stop="selectedPromptIdentifier = row.identifier"
+                    >
+                      {{ index + 1 }}
+                    </button>
+                    <div class="prompt-row-main">
+                      <strong>{{ row.name }}</strong>
+                      <small>{{ promptRoleDisplay(row.role) }}</small>
+                    </div>
+                    <div class="prompt-row-actions">
+                      <button
+                        type="button"
+                        title="上移"
+                        :disabled="!canEditPromptOrder || index === 0"
+                        @click.stop="movePromptRow(row.identifier, -1)"
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        title="下移"
+                        :disabled="!canEditPromptOrder || index === promptEditorRows.length - 1"
+                        @click.stop="movePromptRow(row.identifier, 1)"
+                      >
+                        ↓
+                      </button>
+                      <label
+                        class="prompt-toggle"
+                        title="启用"
+                        @click.stop
+                      >
+                        <input
+                          type="checkbox"
+                          :checked="row.enabled"
+                          :disabled="!canEditPromptOrder"
+                          @change="togglePromptRow(row.identifier, ($event.target as HTMLInputElement).checked)"
+                        >
+                      </label>
+                    </div>
+                  </div>
+                </div>
+                <details class="preset-advanced-json">
+                  <summary>高级 JSON</summary>
+                  <label class="preset-text-field">
+                    <span>原始预设</span>
+                    <textarea
+                      :value="JSON.stringify(preset.promptManager?.rawPreset || {}, null, 2)"
+                      rows="12"
+                      spellcheck="false"
+                      readonly
+                    />
+                  </label>
+                </details>
               </section>
 
-              <aside class="preset-preview-panel">
+              <aside class="preset-preview-panel prompt-detail-panel">
                 <div class="preset-preview-head">
-                  <strong>注入预览</strong>
-                  <span>{{ presetRows.length }} 条</span>
+                  <strong>{{ selectedPromptRow?.name || '提示词条目' }}</strong>
+                  <span>{{ promptRoleDisplay(String(selectedPromptRow?.role || 'system')) }}</span>
                 </div>
-                <div class="preset-order-list">
+                <div
+                  v-if="selectedPromptRow"
+                  class="prompt-detail-form"
+                >
+                  <label class="inline-check prompt-enabled-check">
+                    <input
+                      type="checkbox"
+                      :checked="selectedPromptRow.enabled"
+                      :disabled="!canEditPromptOrder"
+                      @change="togglePromptRow(selectedPromptRow.identifier, ($event.target as HTMLInputElement).checked)"
+                    >
+                    <span>启用</span>
+                  </label>
+                  <label>
+                    <span>名称</span>
+                    <input
+                      :value="selectedPromptRow.name"
+                      @input="updatePromptByIdentifier(selectedPromptRow.identifier, { name: ($event.target as HTMLInputElement).value })"
+                    >
+                  </label>
+                  <label>
+                    <span>Role</span>
+                    <select
+                      :value="selectedPromptRow.role"
+                      @change="updatePromptByIdentifier(selectedPromptRow.identifier, { role: ($event.target as HTMLSelectElement).value })"
+                    >
+                      <option value="system">system</option>
+                      <option value="user">user</option>
+                      <option value="assistant">assistant</option>
+                    </select>
+                  </label>
+                  <label class="preset-text-field">
+                    <span>内容</span>
+                    <textarea
+                      :value="selectedPromptRow.content"
+                      rows="16"
+                      spellcheck="false"
+                      :disabled="selectedPromptRow.marker"
+                      @input="updatePromptByIdentifier(selectedPromptRow.identifier, { content: ($event.target as HTMLTextAreaElement).value })"
+                    />
+                  </label>
+                </div>
+                <div
+                  v-else
+                  class="empty-note"
+                >
+                  当前预设没有可编辑条目。
+                </div>
+                <div class="preset-order-list compact-preview">
                   <div
                     v-for="row in presetRows"
                     :key="row.previewId"
                     class="preset-order-row"
                   >
                     <strong>{{ row.previewLabel }}</strong>
-                    <small>{{ row.previewPlacement }} / {{ roleLabel(String(row.role || 'system')) }}</small>
+                    <small>{{ promptRoleDisplay(String(row.role || 'system')) }}</small>
                   </div>
                 </div>
               </aside>
@@ -3178,14 +3521,36 @@ onUnmounted(() => {
                 >
               </label>
             </div>
-            <label class="preset-text-field">
-              <span>记忆管理员提示词</span>
-              <textarea
-                :value="assistantPreset.memoryManagerPrompt"
-                rows="22"
-                @input="updateAssistantPresetPatch({ memoryManagerPrompt: ($event.target as HTMLTextAreaElement).value })"
-              />
-            </label>
+            <div class="preset-section-editor assistant-preset-grid">
+              <section
+                v-for="section in assistantPresetSections"
+                :key="section.key"
+                class="preset-edit-card"
+              >
+                <div class="preset-card-head">
+                  <strong>{{ section.label }}</strong>
+                  <small>{{ section.summary }}</small>
+                </div>
+                <label class="preset-text-field">
+                  <textarea
+                    :value="readAssistantPresetField(section.key)"
+                    :rows="section.rows"
+                    @input="updateAssistantPresetField(section.key, ($event.target as HTMLTextAreaElement).value)"
+                  />
+                </label>
+              </section>
+            </div>
+            <details class="preset-advanced-json">
+              <summary>最终提示词预览</summary>
+              <label class="preset-text-field">
+                <span>运行时 system prompt</span>
+                <textarea
+                  :value="assistantPromptPreview"
+                  rows="20"
+                  readonly
+                />
+              </label>
+            </details>
           </div>
         </section>
       </section>

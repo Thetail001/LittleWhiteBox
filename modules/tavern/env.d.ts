@@ -61,6 +61,8 @@ declare module '*.js' {
         iframeId: string;
         htmlPath: string;
         version?: string;
+        overlayCss?: string;
+        iframeCss?: string;
     }): Promise<HTMLElement>;
     export function loadFirstPartyIframeCacheKey(path: string): Promise<string>;
     export function isTrustedMessage(event: MessageEvent, iframe: HTMLIFrameElement | null, source: string): boolean;

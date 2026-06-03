@@ -2,9 +2,6 @@
 import { saveSettingsDebounced } from "../../../../../../../script.js";
 import { getPresetManager } from "../../../../../../preset-manager.js";
 import { promptManager } from "../../../../../../openai.js";
-import { context_presets, power_user } from "../../../../../../power-user.js";
-import { instruct_presets } from "../../../../../../instruct-mode.js";
-import { system_prompts } from "../../../../../../sysprompt.js";
 function createFallbackTavernChatPromptPresetBundle() {
   return {
     id: "sillytavern-current-chat-prompt",
@@ -41,7 +38,7 @@ function normalizeTavernChatPromptPresetBundle(input = {}) {
     systemPrompt: input.systemPrompt,
     contextTemplate: input.contextTemplate,
     instructTemplate: input.instructTemplate,
-    sections: Array.isArray(input.sections) ? input.sections.filter((section) => normalizeText(section.content)) : [],
+    sections: Array.isArray(input.sections) ? input.sections.filter((section) => normalizeText(section.content) || section.marker === true) : [],
     updatedAt: Number(input.updatedAt) || void 0
   };
 }
@@ -77,7 +74,8 @@ function buildPromptManagerSections(prompts = []) {
   prompts.forEach((item, index) => {
     const prompt = asRecord(item);
     const content = normalizeText(prompt.content);
-    if (!content || prompt.enabled === false || prompt.disabled === true) {
+    const marker = prompt.marker === true;
+    if (!content && !marker || prompt.enabled === false || prompt.disabled === true) {
       return;
     }
     const identifier = normalizeText(prompt.identifier || prompt.id || `prompt-${index + 1}`);
@@ -85,6 +83,7 @@ function buildPromptManagerSections(prompts = []) {
       id: `prompt-manager:${identifier}`,
       label: normalizeText(prompt.name || prompt.label || identifier),
       enabled: true,
+      marker,
       role: normalizePromptRole(prompt.role),
       content,
       placement: resolvePromptPlacement(prompt),
@@ -93,96 +92,55 @@ function buildPromptManagerSections(prompts = []) {
   });
   return sections;
 }
+function getSelectedPromptManagerPreset() {
+  const manager = getPresetManager("openai");
+  const promptPresetName = normalizeText(manager?.getSelectedPresetName?.());
+  const preset = asRecord(manager?.getCompletionPresetByName?.(promptPresetName));
+  return Object.keys(preset).length ? cloneJson(preset) : cloneJson(asRecord(promptManager?.serviceSettings));
+}
+function getActivePromptManagerCharacterId() {
+  const runtime = promptManager;
+  return normalizeText(asRecord(runtime?.activeCharacter).id);
+}
+function replaceActivePromptOrder(existingPromptOrder, activeCharacterId, nextOrder = []) {
+  const containers = asArray(existingPromptOrder).map((container) => ({ ...asRecord(container) }));
+  const targetIndex = containers.findIndex((container) => normalizeText(container.character_id) === activeCharacterId);
+  const target = targetIndex >= 0 ? containers[targetIndex] : { character_id: activeCharacterId };
+  const replacement = {
+    ...target,
+    character_id: target?.character_id ?? activeCharacterId,
+    order: cloneJson(nextOrder)
+  };
+  if (targetIndex >= 0) {
+    containers[targetIndex] = replacement;
+  } else {
+    containers.push(replacement);
+  }
+  return containers;
+}
 function buildCurrentBundle() {
   const promptSettings = asRecord(promptManager?.serviceSettings);
   const promptPresetName = normalizeText(getPresetManager("openai")?.getSelectedPresetName?.());
-  const systemPrompt = asRecord(power_user?.sysprompt);
-  const contextTemplate = asRecord(power_user?.context);
-  const instructTemplate = asRecord(power_user?.instruct);
+  const rawPreset = getSelectedPromptManagerPreset();
+  const promptManagerRuntime = promptManager;
+  const activeCharacter = asRecord(promptManagerRuntime?.activeCharacter);
+  const activeCharacterId = activeCharacter.id;
+  const activeOrder = Array.isArray(promptManagerRuntime?.getPromptOrderForCharacter?.(promptManagerRuntime.activeCharacter)) ? promptManagerRuntime.getPromptOrderForCharacter(promptManagerRuntime.activeCharacter) : [];
   const sections = [
     ...buildPromptManagerSections(getPreparedPromptManagerPrompts())
   ];
-  const syspromptContent = normalizeText(systemPrompt.content);
-  if (systemPrompt.enabled !== false && syspromptContent) {
-    sections.unshift({
-      id: "sysprompt:current",
-      label: normalizeText(systemPrompt.name) || "System Prompt",
-      enabled: true,
-      role: "system",
-      content: syspromptContent,
-      placement: systemPrompt.post_history ? "afterHistory" : "top",
-      source: "systemPrompt"
-    });
-  }
-  const storyString = normalizeText(contextTemplate.story_string);
-  if (storyString) {
-    sections.push({
-      id: "context:story-string",
-      label: normalizeText(contextTemplate.preset) || "Context Template",
-      enabled: true,
-      role: "system",
-      content: storyString,
-      placement: "beforeCharacter",
-      source: "contextTemplate"
-    });
-  }
-  const instructSystem = [
-    normalizeText(instructTemplate.system_sequence),
-    normalizeText(instructTemplate.system_suffix),
-    normalizeText(instructTemplate.user_alignment_message)
-  ].filter(Boolean).join("\n");
-  if (instructTemplate.enabled !== false && instructSystem) {
-    sections.push({
-      id: "instruct:system",
-      label: normalizeText(instructTemplate.preset) || "Instruct Template",
-      enabled: true,
-      role: "system",
-      content: instructSystem,
-      placement: "top",
-      source: "instructTemplate"
-    });
-  }
   return normalizeTavernChatPromptPresetBundle({
-    id: [
-      promptPresetName,
-      normalizeText(systemPrompt.name),
-      normalizeText(contextTemplate.preset),
-      normalizeText(instructTemplate.preset)
-    ].filter(Boolean).join(" / ") || createFallbackTavernChatPromptPresetBundle().id,
+    id: promptPresetName || createFallbackTavernChatPromptPresetBundle().id,
     name: promptPresetName || createFallbackTavernChatPromptPresetBundle().name,
     source: "sillytavern",
     selected: true,
     promptManager: {
       name: promptPresetName,
-      prompts: cloneJson(asArray(promptSettings.prompts)),
-      promptOrder: cloneJson(promptSettings.prompt_order)
-    },
-    systemPrompt: {
-      name: normalizeText(systemPrompt.name),
-      enabled: systemPrompt.enabled !== false,
-      content: syspromptContent,
-      postHistory: normalizeText(systemPrompt.post_history)
-    },
-    contextTemplate: {
-      name: normalizeText(contextTemplate.preset),
-      storyString,
-      chatStart: normalizeText(contextTemplate.chat_start),
-      exampleSeparator: normalizeText(contextTemplate.example_separator)
-    },
-    instructTemplate: {
-      name: normalizeText(instructTemplate.preset),
-      enabled: instructTemplate.enabled === true,
-      inputSequence: normalizeText(instructTemplate.input_sequence),
-      inputSuffix: normalizeText(instructTemplate.input_suffix),
-      outputSequence: normalizeText(instructTemplate.output_sequence),
-      outputSuffix: normalizeText(instructTemplate.output_suffix),
-      systemSequence: normalizeText(instructTemplate.system_sequence),
-      systemSuffix: normalizeText(instructTemplate.system_suffix),
-      firstInputSequence: normalizeText(instructTemplate.first_input_sequence),
-      lastInputSequence: normalizeText(instructTemplate.last_input_sequence),
-      firstOutputSequence: normalizeText(instructTemplate.first_output_sequence),
-      lastOutputSequence: normalizeText(instructTemplate.last_output_sequence),
-      stopSequence: normalizeText(instructTemplate.stop_sequence)
+      prompts: cloneJson(asArray(rawPreset.prompts).length ? asArray(rawPreset.prompts) : asArray(promptSettings.prompts)),
+      promptOrder: cloneJson("prompt_order" in rawPreset ? rawPreset.prompt_order : promptSettings.prompt_order),
+      rawPreset,
+      activeCharacterId,
+      activeOrder: cloneJson(activeOrder)
     },
     sections,
     updatedAt: Date.now()
@@ -190,10 +148,7 @@ function buildCurrentBundle() {
 }
 function getComponentNames() {
   return {
-    promptManager: getPresetManager("openai")?.getAllPresets?.() || [],
-    systemPrompt: system_prompts.map((item) => normalizeText(item.name)).filter(Boolean),
-    contextTemplate: context_presets.map((item) => normalizeText(item.name)).filter(Boolean),
-    instructTemplate: instruct_presets.map((item) => normalizeText(item.name)).filter(Boolean)
+    promptManager: getPresetManager("openai")?.getAllPresets?.() || []
   };
 }
 function listTavernChatPresetBundles() {
@@ -213,26 +168,41 @@ async function savePromptManagerPreset(bundle) {
   if (!manager || !name) {
     return;
   }
+  const selectedName = normalizeText(manager.getSelectedPresetName?.());
+  if (selectedName && selectedName !== name) {
+    throw new Error("\u9152\u9986\u5F53\u524D\u9884\u8BBE\u5DF2\u5207\u6362\uFF0C\u8BF7\u5237\u65B0\u540E\u518D\u4FDD\u5B58\u3002");
+  }
   const existing = cloneJson(manager.getCompletionPresetByName?.(name) || {});
   if (!Object.keys(asRecord(existing)).length) {
     throw new Error(`\u804A\u5929\u9884\u8BBE\u4E0D\u5B58\u5728\uFF1A${name}`);
   }
-  const patch = {
-    ...asRecord(existing)
-  };
+  const currentActiveCharacterId = getActivePromptManagerCharacterId();
+  const submittedActiveCharacterId = normalizeText(bundle.promptManager?.activeCharacterId);
+  if (!currentActiveCharacterId || !submittedActiveCharacterId || currentActiveCharacterId !== submittedActiveCharacterId) {
+    throw new Error("\u672A\u53D6\u5F97\u5F53\u524D\u89D2\u8272\u987A\u5E8F\uFF0C\u8BF7\u5237\u65B0\u540E\u518D\u4FDD\u5B58\u3002");
+  }
+  const patch = { ...asRecord(existing) };
   if (Array.isArray(bundle.promptManager?.prompts)) {
     patch.prompts = cloneJson(bundle.promptManager.prompts);
-    if (promptManager?.serviceSettings) {
-      promptManager.serviceSettings.prompts = cloneJson(bundle.promptManager.prompts);
-    }
   }
-  if (bundle.promptManager && "promptOrder" in bundle.promptManager) {
-    patch.prompt_order = cloneJson(bundle.promptManager.promptOrder);
-    if (promptManager?.serviceSettings) {
-      promptManager.serviceSettings.prompt_order = cloneJson(bundle.promptManager.promptOrder);
-    }
+  if (Array.isArray(bundle.promptManager?.activeOrder)) {
+    patch.prompt_order = replaceActivePromptOrder(
+      asRecord(existing).prompt_order,
+      currentActiveCharacterId,
+      bundle.promptManager.activeOrder
+    );
   }
   await manager.savePreset?.(name, patch);
+  if (promptManager?.serviceSettings) {
+    if (Array.isArray(patch.prompts)) {
+      promptManager.serviceSettings.prompts = cloneJson(patch.prompts);
+    }
+    if (Array.isArray(patch.prompt_order)) {
+      promptManager.serviceSettings.prompt_order = cloneJson(patch.prompt_order);
+    }
+  }
+  promptManager?.saveServiceSettings?.();
+  promptManager?.render?.(false);
 }
 function applyPromptManagerPromptFieldsFromPreset(name = "") {
   const manager = getPresetManager("openai");
@@ -244,84 +214,16 @@ function applyPromptManagerPromptFieldsFromPreset(name = "") {
   if (!Object.keys(preset).length) {
     return false;
   }
-  if (Array.isArray(preset.prompts) && promptManager?.serviceSettings) {
-    promptManager.serviceSettings.prompts = cloneJson(preset.prompts);
-  }
-  if ("prompt_order" in preset && promptManager?.serviceSettings) {
-    promptManager.serviceSettings.prompt_order = cloneJson(preset.prompt_order);
+  if (promptManager?.serviceSettings) {
+    Object.assign(promptManager.serviceSettings, cloneJson(preset));
   }
   promptManager?.saveServiceSettings?.();
   promptManager?.render?.(false);
   return true;
 }
-async function saveSystemPromptPreset(bundle) {
-  const data = bundle.systemPrompt;
-  const name = normalizeText(data?.name);
-  if (!name) {
-    return;
-  }
-  const preset = {
-    name,
-    content: normalizeText(data?.content),
-    post_history: normalizeText(data?.postHistory)
-  };
-  await getPresetManager("sysprompt")?.savePreset?.(name, preset);
-  power_user.sysprompt.enabled = data?.enabled !== false;
-  power_user.sysprompt.name = name;
-  power_user.sysprompt.content = preset.content;
-  power_user.sysprompt.post_history = preset.post_history;
-}
-async function saveContextTemplate(bundle) {
-  const data = bundle.contextTemplate;
-  const name = normalizeText(data?.name);
-  if (!name) {
-    return;
-  }
-  const existing = context_presets.find((item) => item.name === name) || {};
-  const preset = {
-    ...cloneJson(existing),
-    name,
-    story_string: normalizeText(data?.storyString),
-    chat_start: normalizeText(data?.chatStart),
-    example_separator: normalizeText(data?.exampleSeparator)
-  };
-  await getPresetManager("context")?.savePreset?.(name, preset);
-  power_user.context.preset = name;
-  Object.assign(power_user.context, preset);
-}
-async function saveInstructTemplate(bundle) {
-  const data = bundle.instructTemplate;
-  const name = normalizeText(data?.name);
-  if (!name) {
-    return;
-  }
-  const existing = instruct_presets.find((item) => item.name === name) || {};
-  const preset = {
-    ...cloneJson(existing),
-    name,
-    input_sequence: normalizeText(data?.inputSequence),
-    input_suffix: normalizeText(data?.inputSuffix),
-    output_sequence: normalizeText(data?.outputSequence),
-    output_suffix: normalizeText(data?.outputSuffix),
-    system_sequence: normalizeText(data?.systemSequence),
-    system_suffix: normalizeText(data?.systemSuffix),
-    first_input_sequence: normalizeText(data?.firstInputSequence),
-    last_input_sequence: normalizeText(data?.lastInputSequence),
-    first_output_sequence: normalizeText(data?.firstOutputSequence),
-    last_output_sequence: normalizeText(data?.lastOutputSequence),
-    stop_sequence: normalizeText(data?.stopSequence)
-  };
-  await getPresetManager("instruct")?.savePreset?.(name, preset);
-  power_user.instruct.enabled = data?.enabled === true;
-  power_user.instruct.preset = name;
-  Object.assign(power_user.instruct, preset);
-}
 async function saveTavernChatPresetBundle(input) {
   const bundle = normalizeTavernChatPromptPresetBundle(asRecord(input));
   await savePromptManagerPreset(bundle);
-  await saveSystemPromptPreset(bundle);
-  await saveContextTemplate(bundle);
-  await saveInstructTemplate(bundle);
   saveSettingsDebounced?.();
   return buildCurrentBundle();
 }
@@ -330,18 +232,6 @@ async function selectTavernChatPresetBundle(input) {
   const promptManagerName = normalizeText(source.promptManagerName || source.name);
   if (promptManagerName) {
     applyPromptManagerPromptFieldsFromPreset(promptManagerName);
-  }
-  const systemPromptName = normalizeText(source.systemPromptName);
-  if (systemPromptName) {
-    getPresetManager("sysprompt")?.selectPreset?.(getPresetManager("sysprompt")?.findPreset?.(systemPromptName));
-  }
-  const contextTemplateName = normalizeText(source.contextTemplateName);
-  if (contextTemplateName) {
-    getPresetManager("context")?.selectPreset?.(getPresetManager("context")?.findPreset?.(contextTemplateName));
-  }
-  const instructTemplateName = normalizeText(source.instructTemplateName);
-  if (instructTemplateName) {
-    getPresetManager("instruct")?.selectPreset?.(getPresetManager("instruct")?.findPreset?.(instructTemplateName));
   }
   saveSettingsDebounced?.();
   return buildCurrentBundle();

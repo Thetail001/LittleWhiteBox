@@ -21,6 +21,7 @@ let tavernCacheKey = "";
 let frameReady = false;
 let pendingMessages = [];
 let messageHandlerInstalled = false;
+let overlayResizeHandler = null;
 async function loadTavernCacheKey() {
   if (tavernCacheKey) {
     return tavernCacheKey;
@@ -31,6 +32,67 @@ async function loadTavernCacheKey() {
 function getIframe() {
   const iframe = document.getElementById(IFRAME_ID);
   return iframe instanceof HTMLIFrameElement ? iframe : null;
+}
+function isTavernMobileDevice() {
+  const mobileTypes = ["mobile", "tablet"];
+  try {
+    const bowser = globalThis;
+    const platformType = bowser.Bowser?.parse?.(navigator.userAgent)?.platform?.type;
+    if (mobileTypes.includes(platformType)) {
+      return true;
+    }
+  } catch {
+  }
+  return window.matchMedia("(pointer: coarse)").matches && window.matchMedia("(max-width: 900px)").matches;
+}
+function getTavernMobileTopOffset() {
+  const rawValue = getComputedStyle(document.documentElement).getPropertyValue("--topBarBlockSize").trim();
+  const parsedValue = Number.parseFloat(rawValue);
+  return Number.isFinite(parsedValue) ? Math.max(0, parsedValue) : 0;
+}
+function getTavernMobileViewportHeight() {
+  return Math.max(240, window.innerHeight - getTavernMobileTopOffset());
+}
+function applyTavernOverlayViewport(overlay = document.getElementById(OVERLAY_ID)) {
+  if (!(overlay instanceof HTMLElement)) {
+    return;
+  }
+  overlay.style.left = "0";
+  overlay.style.right = "0";
+  overlay.style.width = "100vw";
+  if (!isTavernMobileDevice()) {
+    overlay.style.top = "0";
+    overlay.style.height = "100vh";
+    overlay.style.padding = "0";
+    overlay.classList.remove("is-mobile");
+    return;
+  }
+  const topOffset = getTavernMobileTopOffset();
+  const viewportHeight = getTavernMobileViewportHeight();
+  overlay.style.top = `${topOffset}px`;
+  overlay.style.height = `${viewportHeight}px`;
+  overlay.style.padding = "env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px)";
+  overlay.classList.add("is-mobile");
+}
+function installOverlayResizeHandler(overlay) {
+  if (overlayResizeHandler) {
+    return;
+  }
+  overlayResizeHandler = () => applyTavernOverlayViewport(overlay);
+  window.addEventListener("resize", overlayResizeHandler);
+  window.addEventListener("orientationchange", overlayResizeHandler);
+  window.visualViewport?.addEventListener("resize", overlayResizeHandler);
+  window.visualViewport?.addEventListener("scroll", overlayResizeHandler);
+}
+function removeOverlayResizeHandler() {
+  if (!overlayResizeHandler) {
+    return;
+  }
+  window.removeEventListener("resize", overlayResizeHandler);
+  window.removeEventListener("orientationchange", overlayResizeHandler);
+  window.visualViewport?.removeEventListener("resize", overlayResizeHandler);
+  window.visualViewport?.removeEventListener("scroll", overlayResizeHandler);
+  overlayResizeHandler = null;
 }
 function postToFrame(type, payload = {}) {
   const iframe = getIframe();
@@ -116,15 +178,48 @@ async function handleChatPresetRequest(type, payload = {}) {
   }
 }
 async function createOverlay() {
-  return createFirstPartyIframeOverlay({
+  const overlay = await createFirstPartyIframeOverlay({
     overlayId: OVERLAY_ID,
     iframeId: IFRAME_ID,
     htmlPath: HTML_PATH,
-    version: await loadTavernCacheKey()
+    version: await loadTavernCacheKey(),
+    overlayCss: `
+            position: fixed !important;
+            left: 0 !important;
+            right: 0 !important;
+            top: 0;
+            bottom: auto !important;
+            width: 100vw !important;
+            height: 100vh;
+            height: 100dvh;
+            z-index: 100001 !important;
+            display: flex !important;
+            align-items: stretch !important;
+            justify-content: stretch !important;
+            overflow: hidden !important;
+            box-sizing: border-box !important;
+            background: #171512 !important;
+            overscroll-behavior: none;
+            touch-action: manipulation;
+        `,
+    iframeCss: `
+            display: block !important;
+            width: 100% !important;
+            height: 100% !important;
+            min-width: 0 !important;
+            min-height: 0 !important;
+            border: none !important;
+            background: transparent !important;
+        `
   });
+  applyTavernOverlayViewport(overlay);
+  installOverlayResizeHandler(overlay);
+  return overlay;
 }
 async function openTavern() {
-  if (document.getElementById(OVERLAY_ID)) {
+  const existingOverlay = document.getElementById(OVERLAY_ID);
+  if (existingOverlay) {
+    applyTavernOverlayViewport(existingOverlay);
     return;
   }
   frameReady = false;
@@ -133,6 +228,7 @@ async function openTavern() {
   await createOverlay();
 }
 function closeTavern() {
+  removeOverlayResizeHandler();
   const overlay = document.getElementById(OVERLAY_ID);
   if (overlay) {
     overlay.remove();

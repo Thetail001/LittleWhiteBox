@@ -53,6 +53,53 @@ test('xb tavern default preset uses editable sections without hidden top prompts
     assert.doesNotMatch(result.messages.map((message) => message.content).join('\n'), /小白酒馆默认角色扮演预设|你正在小白酒馆中进行角色扮演/);
 });
 
+test('xb tavern assembler honors SillyTavern prompt manager marker order', () => {
+    const result = buildXbTavernMessages({
+        character: {
+            name: 'Aster',
+            description: 'Pilot description.',
+            personality: 'Dry humor.',
+        },
+        user: {
+            name: 'Player',
+            persona: 'Navigator persona.',
+        },
+        history: [
+            { role: 'assistant', content: 'Old assistant line.' },
+        ],
+        worldEntries: [{
+            uid: 1,
+            key: ['gate'],
+            content: 'Gate lore.',
+            constant: true,
+            position: XBTavernWorldPosition.before,
+        }],
+    }, {
+        sections: [
+            { id: 'prompt-manager:main', label: 'Main', source: 'promptManager', role: 'system', content: 'Main prompt.' },
+            { id: 'prompt-manager:charDescription', label: 'Char Description', source: 'promptManager', role: 'system', marker: true },
+            { id: 'prompt-manager:worldInfoBefore', label: 'World Info (before)', source: 'promptManager', role: 'system', marker: true },
+            { id: 'prompt-manager:chatHistory', label: 'Chat History', source: 'promptManager', role: 'system', marker: true },
+            { id: 'prompt-manager:jailbreak', label: 'Jailbreak', source: 'promptManager', role: 'system', content: 'After marker prompt.' },
+        ],
+    }, {
+        currentUserMessage: 'Current user line.',
+    });
+
+    const contents = result.messages.map((message) => message.content);
+    assert.deepEqual(contents.map((content) => {
+        if (content.includes('Main prompt.')) {return 'main';}
+        if (content.includes('Pilot description.')) {return 'description';}
+        if (content.includes('Gate lore.')) {return 'world';}
+        if (content.includes('Old assistant line.')) {return 'history';}
+        if (content.includes('Current user line.')) {return 'current';}
+        if (content.includes('After marker prompt.')) {return 'jailbreak';}
+        return 'other';
+    }), ['main', 'description', 'world', 'history', 'current', 'jailbreak']);
+    assert.doesNotMatch(contents.join('\n'), /<character_card>/);
+    assert.equal(result.messageLayers.find((layer) => layer.label === 'Char Description')?.sourceId, 'prompt-manager:charDescription');
+});
+
 test('xb tavern preset labels are debug metadata only', () => {
     const result = buildXbTavernMessages({}, {
         sections: [{

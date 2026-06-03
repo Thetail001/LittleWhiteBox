@@ -5,7 +5,7 @@ import {
     resolveResultToolCalls,
 } from '../../../agent-core/runtime/protocol.js';
 import type { XbTavernMessage } from '../../shared/message-assembler';
-import { createDefaultTavernAssistantPreset, type TavernAssistantPreset } from '../../shared/assistant-presets';
+import { buildTavernManagerSystemPrompt, type TavernAssistantPreset } from '../../shared/assistant-presets';
 import {
     ensureTavernMemoryDefaults,
     executeTavernMemoryTool,
@@ -198,11 +198,7 @@ export function parseXbTavernManagerResult(text = ''): XbTavernManagerParsedResu
 }
 
 function buildManagerSystemPrompt(assistantPreset: TavernAssistantPreset | undefined): string {
-    return String(
-        assistantPreset?.memoryManagerPrompt
-        || createDefaultTavernAssistantPreset().memoryManagerPrompt
-        || '',
-    ).trim();
+    return buildTavernManagerSystemPrompt(assistantPreset).trim();
 }
 
 function buildManagerUserPrompt(input: {

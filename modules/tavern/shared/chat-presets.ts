@@ -17,6 +17,7 @@ export function normalizeTavernChatPromptSection(section: Partial<TavernChatProm
         id: String(section.id || '').trim(),
         label: String(section.label || '').trim(),
         enabled: section.enabled !== false,
+        marker: section.marker === true,
         role: section.role || 'system',
         content: String(section.content || '').trim(),
         placement: section.placement || 'beforeHistory',
@@ -41,7 +42,7 @@ export function normalizeTavernChatPromptPresetBundle(
         instructTemplate: input.instructTemplate,
         historySeparator: String(input.historySeparator || ''),
         sections: Array.isArray(input.sections)
-            ? input.sections.map(normalizeTavernChatPromptSection).filter((section) => section.content)
+            ? input.sections.map(normalizeTavernChatPromptSection).filter((section) => section.content || section.marker)
             : [],
         updatedAt: Number(input.updatedAt) || undefined,
     };
