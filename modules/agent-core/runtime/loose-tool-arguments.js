@@ -134,6 +134,11 @@ const LOOSE_ARGUMENT_KEYS_BY_TOOL = {
     ImportMaterial: ['title', 'content', 'source'],
     Glob: ['pattern', 'path', 'scope'],
     Grep: ['pattern', 'query', 'path', 'scope', 'include', 'outputMode', 'limit', 'offset', 'contextLines', 'useRegex'],
+    MemoryRead: ['filePath', 'path', 'offset', 'limit', 'tail'],
+    MemoryWrite: ['filePath', 'path', 'content'],
+    MemoryEdit: ['filePath', 'path', 'edits'],
+    MemoryGrep: ['pattern', 'query', 'filePath', 'path', 'scope', 'outputMode', 'limit', 'offset', 'contextLines', 'regex', 'useRegex'],
+    ChatHistory: ['mode', 'limit', 'offset', 'startOrder', 'endOrder', 'pattern', 'query', 'regex', 'useRegex', 'full'],
     WebSearch: ['query', 'maxResults'],
     DelegateRun: ['task'],
     PlanCreate: ['title', 'details', 'priority', 'owner', 'blockedBy'],
@@ -171,6 +176,11 @@ const GENERIC_LOOSE_ARGUMENT_KEYS = [
     'offset',
     'contextLines',
     'useRegex',
+    'regex',
+    'mode',
+    'startOrder',
+    'endOrder',
+    'full',
 ];
 
 function extractFirstLooseField(source = '', keys = [], nextKeys = []) {
@@ -213,6 +223,43 @@ function parseKnownLooseArgumentsObject(source = '', toolName = '') {
         }
         if (args.path === undefined && args.scope !== undefined) {
             args.path = args.scope;
+        }
+        return Object.keys(args).length ? args : null;
+    }
+
+    if (toolName === 'MemoryGrep') {
+        const keys = LOOSE_ARGUMENT_KEYS_BY_TOOL.MemoryGrep;
+        const args = {};
+        keys.forEach((key) => {
+            const value = extractLooseField(source, key, keys.filter((item) => item !== key));
+            if (value === undefined) return;
+            args[key] = parseLoosePrimitive(value);
+        });
+        if (args.pattern === undefined && args.query !== undefined) {
+            args.pattern = args.query;
+        }
+        if (args.path === undefined && args.scope !== undefined) {
+            args.path = args.scope;
+        }
+        if (args.regex === undefined && args.useRegex !== undefined) {
+            args.regex = args.useRegex;
+        }
+        return Object.keys(args).length ? args : null;
+    }
+
+    if (toolName === 'ChatHistory') {
+        const keys = LOOSE_ARGUMENT_KEYS_BY_TOOL.ChatHistory;
+        const args = {};
+        keys.forEach((key) => {
+            const value = extractLooseField(source, key, keys.filter((item) => item !== key));
+            if (value === undefined) return;
+            args[key] = parseLoosePrimitive(value);
+        });
+        if (args.pattern === undefined && args.query !== undefined) {
+            args.pattern = args.query;
+        }
+        if (args.regex === undefined && args.useRegex !== undefined) {
+            args.regex = args.useRegex;
         }
         return Object.keys(args).length ? args : null;
     }

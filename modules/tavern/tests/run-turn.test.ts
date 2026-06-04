@@ -225,6 +225,16 @@ test('xb tavern run turn can trigger manager summary with delegate config', asyn
     assert.ok(result.managerRunId);
     assert.equal(managerProvider, 'sillytavern-openai-compatible');
     assert.match(managerPrompt, /后台管理者/);
+    assert.match(managerPrompt, /## Tool Use Guide/);
+    assert.match(managerPrompt, /## Selection Strategy/);
+    assert.match(managerPrompt, /ChatHistory recent 读取最新消息/);
+    assert.match(managerPrompt, /ChatHistory range 按 order 升序读取区间/);
+    assert.match(managerPrompt, /ChatHistory grep 按关键词搜索/);
+    assert.match(managerPrompt, /MemoryEdit `edits` 必须是真正的非空数组/);
+    assert.match(managerPrompt, /不要把 oldString 改法和行号改法混在同一个 MemoryEdit 调用里/);
+    assert.match(managerPrompt, /MemoryGrep；如果要找“RP 原文里是否发生过某件事”，用 ChatHistory grep/);
+    assert.match(managerPrompt, /必须写成可派生格式/);
+    assert.match(managerPrompt, /- Source: messages userOrder\/assistantOrder/);
     const summaries = await listTavernTurnSummaries(result.sessionId);
     assert.equal(summaries.length, 1);
     assert.equal(summaries[0]?.userOrder, 0);

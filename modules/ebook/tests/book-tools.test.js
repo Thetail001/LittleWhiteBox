@@ -66,7 +66,7 @@ const {
     buildDelegateBookContextPrompt,
 } = promptsModule;
 const { buildEbookProviderMessagesFromHistory, createEbookAgentRunner } = agentRunnerModule;
-const { captureScrollState, createEbookApp, restoreScrollState } = ebookAppModule;
+const { captureScrollState, createEbookApp, restoreScrollState, shouldResetReaderScrollOnRender } = ebookAppModule;
 const {
     collectAgentRenderUnits,
     collectStudioFileSectionModels,
@@ -1222,11 +1222,14 @@ test('Book action prompts rely on injected core story files', () => {
     assert.match(nextChapterPrompt, /先要求完成 `volume-plan`/);
     assert.match(nextChapterPrompt, /当前情节轮还没有本轮 3-5 章章纲/);
     assert.match(nextChapterPrompt, /短期欲望/);
-    assert.match(nextChapterPrompt, /连续起草本轮 3-5 章/);
-    assert.match(nextChapterPrompt, /一章不需要完成任何固定事件/);
-    assert.match(nextChapterPrompt, /慢写不是多写几百字/);
+    assert.match(nextChapterPrompt, /先从 `\[用户本轮请求\]` 里提炼本次明确指挥/);
+    assert.match(nextChapterPrompt, /如果用户没有明确本章范围、核心内容或停止点/);
+    assert.match(nextChapterPrompt, /只写用户这次明确要求的这一章或这一段/);
+    assert.match(nextChapterPrompt, /不要因为系统里存在空章节或下一编号就自动开写/);
+    assert.match(nextChapterPrompt, /不是授权你抢跑后续剧情/);
+    assert.match(nextChapterPrompt, /不要把章节当任务清单，也不要把大纲当工单执行/);
     assert.match(nextChapterPrompt, /只读取目标章节或相邻章节/);
-    assert.match(nextChapterPrompt, /写完本轮后停下/);
+    assert.match(nextChapterPrompt, /写完这次用户明确要求的部分就停/);
     assert.match(openingOptionsPrompt, /不要直接写入文件/);
     assert.match(openingOptionsPrompt, /给 2 到 3 个不同开场方案/);
     assert.match(organizePrompt, /材料太少/);
@@ -4922,6 +4925,25 @@ test('Book app anchors reader scroll across unrelated renders', () => {
     assert.equal(readerPaper.scrollTop, 830);
 });
 
+test('Book app resets reader scroll only when switching to a different chapter', () => {
+    assert.equal(
+        shouldResetReaderScrollOnRender('book/chapters/001.md', 'reader', 'book/chapters/002.md'),
+        true,
+    );
+    assert.equal(
+        shouldResetReaderScrollOnRender('book/chapters/001.md', 'reader', 'book/chapters/001.md'),
+        false,
+    );
+    assert.equal(
+        shouldResetReaderScrollOnRender('book/chapters/001.md', 'studio', 'book/chapters/002.md'),
+        false,
+    );
+    assert.equal(
+        shouldResetReaderScrollOnRender('book/chapters/001.md', 'reader', 'book/state.md'),
+        false,
+    );
+});
+
 test('Book renderer includes scroll anchor keys in full agent message markup', () => {
     const html = renderAgentMessages({
         messages: [
@@ -7077,8 +7099,8 @@ test('Book agent reroll trims to the previous user message without duplicating i
     assert.equal(state.messages[1].content, '新版本。');
     const userRequests = requestMessages.filter((message) => message.role === 'user');
     assert.equal(userRequests.length, 1);
+    assert.match(userRequests[0].content, /^\[用户本轮请求\]\n\n重写第一章。\n\n\[本轮作品上下文\]/);
     assert.match(userRequests[0].content, /\[本轮作品上下文\]/);
-    assert.match(userRequests[0].content, /\[用户本轮请求\]\n\n重写第一章。$/);
 });
 
 test('Book agent reroll can start directly from an edited user message', async () => {
@@ -7150,7 +7172,7 @@ test('Book agent reroll can start directly from an edited user message', async (
     assert.equal(state.messages[1].content, '新回复。');
     const userRequests = requestMessages.filter((message) => message.role === 'user');
     assert.equal(userRequests.length, 1);
-    assert.match(userRequests[0].content, /\[用户本轮请求\]\n\n修正后的第一章要求。$/);
+    assert.match(userRequests[0].content, /^\[用户本轮请求\]\n\n修正后的第一章要求。\n\n\[本轮作品上下文\]/);
 });
 
 test('Book history compaction releases archived turns without writing creative record', async () => {

@@ -124,6 +124,12 @@ export function restoreScrollState(root, snapshot, defaultSelector = null, optio
         : Math.min(snapshot.scrollTop, node.scrollHeight);
 }
 
+export function shouldResetReaderScrollOnRender(previousReaderPath = '', nextViewMode = '', nextReaderPath = '') {
+    return nextViewMode === 'reader'
+        && String(previousReaderPath || '') !== String(nextReaderPath || '')
+        && isChapterPath(nextReaderPath);
+}
+
 function updateAgentScrollButtons(root) {
     const agentMain = root?.querySelector?.('.xb-agent-main');
     const scrollTopButton = root?.querySelector?.('#xb-agent-scroll-top');
@@ -258,6 +264,7 @@ export function createEbookApp(options = {}) {
     let configSaveTimeout = null;
     let configSaveResetTimer = null;
     let agentRenderCache = [];
+    let lastRenderedReaderPath = '';
     const renderPerfCounters = {
         fullRender: 0,
         agentSurface: 0,
@@ -745,6 +752,11 @@ export function createEbookApp(options = {}) {
         const settingsScroll = captureScrollState(root, '.xb-ebook-settings-body');
         const focusState = captureFocusState(root);
         const wasSettingsOpen = !!root.querySelector('.xb-ebook-settings-body');
+        const shouldResetReaderScroll = shouldResetReaderScrollOnRender(
+            lastRenderedReaderPath,
+            state.viewMode,
+            state.readerPath,
+        );
         const providerConfig = getActiveProviderConfig();
         // Dynamic values are escaped by renderer helpers before interpolation.
         // eslint-disable-next-line no-unsanitized/property
@@ -787,6 +799,10 @@ export function createEbookApp(options = {}) {
             defaultToBottom: false,
             preserveScrollTop: true,
         });
+        if (shouldResetReaderScroll) {
+            const readerPaper = root.querySelector('.xb-reader-paper');
+            if (readerPaper) readerPaper.scrollTop = 0;
+        }
         if (state.isSettingsOpen) {
             const settingsBody = root.querySelector('.xb-ebook-settings-body');
             if (settingsBody) {
@@ -802,6 +818,9 @@ export function createEbookApp(options = {}) {
         if (wasSettingsOpen === state.isSettingsOpen) {
             restoreFocusState(root, focusState);
         }
+        lastRenderedReaderPath = state.viewMode === 'reader' && isChapterPath(state.readerPath)
+            ? state.readerPath
+            : '';
     }
 
     bookController = createBookController({

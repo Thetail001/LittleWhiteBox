@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 
 import db, {
     appendTavernMessage,
+    appendTavernManagerMessage,
     createTavernSession,
     deleteTavernSession,
     deleteTavernMessages,
@@ -12,6 +13,7 @@ import db, {
     getSelectedTavernSessionId,
     getTavernSession,
     listTavernEpisodeSummaries,
+    listTavernManagerMessages,
     listTavernManagerRuns,
     listUserTavernPresets,
     listTavernMessages,
@@ -23,6 +25,7 @@ import db, {
     replaceTavernSessionState,
     saveTavernPreset,
     setActiveTavernPresetId,
+    updateTavernManagerMessage,
     updateTavernMessage,
     updateTavernManagerRun,
     updateTavernSessionState,
@@ -33,16 +36,22 @@ import db, {
 import { DEFAULT_XB_TAVERN_PRESET_ID, createDefaultXbTavernPreset } from '../shared/presets';
 import { buildXbTavernMessages, createXbTavernBuildSnapshot } from '../shared/message-assembler';
 import {
-    parseXbTavernManagerResult,
+    runXbTavernManagerChat,
     runXbTavernManagerAfterTurn,
 } from '../app-src/runtime/manager';
 import {
     ensureTavernMemoryDefaults,
     executeTavernMemoryTool,
+    getTavernManagerToolDefinitions,
     getTavernMemoryIndex,
     listTavernMemoryFiles,
     rebuildTavernMemoryDerivedIndex,
 } from '../shared/memory-files';
+import * as looseToolArgumentsModule from '../../agent-core/runtime/loose-tool-arguments.js';
+
+const { repairLooseToolArguments } = looseToolArgumentsModule as unknown as {
+    repairLooseToolArguments: (text: string, toolName?: string) => string;
+};
 
 test('tavern session db stores independent sessions and messages', async () => {
     await db.delete();
@@ -402,6 +411,167 @@ test('tavern memory files are scoped markdown sources with derived index', async
         .find((file) => file.path === 'memory/turns/20260601-0000.md')?.status, 'stale');
 });
 
+test('ChatHistory range mode treats missing endOrder as open-ended', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'ChatHistory range' });
+    await appendTavernMessage(session.id, { role: 'user', content: '第 0 条。' });
+    await appendTavernMessage(session.id, { role: 'assistant', content: '第 1 条。' });
+    await appendTavernMessage(session.id, { role: 'user', content: '第 2 条。' });
+
+    const result = await executeTavernMemoryTool(session.id, 'ChatHistory', {
+        mode: 'range',
+        startOrder: 1,
+        full: true,
+    });
+
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.messages?.map((message) => message.order), [1, 2]);
+});
+
+test('MemoryRead returns raw content, line numbers, and pagination hints', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Memory read lines' });
+    await executeTavernMemoryTool(session.id, 'MemoryWrite', {
+        filePath: 'memory/state.md',
+        content: ['# 状态栏', '', '## 当前事实', '- 银钥匙在钟楼。', '- 小满知道暗号。'].join('\n'),
+    });
+
+    const result = await executeTavernMemoryTool(session.id, 'MemoryRead', {
+        filePath: 'memory/state.md',
+        offset: 3,
+        limit: 2,
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.lineStart, 3);
+    assert.equal(result.lineEnd, 4);
+    assert.equal(result.totalLines, 5);
+    assert.equal(result.truncated, true);
+    assert.equal(result.nextOffset, 5);
+    assert.match(result.content || '', /## 当前事实/);
+    assert.match(result.numberedContent || '', /^3: ## 当前事实/m);
+});
+
+test('MemoryGrep supports scope, context, pagination, and output modes', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Memory grep paging' });
+    await executeTavernMemoryTool(session.id, 'MemoryWrite', {
+        filePath: 'memory/state.md',
+        content: ['# 状态栏', '银钥匙在钟楼。', '她没有拿走钥匙。', '银钥匙仍是伏笔。'].join('\n'),
+    });
+
+    const firstPage = await executeTavernMemoryTool(session.id, 'MemoryGrep', {
+        pattern: '银钥匙',
+        path: 'memory/state.md',
+        limit: 1,
+        contextLines: 1,
+    });
+
+    assert.equal(firstPage.ok, true);
+    assert.equal(firstPage.count, 2);
+    assert.equal(firstPage.truncated, true);
+    assert.equal(firstPage.nextOffset, 1);
+    assert.equal(firstPage.matches?.[0]?.line, 2);
+    assert.match(firstPage.matches?.[0]?.context || '', /^1: # 状态栏/m);
+
+    const counts = await executeTavernMemoryTool(session.id, 'MemoryGrep', {
+        pattern: '钥匙',
+        path: 'memory/state.md',
+        outputMode: 'count',
+    });
+    assert.equal(counts.matches?.[0]?.count, 3);
+});
+
+test('MemoryEdit persists partial successes and reports diagnostics like ebook Edit', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Memory edit partial' });
+    await executeTavernMemoryTool(session.id, 'MemoryWrite', {
+        filePath: 'memory/state.md',
+        content: ['# 状态栏', '- 旧事实。', '- 保留。'].join('\n'),
+    });
+
+    const edit = await executeTavernMemoryTool(session.id, 'MemoryEdit', {
+        filePath: 'memory/state.md',
+        edits: [
+            { oldString: '旧事实', newString: '新事实' },
+            { oldString: '不存在的片段', newString: '不会出现' },
+        ],
+    });
+
+    assert.equal(edit.ok, false);
+    assert.equal(edit.changed, true);
+    assert.equal(edit.partial, true);
+    assert.equal(edit.appliedCount, 1);
+    assert.equal(edit.failedCount, 1);
+
+    const read = await executeTavernMemoryTool(session.id, 'MemoryRead', {
+        filePath: 'memory/state.md',
+    });
+    assert.match(read.content || '', /新事实/);
+    assert.doesNotMatch(read.content || '', /不会出现/);
+});
+
+test('loose JSON repair knows tavern manager tool arguments', () => {
+    const repairedHistory = JSON.parse(repairLooseToolArguments(
+        '{mode:"range", startOrder:40, full:true, limit:3}',
+        'ChatHistory',
+    ));
+    assert.deepEqual(repairedHistory, {
+        mode: 'range',
+        limit: 3,
+        startOrder: 40,
+        full: true,
+    });
+
+    const repairedGrep = JSON.parse(repairLooseToolArguments(
+        '{query:"银钥匙", scope:"memory/state.md", useRegex:false, contextLines:1}',
+        'MemoryGrep',
+    ));
+    assert.equal(repairedGrep.pattern, '银钥匙');
+    assert.equal(repairedGrep.path, 'memory/state.md');
+    assert.equal(repairedGrep.regex, false);
+    assert.equal(repairedGrep.contextLines, 1);
+});
+
+test('ChatHistory tool schema documents range, grep, pagination, and full content semantics', () => {
+    const chatHistory = getTavernManagerToolDefinitions()
+        .find((tool) => tool.function.name === 'ChatHistory');
+    const parameters = chatHistory?.function.parameters as {
+        properties?: Record<string, { description?: string }>;
+    };
+
+    assert.match(chatHistory?.function.description || '', /original RP chat history/);
+    assert.match(parameters.properties?.mode?.description || '', /recent reads the latest messages/);
+    assert.match(parameters.properties?.offset?.description || '', /pages backward from the newest/);
+    assert.match(parameters.properties?.offset?.description || '', /skips earlier ascending results/);
+    assert.match(parameters.properties?.startOrder?.description || '', /continues through the latest message/);
+    assert.match(parameters.properties?.endOrder?.description || '', /inclusive/);
+    assert.match(parameters.properties?.full?.description || '', /exact wording or source evidence/);
+});
+
+test('MemoryEdit tool schema documents edit modes and array discipline', () => {
+    const editTool = getTavernManagerToolDefinitions()
+        .find((tool) => tool.function.name === 'MemoryEdit');
+    const parameters = editTool?.function.parameters as {
+        properties?: Record<string, { description?: string }>;
+    };
+
+    assert.match(editTool?.function.description || '', /read the current file first/);
+    assert.match(editTool?.function.description || '', /do not mix oldString edits with line-number edits/);
+    assert.match(parameters.properties?.edits?.description || '', /Real non-empty JSON array/);
+    assert.match(parameters.properties?.edits?.description || '', /not a quoted JSON string/);
+    assert.match(parameters.properties?.edits?.description || '', /startLine\/endLine\/newString/);
+    assert.match(parameters.properties?.edits?.description || '', /insertAtLine\/newString/);
+});
+
 test('tavern manager uses memory tools and records tool trace', async () => {
     await db.delete();
     await db.open();
@@ -464,6 +634,60 @@ test('tavern manager uses memory tools and records tool trace', async () => {
     assert.equal(run?.status, 'completed');
     assert.equal(Array.isArray(run?.toolTrace), true);
     assert.equal(run?.changedFiles?.[0], 'memory/turns/20260601-0000.md');
+});
+
+test('tavern manager fails with a specific error when turns markdown cannot be derived', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Invalid turn markdown' });
+    const userMessage = await appendTavernMessage(session.id, { role: 'user', content: '继续。' });
+    const assistantMessage = await appendTavernMessage(session.id, { role: 'assistant', content: '她继续。' });
+    let calls = 0;
+
+    const result = await runXbTavernManagerAfterTurn({
+        sessionId: session.id,
+        agentConfig: {},
+        userMessage,
+        assistantMessage,
+        turn: 1,
+        executeManagerOnce: async () => {
+            calls += 1;
+            if (calls === 1) {
+                return {
+                    provider: 'fake-manager',
+                    model: 'memory-model',
+                    text: '',
+                    toolCalls: [{
+                        id: 'write-turn',
+                        name: 'MemoryWrite',
+                        arguments: {
+                            filePath: 'memory/turns/20260601-0000.md',
+                            content: [
+                                '# Turn 1',
+                                '',
+                                '- Turn: 1',
+                                '',
+                                '## Summary',
+                                '这条 turns 记录缺了 Source。',
+                            ].join('\n'),
+                        },
+                    }],
+                };
+            }
+            return {
+                provider: 'fake-manager',
+                model: 'memory-model',
+                text: '已写入，但格式坏了。',
+            };
+        },
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.error, 'manager_turn_memory_invalid');
+    const run = (await listTavernManagerRuns(session.id))[0];
+    assert.equal(run?.status, 'failed');
+    assert.equal(run?.error, 'manager_turn_memory_invalid');
 });
 
 test('tavern manager accepts older active summaries without accepting fake ids', async () => {
@@ -695,6 +919,127 @@ test('tavern manager fails the run when any memory tool fails', async () => {
     assert.equal((runs[0]?.toolTrace as Array<{ ok?: boolean }>).some((item) => item.ok === false), true);
 });
 
-test('tavern manager result parser requires a small summary', () => {
-    assert.throws(() => parseXbTavernManagerResult('{}'), /manager_turn_summary_required/);
+test('tavern manager chat carries persisted manager history and can read RP raw text through ChatHistory', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Manager chat history' });
+    await appendTavernMessage(session.id, { role: 'user', content: '上一轮原文。' });
+    await appendTavernMessage(session.id, { role: 'assistant', content: '上一轮回复。' });
+    await appendTavernManagerMessage(session.id, { role: 'user', content: '先前问：这段关系现在到哪了？' });
+    await appendTavernManagerMessage(session.id, { role: 'assistant', content: '先前答：还在试探阶段。' });
+
+    let firstRoundMessages = '';
+    let toolNames: string[] = [];
+    let calls = 0;
+    const result = await runXbTavernManagerChat({
+        sessionId: session.id,
+        agentConfig: {},
+        question: '继续看原文，帮我判断。',
+        executeManagerOnce: async (options) => {
+            calls += 1;
+            firstRoundMessages = firstRoundMessages || JSON.stringify(options.messages);
+            toolNames = Array.isArray(options.tools)
+                ? options.tools.map((tool) => String((tool as { function?: { name?: string } }).function?.name || ''))
+                : [];
+            if (calls === 1) {
+                return {
+                    text: '',
+                    toolCalls: [{
+                        id: 'chat-history',
+                        name: 'ChatHistory',
+                        arguments: {
+                            mode: 'recent',
+                            limit: 2,
+                            full: true,
+                        },
+                    }],
+                };
+            }
+            return {
+                text: '我已经读了原文，也保留了管理员自己的上下文。',
+            };
+        },
+    });
+
+    assert.equal(result.ok, true);
+    assert.match(firstRoundMessages, /先前问：这段关系现在到哪了/);
+    assert.match(firstRoundMessages, /先前答：还在试探阶段/);
+    assert.match(firstRoundMessages, /继续看原文，帮我判断/);
+    assert.equal(toolNames.includes('ChatHistory'), true);
+    const run = (await listTavernManagerRuns(session.id))[0];
+    assert.equal(Array.isArray(run?.toolTrace), true);
+    assert.equal((run?.toolTrace as Array<{ name?: string }>)[0]?.name, 'ChatHistory');
+});
+
+test('tavern manager chat cannot write memory turns files', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Manager chat guard' });
+    let calls = 0;
+    const result = await runXbTavernManagerChat({
+        sessionId: session.id,
+        agentConfig: {},
+        question: '帮我直接改 turns。',
+        executeManagerOnce: async () => {
+            calls += 1;
+            if (calls === 1) {
+                return {
+                    text: '',
+                    toolCalls: [{
+                        id: 'write-turn',
+                        name: 'MemoryWrite',
+                        arguments: {
+                            filePath: 'memory/turns/20260601-0000.md',
+                            content: '# Turn 1',
+                        },
+                    }],
+                };
+            }
+            return { text: '不应该成功。' };
+        },
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.error, 'manager_memory_tool_failed');
+    assert.equal((await listTavernMemoryFiles(session.id)).some((file) => file.path.startsWith('memory/turns/')), false);
+    const run = (await listTavernManagerRuns(session.id))[0];
+    assert.equal((run?.toolTrace as Array<{ ok?: boolean; error?: string }>)?.[0]?.ok, false);
+    assert.match((run?.toolTrace as Array<{ error?: string }>)?.[0]?.error || '', /manager_chat_turn_write_forbidden/);
+});
+
+test('tavern manager messages are session-scoped', async () => {
+    await db.delete();
+    await db.open();
+
+    const first = await createTavernSession({ title: 'Manager A' });
+    const second = await createTavernSession({ title: 'Manager B' });
+    await appendTavernManagerMessage(first.id, { role: 'user', content: 'A-1' });
+    await appendTavernManagerMessage(first.id, { role: 'assistant', content: 'A-2' });
+    await appendTavernManagerMessage(second.id, { role: 'user', content: 'B-1' });
+
+    assert.deepEqual((await listTavernManagerMessages(first.id)).map((message) => message.content), ['A-1', 'A-2']);
+    assert.deepEqual((await listTavernManagerMessages(second.id)).map((message) => message.content), ['B-1']);
+});
+
+test('tavern manager message update reuses one timestamp for row and session', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Manager timestamp' });
+    const message = await appendTavernManagerMessage(session.id, { role: 'assistant', content: '旧内容。' });
+    const originalNow = Date.now;
+    let tick = 1000;
+    Date.now = () => {
+        tick += 1;
+        return tick;
+    };
+    try {
+        const updated = await updateTavernManagerMessage(session.id, message.order, { content: '新内容。' });
+        const refreshedSession = await getTavernSession(session.id);
+        assert.equal(updated?.updatedAt, refreshedSession?.updatedAt);
+    } finally {
+        Date.now = originalNow;
+    }
 });

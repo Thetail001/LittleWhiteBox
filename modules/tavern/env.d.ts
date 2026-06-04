@@ -45,6 +45,27 @@ declare module '*.js' {
     export const instruct_presets: Array<Record<string, unknown>>;
     export const system_prompts: Array<Record<string, unknown>>;
     export const power_user: Record<string, Record<string, unknown>>;
+    export const characters: Array<Record<string, unknown>>;
+    export const this_chid: string | number | undefined;
+    export const world_names: string[];
+    export const selected_world_info: string[];
+    export function getWorldInfoSettings(): Record<string, unknown>;
+    export function updateWorldInfoSettings(settings: Record<string, unknown>, activeWorldInfo?: string[]): void;
+    export function updateWorldInfoList(): Promise<void>;
+    export function loadWorldInfo(name: string): Promise<Record<string, unknown> | null>;
+    export function saveWorldInfo(name: string, data: Record<string, unknown>, immediately?: boolean): Promise<void>;
+    export function createWorldInfoEntry(name: string, data: Record<string, unknown>): Record<string, unknown> | undefined;
+    export const SCRIPT_TYPES: { GLOBAL: number; SCOPED: number; PRESET: number };
+    export const regex_placement: Record<string, number>;
+    export const substitute_find_regex: { NONE: number; RAW: number; ESCAPED: number };
+    export function getScriptsByType(scriptType: number, options?: { allowedOnly?: boolean }): Array<Record<string, unknown>>;
+    export function saveScriptsByType(scripts: Array<Record<string, unknown>>, scriptType: number): Promise<void>;
+    export function isScopedScriptsAllowed(character?: unknown): boolean;
+    export function allowScopedScripts(character?: unknown): void;
+    export function isPresetScriptsAllowed(apiId?: string | null, presetName?: string | null): boolean;
+    export function allowPresetScripts(apiId?: string | null, presetName?: string | null): void;
+    export function getCurrentPresetAPI(): string | null;
+    export function getCurrentPresetName(): string | null;
     export const AssistantStorage: {
         get<T = unknown>(key: string, fallback?: T): Promise<T>;
         load(): Promise<Record<string, unknown>>;

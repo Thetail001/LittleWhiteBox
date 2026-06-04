@@ -88,6 +88,19 @@ export interface TavernMessageRecord {
     requestSnapshot?: unknown;
 }
 
+export interface TavernManagerMessageRecord {
+    sessionId: string;
+    order: number;
+    role: 'user' | 'assistant';
+    content: string;
+    error?: boolean;
+    createdAt: number;
+    updatedAt: number;
+    provider?: string;
+    model?: string;
+    finishReason?: string;
+}
+
 export interface TavernTurnSummaryRecord {
     id: string;
     sessionId: string;
@@ -180,6 +193,15 @@ export type TavernAppendMessageInput = XbTavernMessage & {
     requestSnapshot?: unknown;
 };
 
+export type TavernAppendManagerMessageInput = {
+    role: 'user' | 'assistant';
+    content: string;
+    error?: boolean;
+    provider?: string;
+    model?: string;
+    finishReason?: string;
+};
+
 export interface TavernMetaRecord {
     key: string;
     value: unknown;
@@ -212,6 +234,7 @@ export interface TavernAssistantPresetRecord {
 class TavernDatabase extends Dexie {
     sessions!: DexieTable<TavernSessionRecord>;
     messages!: DexieTable<TavernMessageRecord>;
+    managerMessages!: DexieTable<TavernManagerMessageRecord>;
     meta!: DexieTable<TavernMetaRecord>;
     presets!: DexieTable<TavernPresetRecord>;
     turnSummaries!: DexieTable<TavernTurnSummaryRecord>;
@@ -269,6 +292,19 @@ class TavernDatabase extends Dexie {
             await tx.table('presets').clear();
             await tx.table('meta').where('key').equals('activePresetId').delete();
         });
+        this.version(6).stores({
+            sessions: 'id, updatedAt, characterId, characterName',
+            messages: '[sessionId+order], sessionId, order',
+            managerMessages: '[sessionId+order], sessionId, order',
+            meta: 'key',
+            presets: 'id, updatedAt, sourcePresetId',
+            turnSummaries: 'id, sessionId, episodeId, turn, userOrder, assistantOrder, status, updatedAt',
+            episodeSummaries: 'id, sessionId, status, updatedAt, startTurn, endTurn',
+            managerRuns: 'id, sessionId, status, turn, updatedAt',
+            memoryFiles: '[sessionId+path], sessionId, path, status, updatedAt',
+            memoryIndexes: '[sessionId+kind], sessionId, kind, status, updatedAt',
+            assistantPresets: 'id, updatedAt',
+        });
     }
 }
 
@@ -276,6 +312,7 @@ const db = new TavernDatabase();
 
 export const tavernSessionsTable = db.sessions;
 export const tavernMessagesTable = db.messages;
+export const tavernManagerMessagesTable = db.managerMessages;
 export const tavernMetaTable = db.meta;
 export const tavernPresetsTable = db.presets;
 export const tavernTurnSummariesTable = db.turnSummaries;
@@ -451,6 +488,7 @@ export async function deleteTavernSession(sessionId = ''): Promise<number> {
         'rw',
         tavernSessionsTable,
         tavernMessagesTable,
+        tavernManagerMessagesTable,
         tavernTurnSummariesTable,
         tavernEpisodeSummariesTable,
         tavernManagerRunsTable,
@@ -458,8 +496,9 @@ export async function deleteTavernSession(sessionId = ''): Promise<number> {
         tavernMemoryIndexesTable,
         tavernMetaTable,
         async () => {
-            const [messages, turns, episodes, runs, files, indexes] = await Promise.all([
+            const [messages, managerMessages, turns, episodes, runs, files, indexes] = await Promise.all([
                 tavernMessagesTable.where('sessionId').equals(id).toArray(),
+                tavernManagerMessagesTable.where('sessionId').equals(id).toArray(),
                 tavernTurnSummariesTable.where('sessionId').equals(id).toArray(),
                 tavernEpisodeSummariesTable.where('sessionId').equals(id).toArray(),
                 tavernManagerRunsTable.where('sessionId').equals(id).toArray(),
@@ -468,6 +507,7 @@ export async function deleteTavernSession(sessionId = ''): Promise<number> {
             ]);
             await Promise.all([
                 messages.length ? tavernMessagesTable.bulkDelete(messages.map((message) => [message.sessionId, message.order])) : 0,
+                managerMessages.length ? tavernManagerMessagesTable.bulkDelete(managerMessages.map((message) => [message.sessionId, message.order])) : 0,
                 turns.length ? tavernTurnSummariesTable.bulkDelete(turns.map((summary) => summary.id)) : 0,
                 episodes.length ? tavernEpisodeSummariesTable.bulkDelete(episodes.map((episode) => episode.id)) : 0,
                 runs.length ? tavernManagerRunsTable.bulkDelete(runs.map((run) => run.id)) : 0,
@@ -636,6 +676,83 @@ export async function listTavernMessages(sessionId = ''): Promise<TavernMessageR
     const id = String(sessionId || '').trim();
     if (!id) {return [];}
     return tavernMessagesTable.where('sessionId').equals(id).sortBy('order');
+}
+
+export async function appendTavernManagerMessage(
+    sessionId: string,
+    message: TavernAppendManagerMessageInput,
+): Promise<TavernManagerMessageRecord> {
+    const id = String(sessionId || '').trim();
+    if (!id) {throw new Error('session_required');}
+    const existing = await tavernManagerMessagesTable.where('sessionId').equals(id).toArray();
+    const order = Math.max(-1, ...existing.map((item) => Number(item.order) || 0)) + 1;
+    const timestamp = now();
+    const record: TavernManagerMessageRecord = {
+        sessionId: id,
+        order,
+        role: message.role === 'assistant' ? 'assistant' : 'user',
+        content: String(message.content || ''),
+        error: message.error === true,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        provider: 'provider' in message ? String(message.provider || '') : undefined,
+        model: 'model' in message ? String(message.model || '') : undefined,
+        finishReason: 'finishReason' in message ? String(message.finishReason || '') : undefined,
+    };
+    await db.transaction('rw', tavernManagerMessagesTable, tavernSessionsTable, async () => {
+        await tavernManagerMessagesTable.put(record);
+        await tavernSessionsTable.update(id, { updatedAt: timestamp });
+    });
+    return record;
+}
+
+export async function updateTavernManagerMessage(
+    sessionId = '',
+    order = -1,
+    patch: Partial<Pick<TavernManagerMessageRecord, 'content' | 'error' | 'provider' | 'model' | 'finishReason'>>,
+): Promise<TavernManagerMessageRecord | null> {
+    const id = String(sessionId || '').trim();
+    const messageOrder = Number(order);
+    if (!id || !Number.isInteger(messageOrder) || messageOrder < 0) {return null;}
+    const existing = await tavernManagerMessagesTable.get([id, messageOrder]);
+    if (!existing) {return null;}
+    const timestamp = now();
+    const update: Partial<TavernManagerMessageRecord> = {
+        updatedAt: timestamp,
+    };
+    if ('content' in patch) {update.content = String(patch.content || '');}
+    if ('error' in patch) {update.error = patch.error === true;}
+    if ('provider' in patch) {update.provider = String(patch.provider || '');}
+    if ('model' in patch) {update.model = String(patch.model || '');}
+    if ('finishReason' in patch) {update.finishReason = String(patch.finishReason || '');}
+    await tavernManagerMessagesTable.update([id, messageOrder], update);
+    await tavernSessionsTable.update(id, { updatedAt: timestamp });
+    return await tavernManagerMessagesTable.get([id, messageOrder]) || null;
+}
+
+export async function deleteTavernManagerMessages(sessionId = '', orders: number[] = []): Promise<number> {
+    const id = String(sessionId || '').trim();
+    const uniqueOrders = [...new Set((Array.isArray(orders) ? orders : [])
+        .map((order) => Number(order))
+        .filter((order) => Number.isInteger(order) && order >= 0))];
+    if (!id || !uniqueOrders.length) {return 0;}
+    const existingKeys: Array<[string, number]> = [];
+    await Promise.all(uniqueOrders.map(async (order) => {
+        const existing = await tavernManagerMessagesTable.get([id, order]);
+        if (existing) {existingKeys.push([id, order]);}
+    }));
+    if (!existingKeys.length) {return 0;}
+    await db.transaction('rw', tavernManagerMessagesTable, tavernSessionsTable, async () => {
+        await tavernManagerMessagesTable.bulkDelete(existingKeys);
+        await tavernSessionsTable.update(id, { updatedAt: now() });
+    });
+    return existingKeys.length;
+}
+
+export async function listTavernManagerMessages(sessionId = ''): Promise<TavernManagerMessageRecord[]> {
+    const id = String(sessionId || '').trim();
+    if (!id) {return [];}
+    return tavernManagerMessagesTable.where('sessionId').equals(id).sortBy('order');
 }
 
 export async function upsertTavernTurnSummary(input: Partial<TavernTurnSummaryRecord> = {}): Promise<TavernTurnSummaryRecord> {

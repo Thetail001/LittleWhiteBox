@@ -9,7 +9,19 @@ import {
     saveTavernChatPresetBundle,
     selectTavernChatPresetBundle,
 } from './host/chat-presets.js';
+import {
+    deleteTavernRegexScript,
+    listTavernRegexScripts,
+    saveTavernRegexScript,
+} from './host/regex.js';
 import { buildTavernContext } from './host/sillytavern-context.js';
+import {
+    createTavernWorldbookEntry,
+    getTavernWorldbook,
+    listTavernWorldbooks,
+    saveTavernWorldbook,
+    setTavernWorldbookActive,
+} from './host/worldbooks.js';
 
 interface PendingFrameMessage {
     type: string;
@@ -203,6 +215,59 @@ async function handleChatPresetRequest(type: string, payload: Record<string, unk
     }
 }
 
+async function handleWorldbookRequest(type: string, payload: Record<string, unknown> = {}): Promise<void> {
+    const requestId = String(payload.requestId || '');
+    try {
+        let result: unknown;
+        if (type === 'xb-tavern:list-worldbooks') {
+            result = await listTavernWorldbooks();
+        } else if (type === 'xb-tavern:get-worldbook') {
+            result = await getTavernWorldbook(payload.payload);
+        } else if (type === 'xb-tavern:save-worldbook') {
+            result = await saveTavernWorldbook(payload.payload);
+        } else if (type === 'xb-tavern:create-worldbook-entry') {
+            result = await createTavernWorldbookEntry(payload.payload);
+        } else if (type === 'xb-tavern:set-worldbook-active') {
+            result = setTavernWorldbookActive(payload.payload);
+        }
+        replyHostResult(requestId, {
+            ok: true,
+            result: result as Record<string, unknown>,
+        });
+        if (type !== 'xb-tavern:list-worldbooks') {
+            await sendConfigToFrame();
+        }
+    } catch (error) {
+        replyHostResult(requestId, {
+            ok: false,
+            error: error instanceof Error ? error.message : String(error || 'worldbook_failed'),
+        });
+    }
+}
+
+async function handleRegexRequest(type: string, payload: Record<string, unknown> = {}): Promise<void> {
+    const requestId = String(payload.requestId || '');
+    try {
+        let result: unknown;
+        if (type === 'xb-tavern:list-regex-scripts') {
+            result = listTavernRegexScripts();
+        } else if (type === 'xb-tavern:save-regex-script') {
+            result = await saveTavernRegexScript(payload.payload);
+        } else if (type === 'xb-tavern:delete-regex-script') {
+            result = await deleteTavernRegexScript(payload.payload);
+        }
+        replyHostResult(requestId, {
+            ok: true,
+            result: result as Record<string, unknown>,
+        });
+    } catch (error) {
+        replyHostResult(requestId, {
+            ok: false,
+            error: error instanceof Error ? error.message : String(error || 'regex_failed'),
+        });
+    }
+}
+
 async function createOverlay(): Promise<HTMLElement> {
     const overlay = await createFirstPartyIframeOverlay({
         overlayId: OVERLAY_ID,
@@ -289,6 +354,18 @@ function handleFrameMessage(event: MessageEvent): void {
         case 'xb-tavern:save-chat-preset':
         case 'xb-tavern:select-chat-preset':
             void handleChatPresetRequest(data.type, data.payload || {});
+            break;
+        case 'xb-tavern:list-worldbooks':
+        case 'xb-tavern:get-worldbook':
+        case 'xb-tavern:save-worldbook':
+        case 'xb-tavern:create-worldbook-entry':
+        case 'xb-tavern:set-worldbook-active':
+            void handleWorldbookRequest(data.type, data.payload || {});
+            break;
+        case 'xb-tavern:list-regex-scripts':
+        case 'xb-tavern:save-regex-script':
+        case 'xb-tavern:delete-regex-script':
+            void handleRegexRequest(data.type, data.payload || {});
             break;
         default:
             break;

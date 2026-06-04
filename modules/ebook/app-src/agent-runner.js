@@ -82,9 +82,9 @@ function prefixLatestUserMessage(messages = [], contextText = '') {
         return {
             ...message,
             content: [
-                context,
                 '[用户本轮请求]',
                 String(message.content || ''),
+                context,
             ].filter(Boolean).join('\n\n'),
         };
     });
