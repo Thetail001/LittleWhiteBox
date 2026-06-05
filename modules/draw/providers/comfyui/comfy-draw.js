@@ -1047,13 +1047,48 @@ async function fetchComfyCloudImageFromWorkflow(workflow, { signal, timeoutMs, p
             throw new Error('Comfy Cloud 未返回图片数据。请检查工作流是否包含 SaveImage 节点。');
         }
 
-        // 5. Cloud 模式：返回 view URL 而非 base64（浏览器无法直接下载 GCS 图片 due to CORS）
-        const viewUrl = createComfyUrl('/api/view', {
-            filename: imgInfo.filename,
-            subfolder: imgInfo.subfolder,
-            type: imgInfo.type,
-        }).toString();
-        return viewUrl;
+        // 5. 获取图片：使用 no-cors fetch 获取最终重定向 URL（GCS 签名 URL）
+        const downloadTimeout = 60000;
+        const downloadController = new AbortController();
+        const downloadTimer = setTimeout(() => downloadController.abort(), downloadTimeout);
+        if (signal) {
+            signal.addEventListener('abort', () => downloadController.abort());
+        }
+        
+        try {
+            // 优先使用 Comfy Cloud 提供的直接 URL
+            if (imgInfo.url) {
+                return imgInfo.url;
+            }
+
+            const viewUrl = createComfyUrl('/api/view', {
+                filename: imgInfo.filename,
+                subfolder: imgInfo.subfolder,
+                type: imgInfo.type,
+            });
+
+            // 使用 no-cors 模式获取最终重定向 URL（浏览器会跟随 302 到 GCS）
+            const response = await fetch(viewUrl, {
+                mode: 'no-cors',
+                redirect: 'follow',
+                headers: getComfyAuthHeaders(),
+                signal: downloadController.signal,
+            });
+
+            const finalUrl = response.url;
+            console.log('[ComfyDraw] Cloud image URL:', finalUrl);
+
+            if (finalUrl && finalUrl !== viewUrl.toString()) {
+                return finalUrl;
+            }
+
+            throw new Error('无法获取图片下载 URL');
+        } catch (error) {
+            if (error?.name === 'AbortError') throw new Error(signal?.aborted ? '已取消' : '生成超时');
+            throw error;
+        } finally {
+            clearTimeout(downloadTimer);
+        }
     } finally {
         deadline.cleanup();
     }
