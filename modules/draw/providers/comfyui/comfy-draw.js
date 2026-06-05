@@ -1047,13 +1047,49 @@ async function fetchComfyCloudImageFromWorkflow(workflow, { signal, timeoutMs, p
             throw new Error('Comfy Cloud 未返回图片数据。请检查工作流是否包含 SaveImage 节点。');
         }
 
-        // 5. 下载图片（/api/view 返回 302 重定向，fetch 自动跟随）
-        const blob = await fetchComfyDirectBlob('/api/view', {
-            filename: imgInfo.filename,
-            subfolder: imgInfo.subfolder,
-            type: imgInfo.type,
-        }, { signal: deadline.signal, timeoutMs });
-        return await readBlobAsBase64(blob);
+        // 5. 下载图片（/api/view 返回 302 重定向到签名 URL）
+        const isProxy = !settings.host.includes('cloud.comfy.org');
+        if (isProxy) {
+            // 代理路径：手动处理 302，避免浏览器跨域
+            const viewResponse = await fetch(createComfyUrl('/api/view', {
+                filename: imgInfo.filename,
+                subfolder: imgInfo.subfolder,
+                type: imgInfo.type,
+            }, settings), {
+                headers: getComfyAuthHeaders(settings),
+                redirect: 'manual',
+                signal: deadline.signal,
+            });
+            
+            if (viewResponse.status === 302) {
+                const location = viewResponse.headers.get('location');
+                if (!location) throw new Error('Cloud 返回 302 但没有 Location 头');
+                
+                // 将签名 URL 转换为代理路径 URL
+                const locationUrl = new URL(location);
+                const proxyBase = new URL(settings.host);
+                // 保持签名参数，但走代理路径
+                const proxyUrl = new URL(proxyBase.pathname + locationUrl.pathname.replace(/^\//, '') + locationUrl.search, proxyBase);
+                
+                const imageResponse = await fetch(proxyUrl.toString(), {
+                    signal: deadline.signal,
+                });
+                if (!imageResponse.ok) throw new Error(`下载图片失败: HTTP ${imageResponse.status}`);
+                const blob = await imageResponse.blob();
+                return await readBlobAsBase64(blob);
+            }
+            
+            if (!viewResponse.ok) throw new Error(`下载图片失败: HTTP ${viewResponse.status}`);
+            return await readBlobAsBase64(await viewResponse.blob());
+        } else {
+            // 直接访问：fetch 自动跟随 302
+            const blob = await fetchComfyDirectBlob('/api/view', {
+                filename: imgInfo.filename,
+                subfolder: imgInfo.subfolder,
+                type: imgInfo.type,
+            }, { signal: deadline.signal, timeoutMs });
+            return await readBlobAsBase64(blob);
+        }
     } finally {
         deadline.cleanup();
     }
