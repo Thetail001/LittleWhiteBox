@@ -1047,26 +1047,13 @@ async function fetchComfyCloudImageFromWorkflow(workflow, { signal, timeoutMs, p
             throw new Error('Comfy Cloud 未返回图片数据。请检查工作流是否包含 SaveImage 节点。');
         }
 
-        // 5. 下载图片（使用独立的 timeout，避免轮询超时导致下载失败）
-        const downloadTimeout = 60000; // 60秒下载超时
-        const downloadController = new AbortController();
-        const downloadTimer = setTimeout(() => downloadController.abort(), downloadTimeout);
-        if (signal) {
-            signal.addEventListener('abort', () => downloadController.abort());
-        }
-        
-        try {
-            // 通过 SillyTavern 代理路径下载，避免浏览器直接访问 GCS 触发 CORS
-            const downloadResponse = await requestComfyTransport('view', {
-                filename: imgInfo.filename,
-                subfolder: imgInfo.subfolder,
-                type: imgInfo.type,
-            }, { signal: downloadController.signal, timeoutMs: downloadTimeout });
-            const blob = await downloadResponse.blob();
-            return await readBlobAsBase64(blob);
-        } finally {
-            clearTimeout(downloadTimer);
-        }
+        // 5. Cloud 模式：返回 view URL 而非 base64（浏览器无法直接下载 GCS 图片 due to CORS）
+        const viewUrl = createComfyUrl('/api/view', {
+            filename: imgInfo.filename,
+            subfolder: imgInfo.subfolder,
+            type: imgInfo.type,
+        }).toString();
+        return viewUrl;
     } finally {
         deadline.cleanup();
     }
@@ -1383,7 +1370,11 @@ function injectPromptIntoWorkflow(workflow, positive, negative, width, height, n
     return wf;
 }
 
-export async function generateComfyImage({ prompt, negativePrompt = '', params = {}, signal } = {}) {
+export function isComfyImageUrl(result) {
+    return typeof result === 'string' && /^https?:\/\//.test(result);
+}
+
+async function generateComfyImage({ prompt, negativePrompt = '', params = {}, signal } = {}) {
     const settings = getSettings();
     const effective = getEffectiveParams(settings, params);
 
@@ -4325,7 +4316,7 @@ export async function generateImagesFromText(options = {}) {
 
         options.onStateChange?.('progress', { current: i + 1, total: tasks.length });
         try {
-            const base64 = await generateComfyImageQueued({
+            const result = await generateComfyImageQueued({
                 prompt: promptData.positive,
                 negativePrompt: promptData.negative,
                 params,
@@ -4339,12 +4330,14 @@ export async function generateImagesFromText(options = {}) {
                     }
                 },
             });
+            const isUrl = isComfyImageUrl(result);
             await storePreview({
                 ...galleryMeta,
                 imgId,
                 slotId,
                 messageId,
-                base64,
+                base64: isUrl ? null : result,
+                savedUrl: isUrl ? result : null,
                 tags: task.scene || options.promptOverride || '',
                 positive: promptData.positive,
                 characterPrompts: promptData.characterPrompts,
@@ -4360,7 +4353,7 @@ export async function generateImagesFromText(options = {}) {
                 tags: task.scene || options.promptOverride || '',
                 positive: promptData.positive,
                 negativePrompt: promptData.negative,
-                displayUrl: getPreviewDisplayUrl({ imgId, base64 }),
+                displayUrl: getPreviewDisplayUrl({ imgId, base64: isUrl ? null : result, savedUrl: isUrl ? result : null }),
                 success: true,
             });
         } catch (error) {
@@ -4818,14 +4811,15 @@ async function refreshSingleImage(container) {
         setImageState(container, ImageState.REFRESHING);
         const settings = getSettings();
         const params = getEffectiveParams(settings);
-        const base64 = await generateComfyImageQueued({
+        const result = await generateComfyImageQueued({
             prompt,
             negativePrompt: promptData.negative || preview?.negativePrompt || params.negativePrefix || '',
             params,
         });
+        const isUrl = isComfyImageUrl(result);
         const imgId = generateImgId();
         await storePreview({
-            imgId, slotId, messageId, base64,
+            imgId, slotId, messageId, base64: isUrl ? null : result, savedUrl: isUrl ? result : null,
             tags: container.dataset.tags || prompt, positive: prompt,
             characterPrompts: preview?.characterPrompts || [],
             negativePrompt: promptData.negative || preview?.negativePrompt || params.negativePrefix || '', anchor: '',
@@ -4835,7 +4829,7 @@ async function refreshSingleImage(container) {
         const previews = await getPreviewsBySlot(slotId);
         const successPreviews = previews.filter(p => p.status !== 'failed' && (p.base64 || p.savedUrl));
         const html = buildImageHtml({
-            slotId, imgId, url: getPreviewDisplayUrl({ imgId, base64 }),
+            slotId, imgId, url: getPreviewDisplayUrl({ imgId, base64: isUrl ? null : result, savedUrl: isUrl ? result : null }),
             tags: container.dataset.tags || prompt, positive: prompt,
             messageId, historyCount: Math.max(1, successPreviews.length), currentIndex: 0,
         });
@@ -4869,10 +4863,11 @@ async function retryFailedImage(container) {
         const positive = joinTags(params.positivePrefix || '', tags, charPositive);
         const negative = latestFailed?.negativePrompt || params.negativePrefix || '';
 
-        const base64 = await generateComfyImageQueued({ prompt: positive, negativePrompt: negative, params });
+        const result = await generateComfyImageQueued({ prompt: positive, negativePrompt: negative, params });
+        const isUrl = isComfyImageUrl(result);
         const imgId = generateImgId();
         await storePreview({
-            imgId, slotId, messageId, base64, tags, positive,
+            imgId, slotId, messageId, base64: isUrl ? null : result, savedUrl: isUrl ? result : null, tags, positive,
             characterPrompts: latestFailed?.characterPrompts || [],
             negativePrompt: negative, anchor: latestFailed?.anchor || '',
         });
@@ -4881,7 +4876,7 @@ async function retryFailedImage(container) {
 
         // eslint-disable-next-line no-unsanitized/property
         container.outerHTML = buildImageHtml({
-            slotId, imgId, url: getPreviewDisplayUrl({ imgId, base64 }),
+            slotId, imgId, url: getPreviewDisplayUrl({ imgId, base64: isUrl ? null : result, savedUrl: isUrl ? result : null }),
             tags, positive, messageId, state: ImageState.PREVIEW, historyCount: 1, currentIndex: 0,
         });
         toastr.success('图片生成成功');
@@ -5064,7 +5059,7 @@ export async function generateAndInsertImages({
 
             let incrementalHtml = '';
             try {
-                const base64 = await generateComfyImageQueued({
+                const result = await generateComfyImageQueued({
                     prompt: promptData.positive,
                     negativePrompt: promptData.negative,
                     params,
@@ -5082,8 +5077,9 @@ export async function generateAndInsertImages({
                     },
                     cooldownMs: i < tasks.length - 1 ? FIXED_COMFY_REQUEST_DELAY_MS : 0,
                 });
+                const isUrl = isComfyImageUrl(result);
                 await storePreview({
-                    imgId, slotId, messageId: resolvedMessageId, base64,
+                    imgId, slotId, messageId: resolvedMessageId, base64: isUrl ? null : result, savedUrl: isUrl ? result : null,
                     tags: task.scene || promptOverride, positive: promptData.positive,
                     characterPrompts: promptData.characterPrompts,
                     negativePrompt: promptData.negative, anchor: task.anchor || '',
@@ -5092,7 +5088,7 @@ export async function generateAndInsertImages({
                 successCount++;
                 results.push({ slotId, imgId, success: true });
                 incrementalHtml = buildImageHtml({
-                    slotId, imgId, url: getPreviewDisplayUrl({ imgId, base64 }),
+                    slotId, imgId, url: getPreviewDisplayUrl({ imgId, base64: isUrl ? null : result, savedUrl: isUrl ? result : null }),
                     tags: task.scene || promptOverride, positive: promptData.positive,
                     messageId: resolvedMessageId, state: ImageState.PREVIEW, historyCount: 1, currentIndex: 0,
                 });
@@ -5181,7 +5177,7 @@ async function testGenerateFromSettingsPanel() {
     try {
         const settings = getSettings();
         const effective = getEffectiveParams(settings);
-        const base64 = await generateComfyImageQueued({
+        const result = await generateComfyImageQueued({
             prompt: composePrompt(effective.positivePrefix, prompt),
             negativePrompt: composePrompt(effective.negativePrefix, getValue('comfy-draw-test-negative')),
             params: effective,
@@ -5198,7 +5194,7 @@ async function testGenerateFromSettingsPanel() {
         if (resultEl) {
             resultEl.replaceChildren();
             const img = document.createElement('img');
-            img.src = `data:image/png;base64,${base64}`;
+            img.src = isComfyImageUrl(result) ? result : `data:image/png;base64,${result}`;
             resultEl.appendChild(img);
         }
         toastr.success('测试生成成功');
