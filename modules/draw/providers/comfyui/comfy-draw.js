@@ -1056,11 +1056,13 @@ async function fetchComfyCloudImageFromWorkflow(workflow, { signal, timeoutMs, p
         }
         
         try {
-            const blob = await fetchComfyDirectBlob('/api/view', {
+            // 通过 SillyTavern 代理路径下载，避免浏览器直接访问 GCS 触发 CORS
+            const downloadResponse = await requestComfyTransport('view', {
                 filename: imgInfo.filename,
                 subfolder: imgInfo.subfolder,
                 type: imgInfo.type,
             }, { signal: downloadController.signal, timeoutMs: downloadTimeout });
+            const blob = await downloadResponse.blob();
             return await readBlobAsBase64(blob);
         } finally {
             clearTimeout(downloadTimer);
