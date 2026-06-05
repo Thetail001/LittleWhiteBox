@@ -1056,61 +1056,12 @@ async function fetchComfyCloudImageFromWorkflow(workflow, { signal, timeoutMs, p
         }
         
         try {
-            if (isProxy) {
-                // 代理路径：手动处理 302，避免浏览器跨域
-                const viewResponse = await fetch(createComfyUrl('/api/view', {
-                    filename: imgInfo.filename,
-                    subfolder: imgInfo.subfolder,
-                    type: imgInfo.type,
-                }, cloudSettings), {
-                    headers: getComfyAuthHeaders(cloudSettings),
-                    redirect: 'manual',
-                    signal: downloadController.signal,
-                });
-                
-                if (viewResponse.status === 302) {
-                    const location = viewResponse.headers.get('location');
-                    if (!location) throw new Error('Cloud 返回 302 但没有 Location 头');
-                    
-                    // 尝试直接访问签名 URL（可能跨域，但 CDN 通常有 CORS）
-                    try {
-                        const imageResponse = await fetch(location, {
-                            signal: downloadController.signal,
-                        });
-                        if (!imageResponse.ok) throw new Error(`下载图片失败: HTTP ${imageResponse.status}`);
-                        const blob = await imageResponse.blob();
-                        return await readBlobAsBase64(blob);
-                    } catch (directError) {
-                        // 如果直接访问失败（CORS 或网络），尝试通过代理路径下载
-                        console.warn('直接访问签名 URL 失败，尝试代理路径:', directError);
-                        
-                        // 将签名 URL 转换为代理路径（假设 CDN 域名可代理）
-                        const locationUrl = new URL(location);
-                        const proxyBase = new URL(cloudSettings.host);
-                        // 构造代理 URL: host/api/comfy-proxy/{domain}/{path}
-                        const proxyPath = `/api/comfy-proxy/${locationUrl.hostname}${locationUrl.pathname}${locationUrl.search}`;
-                        const proxyUrl = new URL(proxyPath, proxyBase.origin).toString();
-                        
-                        const imageResponse = await fetch(proxyUrl, {
-                            signal: downloadController.signal,
-                        });
-                        if (!imageResponse.ok) throw new Error(`代理下载图片失败: HTTP ${imageResponse.status}`);
-                        const blob = await imageResponse.blob();
-                        return await readBlobAsBase64(blob);
-                    }
-                }
-                
-                if (!viewResponse.ok) throw new Error(`下载图片失败: HTTP ${viewResponse.status}`);
-                return await readBlobAsBase64(await viewResponse.blob());
-            } else {
-                // 直接访问：fetch 自动跟随 302
-                const blob = await fetchComfyDirectBlob('/api/view', {
-                    filename: imgInfo.filename,
-                    subfolder: imgInfo.subfolder,
-                    type: imgInfo.type,
-                }, { signal: downloadController.signal, timeoutMs: downloadTimeout });
-                return await readBlobAsBase64(blob);
-            }
+            const blob = await fetchComfyDirectBlob('/api/view', {
+                filename: imgInfo.filename,
+                subfolder: imgInfo.subfolder,
+                type: imgInfo.type,
+            }, { signal: downloadController.signal, timeoutMs: downloadTimeout });
+            return await readBlobAsBase64(blob);
         } finally {
             clearTimeout(downloadTimer);
         }
