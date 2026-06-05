@@ -1,3 +1,5 @@
+import type { TavernRegexApplicationSummary } from './regex';
+
 export enum XBTavernWorldPosition {
     before = 0,
     after = 1,
@@ -28,6 +30,7 @@ export interface XbTavernMessage {
     role: XbTavernRole;
     content: string;
     name?: string;
+    thoughts?: Array<{ label?: string; text?: string }>;
 }
 
 export interface XbTavernCharacter {
@@ -61,6 +64,7 @@ export interface XbTavernHistoryMessage {
     message?: string;
     name?: string;
     is_user?: boolean;
+    thoughts?: Array<{ label?: string; text?: string }>;
 }
 
 export interface XbTavernWorldBook {
@@ -322,6 +326,7 @@ export interface XbTavernMessageBuildResult {
         historyMode: 'raw' | 'squash';
         squashedHistory: boolean;
         rawMessagesJson: string;
+        regexApplications?: TavernRegexApplicationSummary;
         worldBudget: {
             enabled: boolean;
             limit: number;
@@ -349,6 +354,7 @@ export interface XbTavernBuildSnapshot {
     messageChars: number;
     messageLayers: XbTavernMessageLayer[];
     rawMessagesJson: string;
+    regexApplications?: TavernRegexApplicationSummary;
     activatedWorldEntries: Array<{
         uid: string | number;
         sourceWorldBook: string;
@@ -362,6 +368,9 @@ export interface XbTavernBuildSnapshot {
     scanTextChars: number;
     diagnostics?: unknown;
 }
+
+export type XbTavernWorldEntriesTransform = (entries: ActivatedWorldEntry[]) => ActivatedWorldEntry[] | Promise<ActivatedWorldEntry[]>;
+export type XbTavernConversationMessagesTransform = (messages: XbTavernMessage[]) => XbTavernMessage[] | Promise<XbTavernMessage[]>;
 
 const ROLE_BY_NUMBER: Record<number, XbTavernRole> = {
     [XBTavernPromptRole.SYSTEM]: 'system',
@@ -445,6 +454,46 @@ function makeMessage(role: unknown, content: unknown, extra: Partial<XbTavernMes
         role: normalizeRole(role),
         content: text,
         ...extra,
+    };
+}
+
+function normalizeThoughtBlocks(value: unknown): Array<{ label: string; text: string }> {
+    if (!Array.isArray(value)) {return [];}
+    return value
+        .map((thought, index) => {
+            const record = thought && typeof thought === 'object' ? thought as Record<string, unknown> : {};
+            const text = normalizeText(record.text);
+            if (!text) {return null;}
+            return {
+                label: normalizeText(record.label) || `reasoning ${index + 1}`,
+                text,
+            };
+        })
+        .filter((thought): thought is { label: string; text: string } => !!thought);
+}
+
+function renderPromptReasoning(thoughts: Array<{ label?: string; text?: string }> = []): string {
+    const normalized = normalizeThoughtBlocks(thoughts);
+    if (!normalized.length) {return '';}
+    return [
+        '<reasoning>',
+        ...normalized.map((thought) => [
+            `<thought label="${normalizeText(thought.label).replace(/"/g, '&quot;')}">`,
+            thought.text,
+            '</thought>',
+        ].join('\n')),
+        '</reasoning>',
+    ].join('\n');
+}
+
+function appendPromptReasoningToMessage(message: XbTavernMessage): XbTavernMessage {
+    const { thoughts: _thoughts, ...providerMessage } = message;
+    if (message.role !== 'assistant') {return providerMessage;}
+    const reasoning = renderPromptReasoning(message.thoughts || []);
+    if (!reasoning) {return providerMessage;}
+    return {
+        ...providerMessage,
+        content: [message.content, reasoning].filter(Boolean).join('\n\n'),
     };
 }
 
@@ -1181,7 +1230,10 @@ function buildPromptManagerOrderedUnits(options: {
 function normalizeHistoryMessage(message: XbTavernHistoryMessage = {}): XbTavernMessage | null {
     const role = message.is_user === true ? 'user' : normalizeRole(message.role, 'assistant');
     if (role === 'tool') {return null;}
-    return makeMessage(role, message.content || message.mes || message.message, message.name ? { name: String(message.name) } : {});
+    return makeMessage(role, message.content || message.mes || message.message, {
+        ...(message.name ? { name: String(message.name) } : {}),
+        ...(normalizeThoughtBlocks(message.thoughts).length ? { thoughts: normalizeThoughtBlocks(message.thoughts) } : {}),
+    });
 }
 
 export function squashChatHistory(history: XbTavernHistoryMessage[] = [], options: {
@@ -1313,11 +1365,28 @@ function dedupeWorldEntries(entries: XbTavernWorldEntry[] = []): XbTavernWorldEn
     return result;
 }
 
-export function buildXbTavernMessages(
+interface PreparedXbTavernMessageBuild {
+    character: XbTavernCharacter;
+    user: XbTavernUser;
+    history: XbTavernHistoryMessage[];
+    currentUserMessage: string;
+    historyMode: 'raw' | 'squash';
+    squashRole?: XbTavernRole;
+    memoryContext: XbTavernMemoryContext;
+    presetSections: NormalizedPresetSection[];
+    scanText: string;
+    worldSettings: XbTavernWorldSettings;
+    worldEntryCandidates: XbTavernWorldEntryCandidate[];
+    activatedWorldEntries: ActivatedWorldEntry[];
+    budgetDebug: ReturnType<typeof buildWorldBudgetDebug>;
+    promptConversationMessages?: XbTavernMessage[];
+}
+
+function prepareXbTavernMessageBuild(
     context: XbTavernContext = {},
     chatPreset: TavernChatPromptPresetBundle = {},
     runtimeState: XbTavernRuntimeState = {},
-): XbTavernMessageBuildResult {
+): PreparedXbTavernMessageBuild {
     const character = context.character || {};
     const user = context.user || {};
     const history = context.history || [];
@@ -1340,18 +1409,66 @@ export function buildXbTavernMessages(
     const budgetDebug = buildWorldBudgetDebug(activatedBeforeBudget, worldSettings);
     const worldEntryCandidates = buildWorldEntryCandidates(worldEntries, activatedBeforeBudget, worldSettings, budgetDebug);
     const activatedWorldEntries = activatedBeforeBudget.filter((entry) => !budgetDebug.enabled || budgetDebug.includedKeys.has(entry.activationKey));
-    const worldBuckets = groupWorldEntries(activatedWorldEntries);
-    const historyMessages = buildHistoryMessages(history, {
-        mode: historyMode,
-        role: runtimeState.squashRole || 'system',
-        userName: user.name,
-        characterName: character.name,
+    return {
+        character,
+        user,
+        history,
+        currentUserMessage,
+        historyMode,
+        squashRole: runtimeState.squashRole,
+        memoryContext,
+        presetSections,
+        scanText,
+        worldSettings,
+        worldEntryCandidates,
+        activatedWorldEntries,
+        budgetDebug,
+    };
+}
+
+function buildPromptConversationMessages(
+    prepared: PreparedXbTavernMessageBuild,
+    chatPreset: TavernChatPromptPresetBundle = {},
+): XbTavernMessage[] {
+    const historyMessages = buildHistoryMessages(prepared.history, {
+        mode: prepared.historyMode,
+        role: prepared.squashRole || 'system',
+        userName: prepared.user.name,
+        characterName: prepared.character.name,
         separator: chatPreset.historySeparator,
     });
-    const currentUser = makeMessage('user', currentUserMessage);
+    const currentUser = makeMessage('user', prepared.currentUserMessage);
+    return compactMessages([...historyMessages, currentUser]);
+}
+
+function buildXbTavernMessagesFromPrepared(
+    chatPreset: TavernChatPromptPresetBundle = {},
+    prepared: PreparedXbTavernMessageBuild,
+    regexApplications?: TavernRegexApplicationSummary,
+): XbTavernMessageBuildResult {
+    const {
+        character,
+        user,
+        history,
+        currentUserMessage,
+        historyMode,
+        squashRole,
+        memoryContext,
+        presetSections,
+        scanText,
+        worldSettings,
+        worldEntryCandidates,
+        activatedWorldEntries,
+        budgetDebug,
+    } = prepared;
+    const worldBuckets = groupWorldEntries(activatedWorldEntries);
+    void history;
+    void currentUserMessage;
+    void squashRole;
 
     const conversationMessages = insertDepthMessages(
-        compactMessages([...historyMessages, currentUser]),
+        (prepared.promptConversationMessages || buildPromptConversationMessages(prepared, chatPreset))
+            .map(appendPromptReasoningToMessage),
         buildDepthMessages(worldBuckets.atDepth),
     );
 
@@ -1365,12 +1482,13 @@ export function buildXbTavernMessages(
     const conversationUnits = conversationMessages.map((message, index) => ({
         message,
         layer: message.role === 'user' ? 'current-user/history' : 'history',
-        label: message.role === 'user' && message.content === currentUserMessage ? 'current user message' : `history ${index + 1}`,
+        label: `history ${index + 1}`,
     }));
     let currentUserUnitIndex = -1;
     for (let index = conversationUnits.length - 1; index >= 0; index -= 1) {
-        if (conversationUnits[index]?.label === 'current user message') {
+        if (conversationUnits[index]?.message?.role === 'user') {
             currentUserUnitIndex = index;
+            conversationUnits[index].label = 'current user message';
             break;
         }
     }
@@ -1422,6 +1540,7 @@ export function buildXbTavernMessages(
             historyMode,
             squashedHistory: historyMode !== 'raw',
             rawMessagesJson: JSON.stringify(messages, null, 2),
+            ...(regexApplications ? { regexApplications } : {}),
             worldBudget: {
                 enabled: budgetDebug.enabled,
                 limit: budgetDebug.limit,
@@ -1434,6 +1553,49 @@ export function buildXbTavernMessages(
             worldEntryStateUpdates: buildWorldEntryStateUpdates(activatedWorldEntries, worldSettings),
         },
     };
+}
+
+export function buildXbTavernMessages(
+    context: XbTavernContext = {},
+    chatPreset: TavernChatPromptPresetBundle = {},
+    runtimeState: XbTavernRuntimeState = {},
+): XbTavernMessageBuildResult {
+    return buildXbTavernMessagesFromPrepared(
+        chatPreset,
+        prepareXbTavernMessageBuild(context, chatPreset, runtimeState),
+    );
+}
+
+export async function buildXbTavernMessagesAsync(
+    context: XbTavernContext = {},
+    chatPreset: TavernChatPromptPresetBundle = {},
+    runtimeState: XbTavernRuntimeState = {},
+    options: {
+        transformWorldEntries?: XbTavernWorldEntriesTransform;
+        transformConversationMessages?: XbTavernConversationMessagesTransform;
+        regexApplications?: TavernRegexApplicationSummary;
+    } = {},
+): Promise<XbTavernMessageBuildResult> {
+    const prepared = prepareXbTavernMessageBuild(context, chatPreset, runtimeState);
+    if (options.transformWorldEntries) {
+        prepared.activatedWorldEntries = (await options.transformWorldEntries(prepared.activatedWorldEntries))
+            .map((entry) => ({
+                ...entry,
+                content: normalizeText(entry.content),
+                contentChars: normalizeText(entry.content).length,
+            }))
+            .filter((entry) => !!entry.content);
+    }
+    if (options.transformConversationMessages) {
+        prepared.promptConversationMessages = compactMessages(
+            (await options.transformConversationMessages(buildPromptConversationMessages(prepared, chatPreset)))
+                .map((message) => ({
+                    ...message,
+                    content: normalizeText(message.content),
+                })),
+        );
+    }
+    return buildXbTavernMessagesFromPrepared(chatPreset, prepared, options.regexApplications);
 }
 
 export function createXbTavernBuildSnapshot(
@@ -1464,6 +1626,7 @@ export function createXbTavernBuildSnapshot(
         messageChars: result.messages.reduce((sum, message) => sum + String(message.content || '').length, 0),
         messageLayers: result.messageLayers,
         rawMessagesJson: result.meta.rawMessagesJson,
+        ...(result.meta.regexApplications ? { regexApplications: result.meta.regexApplications } : {}),
         activatedWorldEntries: result.activatedWorldEntries.map((entry) => {
             const candidate = candidateByKey.get(entry.activationKey);
             return {

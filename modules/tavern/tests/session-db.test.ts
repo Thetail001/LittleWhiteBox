@@ -130,6 +130,7 @@ test('tavern session db stores only cloneable snapshots from runtime inputs', as
     await appendTavernMessage(session.id, {
         role: 'assistant',
         content: 'OK.',
+        thoughts: [{ label: 'thinking', text: 'Reasoning.' }],
         providerPayload: {
             text: 'OK.',
             helper: () => 'not cloneable',
@@ -142,6 +143,7 @@ test('tavern session db stores only cloneable snapshots from runtime inputs', as
 
     const messages = await listTavernMessages(session.id);
     assert.equal(messages.length, 1);
+    assert.deepEqual(messages[0]?.thoughts, [{ label: 'thinking', text: 'Reasoning.' }]);
     assert.deepEqual(messages[0]?.providerPayload, { text: 'OK.' });
     assert.deepEqual(messages[0]?.requestSnapshot, { messageCount: 1 });
 });
@@ -190,11 +192,19 @@ test('tavern session db updates and deletes message records by order', async () 
 
     const session = await createTavernSession({ title: 'Edit messages' });
     await appendTavernMessage(session.id, { role: 'user', content: 'Original user.' });
-    await appendTavernMessage(session.id, { role: 'assistant', content: 'Original assistant.' });
+    await appendTavernMessage(session.id, {
+        role: 'assistant',
+        content: 'Original assistant.',
+        thoughts: [{ label: '旧思考', text: '旧内容。' }],
+    });
     await appendTavernMessage(session.id, { role: 'user', content: 'Next user.' });
 
     const updated = await updateTavernMessage(session.id, 0, { content: 'Edited user.' });
     assert.equal(updated?.content, 'Edited user.');
+    const updatedAssistant = await updateTavernMessage(session.id, 1, {
+        thoughts: [{ label: '新思考', text: '新内容。' }],
+    });
+    assert.deepEqual(updatedAssistant?.thoughts, [{ label: '新思考', text: '新内容。' }]);
 
     assert.equal(await deleteTavernMessages(session.id, [1]), 1);
     const messages = await listTavernMessages(session.id);
@@ -417,7 +427,11 @@ test('ChatHistory range mode treats missing endOrder as open-ended', async () =>
 
     const session = await createTavernSession({ title: 'ChatHistory range' });
     await appendTavernMessage(session.id, { role: 'user', content: '第 0 条。' });
-    await appendTavernMessage(session.id, { role: 'assistant', content: '第 1 条。' });
+    await appendTavernMessage(session.id, {
+        role: 'assistant',
+        content: '第 1 条。',
+        thoughts: [{ label: 'hidden', text: '第 1 条思考。' }],
+    });
     await appendTavernMessage(session.id, { role: 'user', content: '第 2 条。' });
 
     const result = await executeTavernMemoryTool(session.id, 'ChatHistory', {
@@ -428,6 +442,14 @@ test('ChatHistory range mode treats missing endOrder as open-ended', async () =>
 
     assert.equal(result.ok, true);
     assert.deepEqual(result.messages?.map((message) => message.order), [1, 2]);
+    assert.deepEqual(result.messages?.[0]?.thoughts, [{ label: 'hidden', text: '第 1 条思考。' }]);
+
+    const preview = await executeTavernMemoryTool(session.id, 'ChatHistory', {
+        mode: 'range',
+        startOrder: 1,
+        limit: 1,
+    });
+    assert.equal(preview.messages?.[0]?.reasoningSnippet, '第 1 条思考。');
 });
 
 test('MemoryRead returns raw content, line numbers, and pagination hints', async () => {

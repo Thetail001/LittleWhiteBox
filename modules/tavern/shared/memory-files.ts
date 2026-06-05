@@ -42,7 +42,14 @@ export interface TavernMemoryToolResult {
     truncated?: boolean;
     nextOffset?: number;
     matches?: Array<{ path: string; line?: number; text?: string; context?: string; count?: number }>;
-    messages?: Array<{ order: number; role: string; snippet?: string; content?: string }>;
+    messages?: Array<{
+        order: number;
+        role: string;
+        snippet?: string;
+        reasoningSnippet?: string;
+        content?: string;
+        thoughts?: Array<{ label?: string; text?: string }>;
+    }>;
     changed?: boolean;
     partial?: boolean;
     appliedCount?: number;
@@ -657,11 +664,21 @@ function sliceRecentMessages(
 function buildChatHistoryEntry(message: TavernMessageRecord, options: { full?: boolean } = {}) {
     const full = options.full === true;
     const content = normalizeBody(message.content, 8000);
+    const thoughts = Array.isArray(message.thoughts)
+        ? message.thoughts
+            .map((thought, index) => ({
+                label: normalizeInline(thought?.label || `思考 ${index + 1}`, 80),
+                text: normalizeBody(thought?.text || '', 8000),
+            }))
+            .filter((thought) => thought.text)
+        : [];
     return {
         order: message.order,
         role: String(message.role || ''),
         snippet: normalizeInline(message.content, 320),
+        reasoningSnippet: thoughts.length ? normalizeInline(thoughts.map((thought) => thought.text).join('\n'), 320) : undefined,
         content: full ? content : undefined,
+        thoughts: full && thoughts.length ? thoughts : undefined,
     };
 }
 

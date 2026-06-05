@@ -6,6 +6,7 @@ import {
     type XbTavernMessageBuildResult,
     type TavernChatPromptPresetBundle,
     type XbTavernRuntimeState,
+    XBTavernWorldPosition,
 } from '../../shared/message-assembler';
 import type { TavernAssistantPreset } from '../../shared/assistant-presets';
 import {
@@ -24,7 +25,15 @@ import {
     type TavernSessionRecord,
     type TavernSessionState,
 } from '../../shared/session-db';
-import { buildXbTavernBrain } from '../../shared/brain';
+import { buildXbTavernBrain, buildXbTavernBrainAsync } from '../../shared/brain';
+import {
+    countRegexApplications,
+    hasRegexApplications,
+    type TavernApplyRegex,
+    type TavernApplyRegexItem,
+    type TavernAppliedRegexItem,
+    type TavernRegexApplicationSummary,
+} from '../../shared/regex';
 import {
     buildXbTavernMemoryIgnoredTerms,
     buildXbTavernMemoryQuery,
@@ -42,6 +51,7 @@ export interface TavernRunOnceOptions {
     agentConfig: Record<string, unknown>;
     messages: XbTavernMessage[];
     chatPreset?: TavernChatPromptPresetBundle;
+    regexApplications?: TavernRegexApplicationSummary;
     signal?: AbortSignal;
     onStreamProgress?: (snapshot: { text?: string; thoughts?: Array<{ label?: string; text?: string }> }) => void;
 }
@@ -69,6 +79,7 @@ export interface TavernRequestSnapshot {
     requestKind: 'actual' | 'simulated' | 'fallback';
     capturedAt: number;
     requestInspection?: TavernRequestInspection;
+    regexApplications?: TavernRegexApplicationSummary;
 }
 
 export interface TavernRunOnceResult {
@@ -108,6 +119,7 @@ export interface XbTavernRunTurnInput {
     runManager?: boolean;
     executeRunOnce?: (options: TavernRunOnceOptions) => Promise<TavernRunOnceResult>;
     executeManagerOnce?: (options: XbTavernManagerOnceOptions) => Promise<XbTavernManagerOnceResult>;
+    applyRegex?: TavernApplyRegex;
 }
 
 export interface XbTavernRunResult {
@@ -138,6 +150,7 @@ export interface XbTavernSimulateRequestInput {
     runtimeState?: TavernSessionState;
     diagnostics?: TavernDiagnostics;
     historyMode?: XbTavernRuntimeState['historyMode'];
+    applyRegex?: TavernApplyRegex;
 }
 
 export interface XbTavernSimulateRequestResult {
@@ -205,12 +218,152 @@ function resolveInputChatPreset(input: {
     return input.chatPreset || input.preset || {};
 }
 
+function addRegexSummary(target: TavernRegexApplicationSummary, source?: TavernRegexApplicationSummary): void {
+    if (!source) {return;}
+    (['userInput', 'worldInfo', 'aiOutput', 'reasoning'] as const).forEach((key) => {
+        const count = Number(source[key]) || 0;
+        if (count > 0) {
+            target[key] = (target[key] || 0) + count;
+        }
+    });
+}
+
+function unchangedRegexItems(items: TavernApplyRegexItem[] = []): TavernAppliedRegexItem[] {
+    return items.map((item) => ({
+        id: item.id,
+        text: item.text,
+        changed: false,
+    }));
+}
+
+async function applyTavernRegexItems(
+    applyRegex: TavernApplyRegex | undefined,
+    items: TavernApplyRegexItem[] = [],
+): Promise<TavernAppliedRegexItem[]> {
+    if (!items.length) {return [];}
+    if (!applyRegex) {return unchangedRegexItems(items);}
+    const result = await applyRegex(items);
+    const byId = new Map((Array.isArray(result.items) ? result.items : []).map((item) => [item.id, item]));
+    return items.map((item) => byId.get(item.id) || {
+        id: item.id,
+        text: item.text,
+        changed: false,
+    });
+}
+
+async function applySingleTavernRegex(input: {
+    applyRegex?: TavernApplyRegex;
+    placement: TavernApplyRegexItem['placement'];
+    text: string;
+    id: string;
+    options?: TavernApplyRegexItem['options'];
+}): Promise<{ text: string; summary?: TavernRegexApplicationSummary }> {
+    const [item] = await applyTavernRegexItems(input.applyRegex, [{
+        id: `${input.placement}:${input.id}`,
+        text: input.text,
+        placement: input.placement,
+        options: input.options,
+    }]);
+    return {
+        text: item?.text ?? input.text,
+        summary: countRegexApplications(item ? [item] : []),
+    };
+}
+
+async function applyReasoningRegex(input: {
+    applyRegex?: TavernApplyRegex;
+    thoughts?: Array<{ label?: string; text?: string }>;
+}): Promise<{ thoughts?: Array<{ label?: string; text?: string }>; summary?: TavernRegexApplicationSummary }> {
+    const thoughts = Array.isArray(input.thoughts) ? input.thoughts : [];
+    const regexItems = thoughts
+        .map((thought, index) => ({
+            id: `reasoning:${index}`,
+            text: String(thought.text || ''),
+            placement: 'reasoning' as const,
+        }))
+        .filter((item) => item.text);
+    if (!regexItems.length) {
+        return { thoughts: input.thoughts };
+    }
+    const applied = await applyTavernRegexItems(input.applyRegex, regexItems);
+    const byId = new Map(applied.map((item) => [item.id, item]));
+    return {
+        thoughts: thoughts.map((thought, index) => ({
+            ...thought,
+            text: byId.get(`reasoning:${index}`)?.text ?? thought.text,
+        })),
+        summary: countRegexApplications(applied),
+    };
+}
+
+async function applyPromptRegexToConversationMessages(input: {
+    applyRegex?: TavernApplyRegex;
+    messages: XbTavernMessage[];
+}): Promise<{ messages: XbTavernMessage[]; summary?: TavernRegexApplicationSummary }> {
+    const messages = Array.isArray(input.messages) ? input.messages : [];
+    const regexItems = messages.reduce<TavernApplyRegexItem[]>((items, message, index) => {
+        const depth = messages.length - index - 1;
+        if (['user', 'assistant'].includes(message.role) && String(message.content || '')) {
+            const placement = message.role === 'user' ? 'userInput' : 'aiOutput';
+            items.push({
+                id: `${placement}:prompt:${index}`,
+                text: String(message.content || ''),
+                placement,
+                options: {
+                    isPrompt: true,
+                    depth,
+                },
+            });
+        }
+        if (message.role === 'assistant' && Array.isArray(message.thoughts)) {
+            message.thoughts.forEach((thought, thoughtIndex) => {
+                const text = String(thought?.text || '');
+                if (!text) {return;}
+                items.push({
+                    id: `reasoning:prompt:${index}:${thoughtIndex}`,
+                    text,
+                    placement: 'reasoning',
+                    options: {
+                        isPrompt: true,
+                        depth,
+                    },
+                });
+            });
+        }
+        return items;
+    }, []);
+    if (!regexItems.length) {
+        return { messages };
+    }
+    const applied = await applyTavernRegexItems(input.applyRegex, regexItems);
+    const byId = new Map(applied.map((item) => [item.id, item]));
+    return {
+        messages: messages.map((message, index) => {
+            const placement = message.role === 'user' ? 'userInput' : message.role === 'assistant' ? 'aiOutput' : '';
+            const item = placement ? byId.get(`${placement}:prompt:${index}`) : null;
+            const thoughts = Array.isArray(message.thoughts)
+                ? message.thoughts.map((thought, thoughtIndex) => ({
+                    ...thought,
+                    text: byId.get(`reasoning:prompt:${index}:${thoughtIndex}`)?.text ?? thought.text,
+                }))
+                : message.thoughts;
+            return {
+                ...message,
+                ...(item ? { content: item.text } : {}),
+                ...(thoughts ? { thoughts } : {}),
+            };
+        }),
+        summary: countRegexApplications(applied),
+    };
+}
+
 export function buildTavernRequestSnapshot(
     agentConfig: Record<string, unknown> = {},
     messages: XbTavernMessage[] = [],
     override: Partial<Pick<TavernRequestSnapshot, 'provider' | 'model' | 'requestKind'>> & {
         requestInspection?: TavernRequestInspection | null;
         chatPreset?: TavernChatPromptPresetBundle;
+        regexApplications?: TavernRegexApplicationSummary;
     } = {},
 ): TavernRequestSnapshot {
     const providerConfig = resolveXbTavernProviderConfig(agentConfig);
@@ -239,6 +392,7 @@ export function buildTavernRequestSnapshot(
         rawRequestJson: JSON.stringify(requestForJson, null, 2),
         requestKind: override.requestKind || 'actual',
         capturedAt: Date.now(),
+        ...(hasRegexApplications(override.regexApplications) ? { regexApplications: override.regexApplications } : {}),
         ...(requestInspection ? { requestInspection } : {}),
     };
 }
@@ -250,6 +404,7 @@ async function inspectTavernRequest(input: {
     signal?: AbortSignal;
     onStreamProgress?: TavernRunOnceOptions['onStreamProgress'];
     requestKind?: TavernRequestSnapshot['requestKind'];
+    regexApplications?: TavernRegexApplicationSummary;
 }): Promise<{
     task: ReturnType<ReturnType<typeof createXbTavernAgentRuntime>['buildChatTask']>;
     adapter: { chat: (task: unknown) => Promise<Record<string, unknown>>; inspectRequest?: (task: unknown) => Promise<TavernRequestInspection> | TavernRequestInspection };
@@ -282,6 +437,7 @@ async function inspectTavernRequest(input: {
             requestInspection,
             requestKind: input.requestKind || 'actual',
             chatPreset: input.chatPreset,
+            regexApplications: input.regexApplications,
         }),
     };
 }
@@ -295,6 +451,7 @@ export function buildContextHistory(messages: TavernMessageRecord[] = []): XbTav
                 : 'assistant',
             content: message.content,
             ...(message.name ? { name: message.name } : {}),
+            ...(Array.isArray(message.thoughts) && message.thoughts.length ? { thoughts: message.thoughts } : {}),
         }));
 }
 
@@ -401,6 +558,7 @@ export async function runTavernOnce(options: TavernRunOnceOptions): Promise<Tave
         agentConfig: options.agentConfig,
         messages: options.messages,
         chatPreset: options.chatPreset,
+        regexApplications: options.regexApplications,
         signal: options.signal,
         onStreamProgress: options.onStreamProgress,
         requestKind: 'actual',
@@ -417,6 +575,7 @@ export async function runTavernOnce(options: TavernRunOnceOptions): Promise<Tave
                 requestInspection,
                 requestKind: 'actual',
                 chatPreset: options.chatPreset,
+                regexApplications: options.regexApplications,
             });
         }
         throw error;
@@ -438,6 +597,7 @@ export async function runTavernOnce(options: TavernRunOnceOptions): Promise<Tave
             requestInspection: finalInspection,
             requestKind: 'actual',
             chatPreset: options.chatPreset,
+            regexApplications: options.regexApplications,
         }),
     };
 }
@@ -449,15 +609,24 @@ export async function simulateXbTavernRequest(input: XbTavernSimulateRequestInpu
     const lockedContext = resolveSessionContext(session, input.contextSnapshot);
     assertUsableTavernContext(lockedContext);
     const sessionState = normalizeTavernSessionState(session?.state || input.runtimeState || {});
+    const inputRegex = await applySingleTavernRegex({
+        applyRegex: input.applyRegex,
+        placement: 'userInput',
+        id: 'simulate',
+        text: input.currentUserMessage,
+    });
+    const regexApplications: TavernRegexApplicationSummary = {};
+    addRegexSummary(regexApplications, inputRegex.summary);
+    const currentUserMessage = inputRegex.text;
     const contextForBuild: XbTavernContext = {
         ...lockedContext,
         history: session ? buildContextHistory(sessionMessages) : (input.contextSnapshot.history || []),
     };
-    const memoryQuery = buildXbTavernMemoryQuery(contextForBuild, input.currentUserMessage);
-    const brain = buildXbTavernBrain({
+    const memoryQuery = buildXbTavernMemoryQuery(contextForBuild, currentUserMessage);
+    const brain = await buildXbTavernBrainAsync({
         context: contextForBuild,
         chatPreset,
-        currentUserMessage: input.currentUserMessage,
+        currentUserMessage,
         historyMode: input.historyMode || 'raw',
         turn: sessionState.turn,
         entryStates: sessionState.worldEntryStates,
@@ -469,6 +638,38 @@ export async function simulateXbTavernRequest(input: XbTavernSimulateRequestInpu
             })
             : undefined,
         diagnostics: input.diagnostics || {},
+        regexApplications,
+        transformConversationMessages: async (messages) => {
+            const applied = await applyPromptRegexToConversationMessages({
+                applyRegex: input.applyRegex,
+                messages,
+            });
+            addRegexSummary(regexApplications, applied.summary);
+            return applied.messages;
+        },
+        transformWorldEntries: async (entries) => {
+            const applied = await applyTavernRegexItems(input.applyRegex, entries.map((entry) => ({
+                id: `worldInfo:${entry.activationKey}`,
+                text: entry.content,
+                placement: 'worldInfo',
+                options: {
+                    isMarkdown: false,
+                    isPrompt: true,
+                    depth: entry.position === XBTavernWorldPosition.atDepth ? entry.depth : null,
+                },
+            })));
+            addRegexSummary(regexApplications, countRegexApplications(applied));
+            const byId = new Map(applied.map((item) => [item.id, item]));
+            return entries.map((entry) => {
+                const item = byId.get(`worldInfo:${entry.activationKey}`);
+                const content = item?.text ?? entry.content;
+                return {
+                    ...entry,
+                    content,
+                    contentChars: content.length,
+                };
+            });
+        },
     });
     const inspected = await inspectTavernRequest({
         agentConfig: input.agentConfig,
@@ -476,6 +677,7 @@ export async function simulateXbTavernRequest(input: XbTavernSimulateRequestInpu
         chatPreset,
         onStreamProgress: () => {},
         requestKind: 'simulated',
+        regexApplications,
     });
     const provider = inspected.requestSnapshot.provider;
     const model = inspected.requestSnapshot.model;
@@ -524,13 +726,24 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
         }))
         : normalizeTavernSessionState(baseSession.state || input.runtimeState || {});
     const shouldReplaceSessionState = !!reusedUserMessage;
-    const currentUserMessage = reusedUserMessage?.content || input.currentUserMessage;
+    const rawCurrentUserMessage = reusedUserMessage?.content || input.currentUserMessage;
+    const regexApplications: TavernRegexApplicationSummary = {};
+    const inputRegex = reusedUserMessage
+        ? { text: rawCurrentUserMessage, summary: undefined }
+        : await applySingleTavernRegex({
+            applyRegex: input.applyRegex,
+            placement: 'userInput',
+            id: 'turn',
+            text: rawCurrentUserMessage,
+        });
+    addRegexSummary(regexApplications, inputRegex.summary);
+    const currentUserMessage = inputRegex.text;
     const contextForBuild: XbTavernContext = {
         ...lockedContext,
         history: buildContextHistory(historyMessages),
     };
     const memoryQuery = buildXbTavernMemoryQuery(contextForBuild, currentUserMessage);
-    const brain = buildXbTavernBrain({
+    const brain = await buildXbTavernBrainAsync({
         context: contextForBuild,
         chatPreset,
         currentUserMessage,
@@ -543,6 +756,38 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
             ignoredTerms: buildXbTavernMemoryIgnoredTerms(contextForBuild),
         }),
         diagnostics: input.diagnostics || {},
+        regexApplications,
+        transformConversationMessages: async (messages) => {
+            const applied = await applyPromptRegexToConversationMessages({
+                applyRegex: input.applyRegex,
+                messages,
+            });
+            addRegexSummary(regexApplications, applied.summary);
+            return applied.messages;
+        },
+        transformWorldEntries: async (entries) => {
+            const applied = await applyTavernRegexItems(input.applyRegex, entries.map((entry) => ({
+                id: `worldInfo:${entry.activationKey}`,
+                text: entry.content,
+                placement: 'worldInfo',
+                options: {
+                    isMarkdown: false,
+                    isPrompt: true,
+                    depth: entry.position === XBTavernWorldPosition.atDepth ? entry.depth : null,
+                },
+            })));
+            addRegexSummary(regexApplications, countRegexApplications(applied));
+            const byId = new Map(applied.map((item) => [item.id, item]));
+            return entries.map((entry) => {
+                const item = byId.get(`worldInfo:${entry.activationKey}`);
+                const content = item?.text ?? entry.content;
+                return {
+                    ...entry,
+                    content,
+                    contentChars: content.length,
+                };
+            });
+        },
     });
     const { buildResult, buildSnapshot } = brain;
     const session = baseSession.buildSnapshot
@@ -564,6 +809,7 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
 
     let requestSnapshot = buildTavernRequestSnapshot(input.agentConfig, buildResult.messages, {
         chatPreset,
+        regexApplications,
     });
     try {
         requestSnapshot = (await inspectTavernRequest({
@@ -572,11 +818,13 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
             chatPreset,
             onStreamProgress: handleStreamProgress,
             requestKind: 'actual',
+            regexApplications,
         })).requestSnapshot;
     } catch {
         requestSnapshot = buildTavernRequestSnapshot(input.agentConfig, buildResult.messages, {
             requestKind: 'fallback',
             chatPreset,
+            regexApplications,
         });
     }
     const presetId = String(chatPreset.id || session.chatPresetId || session.presetId || '');
@@ -600,12 +848,33 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
             agentConfig: input.agentConfig,
             messages: buildResult.messages,
             chatPreset,
+            regexApplications,
             signal: input.signal,
             onStreamProgress: handleStreamProgress,
         });
+        const outputRegex = await applySingleTavernRegex({
+            applyRegex: input.applyRegex,
+            placement: 'aiOutput',
+            id: 'assistant',
+            text: result.text,
+        });
+        const reasoningRegex = await applyReasoningRegex({
+            applyRegex: input.applyRegex,
+            thoughts: result.thoughts,
+        });
+        addRegexSummary(regexApplications, outputRegex.summary);
+        addRegexSummary(regexApplications, reasoningRegex.summary);
+        if (outputRegex.text !== result.text || reasoningRegex.thoughts !== result.thoughts) {
+            input.onStreamProgress?.({ text: outputRegex.text, thoughts: reasoningRegex.thoughts });
+        }
+        const assistantRequestSnapshot: TavernRequestSnapshot = {
+            ...result.requestSnapshot,
+            regexApplications,
+        };
         const assistantMessage = await appendTavernMessage(session.id, {
             role: 'assistant',
-            content: result.text,
+            content: outputRegex.text,
+            thoughts: reasoningRegex.thoughts,
             providerPayload: result.providerPayload,
             contextSnapshot: lockedContext,
             buildSnapshot,
@@ -613,7 +882,7 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
             chatPresetName: presetName,
             presetId,
             presetName,
-            requestSnapshot: result.requestSnapshot,
+            requestSnapshot: assistantRequestSnapshot,
             provider: result.provider || '',
             model: result.model || '',
             finishReason: result.finishReason || '',
@@ -626,7 +895,7 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
                 ? mergeWorldEntryStates(sessionState.worldEntryStates || {}, buildResult.meta.worldEntryStateUpdates)
                 : buildResult.meta.worldEntryStateUpdates,
             lastBuildSnapshot: buildSnapshot,
-            lastRequestSnapshot: result.requestSnapshot,
+            lastRequestSnapshot: assistantRequestSnapshot,
             lastProvider: result.provider || '',
             lastModel: result.model || '',
         }, {
@@ -657,11 +926,11 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
             assistantMessage,
             buildResult,
             buildSnapshot,
-            requestSnapshot: result.requestSnapshot,
+            requestSnapshot: assistantRequestSnapshot,
             provider: result.provider || '',
             model: result.model || '',
             finishReason: result.finishReason,
-            previewMatchesRequest: buildResult.meta.rawMessagesJson === result.requestSnapshot.rawMessagesJson,
+            previewMatchesRequest: buildResult.meta.rawMessagesJson === assistantRequestSnapshot.rawMessagesJson,
             nextTurn,
             managerRunId,
             managerStatus,
@@ -669,14 +938,27 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
     } catch (error) {
         const failedRequestSnapshot = (error as { requestSnapshot?: TavernRequestSnapshot } | null)?.requestSnapshot;
         if (failedRequestSnapshot) {
-            requestSnapshot = failedRequestSnapshot;
+            requestSnapshot = {
+                ...failedRequestSnapshot,
+                regexApplications,
+            };
         }
         const aborted = isAbortLikeError(error, input.signal);
         const partialText = String(latestStreamText || '').trim();
         if (aborted && partialText) {
+            const partialRegex = await applySingleTavernRegex({
+                applyRegex: input.applyRegex,
+                placement: 'aiOutput',
+                id: 'assistant-partial',
+                text: partialText,
+            });
+            addRegexSummary(regexApplications, partialRegex.summary);
+            if (partialRegex.text !== partialText) {
+                input.onStreamProgress?.({ text: partialRegex.text });
+            }
             const errorMessage = await appendTavernMessage(session.id, {
                 role: 'assistant',
-                content: partialText,
+                content: partialRegex.text,
                 error: false,
                 contextSnapshot: lockedContext,
                 buildSnapshot,

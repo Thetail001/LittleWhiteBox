@@ -78,6 +78,7 @@ export interface TavernMessageRecord {
     provider?: string;
     model?: string;
     finishReason?: string;
+    thoughts?: Array<{ label?: string; text?: string }>;
     providerPayload?: unknown;
     contextSnapshot?: XbTavernContext;
     buildSnapshot?: XbTavernBuildSnapshot;
@@ -183,6 +184,7 @@ export type TavernAppendMessageInput = XbTavernMessage & {
     provider?: string;
     model?: string;
     finishReason?: string;
+    thoughts?: Array<{ label?: string; text?: string }>;
     providerPayload?: unknown;
     contextSnapshot?: XbTavernContext;
     buildSnapshot?: XbTavernBuildSnapshot;
@@ -619,6 +621,7 @@ export async function appendTavernMessage(sessionId: string, message: TavernAppe
         provider: 'provider' in message ? String(message.provider || '') : undefined,
         model: 'model' in message ? String(message.model || '') : undefined,
         finishReason: 'finishReason' in message ? String(message.finishReason || '') : undefined,
+        thoughts: 'thoughts' in message ? cloneSerializable(message.thoughts, undefined) : undefined,
         providerPayload: 'providerPayload' in message ? cloneSerializable(message.providerPayload, undefined) : undefined,
         contextSnapshot: 'contextSnapshot' in message ? cloneSerializable(message.contextSnapshot, undefined) : undefined,
         buildSnapshot: 'buildSnapshot' in message ? cloneSerializable(message.buildSnapshot, undefined) : undefined,
@@ -638,7 +641,7 @@ export async function appendTavernMessage(sessionId: string, message: TavernAppe
 export async function updateTavernMessage(
     sessionId = '',
     order = -1,
-    patch: Partial<Pick<TavernMessageRecord, 'content' | 'error'>>,
+    patch: Partial<Pick<TavernMessageRecord, 'content' | 'error' | 'thoughts'>>,
 ): Promise<TavernMessageRecord | null> {
     const id = String(sessionId || '').trim();
     const messageOrder = Number(order);
@@ -648,6 +651,7 @@ export async function updateTavernMessage(
     const update: Partial<TavernMessageRecord> = {};
     if ('content' in patch) {update.content = String(patch.content || '');}
     if ('error' in patch) {update.error = patch.error === true;}
+    if ('thoughts' in patch) {update.thoughts = cloneSerializable(patch.thoughts, undefined);}
     await tavernMessagesTable.update([id, messageOrder], update);
     await tavernSessionsTable.update(id, { updatedAt: now() });
     return await tavernMessagesTable.get([id, messageOrder]) || null;

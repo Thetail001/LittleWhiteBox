@@ -1,6 +1,6 @@
 /* eslint-disable -- generated from TypeScript source; run npm run build:tavern */
 import { getContext } from "../../../../../../extensions.js";
-import { getRequestHeaders } from "../../../../../../../script.js";
+import { getRequestHeaders, getThumbnailUrl } from "../../../../../../../script.js";
 function normalizeText(value = "") {
   return String(value || "").trim();
 }
@@ -36,7 +36,11 @@ function normalizeCharacterAvatar(value = "") {
   if (text.startsWith("img/")) {
     return toAbsoluteAvatarUrl(text);
   }
-  return `/thumbnail?type=avatar&file=${encodeURIComponent(text)}`;
+  try {
+    return getThumbnailUrl("avatar", text);
+  } catch {
+    return `/thumbnail?type=avatar&file=${encodeURIComponent(text)}`;
+  }
 }
 function pickUserAvatarFromDom() {
   const selectors = ["#user_avatar_block img", "#avatar_user img", ".user_avatar img", "img#avatar_user", ".st-user-avatar img"];
@@ -262,7 +266,7 @@ function listCharacters(ctx = getContext?.() || {}) {
       scenario: normalizeText(data.scenario || character.scenario),
       firstMessage: normalizeText(data.first_mes || character.first_mes)
     };
-  }).filter((character) => character.name);
+  }).filter((character) => character.name && !isSystemCharacterName(character.name));
 }
 async function fetchWorldbook(name = "") {
   const response = await fetch("/api/worldinfo/get", {

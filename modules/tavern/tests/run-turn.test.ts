@@ -3,6 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import db, {
+    appendTavernMessage,
     createTavernSession,
     deleteTavernMessages,
     getTavernSession,
@@ -31,6 +32,7 @@ import {
 } from '../app-src/runtime/run-once';
 import { createXbTavernAgentRuntime, EMPTY_XB_TAVERN_CAPABILITY_REGISTRY } from '../app-src/runtime/agent-runtime';
 import { resolveXbTavernProviderConfig } from '../app-src/runtime/provider';
+import type { TavernApplyRegexItem } from '../shared/regex';
 
 async function resetDb() {
     await db.delete();
@@ -297,6 +299,271 @@ test('xb tavern run turn retrieves relevant old memory beyond recent summaries',
     });
 
     assert.match(rawMessagesJson, /银钥匙藏在码头钟楼下面/);
+});
+
+test('xb tavern regex transforms user input, world info, and AI output in the real turn path', async () => {
+    await resetDb();
+    const preset = createDefaultXbTavernPreset();
+    const session = await createTavernSession({
+        title: 'Regex turn',
+        characterId: 'char-1',
+        characterName: 'Aster',
+        contextSnapshot: {
+            character: { id: 'char-1', name: 'Aster' },
+            worldBooks: [{
+                name: 'Lore',
+                entries: [{
+                    uid: 'regex-world',
+                    content: 'RAW_WORLD should be transformed.',
+                    constant: true,
+                }],
+            }],
+        },
+    });
+    await appendTavernMessage(session.id, { role: 'user', content: 'OLD_USER already saved.' });
+    await appendTavernMessage(session.id, {
+        role: 'assistant',
+        content: 'OLD_AI already saved.',
+        thoughts: [{ label: 'hidden', text: 'OLD_REASONING already saved.' }],
+    });
+    const calls: Array<{ placement: string; isPrompt: boolean; depth: unknown; text: string }> = [];
+    const streamed: string[] = [];
+    let providerMessagesJson = '';
+    const applyRegex = async (items: TavernApplyRegexItem[]) => ({
+        items: items.map((item) => {
+            calls.push({
+                placement: item.placement,
+                isPrompt: item.options?.isPrompt === true,
+                depth: item.options?.depth,
+                text: item.text,
+            });
+            const isPrompt = item.options?.isPrompt === true;
+            return {
+                id: item.id,
+                text: isPrompt && item.placement === 'userInput'
+                    ? item.text.replace(/SAVED_USER/g, 'PROMPT_USER').replace(/OLD_USER/g, 'PROMPT_OLD_USER')
+                    : isPrompt && item.placement === 'aiOutput'
+                        ? item.text.replace(/OLD_AI/g, 'PROMPT_OLD_AI')
+                        : isPrompt && item.placement === 'reasoning'
+                            ? item.text.replace(/OLD_REASONING/g, 'PROMPT_OLD_REASONING')
+                        : item.text
+                            .replace(/RAW_USER/g, 'SAVED_USER')
+                            .replace(/RAW_WORLD/g, 'REGEX_WORLD')
+                            .replace(/RAW_AI/g, 'REGEX_AI')
+                            .replace(/RAW_REASONING/g, 'REGEX_REASONING'),
+                changed: /RAW_(USER|WORLD|AI|REASONING)|SAVED_USER|OLD_USER|OLD_AI|OLD_REASONING/.test(item.text),
+            };
+        }),
+        changedCount: items.filter((item) => /RAW_(USER|WORLD|AI|REASONING)|SAVED_USER|OLD_USER|OLD_AI|OLD_REASONING/.test(item.text)).length,
+    });
+    const result = await runXbTavernTurn({
+        sessionId: session.id,
+        agentConfig: { provider: 'fake-provider', model: 'fake-model' },
+        contextSnapshot: session.contextSnapshot || {},
+        preset,
+        currentUserMessage: 'RAW_USER asks.',
+        applyRegex,
+        onStreamProgress: (snapshot) => {
+            if (typeof snapshot.text === 'string') {streamed.push(snapshot.text);}
+        },
+        executeRunOnce: async (options: TavernRunOnceOptions) => {
+            providerMessagesJson = JSON.stringify(options.messages);
+            return {
+                text: 'RAW_AI replies.',
+                thoughts: [{ label: 'thinking', text: 'RAW_REASONING hidden thought.' }],
+                provider: 'fake-provider',
+                model: 'fake-model',
+                requestSnapshot: buildTavernRequestSnapshot(options.agentConfig, options.messages, {
+                    provider: 'fake-provider',
+                    model: 'fake-model',
+                    regexApplications: options.regexApplications,
+                }),
+            };
+        },
+    });
+
+    assert.equal(calls.some((call) => call.placement === 'userInput' && !call.isPrompt && call.text === 'RAW_USER asks.'), true);
+    assert.equal(calls.some((call) => call.placement === 'userInput' && call.isPrompt && call.text === 'SAVED_USER asks.' && call.depth === 0), true);
+    assert.equal(calls.some((call) => call.placement === 'userInput' && call.isPrompt && call.text === 'OLD_USER already saved.' && call.depth === 2), true);
+    assert.equal(calls.some((call) => call.placement === 'aiOutput' && call.isPrompt && call.text === 'OLD_AI already saved.' && call.depth === 1), true);
+    assert.equal(calls.some((call) => call.placement === 'reasoning' && call.isPrompt && call.text === 'OLD_REASONING already saved.' && call.depth === 1), true);
+    assert.match(providerMessagesJson, /PROMPT_USER asks/);
+    assert.match(providerMessagesJson, /PROMPT_OLD_USER already saved/);
+    assert.match(providerMessagesJson, /PROMPT_OLD_AI already saved/);
+    assert.match(providerMessagesJson, /PROMPT_OLD_REASONING already saved/);
+    assert.match(providerMessagesJson, /REGEX_WORLD should be transformed/);
+    assert.doesNotMatch(providerMessagesJson, /"thoughts"/);
+    assert.doesNotMatch(providerMessagesJson, /RAW_USER|RAW_WORLD|SAVED_USER/);
+    assert.equal(providerMessagesJson.includes('"content":"OLD_USER already saved."'), false);
+    assert.equal(providerMessagesJson.includes('"content":"OLD_AI already saved."'), false);
+    assert.equal(streamed.at(-1), 'REGEX_AI replies.');
+    const messages = await listTavernMessages(result.sessionId);
+    assert.equal(messages[0]?.content, 'OLD_USER already saved.');
+    assert.equal(messages[1]?.content, 'OLD_AI already saved.');
+    assert.deepEqual(messages[1]?.thoughts, [{ label: 'hidden', text: 'OLD_REASONING already saved.' }]);
+    assert.equal(messages[2]?.content, 'SAVED_USER asks.');
+    assert.equal(messages[3]?.content, 'REGEX_AI replies.');
+    assert.deepEqual(messages[3]?.thoughts, [{ label: 'thinking', text: 'REGEX_REASONING hidden thought.' }]);
+    assert.equal((result.requestSnapshot.regexApplications as { userInput?: number; worldInfo?: number; aiOutput?: number; reasoning?: number } | undefined)?.userInput, 3);
+    assert.equal((result.requestSnapshot.regexApplications as { userInput?: number; worldInfo?: number } | undefined)?.worldInfo, 1);
+    assert.equal((result.requestSnapshot.regexApplications as { aiOutput?: number } | undefined)?.aiOutput, 2);
+    assert.equal((result.requestSnapshot.regexApplications as { reasoning?: number } | undefined)?.reasoning, 2);
+});
+
+test('xb tavern simulated request applies regex without saving messages', async () => {
+    await resetDb();
+    const preset = createDefaultXbTavernPreset();
+    const session = await createTavernSession({
+        title: 'Regex simulation',
+        characterId: 'char-1',
+        characterName: 'Aster',
+        contextSnapshot: {
+            character: { id: 'char-1', name: 'Aster' },
+            worldBooks: [{
+                name: 'Lore',
+                entries: [{
+                    uid: 'regex-world',
+                    content: 'RAW_WORLD prompt lore.',
+                    constant: true,
+                }],
+            }],
+        },
+    });
+    const applyRegex = async (items: TavernApplyRegexItem[]) => ({
+        items: items.map((item) => ({
+            id: item.id,
+            text: item.text.replace(/RAW_USER/g, 'REGEX_USER').replace(/RAW_WORLD/g, 'REGEX_WORLD'),
+            changed: /RAW_(USER|WORLD)/.test(item.text),
+        })),
+        changedCount: items.filter((item) => /RAW_(USER|WORLD)/.test(item.text)).length,
+    });
+
+    const result = await simulateXbTavernRequest({
+        sessionId: session.id,
+        agentConfig: {
+            currentPresetName: '酒馆 OpenAI',
+            presets: {
+                '酒馆 OpenAI': {
+                    provider: 'sillytavern-openai-compatible',
+                    modelConfigs: {
+                        'sillytavern-openai-compatible': {
+                            model: 'gpt-test',
+                        },
+                    },
+                },
+            },
+        },
+        contextSnapshot: session.contextSnapshot || {},
+        preset,
+        currentUserMessage: 'RAW_USER simulate.',
+        applyRegex,
+    });
+
+    assert.match(result.requestSnapshot.rawRequestJson, /REGEX_USER simulate/);
+    assert.match(result.requestSnapshot.rawRequestJson, /REGEX_WORLD prompt lore/);
+    assert.doesNotMatch(result.requestSnapshot.rawRequestJson, /RAW_USER|RAW_WORLD/);
+    assert.deepEqual(await listTavernMessages(session.id), []);
+});
+
+test('xb tavern simulated request applies prompt-stage regex to history without rewriting saved text', async () => {
+    await resetDb();
+    const preset = createDefaultXbTavernPreset();
+    const session = await createTavernSession({
+        title: 'Regex prompt simulation',
+        characterId: 'char-1',
+        characterName: 'Aster',
+        contextSnapshot: {
+            character: { id: 'char-1', name: 'Aster' },
+        },
+    });
+    await appendTavernMessage(session.id, { role: 'user', content: 'OLD_USER saved.' });
+    await appendTavernMessage(session.id, {
+        role: 'assistant',
+        content: 'OLD_AI saved.',
+        thoughts: [{ label: 'hidden', text: 'OLD_REASONING saved.' }],
+    });
+    const applyRegex = async (items: TavernApplyRegexItem[]) => ({
+        items: items.map((item) => {
+            const isPrompt = item.options?.isPrompt === true;
+            const text = isPrompt && item.placement === 'userInput'
+                ? item.text.replace(/SAVED_USER/g, 'PROMPT_USER').replace(/OLD_USER/g, 'PROMPT_OLD_USER')
+                : isPrompt && item.placement === 'aiOutput'
+                    ? item.text.replace(/OLD_AI/g, 'PROMPT_OLD_AI')
+                    : isPrompt && item.placement === 'reasoning'
+                        ? item.text.replace(/OLD_REASONING/g, 'PROMPT_OLD_REASONING')
+                    : item.text.replace(/RAW_USER/g, 'SAVED_USER');
+            return {
+                id: item.id,
+                text,
+                changed: text !== item.text,
+            };
+        }),
+        changedCount: items.length,
+    });
+
+    const result = await simulateXbTavernRequest({
+        sessionId: session.id,
+        agentConfig: {
+            currentPresetName: '酒馆 OpenAI',
+            presets: {
+                '酒馆 OpenAI': {
+                    provider: 'sillytavern-openai-compatible',
+                    modelConfigs: {
+                        'sillytavern-openai-compatible': {
+                            model: 'gpt-test',
+                        },
+                    },
+                },
+            },
+        },
+        contextSnapshot: session.contextSnapshot || {},
+        preset,
+        currentUserMessage: 'RAW_USER simulate.',
+        applyRegex,
+    });
+
+    assert.match(result.requestSnapshot.rawRequestJson, /PROMPT_USER simulate/);
+    assert.match(result.requestSnapshot.rawRequestJson, /PROMPT_OLD_USER saved/);
+    assert.match(result.requestSnapshot.rawRequestJson, /PROMPT_OLD_AI saved/);
+    assert.match(result.requestSnapshot.rawRequestJson, /PROMPT_OLD_REASONING saved/);
+    assert.doesNotMatch(result.requestSnapshot.rawRequestJson, /"thoughts"/);
+    assert.doesNotMatch(result.requestSnapshot.rawRequestJson, /RAW_USER|SAVED_USER/);
+    assert.equal(result.requestSnapshot.rawRequestJson.includes('"content": "OLD_USER saved."'), false);
+    assert.equal(result.requestSnapshot.rawRequestJson.includes('"content": "OLD_AI saved."'), false);
+    assert.deepEqual((await listTavernMessages(session.id)).map((message) => message.content), [
+        'OLD_USER saved.',
+        'OLD_AI saved.',
+    ]);
+    assert.deepEqual((await listTavernMessages(session.id))[1]?.thoughts, [{ label: 'hidden', text: 'OLD_REASONING saved.' }]);
+});
+
+test('xb tavern regex failure before sending does not save untransformed chat messages', async () => {
+    await resetDb();
+    const preset = createDefaultXbTavernPreset();
+    const session = await createTavernSession({
+        title: 'Regex failure',
+        contextSnapshot: {
+            character: { id: 'char-1', name: 'Aster' },
+        },
+    });
+
+    await assert.rejects(
+        () => runXbTavernTurn({
+            sessionId: session.id,
+            agentConfig: { provider: 'fake-provider', model: 'fake-model' },
+            contextSnapshot: session.contextSnapshot || {},
+            preset,
+            currentUserMessage: 'RAW_USER fails.',
+            applyRegex: async () => {
+                throw new Error('regex_failed_before_send');
+            },
+            executeRunOnce: async () => {
+                throw new Error('provider_should_not_run');
+            },
+        }),
+        /regex_failed_before_send/,
+    );
+    assert.deepEqual(await listTavernMessages(session.id), []);
 });
 
 test('xb tavern memory recall reuses tokenizer terms without letting user and character names recall everything', () => {

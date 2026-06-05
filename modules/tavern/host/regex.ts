@@ -4,6 +4,7 @@ import {
     allowScopedScripts,
     getCurrentPresetAPI,
     getCurrentPresetName,
+    getRegexedString,
     getScriptsByType,
     isPresetScriptsAllowed,
     isScopedScriptsAllowed,
@@ -12,6 +13,7 @@ import {
     SCRIPT_TYPES,
     substitute_find_regex,
 } from '../../../../../../extensions/regex/engine.js';
+import type { TavernApplyRegexItem, TavernApplyRegexResult, TavernRegexPlacementKey } from '../shared/regex';
 
 interface TavernRegexScript {
     id?: string;
@@ -87,6 +89,41 @@ function nullableNumber(value: unknown): number | null {
     if (value === null || value === undefined || value === '') {return null;}
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizePlacementKey(value: unknown): TavernRegexPlacementKey {
+    const key = text(value);
+    if (key === 'userInput' || key === 'aiOutput' || key === 'worldInfo' || key === 'reasoning') {
+        return key;
+    }
+    throw new Error('未知正则应用位置。');
+}
+
+function placementToNative(value: TavernRegexPlacementKey): number {
+    switch (value) {
+        case 'userInput':
+            return regex_placement.USER_INPUT;
+        case 'aiOutput':
+            return regex_placement.AI_OUTPUT;
+        case 'worldInfo':
+            return regex_placement.WORLD_INFO;
+        case 'reasoning':
+            return regex_placement.REASONING;
+        default:
+            throw new Error('未知正则应用位置。');
+    }
+}
+
+function normalizeRegexOptions(value: unknown): Record<string, unknown> {
+    const source = asRecord(value);
+    const options: Record<string, unknown> = {};
+    if (source.characterOverride !== undefined) {options.characterOverride = String(source.characterOverride || '');}
+    if (source.isMarkdown !== undefined) {options.isMarkdown = source.isMarkdown === true;}
+    if (source.isPrompt !== undefined) {options.isPrompt = source.isPrompt === true;}
+    if (source.isEdit !== undefined) {options.isEdit = source.isEdit === true;}
+    const depth = nullableNumber(source.depth);
+    if (depth !== null) {options.depth = depth;}
+    return options;
 }
 
 function normalizeRegexScript(input: unknown): TavernRegexScript {
@@ -183,4 +220,33 @@ export async function deleteTavernRegexScript(input: unknown): Promise<Record<st
         .filter((item) => item.id !== id);
     await saveScriptsByType(scripts, scriptType);
     return listTavernRegexScripts();
+}
+
+export function applyTavernRegex(input: unknown): TavernApplyRegexResult {
+    const source = asRecord(input);
+    const rawItems = Array.isArray(source.items) ? source.items : [];
+    let changedCount = 0;
+    const items = rawItems.map((rawItem, index) => {
+        const item = asRecord(rawItem) as unknown as TavernApplyRegexItem;
+        const id = text((item as TavernApplyRegexItem).id) || `item-${index}`;
+        const placement = normalizePlacementKey((item as TavernApplyRegexItem).placement);
+        const original = String((item as TavernApplyRegexItem).text || '');
+        const textResult = getRegexedString(
+            original,
+            placementToNative(placement),
+            normalizeRegexOptions((item as TavernApplyRegexItem).options),
+        );
+        const textValue = String(textResult || '');
+        const changed = textValue !== original;
+        if (changed) {changedCount += 1;}
+        return {
+            id,
+            text: textValue,
+            changed,
+        };
+    });
+    return {
+        items,
+        changedCount,
+    };
 }

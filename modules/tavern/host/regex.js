@@ -5,6 +5,7 @@ import {
   allowScopedScripts,
   getCurrentPresetAPI,
   getCurrentPresetName,
+  getRegexedString,
   getScriptsByType,
   isPresetScriptsAllowed,
   isScopedScriptsAllowed,
@@ -68,6 +69,48 @@ function nullableNumber(value) {
   }
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+function normalizePlacementKey(value) {
+  const key = text(value);
+  if (key === "userInput" || key === "aiOutput" || key === "worldInfo" || key === "reasoning") {
+    return key;
+  }
+  throw new Error("\u672A\u77E5\u6B63\u5219\u5E94\u7528\u4F4D\u7F6E\u3002");
+}
+function placementToNative(value) {
+  switch (value) {
+    case "userInput":
+      return regex_placement.USER_INPUT;
+    case "aiOutput":
+      return regex_placement.AI_OUTPUT;
+    case "worldInfo":
+      return regex_placement.WORLD_INFO;
+    case "reasoning":
+      return regex_placement.REASONING;
+    default:
+      throw new Error("\u672A\u77E5\u6B63\u5219\u5E94\u7528\u4F4D\u7F6E\u3002");
+  }
+}
+function normalizeRegexOptions(value) {
+  const source = asRecord(value);
+  const options = {};
+  if (source.characterOverride !== void 0) {
+    options.characterOverride = String(source.characterOverride || "");
+  }
+  if (source.isMarkdown !== void 0) {
+    options.isMarkdown = source.isMarkdown === true;
+  }
+  if (source.isPrompt !== void 0) {
+    options.isPrompt = source.isPrompt === true;
+  }
+  if (source.isEdit !== void 0) {
+    options.isEdit = source.isEdit === true;
+  }
+  const depth = nullableNumber(source.depth);
+  if (depth !== null) {
+    options.depth = depth;
+  }
+  return options;
 }
 function normalizeRegexScript(input) {
   const source = asRecord(input);
@@ -153,7 +196,38 @@ async function deleteTavernRegexScript(input) {
   await saveScriptsByType(scripts, scriptType);
   return listTavernRegexScripts();
 }
+function applyTavernRegex(input) {
+  const source = asRecord(input);
+  const rawItems = Array.isArray(source.items) ? source.items : [];
+  let changedCount = 0;
+  const items = rawItems.map((rawItem, index) => {
+    const item = asRecord(rawItem);
+    const id = text(item.id) || `item-${index}`;
+    const placement = normalizePlacementKey(item.placement);
+    const original = String(item.text || "");
+    const textResult = getRegexedString(
+      original,
+      placementToNative(placement),
+      normalizeRegexOptions(item.options)
+    );
+    const textValue = String(textResult || "");
+    const changed = textValue !== original;
+    if (changed) {
+      changedCount += 1;
+    }
+    return {
+      id,
+      text: textValue,
+      changed
+    };
+  });
+  return {
+    items,
+    changedCount
+  };
+}
 export {
+  applyTavernRegex,
   deleteTavernRegexScript,
   listTavernRegexScripts,
   saveTavernRegexScript

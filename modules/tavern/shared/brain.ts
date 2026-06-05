@@ -1,6 +1,9 @@
 import {
+    buildXbTavernMessagesAsync,
     buildXbTavernMessages,
     createXbTavernBuildSnapshot,
+    type XbTavernConversationMessagesTransform,
+    type XbTavernWorldEntriesTransform,
     type XbTavernBuildSnapshot,
     type XbTavernContext,
     type XbTavernMemoryContext,
@@ -10,6 +13,7 @@ import {
     type XbTavernWorldEntryState,
     type XbTavernWorldSettings,
 } from './message-assembler';
+import type { TavernRegexApplicationSummary } from './regex';
 
 export const DEFAULT_XB_TAVERN_WORLD_SETTINGS = Object.freeze({
     recursion: true,
@@ -27,6 +31,12 @@ export interface XbTavernBrainBuildInput {
     entryStates?: Record<string, XbTavernWorldEntryState>;
     memoryContext?: XbTavernMemoryContext;
     diagnostics?: unknown;
+}
+
+export interface XbTavernBrainAsyncBuildInput extends XbTavernBrainBuildInput {
+    transformWorldEntries?: XbTavernWorldEntriesTransform;
+    transformConversationMessages?: XbTavernConversationMessagesTransform;
+    regexApplications?: TavernRegexApplicationSummary;
 }
 
 export interface XbTavernBrainBuildResult {
@@ -64,6 +74,24 @@ export function buildXbTavernBrain(input: XbTavernBrainBuildInput): XbTavernBrai
     const chatPreset = input.chatPreset || input.preset || {};
     const runtimeState = createXbTavernRuntimeState(input);
     const buildResult = buildXbTavernMessages(context, chatPreset, runtimeState);
+    const buildSnapshot = createXbTavernBuildSnapshot(context, chatPreset, buildResult, input.diagnostics);
+    return {
+        runtimeState,
+        buildResult,
+        buildSnapshot,
+        rawMessagesJson: buildResult.meta.rawMessagesJson,
+    };
+}
+
+export async function buildXbTavernBrainAsync(input: XbTavernBrainAsyncBuildInput): Promise<XbTavernBrainBuildResult> {
+    const context = input.context || {};
+    const chatPreset = input.chatPreset || input.preset || {};
+    const runtimeState = createXbTavernRuntimeState(input);
+    const buildResult = await buildXbTavernMessagesAsync(context, chatPreset, runtimeState, {
+        transformWorldEntries: input.transformWorldEntries,
+        transformConversationMessages: input.transformConversationMessages,
+        regexApplications: input.regexApplications,
+    });
     const buildSnapshot = createXbTavernBuildSnapshot(context, chatPreset, buildResult, input.diagnostics);
     return {
         runtimeState,

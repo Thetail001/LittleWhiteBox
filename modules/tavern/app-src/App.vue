@@ -18,11 +18,8 @@ import {
 } from '../shared/message-assembler';
 import { buildXbTavernBrain } from '../shared/brain';
 import {
-    buildXbTavernMemoryIgnoredTerms,
-    buildXbTavernMemoryQuery,
     getXbTavernMemoryTokenizerStatus,
     preloadXbTavernMemoryTokenizer,
-    selectXbTavernMemoryContext,
 } from '../shared/memory-retrieval';
 import {
     getTavernMemoryIndex,
@@ -69,11 +66,11 @@ import {
     type TavernTurnSummaryRecord,
 } from '../shared/session-db';
 import {
-    buildTavernManagerSystemPrompt,
     createDefaultTavernAssistantPreset,
     normalizeTavernAssistantPreset,
     type TavernAssistantPreset,
 } from '../shared/assistant-presets';
+import type { TavernApplyRegexItem, TavernApplyRegexResult } from '../shared/regex';
 import { buildContextHistory, deriveTavernSessionStateFromMessages, runXbTavernTurn, simulateXbTavernRequest } from './runtime/run-once';
 import {
     ensureTavernManagerChatBudget,
@@ -116,6 +113,7 @@ interface PromptEditorRow {
     orderEntry: Record<string, unknown>;
     prompt: Record<string, unknown>;
     listed: boolean;
+    searchCorpus?: string;
 }
 
 type AssistantPresetSectionKey =
@@ -134,10 +132,8 @@ interface AssistantPresetSectionRow {
 interface AssistantPresetItemRow {
     id: string;
     key: AssistantPresetSectionKey;
-    sectionLabel: string;
-    sectionSummary: string;
-    lineIndex: number;
-    orderIndex: number;
+    label: string;
+    summary: string;
     content: string;
 }
 
@@ -161,6 +157,7 @@ interface WorldbookEntryDraft {
     disable?: boolean;
     constant?: boolean;
     selective?: boolean;
+    searchCorpus?: string;
     [key: string]: unknown;
 }
 
@@ -196,6 +193,7 @@ interface TavernRegexScriptRow {
     scriptType: number;
     script: TavernRegexScriptDraft;
     isNew?: boolean;
+    searchCorpus?: string;
 }
 
 interface TavernCharacterOption {
@@ -206,12 +204,26 @@ interface TavernCharacterOption {
     personality?: string;
     scenario?: string;
     firstMessage?: string;
+    searchCorpus?: string;
 }
 
 const SOURCE_APP = 'xb-tavern-app';
 const SOURCE_HOST = 'xb-tavern-host';
 const HOST_REQUEST_TIMEOUT_MS = 5000;
 const CHARACTER_CONTEXT_TIMEOUT_MS = 15000;
+const CHARACTER_ARCHIVE_BATCH_SIZE = 48;
+const CHAT_PRESET_SOURCE_BATCH_SIZE = 48;
+const ASSISTANT_PRESET_BATCH_SIZE = 48;
+const PROMPT_EDITOR_BATCH_SIZE = 80;
+const WORLDBOOK_BATCH_SIZE = 80;
+const WORLDBOOK_ENTRY_BATCH_SIZE = 80;
+const REGEX_GROUP_BATCH_SIZE = 60;
+const CHAT_SIDEBAR_INITIAL_LIMIT = 6;
+const CHAT_SIDEBAR_BATCH_SIZE = 12;
+const MANAGER_RUN_VISIBLE_LIMIT = 12;
+const MEMORY_TURN_INITIAL_LIMIT = 36;
+const MEMORY_TURN_BATCH_SIZE = 48;
+const MEMORY_FILE_BATCH_SIZE = 24;
 
 const context = ref<XbTavernContext>({});
 const diagnostics = ref<TavernDiagnostics>({});
@@ -222,16 +234,17 @@ const apiConfigSave = ref({ status: 'idle', requestId: '', error: '' });
 const apiConfigStatus = ref('');
 const availableCharacters = ref<TavernCharacterOption[]>([]);
 const selectedCharacterId = ref('');
+const selectedCharacterPreviewId = ref('');
 const pendingCharacterSessionId = ref('');
 const pendingCharacterError = ref('');
 const statusText = ref('等待读取资料');
 const currentUserMessage = ref('');
 const historyMode = ref<'raw' | 'squash'>('raw');
 const runtimeText = ref('');
+const runtimeThoughts = ref<Array<{ label?: string; text?: string }>>([]);
 const runtimeError = ref('');
 const runtimeProvider = ref('');
 const runtimeModel = ref('');
-const runtimeSnapshotJson = ref('');
 const isRunning = ref(false);
 const sessions = ref<TavernSessionRecord[]>([]);
 const selectedSessionId = ref('');
@@ -244,6 +257,8 @@ const memoryIndex = ref<TavernMemoryIndexRecord | null>(null);
 const memoryTokenizerStatus = ref(getXbTavernMemoryTokenizerStatus());
 const selectedMemoryFilePath = ref('');
 const memoryEditorDraft = ref('');
+const memoryEditorLoadedPath = ref('');
+const memoryEditorBaseContent = ref('');
 const memoryEditorMode = ref<'preview' | 'edit'>('preview');
 const memoryEditorStatus = ref('');
 const managerActionStatus = ref('');
@@ -264,11 +279,11 @@ const managerCompactionOverlay = ref<{
 const initialChatPreset = createFallbackTavernChatPromptPresetBundle();
 const initialAssistantPreset: TavernAssistantPreset = createDefaultTavernAssistantPreset();
 const assistantPresetSections: AssistantPresetSectionRow[] = [
-    { key: 'storyArcPrompt', label: '剧情脉络', summary: '长期方向、当前阶段、主要压力。' },
-    { key: 'statePrompt', label: '状态栏', summary: '当前仍成立的事实、关系和物品状态。' },
-    { key: 'episodePrompt', label: '阶段档案', summary: '阶段标题、范围、变化和未解决事项。' },
-    { key: 'inboxPrompt', label: '待处理', summary: '暂时无法判断、还需要观察的内容。' },
-    { key: 'managerCustomPrompt', label: '自定义条目', summary: '你额外想让管理员遵守的口径。' },
+    { key: 'storyArcPrompt', label: '剧情脉络', summary: 'memory/session.md' },
+    { key: 'statePrompt', label: '状态栏', summary: 'memory/state.md' },
+    { key: 'episodePrompt', label: '阶段档案', summary: 'memory/episodes/*.md' },
+    { key: 'inboxPrompt', label: '收件箱', summary: 'memory/inbox.md' },
+    { key: 'managerCustomPrompt', label: '补充规则', summary: '额外口径' },
 ];
 const preset = ref<TavernChatPromptPresetBundle>(initialChatPreset);
 const activeChatPreset = ref<TavernChatPromptPresetBundle>(initialChatPreset);
@@ -283,26 +298,46 @@ const activeAssistantPresetId = ref('');
 const assistantPresetStatus = ref('');
 const savedAssistantPresetJson = ref(JSON.stringify(initialAssistantPreset));
 const selectedPresetSourceId = ref('');
-const selectedAssistantPresetItemId = ref('storyArcPrompt:0');
+const selectedAssistantPresetItemId = ref('storyArcPrompt');
 const worldbookList = ref<Record<string, unknown>>({});
 const selectedWorldbookName = ref('');
 const activeWorldbook = ref<Record<string, unknown>>({});
 const worldbookDraft = ref<Record<string, unknown>>({});
 const selectedWorldbookEntryUid = ref('');
 const worldbookStatus = ref('');
+const characterSearchText = ref('');
+const characterVisibleLimit = ref(CHARACTER_ARCHIVE_BATCH_SIZE);
+const chatPresetSourceSearchText = ref('');
+const chatPresetSourceVisibleLimit = ref(CHAT_PRESET_SOURCE_BATCH_SIZE);
+const assistantPresetSearchText = ref('');
+const assistantPresetVisibleLimit = ref(ASSISTANT_PRESET_BATCH_SIZE);
+const promptSearchText = ref('');
+const promptVisibleLimit = ref(PROMPT_EDITOR_BATCH_SIZE);
+const worldbookSearchText = ref('');
+const worldbookVisibleLimit = ref(WORLDBOOK_BATCH_SIZE);
+const worldbookEntrySearchText = ref('');
+const worldbookEntryVisibleLimit = ref(WORLDBOOK_ENTRY_BATCH_SIZE);
+const memoryFileSearchText = ref('');
+const memoryFileGroupVisibleLimits = ref<Record<string, number>>({});
+const chatSessionSearchText = ref('');
+const chatSidebarSessionLimit = ref(CHAT_SIDEBAR_INITIAL_LIMIT);
+const brokenAvatarUrls = ref<Record<string, true>>({});
+const regexSearchText = ref('');
+const regexGroupVisibleLimits = ref<Record<string, number>>({});
 const regexList = ref<Record<string, unknown>>({});
 const selectedRegexKey = ref('');
-const activeRegexScriptJson = ref('');
 const regexDraft = ref<TavernRegexScriptDraft>({});
+const activeRegexScriptJson = ref(snapshotNativeDraft(regexDraft.value));
 const regexStatus = ref('');
-type AppView = 'home' | 'chat' | 'characters' | 'settings';
+type AppView = 'home' | 'chat' | 'characters' | 'settings' | 'about';
 type SettingsWorkspaceKey = 'api' | 'chatPreset' | 'worldbooks' | 'regex' | 'assistantPreset';
 type ChatFocus = 'chat' | 'manager';
 type ChatLayout = 'chat' | 'balanced' | 'editor';
+type ChatSidePanel = 'sessions' | 'memory';
 function readInitialView(): AppView {
     const hash = String(window.location.hash || '').replace(/^#\/?/, '');
     const [view] = hash.split('/');
-    if (view === 'chat' || view === 'characters' || view === 'settings') {
+    if (view === 'chat' || view === 'characters' || view === 'settings' || view === 'about') {
         return view;
     }
     return 'home';
@@ -321,7 +356,6 @@ interface PendingHostRequest {
 const pendingHostRequests = new Map<string, PendingHostRequest>();
 const presetDirty = computed(() => snapshotPreset(preset.value) !== savedPresetJson.value);
 const assistantPresetDirty = computed(() => snapshotAssistantPreset(assistantPreset.value) !== savedAssistantPresetJson.value);
-const assistantPromptPreview = computed(() => buildTavernManagerSystemPrompt(assistantPreset.value));
 const chatPresetOptions = computed<ChatPresetOptionRow[]>(() => {
     const components = promptRecord(chatPresetList.value.components);
     const names = Array.isArray(components.promptManager) ? components.promptManager : [];
@@ -340,6 +374,22 @@ const chatPresetOptions = computed<ChatPresetOptionRow[]>(() => {
         })
         .map((name) => ({ name, label: name }));
 });
+const filteredChatPresetOptions = computed<ChatPresetOptionRow[]>(() => {
+    const query = normalizedSearchText(chatPresetSourceSearchText.value);
+    if (!query) {return chatPresetOptions.value;}
+    return chatPresetOptions.value.filter((item) => includesSearch(item.label || item.name, query));
+});
+const visibleChatPresetOptions = computed(() => {
+    const visible = filteredChatPresetOptions.value.slice(0, chatPresetSourceVisibleLimit.value);
+    const selectedName = String(selectedPresetSourceId.value || preset.value.promptManager?.name || preset.value.name || '').trim();
+    if (!selectedName || visible.some((item) => item.name === selectedName)) {return visible;}
+    const selected = chatPresetOptions.value.find((item) => item.name === selectedName);
+    return selected ? [selected, ...visible] : visible;
+});
+const hiddenChatPresetOptionCount = computed(() => Math.max(
+    0,
+    filteredChatPresetOptions.value.length - Math.min(filteredChatPresetOptions.value.length, chatPresetSourceVisibleLimit.value),
+));
 const worldbookOptions = computed<WorldbookOptionRow[]>(() => {
     const books = Array.isArray(worldbookList.value.books) ? worldbookList.value.books : [];
     return books.map((item) => {
@@ -350,19 +400,82 @@ const worldbookOptions = computed<WorldbookOptionRow[]>(() => {
         };
     }).filter((item) => item.name);
 });
+function normalizedSearchText(value = '') {
+    return String(value || '').trim().toLocaleLowerCase();
+}
+
+function includesSearch(text: string, query: string) {
+    if (!query) {return true;}
+    return normalizedSearchText(text).includes(query);
+}
+
+function buildSearchCorpus(parts: unknown[], perPartLimit = 1600) {
+    return parts
+        .map((part) => String(part ?? '').slice(0, perPartLimit))
+        .filter(Boolean)
+        .join('\n');
+}
+
+const filteredWorldbookOptions = computed<WorldbookOptionRow[]>(() => {
+    const query = normalizedSearchText(worldbookSearchText.value);
+    if (!query) {return worldbookOptions.value;}
+    return worldbookOptions.value.filter((item) => includesSearch(item.name, query));
+});
+const visibleWorldbookOptions = computed(() => {
+    const visible = filteredWorldbookOptions.value.slice(0, worldbookVisibleLimit.value);
+    const selectedName = String(selectedWorldbookName.value || '').trim();
+    if (!selectedName || visible.some((item) => item.name === selectedName)) {return visible;}
+    const selected = worldbookOptions.value.find((item) => item.name === selectedName);
+    return selected ? [selected, ...visible] : visible;
+});
+const hiddenWorldbookCount = computed(() => Math.max(
+    0,
+    filteredWorldbookOptions.value.length - Math.min(filteredWorldbookOptions.value.length, worldbookVisibleLimit.value),
+));
 const worldbookEntries = computed<WorldbookEntryDraft[]>(() => {
     const entries = Array.isArray(worldbookDraft.value.entries) ? worldbookDraft.value.entries : [];
-    return entries.map((entry, index) => ({
-        ...promptRecord(entry),
-        uid: (promptRecord(entry).uid as string | number | undefined) ?? index,
-    } as WorldbookEntryDraft));
+    return entries.map((entry, index) => {
+        const record = promptRecord(entry);
+        const row = {
+            ...record,
+            uid: (record.uid as string | number | undefined) ?? index,
+        } as WorldbookEntryDraft;
+        row.searchCorpus = normalizedSearchText(buildSearchCorpus([
+            row.comment,
+            linesFromList(row.key),
+            linesFromList(row.keysecondary),
+            row.uid,
+            row.content,
+        ]));
+        return row;
+    });
 });
+const filteredWorldbookEntries = computed<WorldbookEntryDraft[]>(() => {
+    const query = normalizedSearchText(worldbookEntrySearchText.value);
+    if (!query) {return worldbookEntries.value;}
+    return worldbookEntries.value.filter((entry) => String(entry.searchCorpus || '').includes(query));
+});
+const visibleWorldbookEntries = computed(() => {
+    const visible = filteredWorldbookEntries.value.slice(0, worldbookEntryVisibleLimit.value);
+    const selectedUid = String(selectedWorldbookEntryUid.value || '').trim();
+    if (!selectedUid || visible.some((entry) => String(entry.uid) === selectedUid)) {return visible;}
+    const selected = worldbookEntries.value.find((entry) => String(entry.uid) === selectedUid);
+    return selected ? [selected, ...visible] : visible;
+});
+const hiddenWorldbookEntryCount = computed(() => Math.max(
+    0,
+    filteredWorldbookEntries.value.length - Math.min(filteredWorldbookEntries.value.length, worldbookEntryVisibleLimit.value),
+));
 const selectedWorldbookEntry = computed(() => (
     worldbookEntries.value.find((entry) => String(entry.uid) === selectedWorldbookEntryUid.value)
     || worldbookEntries.value[0]
     || null
 ));
 const worldbookDirty = computed(() => snapshotNativeDraft(worldbookDraft.value) !== snapshotNativeDraft(activeWorldbook.value));
+function stripWorldbookEntryInternalFields(entry: WorldbookEntryDraft): Record<string, unknown> {
+    const { searchCorpus: _searchCorpus, ...record } = entry;
+    return record;
+}
 const regexGroups = computed<TavernRegexGroupRow[]>(() => {
     const groups = Array.isArray(regexList.value.groups) ? regexList.value.groups : [];
     return groups.map((group) => {
@@ -378,32 +491,97 @@ const regexGroups = computed<TavernRegexGroupRow[]>(() => {
     }).filter((group) => group.key && Number.isFinite(group.scriptType));
 });
 const regexScriptRows = computed<TavernRegexScriptRow[]>(() => regexGroups.value.flatMap((group) => (
-    group.scripts.map((script, index) => ({
-        key: `${group.scriptType}:${String(script.id || index)}`,
-        groupKey: group.key,
-        groupLabel: group.label,
-        scriptType: group.scriptType,
-        script,
-    }))
+    group.scripts.map((script, index) => {
+        const row: TavernRegexScriptRow = {
+            key: `${group.scriptType}:${String(script.id || index)}`,
+            groupKey: group.key,
+            groupLabel: group.label,
+            scriptType: group.scriptType,
+            script,
+        };
+        row.searchCorpus = normalizedSearchText(buildSearchCorpus([
+            row.groupLabel,
+            row.script.scriptName,
+            row.script.findRegex,
+            row.script.replaceString,
+            row.script.trimStrings,
+            row.script.placement,
+            row.key,
+        ], 1200));
+        return row;
+    })
 )));
+function regexVisibleLimitForGroup(groupKey = '') {
+    const value = Number(regexGroupVisibleLimits.value[groupKey]);
+    return Number.isFinite(value) && value > 0 ? Math.floor(value) : REGEX_GROUP_BATCH_SIZE;
+}
+
+function expandRegexGroup(groupKey = '') {
+    const current = regexVisibleLimitForGroup(groupKey);
+    regexGroupVisibleLimits.value = {
+        ...regexGroupVisibleLimits.value,
+        [groupKey]: current + REGEX_GROUP_BATCH_SIZE,
+    };
+}
+
+const regexGroupsForDisplay = computed(() => {
+    const query = normalizedSearchText(regexSearchText.value);
+    const selectedKey = String(selectedRegexKey.value || '').trim();
+    return regexGroups.value
+        .map((group) => {
+            const rows = regexScriptRows.value.filter((item) => item.groupKey === group.key);
+            const filtered = query
+                ? rows.filter((row) => String(row.searchCorpus || '').includes(query))
+                : rows;
+            const limit = regexVisibleLimitForGroup(group.key);
+            const visibleRows = filtered.slice(0, limit);
+            if (selectedKey && !visibleRows.some((row) => row.key === selectedKey)) {
+                const selected = rows.find((row) => row.key === selectedKey);
+                if (selected) {visibleRows.unshift(selected);}
+            }
+            return {
+                ...group,
+                visibleRows,
+                totalCount: rows.length,
+                filteredCount: filtered.length,
+                hiddenCount: Math.max(0, filtered.length - Math.min(filtered.length, limit)),
+            };
+        })
+        .filter((group) => group.filteredCount || !query);
+});
 const selectedRegexRow = computed(() => regexScriptRows.value.find((row) => row.key === selectedRegexKey.value) || null);
 const regexDirty = computed(() => snapshotNativeDraft(regexDraft.value) !== activeRegexScriptJson.value);
 const assistantPresetItems = computed<AssistantPresetItemRow[]>(() => {
-    let orderIndex = 0;
-    return assistantPresetSections.flatMap((section) => {
-        const lines = readAssistantPresetLines(section.key);
-        const visibleLines = section.key === 'managerCustomPrompt' && !lines.length ? [''] : lines;
-        return visibleLines.map((content, lineIndex) => ({
-            id: `${section.key}:${lineIndex}`,
-            key: section.key,
-            sectionLabel: section.label,
-            sectionSummary: section.summary,
-            lineIndex,
-            orderIndex: ++orderIndex,
-            content,
-        }));
-    });
+    return assistantPresetSections.map((section) => ({
+        id: section.key,
+        key: section.key,
+        label: section.label,
+        summary: section.summary,
+        content: String(assistantPreset.value[section.key] || ''),
+    }));
 });
+const filteredAssistantPresetRecords = computed<TavernAssistantPresetRecord[]>(() => {
+    const query = normalizedSearchText(assistantPresetSearchText.value);
+    if (!query) {return assistantPresets.value;}
+    return assistantPresets.value.filter((item) => normalizedSearchText(buildSearchCorpus([
+        item.name,
+        item.description,
+        item.id,
+        item.preset?.name,
+        item.preset?.description,
+    ], 1200)).includes(query));
+});
+const visibleAssistantPresetRecords = computed(() => {
+    const visible = filteredAssistantPresetRecords.value.slice(0, assistantPresetVisibleLimit.value);
+    const selectedId = String(activeAssistantPresetId.value || assistantPreset.value.id || '').trim();
+    if (!selectedId || visible.some((item) => item.id === selectedId)) {return visible;}
+    const selected = assistantPresets.value.find((item) => item.id === selectedId);
+    return selected ? [selected, ...visible] : visible;
+});
+const hiddenAssistantPresetCount = computed(() => Math.max(
+    0,
+    filteredAssistantPresetRecords.value.length - Math.min(filteredAssistantPresetRecords.value.length, assistantPresetVisibleLimit.value),
+));
 const selectedAssistantPresetItem = computed(() => (
     assistantPresetItems.value.find((item) => item.id === selectedAssistantPresetItemId.value)
     || assistantPresetItems.value[0]
@@ -413,10 +591,15 @@ const selectedSession = computed(() => sessions.value.find((item) => item.id ===
 const sessionRuntimeState = computed(() => normalizeTavernSessionState(selectedSession.value?.state || {}));
 const activeView = ref<AppView>(readInitialView());
 const activeSettingsWorkspace = ref<SettingsWorkspaceKey>(readInitialSettingsWorkspace());
+const homeThemeDark = ref(false);
 const chatFocus = ref<ChatFocus>('chat');
 const chatLayout = ref<ChatLayout>('balanced');
+const chatSidePanel = ref<ChatSidePanel>('memory');
 const chatScrollRef = ref<HTMLElement | null>(null);
 const managerScrollRef = ref<HTMLElement | null>(null);
+const chatComposeTextareaRef = ref<HTMLTextAreaElement | null>(null);
+const managerComposeTextareaRef = ref<HTMLTextAreaElement | null>(null);
+const characterArchiveListRef = ref<HTMLElement | null>(null);
 const chatAutoScroll = ref(true);
 const managerAutoScroll = ref(true);
 const showChatScrollTop = ref(false);
@@ -439,6 +622,9 @@ const messageActionFeedback = ref<Record<string, 'success' | 'error'>>({});
 const activeRunController = ref<AbortController | null>(null);
 const managerAssistantController = ref<AbortController | null>(null);
 const markdownHtmlCache = new Map<string, string>();
+const characterOptionCache = new Map<string, { signature: string; option: TavernCharacterOption }>();
+const sessionSearchCorpusCache = new Map<string, { signature: string; corpus: string }>();
+const memoryFileSearchCorpusCache = new WeakMap<TavernMemoryFileRecord, string>();
 const apiSettingsPanelState: Record<string, unknown> = {
     config: {},
     configDraft: null,
@@ -463,90 +649,107 @@ let managerScrollHideTimer: number | null = null;
 let pendingChatScrollSnapshot: ElementScrollSnapshot | null = null;
 let pendingManagerScrollSnapshot: ElementScrollSnapshot | null = null;
 const usingLockedSessionContext = computed(() => !!selectedSession.value?.contextSnapshot);
-const liveWorldBookCount = computed(() => context.value.worldBooks?.length || 0);
-const liveWorldEntryCount = computed(() => (context.value.worldBooks || []).reduce((sum, book) => sum + (book.entries?.length || 0), 0));
-const contextSourceTitle = computed(() => usingLockedSessionContext.value
-    ? '会话快照'
-    : '酒馆当前资料');
-const contextSourceDetail = computed(() => usingLockedSessionContext.value
-    ? `保存于会话：${displayableTavernName(selectedSession.value?.characterName || selectedSession.value?.title || '', '未选择角色')}。`
-    : `${displayableTavernName(context.value.character?.name || '', '未选择角色')} · 世界书 ${liveWorldBookCount.value} 本 / ${liveWorldEntryCount.value} 条。`);
 const effectiveContext = computed<XbTavernContext>(() => ({
     ...(selectedSession.value?.contextSnapshot || context.value),
     history: selectedSessionId.value
         ? buildContextHistory(sessionMessages.value)
         : context.value.history,
 }));
-const memoryContext = computed(() => {
-    if (memoryTokenizerStatus.value.status !== 'ready') {return {};}
-    return selectXbTavernMemoryContext({
-        episodeSummaries: episodeSummaries.value,
-        turnSummaries: turnSummaries.value,
-        memoryFiles: memoryFiles.value,
-        queryText: buildXbTavernMemoryQuery(effectiveContext.value, currentUserMessage.value),
-        ignoredTerms: buildXbTavernMemoryIgnoredTerms(effectiveContext.value),
-    });
-});
-
-const brainBuild = computed(() => buildXbTavernBrain({
-    context: effectiveContext.value,
-    chatPreset: activeChatPreset.value,
-    currentUserMessage: currentUserMessage.value,
-    historyMode: historyMode.value,
-    turn: sessionRuntimeState.value.turn,
-    entryStates: sessionRuntimeState.value.worldEntryStates,
-    memoryContext: memoryContext.value,
-    diagnostics: diagnostics.value,
-}));
-const buildResult = computed(() => brainBuild.value.buildResult);
-
 const effectiveCharacter = computed(() => effectiveContext.value.character || {});
-const effectiveUser = computed(() => effectiveContext.value.user || {});
 const characterName = computed(() => displayableTavernName(effectiveCharacter.value.name || '', '未选择角色'));
 const hasCharacter = computed(() => !!displayableTavernName(effectiveCharacter.value.name || ''));
 const characterAvatar = computed(() => String(effectiveCharacter.value.avatar || '').trim());
+const visibleCharacterAvatar = computed(() => {
+    const url = characterAvatar.value;
+    return url && !brokenAvatarUrls.value[url] ? url : '';
+});
 const liveCharacter = computed(() => context.value.character || {});
 const liveCharacterId = computed(() => String(liveCharacter.value.id || selectedCharacterId.value || '').trim());
+function avatarAvailable(url = '') {
+    const key = String(url || '').trim();
+    return !!key && !brokenAvatarUrls.value[key];
+}
+
+function rememberBrokenAvatar(url = '') {
+    const key = String(url || '').trim();
+    if (!key || brokenAvatarUrls.value[key]) {return;}
+    brokenAvatarUrls.value = {
+        ...brokenAvatarUrls.value,
+        [key]: true,
+    };
+}
+
+function normalizeCharacterOption(character: Record<string, unknown>, idFallback = ''): TavernCharacterOption | null {
+    const id = String(character.id || idFallback || '').trim();
+    if (!id) {return null;}
+    const name = String(character.name || '').trim() || `角色 ${id}`;
+    const avatar = String(character.avatar || '').trim();
+    const description = String(character.description || '').trim();
+    const personality = String(character.personality || '').trim();
+    const scenario = String(character.scenario || '').trim();
+    const firstMessage = String(character.firstMessage || character.first_mes || '').trim();
+    const signature = JSON.stringify([id, name, avatar, description, personality, scenario, firstMessage]);
+    const cached = characterOptionCache.get(id);
+    if (cached?.signature === signature) {return cached.option;}
+    const option: TavernCharacterOption = {
+        id,
+        name,
+        avatar,
+        description,
+        personality,
+        scenario,
+        firstMessage,
+    };
+    option.searchCorpus = normalizedSearchText(buildSearchCorpus([
+        option.id,
+        option.name,
+        option.description,
+        option.personality,
+        option.scenario,
+        option.firstMessage,
+    ], 900));
+    characterOptionCache.set(id, { signature, option });
+    return option;
+}
 const characterCards = computed<TavernCharacterOption[]>(() => {
     const byId = new Map<string, TavernCharacterOption>();
     availableCharacters.value.forEach((character) => {
-        const id = String(character.id || '').trim();
-        if (!id) {return;}
-        byId.set(id, {
-            id,
-            name: String(character.name || '').trim() || `角色 ${id}`,
-            avatar: String(character.avatar || '').trim(),
-            description: String(character.description || '').trim(),
-            personality: String(character.personality || '').trim(),
-            scenario: String(character.scenario || '').trim(),
-            firstMessage: String(character.firstMessage || '').trim(),
-        });
+        const option = normalizeCharacterOption(character as unknown as Record<string, unknown>);
+        if (option) {byId.set(option.id, option);}
     });
     const currentId = String(liveCharacter.value.id || '').trim();
     if (currentId && liveCharacter.value.name && !byId.has(currentId)) {
-        byId.set(currentId, {
-            id: currentId,
-            name: String(liveCharacter.value.name || '').trim(),
-            avatar: String(liveCharacter.value.avatar || '').trim(),
-            description: String(liveCharacter.value.description || '').trim(),
-            personality: String(liveCharacter.value.personality || '').trim(),
-            scenario: String(liveCharacter.value.scenario || '').trim(),
-            firstMessage: String(liveCharacter.value.firstMessage || '').trim(),
-        });
+        const option = normalizeCharacterOption(liveCharacter.value as Record<string, unknown>, currentId);
+        if (option) {byId.set(currentId, option);}
     }
     return [...byId.values()].sort((left, right) => {
-        const leftCurrent = left.id === liveCharacterId.value ? -1 : 0;
-        const rightCurrent = right.id === liveCharacterId.value ? -1 : 0;
-        if (leftCurrent !== rightCurrent) {return leftCurrent - rightCurrent;}
         return left.name.localeCompare(right.name, 'zh-Hans-CN');
     });
 });
-const userName = computed(() => effectiveUser.value.name || 'User');
-const worldBooks = computed(() => effectiveContext.value.worldBooks || []);
-const worldBookCount = computed(() => worldBooks.value.length);
-const worldEntryCount = computed(() => buildResult.value.worldEntryCandidates.length);
-const activatedCount = computed(() => buildResult.value.activatedWorldEntries.length);
-const messagePreview = computed(() => buildResult.value.messages);
+const filteredCharacterCards = computed<TavernCharacterOption[]>(() => {
+    const query = normalizedSearchText(characterSearchText.value);
+    if (!query) {return characterCards.value;}
+    return characterCards.value.filter((character) => String(character.searchCorpus || '').includes(query));
+});
+const visibleCharacterCards = computed(() => {
+    const visible = filteredCharacterCards.value.slice(0, characterVisibleLimit.value);
+    const selectedId = String(selectedCharacterPreviewId.value || liveCharacterId.value || selectedCharacterId.value || '').trim();
+    if (!selectedId || visible.some((character) => character.id === selectedId)) {return visible;}
+    const selected = characterCards.value.find((character) => character.id === selectedId);
+    return selected ? [selected, ...visible] : visible;
+});
+const selectedCharacterPreview = computed(() => {
+    const previewId = String(selectedCharacterPreviewId.value || liveCharacterId.value || selectedCharacterId.value || '').trim();
+    if (previewId) {
+        const selected = characterCards.value.find((character) => character.id === previewId);
+        if (selected) {return selected;}
+    }
+    return filteredCharacterCards.value[0] || characterCards.value[0] || null;
+});
+const hiddenCharacterCount = computed(() => Math.max(
+    0,
+    filteredCharacterCards.value.length - Math.min(filteredCharacterCards.value.length, characterVisibleLimit.value),
+));
 function cleanTavernDisplayName(value = '') {
     return String(value || '')
         .replace(/\s*[·-]\s*小白酒馆\s*$/g, '')
@@ -574,6 +777,27 @@ function sessionDisplayTitle(session?: TavernSessionRecord | null) {
     return '';
 }
 
+function sessionSearchCorpus(session: TavernSessionRecord) {
+    const signature = [
+        session.id,
+        session.title,
+        session.characterName,
+        session.updatedAt,
+        normalizeTavernSessionState(session.state || {}).turn,
+    ].join('|');
+    const cached = sessionSearchCorpusCache.get(session.id);
+    if (cached?.signature === signature) {return cached.corpus;}
+    const corpus = normalizedSearchText(buildSearchCorpus([
+        sessionDisplayTitle(session),
+        session.title,
+        session.characterName,
+        session.id,
+        normalizeTavernSessionState(session.state || {}).turn,
+    ], 600));
+    sessionSearchCorpusCache.set(session.id, { signature, corpus });
+    return corpus;
+}
+
 const selectedSessionTitle = computed(() => (
     sessionDisplayTitle(selectedSession.value)
     || displayableTavernName(effectiveCharacter.value.name || '')
@@ -584,13 +808,8 @@ const displayCharacterName = computed(() => (
         ? selectedSessionTitle.value
         : (displayableTavernName(characterName.value) || '未选择角色')
 ));
-const rawMessagesJson = computed(() => buildResult.value.meta.rawMessagesJson);
-const buildSnapshot = computed(() => brainBuild.value.buildSnapshot);
-const effectiveHistoryCount = computed(() => effectiveContext.value.history?.length || 0);
 const lastRequestSnapshot = computed(() => selectedSession.value?.state?.lastRequestSnapshot as RequestAuditSnapshot | undefined);
 const lastRequestRawJson = computed(() => String(lastRequestSnapshot.value?.rawRequestJson || lastRequestSnapshot.value?.rawMessagesJson || ''));
-const lastRequestMatchesPreview = computed(() => !!lastRequestSnapshot.value?.rawMessagesJson
-    && lastRequestSnapshot.value.rawMessagesJson === rawMessagesJson.value);
 const resolvedProviderConfig = computed(() => resolveXbTavernProviderConfig(agentConfig.value));
 const apiReady = computed(() => resolvedProviderConfig.value.readiness.ok);
 const apiReadyDetail = computed(() => resolvedProviderConfig.value.readiness.message);
@@ -606,16 +825,32 @@ const latestErrorMessage = computed(() => {
     return lastMessage?.error ? lastMessage.content : '';
 });
 const latestManagerRun = computed(() => managerRuns.value[0] || null);
+const visibleManagerRuns = computed(() => managerRuns.value.slice(0, MANAGER_RUN_VISIBLE_LIMIT));
+const hiddenManagerRunCount = computed(() => Math.max(0, managerRuns.value.length - visibleManagerRuns.value.length));
 const managerBusy = computed(() => managerRuns.value.some((run) => ['queued', 'running'].includes(run.status)));
 const recentTurnSummaries = computed(() => [...turnSummaries.value].reverse().slice(0, 8));
-const sidebarSessions = computed(() => sessions.value.slice(0, 6));
-const chatSidebarSessions = computed(() => {
+const filteredChatSidebarSessions = computed(() => {
     const currentCharacterId = String(selectedSession.value?.characterId || effectiveContext.value.character?.id || '').trim();
     const sameCharacter = currentCharacterId
         ? sessions.value.filter((session) => String(session.characterId || '').trim() === currentCharacterId)
         : sessions.value;
-    return sameCharacter.slice(0, 6);
+    const query = normalizedSearchText(chatSessionSearchText.value);
+    const filtered = query
+        ? sameCharacter.filter((session) => sessionSearchCorpus(session).includes(query))
+        : sameCharacter;
+    return filtered;
 });
+const chatSidebarSessions = computed(() => {
+    const filtered = filteredChatSidebarSessions.value;
+    const visible = filtered.slice(0, chatSidebarSessionLimit.value);
+    if (selectedSessionId.value && !visible.some((session) => session.id === selectedSessionId.value)) {
+        const selected = filtered.find((session) => session.id === selectedSessionId.value);
+        if (selected) {visible.unshift(selected);}
+    }
+    return visible;
+});
+const filteredChatSidebarSessionCount = computed(() => filteredChatSidebarSessions.value.length);
+const hiddenChatSidebarSessionCount = computed(() => Math.max(0, filteredChatSidebarSessionCount.value - chatSidebarSessions.value.length));
 const activeMemoryFiles = computed(() => memoryFiles.value.filter((file) => file.status !== 'stale'));
 const selectedMemoryFile = computed(() => (
     memoryFiles.value.find((file) => file.path === selectedMemoryFilePath.value)
@@ -657,6 +892,34 @@ function memoryFileSortWeight(path = '') {
     if (path.startsWith('memory/episodes/')) {return 10;}
     if (path.startsWith('memory/turns/')) {return 20;}
     return 30;
+}
+
+function memoryFileSearchCorpus(file: TavernMemoryFileRecord) {
+    const cached = memoryFileSearchCorpusCache.get(file);
+    if (cached) {return cached;}
+    const corpus = normalizedSearchText(buildSearchCorpus([
+        file.path,
+        memoryFileDisplayName(file),
+        memoryFileKindLabel(file),
+        file.status,
+        file.content,
+    ], 1000));
+    memoryFileSearchCorpusCache.set(file, corpus);
+    return corpus;
+}
+
+function memoryFileVisibleLimitForGroup(groupKey = '') {
+    const fallback = groupKey === 'turns' ? MEMORY_TURN_INITIAL_LIMIT : MEMORY_FILE_BATCH_SIZE;
+    const value = Number(memoryFileGroupVisibleLimits.value[groupKey]);
+    return Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
+}
+
+function expandMemoryFileGroup(groupKey = '') {
+    const current = memoryFileVisibleLimitForGroup(groupKey);
+    memoryFileGroupVisibleLimits.value = {
+        ...memoryFileGroupVisibleLimits.value,
+        [groupKey]: current + (groupKey === 'turns' ? MEMORY_TURN_BATCH_SIZE : MEMORY_FILE_BATCH_SIZE),
+    };
 }
 
 const memoryDirectoryGroups = computed(() => {
@@ -702,12 +965,36 @@ const memoryDirectoryGroups = computed(() => {
             files: rest,
         });
     }
-    return visible;
+    const query = normalizedSearchText(memoryFileSearchText.value);
+    const selectedPath = String(selectedMemoryFilePath.value || '').trim();
+    return visible
+        .map((group) => {
+            const filtered = query
+                ? group.files.filter((file) => memoryFileSearchCorpus(file).includes(query))
+                : group.files;
+            const limit = memoryFileVisibleLimitForGroup(group.key);
+            const files = filtered.slice(0, limit);
+            if (selectedPath && !files.some((file) => file.path === selectedPath)) {
+                const selected = filtered.find((file) => file.path === selectedPath);
+                if (selected) {files.unshift(selected);}
+            }
+            return {
+                ...group,
+                files,
+                totalCount: group.files.length,
+                filteredCount: filtered.length,
+                hiddenCount: Math.max(0, filtered.length - files.length),
+            };
+        })
+        .filter((group) => group.filteredCount || !query);
 });
-const selectedMemoryFileTitle = computed(() => memoryFileDisplayName(selectedMemoryFile.value || 'memory/session.md'));
+const memoryEditorDocumentAvailable = computed(() => !!selectedMemoryFile.value || !!memoryEditorLoadedPath.value);
+const selectedMemoryFileTitle = computed(() => memoryFileDisplayName(
+    selectedMemoryFile.value || memoryEditorLoadedPath.value || 'memory/session.md',
+));
 const memoryEditorDirty = computed(() => (
-    !!selectedMemoryFile.value
-    && memoryEditorDraft.value !== String(selectedMemoryFile.value.content || '')
+    !!memoryEditorLoadedPath.value
+    && memoryEditorDraft.value !== memoryEditorBaseContent.value
 ));
 const memoryIndexStatusLine = computed(() => {
     const tokenizer = memoryTokenizerStatus.value;
@@ -731,13 +1018,19 @@ const managerStatusLine = computed(() => {
     if (latest.status === 'running') {return `正在整理：第 ${latest.turn} 轮`; }
     return `排队中：第 ${latest.turn} 轮`;
 });
-const chatMarkdownSignature = computed(() => sessionMessages.value
+const visibleChatMarkdownSignature = computed(() => visibleChatMessages.value
     .map((message) => `${message.sessionId}:${message.order}:${message.error ? 1 : 0}:${markdownSignature(message.content)}`)
+    .join('|'));
+const runtimeThoughtsSignature = computed(() => runtimeThoughts.value
+    .map((thought, index) => `${index}:${markdownSignature(String(thought.label || ''))}:${markdownSignature(String(thought.text || ''))}`)
     .join('|'));
 const managerMessageWindow = computed(() => getMessageWindow({
     uiMessageWindowLimit: managerMessageWindowLimit.value,
 }, managerChatMessages.value.length));
 const visibleManagerChatMessages = computed(() => managerChatMessages.value.slice(managerMessageWindow.value.startIndex));
+const visibleManagerMarkdownSignature = computed(() => visibleManagerChatMessages.value
+    .map((message) => `${message.sessionId}:${message.order}:${markdownSignature(message.content)}`)
+    .join('|'));
 const chatSubtitle = computed(() => {
     if (!selectedSessionId.value) {return '写一句话后会自动创建独立会话。';}
     const turn = Number(sessionRuntimeState.value.turn || 0);
@@ -755,111 +1048,6 @@ const apiRuntimeLine = computed(() => {
 });
 const canSendMessage = computed(() => isRunning.value || !!currentUserMessage.value.trim());
 const canSendManagerMessage = computed(() => isManagerAssistantRunning.value || (!!selectedSessionId.value && !!managerInputDraft.value.trim()));
-const characterFields = computed(() => {
-    const character = effectiveContext.value.character || {};
-    const user = effectiveContext.value.user || {};
-    return [
-        ['角色', character.name],
-        ['头像', character.avatar],
-        ['用户', user.name],
-        ['用户设定', user.persona || user.description],
-        ['描述', character.description],
-        ['性格', character.personality],
-        ['场景', character.scenario],
-        ['首条消息', character.firstMessage || character.first_mes],
-        ['示例消息', character.mesExample || character.mes_example],
-        ['作者备注', character.creatorNotes || character.creator_notes],
-    ].filter((item) => String(item[1] || '').trim());
-});
-
-const diagnosticRows = computed(() => {
-    const rows = [
-        contextSourceDetail.value,
-        apiReady.value ? `API：${apiRuntimeLine.value}` : `API：${apiReadyDetail.value}`,
-        diagnostics.value.message || statusText.value,
-        characterName.value ? '' : '当前没有可用角色卡。',
-        effectiveHistoryCount.value ? '' : '这次准备资料里没有聊天历史。',
-        worldBookCount.value ? '' : '这次准备资料里没有可用世界书。',
-        ...(diagnostics.value.worldbookErrors || []).map((item) => `${item.name}: ${item.error}`),
-    ];
-    return rows.map((item) => String(item || '').trim()).filter(Boolean);
-});
-
-const messageRows = computed(() => messagePreview.value.map((message, index) => {
-    const layer = buildResult.value.messageLayers[index];
-    return {
-        index,
-        message,
-        layer: layer?.layer || 'unknown',
-        label: layer?.label || 'unknown',
-        sourceId: layer?.sourceId || '',
-        chars: layer?.chars || message.content.length,
-        tokenEstimate: layer?.tokenEstimate || Math.max(1, Math.ceil(message.content.length / 4)),
-    };
-}));
-
-type MessagePreviewRow = (typeof messageRows.value)[number];
-
-const messageGroups = computed(() => {
-    const labels: Record<string, string> = {
-        top: '开场规则',
-        preset: '预设条目',
-        'world-before': '先放入的世界书',
-        'character-card': '角色卡',
-        'world-after': '角色卡后的世界书',
-        'world-author-note': '世界书 · 作者备注',
-        'world-examples': '世界书 · 示例消息',
-        history: '会话历史',
-        'current-user/history': '历史和本次输入',
-        'current-user': '本次输入',
-        'world-depth': '插入到历史里的世界书',
-        'assistant-prefill': '回复开头',
-    };
-    const groups: Array<{ key: string; label: string; rows: MessagePreviewRow[]; chars: number; tokenEstimate: number }> = [];
-    messageRows.value.forEach((row) => {
-        const previous = groups[groups.length - 1];
-        let group = previous?.key === row.layer ? previous : null;
-        if (!group) {
-            group = {
-                key: row.layer,
-                label: labels[row.layer] || row.label || row.layer,
-                rows: [],
-                chars: 0,
-                tokenEstimate: 0,
-            };
-            groups.push(group);
-        }
-        group.rows.push(row);
-        group.chars += row.chars;
-        group.tokenEstimate += row.tokenEstimate;
-    });
-    return groups;
-});
-
-const activatedOrder = computed(() => new Map(buildResult.value.activatedWorldEntries.map((entry, index) => [entry.activationKey, index])));
-const candidateRows = computed(() => buildResult.value.worldEntryCandidates);
-function displayList(value: unknown): string {
-    if (Array.isArray(value)) {return value.map((item) => String(item || '').trim()).filter(Boolean).join(', ');}
-    return String(value || '').trim();
-}
-const worldBookEntryRows = computed(() => worldBooks.value.flatMap((book) => (book.entries || []).map((entry, index) => ({
-    key: `${book.name || 'worldbook'}-${entry.uid ?? entry.id ?? index}`,
-    bookName: book.name || '未命名世界书',
-    title: String(entry.comment || entry.title || entry.name || entry.uid || entry.id || `条目 ${index + 1}`),
-    keywords: displayList(entry.key),
-    secondaryKeywords: displayList(entry.keysecondary || entry.secondary_keys),
-    content: String(entry.content || ''),
-}))));
-const scanTextPreview = computed(() => buildResult.value.meta.scanText || '');
-const worldBudget = computed(() => buildResult.value.meta.worldBudget);
-const worldPositionRows = computed(() => Object.entries(buildResult.value.meta.worldPositionCounts || {})
-    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0], 'zh-Hans-CN')));
-const activatedCandidateRows = computed(() => candidateRows.value
-    .filter((entry) => entry.status === 'activated')
-    .sort((left, right) => (activatedOrder.value.get(left.activationKey) ?? 999999) - (activatedOrder.value.get(right.activationKey) ?? 999999)));
-const skippedCandidateRows = computed(() => candidateRows.value
-    .filter((entry) => entry.status !== 'activated')
-    .sort((left, right) => right.order - left.order || left.activationKey.localeCompare(right.activationKey, 'zh-Hans-CN')));
 const placementLabels: Record<string, string> = {
     top: '最前面',
     beforeCharacter: '角色卡前',
@@ -957,15 +1145,39 @@ const promptEditorRows = computed<PromptEditorRow[]>(() => {
             orderEntry: entry,
             prompt,
             listed: true,
+            searchCorpus: normalizedSearchText(buildSearchCorpus([
+                prompt.name || prompt.label || identifier,
+                prompt.role || 'system',
+                prompt.extension ? '扩展' : prompt.system_prompt ? '系统' : '预设',
+                identifier,
+                prompt.content || '',
+            ])),
         });
     });
 
     return rows;
 });
+const filteredPromptEditorRows = computed<PromptEditorRow[]>(() => {
+    const query = normalizedSearchText(promptSearchText.value);
+    if (!query) {return promptEditorRows.value;}
+    return promptEditorRows.value.filter((row) => String(row.searchCorpus || '').includes(query));
+});
+const visiblePromptEditorRows = computed(() => {
+    const visible = filteredPromptEditorRows.value.slice(0, promptVisibleLimit.value);
+    const selectedId = String(selectedPromptIdentifier.value || '').trim();
+    if (!selectedId || visible.some((row) => row.identifier === selectedId)) {return visible;}
+    const selected = promptEditorRows.value.find((row) => row.identifier === selectedId);
+    return selected ? [selected, ...visible] : visible;
+});
+const hiddenPromptCount = computed(() => Math.max(
+    0,
+    filteredPromptEditorRows.value.length - Math.min(filteredPromptEditorRows.value.length, promptVisibleLimit.value),
+));
+const promptEditorRowIndexById = computed(() => new Map(promptEditorRows.value.map((row, index) => [row.identifier, index])));
 const selectedPromptRow = computed(() => promptEditorRows.value.find((row) => row.identifier === selectedPromptIdentifier.value) || promptEditorRows.value[0] || null);
 const activePromptOrderLabel = computed(() => {
     const activeCharacterId = getActivePromptCharacterId();
-    return activeCharacterId ? `当前角色 ${activeCharacterId}` : '未取得当前角色顺序';
+    return activeCharacterId ? '当前角色顺序' : '未读取到当前角色顺序';
 });
 const presetRows = computed(() => (preset.value.sections || [])
     .map((section, index) => ({
@@ -980,6 +1192,18 @@ const presetRows = computed(() => (preset.value.sections || [])
     }))
     .filter((row) => (row.content || row.marker) && row.enabled !== false));
 const presetTotalChars = computed(() => presetRows.value.reduce((sum, row) => sum + row.chars, 0));
+const visiblePresetPreviewRows = computed(() => {
+    const visible = presetRows.value.slice(0, 80);
+    const selectedIndex = promptRowIndex(selectedPromptIdentifier.value);
+    if (selectedIndex < 0 || visible.some((row) => row.sectionIndex === selectedIndex)) {return visible;}
+    const selected = presetRows.value.find((row) => row.sectionIndex === selectedIndex);
+    return selected ? [selected, ...visible] : visible;
+});
+const hiddenPresetPreviewCount = computed(() => Math.max(0, presetRows.value.length - visiblePresetPreviewRows.value.length));
+
+function promptRowIndex(identifier: string) {
+    return promptEditorRowIndexById.value.get(identifier) ?? -1;
+}
 
 watch(promptEditorRows, (rows) => {
     if (!rows.length) {
@@ -990,6 +1214,64 @@ watch(promptEditorRows, (rows) => {
         selectedPromptIdentifier.value = rows[0]?.identifier || '';
     }
 }, { immediate: true });
+
+watch(characterSearchText, () => {
+    characterVisibleLimit.value = CHARACTER_ARCHIVE_BATCH_SIZE;
+});
+
+watch([filteredCharacterCards, liveCharacterId], ([cards]) => {
+    if (!cards.length) {
+        selectedCharacterPreviewId.value = '';
+        return;
+    }
+    const current = String(selectedCharacterPreviewId.value || '').trim();
+    if (current && cards.some((character) => character.id === current)) {return;}
+    const liveId = String(liveCharacterId.value || selectedCharacterId.value || '').trim();
+    selectedCharacterPreviewId.value = cards.some((character) => character.id === liveId)
+        ? liveId
+        : cards[0]?.id || '';
+}, { immediate: true });
+
+watch(selectedCharacterPreviewId, () => {
+    if (activeView.value === 'characters') {
+        scrollSelectedCharacterPreviewIntoView();
+    }
+});
+
+watch(chatPresetSourceSearchText, () => {
+    chatPresetSourceVisibleLimit.value = CHAT_PRESET_SOURCE_BATCH_SIZE;
+});
+
+watch(assistantPresetSearchText, () => {
+    assistantPresetVisibleLimit.value = ASSISTANT_PRESET_BATCH_SIZE;
+});
+
+watch(promptSearchText, () => {
+    promptVisibleLimit.value = PROMPT_EDITOR_BATCH_SIZE;
+});
+
+watch(worldbookSearchText, () => {
+    worldbookVisibleLimit.value = WORLDBOOK_BATCH_SIZE;
+});
+
+watch([selectedWorldbookName, worldbookEntrySearchText], ([name], [oldName]) => {
+    worldbookEntryVisibleLimit.value = WORLDBOOK_ENTRY_BATCH_SIZE;
+    if (name !== oldName) {
+        worldbookEntrySearchText.value = '';
+    }
+});
+
+watch(memoryFileSearchText, () => {
+    memoryFileGroupVisibleLimits.value = {};
+});
+
+watch(chatSessionSearchText, () => {
+    chatSidebarSessionLimit.value = CHAT_SIDEBAR_INITIAL_LIMIT;
+});
+
+watch(regexSearchText, () => {
+    regexGroupVisibleLimits.value = {};
+});
 
 watch(assistantPresetItems, (items) => {
     if (!items.length) {
@@ -1122,7 +1404,15 @@ function applyActiveAssistantPreset(next: Partial<TavernAssistantPreset> = {}, o
     }
 }
 
+function confirmDiscardDraft(label: string, action = '继续？') {
+    return window.confirm(`当前${label}有未保存修改，${action}会放弃这些草稿。继续？`);
+}
+
 async function refreshPresets() {
+    if (assistantPresetDirty.value && !confirmDiscardDraft('助手预设', '刷新')) {
+        assistantPresetStatus.value = '已保留当前草稿';
+        return;
+    }
     const [loadedAssistantPresets, activeAssistantId, loadedAssistantPreset] = await Promise.all([
         listTavernAssistantPresets(),
         getActiveTavernAssistantPresetId(),
@@ -1134,6 +1424,10 @@ async function refreshPresets() {
 }
 
 async function refreshChatPresetFromHost() {
+    if (presetDirty.value && !confirmDiscardDraft('聊天预设', '刷新')) {
+        presetStatus.value = '已保留当前草稿';
+        return;
+    }
     try {
         const result = await requestHost('xb-tavern:list-chat-presets');
         const payload = (result.result || result) as Record<string, unknown>;
@@ -1156,7 +1450,7 @@ async function selectChatPresetFromHost(name = selectedPresetSourceId.value) {
         selectedPresetSourceId.value = currentName;
         return;
     }
-    if (presetDirty.value && !window.confirm('当前聊天预设有未保存修改，切换后会放弃这些草稿。继续切换？')) {
+    if (presetDirty.value && !confirmDiscardDraft('聊天预设', '切换')) {
         selectedPresetSourceId.value = currentName;
         return;
     }
@@ -1177,7 +1471,11 @@ async function selectChatPresetFromHost(name = selectedPresetSourceId.value) {
 
 async function saveCurrentPreset() {
     if (!canEditPromptOrder.value) {
-        presetStatus.value = '未取得当前角色顺序，请刷新后再保存';
+        presetStatus.value = '未读取到当前角色顺序，请刷新后再保存';
+        return;
+    }
+    if (!presetDirty.value) {
+        presetStatus.value = '没有未保存修改';
         return;
     }
     presetStatus.value = '正在保存';
@@ -1194,6 +1492,10 @@ async function saveCurrentPreset() {
 }
 
 async function refreshWorldbooksFromHost(options: { keepSelection?: boolean } = {}) {
+    if (worldbookDirty.value && !confirmDiscardDraft('世界书', '刷新')) {
+        worldbookStatus.value = '已保留当前草稿';
+        return;
+    }
     worldbookStatus.value = '正在读取';
     try {
         const result = await requestHost('xb-tavern:list-worldbooks');
@@ -1220,7 +1522,7 @@ async function refreshWorldbooksFromHost(options: { keepSelection?: boolean } = 
 async function loadWorldbookFromHost(name = selectedWorldbookName.value, options: { force?: boolean } = {}) {
     const targetName = String(name || '').trim();
     if (!targetName) {return;}
-    if (!options.force && worldbookDirty.value && !window.confirm('当前世界书有未保存修改，切换后会放弃这些草稿。继续切换？')) {
+    if (!options.force && worldbookDirty.value && !confirmDiscardDraft('世界书', '切换')) {
         selectedWorldbookName.value = String(activeWorldbook.value.name || selectedWorldbookName.value || '');
         return;
     }
@@ -1239,6 +1541,10 @@ async function loadWorldbookFromHost(name = selectedWorldbookName.value, options
 
 async function saveCurrentWorldbook() {
     if (!selectedWorldbookName.value) {return;}
+    if (!worldbookDirty.value) {
+        worldbookStatus.value = '没有未保存修改';
+        return;
+    }
     worldbookStatus.value = '正在保存';
     try {
         const result = await requestHost('xb-tavern:save-worldbook', {
@@ -1301,7 +1607,7 @@ function updateWorldbookEntry(uid: string | number | undefined, patch: Record<st
     if (!targetUid) {return;}
     const entries = worldbookEntries.value.map((entry) => (
         String(entry.uid) === targetUid ? { ...entry, ...patch } : entry
-    ));
+    )).map(stripWorldbookEntryInternalFields);
     worldbookDraft.value = {
         ...worldbookDraft.value,
         entries,
@@ -1312,7 +1618,9 @@ function deleteSelectedWorldbookEntry() {
     const entry = selectedWorldbookEntry.value;
     if (!entry) {return;}
     if (!window.confirm('删除这个世界书条目？保存后才会写回酒馆。')) {return;}
-    const entries = worldbookEntries.value.filter((item) => String(item.uid) !== String(entry.uid));
+    const entries = worldbookEntries.value
+        .filter((item) => String(item.uid) !== String(entry.uid))
+        .map(stripWorldbookEntryInternalFields);
     worldbookDraft.value = {
         ...worldbookDraft.value,
         entries,
@@ -1322,6 +1630,10 @@ function deleteSelectedWorldbookEntry() {
 }
 
 async function refreshRegexFromHost() {
+    if (regexDirty.value && !confirmDiscardDraft('正则', '刷新')) {
+        regexStatus.value = '已保留当前草稿';
+        return;
+    }
     regexStatus.value = '正在读取';
     try {
         const result = await requestHost('xb-tavern:list-regex-scripts');
@@ -1335,14 +1647,14 @@ async function refreshRegexFromHost() {
 }
 
 function selectRegexScript(row: TavernRegexScriptRow) {
-    if (regexDirty.value && !window.confirm('当前正则有未保存修改，切换后会放弃这些草稿。继续切换？')) {
+    if (regexDirty.value && !confirmDiscardDraft('正则', '切换')) {
         return;
     }
     applyActiveRegexScript(row);
 }
 
 function createRegexScript(group: TavernRegexGroupRow) {
-    if (regexDirty.value && !window.confirm('当前正则有未保存修改，新建后会放弃这些草稿。继续新建？')) {
+    if (regexDirty.value && !confirmDiscardDraft('正则', '新建')) {
         return;
     }
     const draft = normalizeRegexDraft({
@@ -1384,6 +1696,10 @@ function toggleRegexPlacement(value: number, checked: boolean) {
 async function saveCurrentRegexScript() {
     const scriptType = selectedRegexRow.value?.scriptType || Number(selectedRegexKey.value.split(':')[0]);
     if (!Number.isFinite(scriptType)) {return;}
+    if (!regexDirty.value) {
+        regexStatus.value = '没有未保存修改';
+        return;
+    }
     regexStatus.value = '正在保存';
     try {
         const result = await requestHost('xb-tavern:save-regex-script', {
@@ -1493,7 +1809,7 @@ function setActivePromptOrder(nextOrder: Record<string, unknown>[]) {
     const containers = getPromptOrderContainersDraft().map((item) => ({ ...item }));
     const activeCharacterId = String(manager.activeCharacterId ?? '').trim();
     if (!activeCharacterId) {
-        presetStatus.value = '未取得当前角色顺序，请刷新后再保存';
+        presetStatus.value = '未读取到当前角色顺序，请刷新后再保存';
         return;
     }
     let targetIndex = containers.findIndex((item) => String(item.character_id ?? '') === activeCharacterId);
@@ -1525,7 +1841,7 @@ function buildCurrentPromptOrderFromRows(rows = promptEditorRows.value): Record<
 function updatePromptOrderEntry(identifier: string, patch: Record<string, unknown>) {
     const targetId = String(identifier || '').trim();
     if (!canEditPromptOrder.value) {
-        presetStatus.value = '未取得当前角色顺序，请刷新后再保存';
+        presetStatus.value = '未读取到当前角色顺序，请刷新后再保存';
         return;
     }
     if (!targetId) {return;}
@@ -1540,7 +1856,7 @@ function updatePromptOrderEntry(identifier: string, patch: Record<string, unknow
 
 function movePromptRow(identifier: string, direction: -1 | 1) {
     if (!canEditPromptOrder.value) {
-        presetStatus.value = '未取得当前角色顺序，请刷新后再保存';
+        presetStatus.value = '未读取到当前角色顺序，请刷新后再保存';
         return;
     }
     const rows = promptEditorRows.value;
@@ -1560,7 +1876,13 @@ function togglePromptRow(identifier: string, enabled: boolean) {
 }
 
 function promptRoleDisplay(role = ''): string {
-    return String(role || 'system').trim() || 'system';
+    const labels: Record<string, string> = {
+        system: '系统',
+        user: '用户',
+        assistant: '助手',
+    };
+    const key = String(role || 'system').trim();
+    return labels[key] || key || '系统';
 }
 
 function linesFromList(value: unknown): string {
@@ -1580,7 +1902,7 @@ function listFromLines(value = ''): string[] {
 function regexPlacementLabel(value: number): string {
     const labels: Record<number, string> = {
         1: '用户输入',
-        2: 'AI 输出',
+        2: 'AI 回复',
         3: '斜杠命令',
         5: '世界书',
         6: '推理内容',
@@ -1604,32 +1926,6 @@ function updateAssistantPresetPatch(patch: Partial<TavernAssistantPreset>) {
     };
 }
 
-function splitAssistantPresetLines(value: unknown = ''): string[] {
-    const text = String(value || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-    if (!text.trim()) {return [];}
-    return text.split('\n').map((line) => line.replace(/\s+$/g, ''));
-}
-
-function readAssistantPresetLines(key: AssistantPresetSectionKey): string[] {
-    return splitAssistantPresetLines(assistantPreset.value[key]);
-}
-
-function writeAssistantPresetLines(key: AssistantPresetSectionKey, lines: string[]) {
-    const required = key !== 'managerCustomPrompt';
-    const normalizedLines = lines.map((line) => String(line || '').replace(/[\r\n]+/g, ' '));
-    const nextLines = required && !normalizedLines.length ? [''] : normalizedLines;
-    updateAssistantPresetPatch({ [key]: nextLines.join('\n') } as Partial<TavernAssistantPreset>);
-}
-
-function updateAssistantPresetLine(key: AssistantPresetSectionKey, index: number, value = '') {
-    const lines = readAssistantPresetLines(key);
-    while (lines.length <= index) {
-        lines.push('');
-    }
-    lines[index] = String(value || '').replace(/[\r\n]+/g, ' ');
-    writeAssistantPresetLines(key, lines);
-}
-
 function selectAssistantPresetItem(itemId: string) {
     selectedAssistantPresetItemId.value = itemId;
 }
@@ -1637,17 +1933,26 @@ function selectAssistantPresetItem(itemId: string) {
 function updateSelectedAssistantPresetItem(value = '') {
     const item = selectedAssistantPresetItem.value;
     if (!item) {return;}
-    updateAssistantPresetLine(item.key, item.lineIndex, value);
+    updateAssistantPresetPatch({ [item.key]: String(value || '') } as Partial<TavernAssistantPreset>);
 }
 
 async function selectAssistantPreset(presetId: string) {
-    await setActiveTavernAssistantPresetId(presetId);
-    activeAssistantPresetId.value = presetId;
+    const targetId = String(presetId || '').trim();
+    if (!targetId || targetId === activeAssistantPresetId.value) {return;}
+    if (assistantPresetDirty.value && !confirmDiscardDraft('助手预设', '切换')) {
+        return;
+    }
+    await setActiveTavernAssistantPresetId(targetId);
+    activeAssistantPresetId.value = targetId;
     applyActiveAssistantPreset(await loadActiveTavernAssistantPreset());
     assistantPresetStatus.value = '已切换';
 }
 
 async function saveCurrentAssistantPreset() {
+    if (!assistantPresetDirty.value) {
+        assistantPresetStatus.value = '没有未保存修改';
+        return;
+    }
     const record = await saveTavernAssistantPreset(assistantPreset.value, {
         isBuiltIn: assistantPreset.value.id === activeAssistantPresetId.value && assistantPreset.value.id.includes('default'),
     });
@@ -1700,6 +2005,20 @@ function requestHost(type: string, payload: Record<string, unknown> = {}, option
         }, Number(options.timeoutMs) || HOST_REQUEST_TIMEOUT_MS);
         pendingHostRequests.set(requestId, { resolve, reject, timer });
     });
+}
+
+async function applyTavernRegex(items: TavernApplyRegexItem[]): Promise<TavernApplyRegexResult> {
+    if (!items.length) {
+        return { items: [], changedCount: 0 };
+    }
+    const response = await requestHost('xb-tavern:apply-regex', {
+        payload: { items },
+    });
+    const result = (response.result || response) as Partial<TavernApplyRegexResult>;
+    return {
+        items: Array.isArray(result.items) ? result.items : [],
+        changedCount: Number(result.changedCount) || 0,
+    };
 }
 
 function resolveHostRequest(payload: Record<string, unknown> = {}) {
@@ -1875,14 +2194,77 @@ function openCharacterSelect() {
     pendingCharacterError.value = '';
 }
 
+function openSettingsWorkspace(workspace: SettingsWorkspaceKey) {
+    activeSettingsWorkspace.value = workspace;
+    activeView.value = 'settings';
+}
+
 function refreshCharacterList() {
     statusText.value = '正在读取角色列表';
     pendingCharacterError.value = '';
     postToHost('xb-tavern:refresh-context', {});
 }
 
+function selectCharacterForPreview(characterId: string) {
+    const targetId = String(characterId || '').trim();
+    if (!targetId || pendingCharacterSessionId.value) {return;}
+    selectedCharacterPreviewId.value = targetId;
+}
+
+function scrollSelectedCharacterPreviewIntoView() {
+    void nextTick(() => {
+        const root = characterArchiveListRef.value;
+        const selectedId = String(selectedCharacterPreview.value?.id || '').trim();
+        if (!root || !selectedId) {return;}
+        const target = Array.from(root.querySelectorAll<HTMLElement>('[data-character-card-id]'))
+            .find((node) => node.dataset.characterCardId === selectedId);
+        target?.scrollIntoView?.({ block: 'nearest' });
+    });
+}
+
+function moveCharacterPreview(delta: number) {
+    const cards = visibleCharacterCards.value;
+    if (!cards.length || pendingCharacterSessionId.value) {return;}
+    const currentId = String(selectedCharacterPreview.value?.id || selectedCharacterPreviewId.value || '').trim();
+    const currentIndex = Math.max(0, cards.findIndex((character) => character.id === currentId));
+    const nextIndex = Math.min(cards.length - 1, Math.max(0, currentIndex + delta));
+    selectedCharacterPreviewId.value = cards[nextIndex]?.id || '';
+    scrollSelectedCharacterPreviewIntoView();
+}
+
+function handleCharacterArchiveKeydown(event: KeyboardEvent) {
+    if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        moveCharacterPreview(1);
+    } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        moveCharacterPreview(-1);
+    } else if (event.key === 'Home') {
+        event.preventDefault();
+        selectedCharacterPreviewId.value = visibleCharacterCards.value[0]?.id || '';
+        scrollSelectedCharacterPreviewIntoView();
+    } else if (event.key === 'End') {
+        event.preventDefault();
+        selectedCharacterPreviewId.value = visibleCharacterCards.value.at(-1)?.id || '';
+        scrollSelectedCharacterPreviewIntoView();
+    } else if (event.key === 'Enter') {
+        event.preventDefault();
+        void enterSelectedCharacter();
+    }
+}
+
+async function enterSelectedCharacter() {
+    const targetId = String(selectedCharacterPreview.value?.id || selectedCharacterPreviewId.value || liveCharacterId.value || '').trim();
+    if (!targetId || pendingCharacterSessionId.value) {return;}
+    await selectCharacterAndCreateSession(targetId);
+}
+
 async function refreshSessions() {
     sessions.value = await listTavernSessions();
+    const liveSessionIds = new Set(sessions.value.map((session) => session.id));
+    sessionSearchCorpusCache.forEach((_value, sessionId) => {
+        if (!liveSessionIds.has(sessionId)) {sessionSearchCorpusCache.delete(sessionId);}
+    });
     selectedSessionId.value = await getSelectedTavernSessionId();
     if (!selectedSessionId.value && sessions.value[0]) {
         selectedSessionId.value = sessions.value[0].id;
@@ -1920,6 +2302,10 @@ async function refreshManagerRecords(sessionId = selectedSessionId.value) {
     memoryFiles.value = files;
     memoryIndex.value = index;
     if (!files.some((file) => file.path === selectedMemoryFilePath.value)) {
+        if (memoryEditorDirty.value && selectedMemoryFilePath.value) {
+            memoryEditorStatus.value = '当前档案已变化，草稿仍保留';
+            return;
+        }
         selectedMemoryFilePath.value = files[0]?.path || '';
     }
 }
@@ -1942,7 +2328,6 @@ function resetSessionPreviewState() {
     currentUserMessage.value = '';
     runtimeText.value = '';
     runtimeError.value = '';
-    runtimeSnapshotJson.value = '';
     simulateRequestInput.value = '';
     simulateRequestJson.value = '';
     simulateRequestStatus.value = '';
@@ -1967,9 +2352,9 @@ function resetManagerMessageWindowState() {
     managerMessageWindowLimit.value = Number(state.uiMessageWindowLimit || AGENT_MESSAGE_WINDOW_DEFAULT);
 }
 
-function revealOlderChatMessages() {
+function revealOlderChatMessages(force = false) {
     const node = chatScrollRef.value;
-    if (!node || node.scrollTop > 64) {return false;}
+    if (!node || (!force && node.scrollTop > 64)) {return false;}
     const state = { uiMessageWindowLimit: chatMessageWindowLimit.value };
     if (!expandMessageWindow(state, chatMessages.value.length)) {return false;}
     chatMessageWindowLimit.value = Number(state.uiMessageWindowLimit || chatMessageWindowLimit.value);
@@ -1977,9 +2362,9 @@ function revealOlderChatMessages() {
     return true;
 }
 
-function revealOlderManagerMessages() {
+function revealOlderManagerMessages(force = false) {
     const node = managerScrollRef.value;
-    if (!node || node.scrollTop > 64) {return false;}
+    if (!node || (!force && node.scrollTop > 64)) {return false;}
     const state = { uiMessageWindowLimit: managerMessageWindowLimit.value };
     if (!expandMessageWindow(state, managerChatMessages.value.length)) {return false;}
     managerMessageWindowLimit.value = Number(state.uiMessageWindowLimit || managerMessageWindowLimit.value);
@@ -2051,6 +2436,10 @@ async function handleHomePrimaryAction() {
 }
 
 async function handleHomeNewSession() {
+    if (selectedSessionId.value) {
+        openChatView();
+        return;
+    }
     openCharacterSelect();
 }
 
@@ -2081,6 +2470,7 @@ async function finishPendingCharacterSession() {
 async function selectCharacterAndCreateSession(characterId: string) {
     const targetId = String(characterId || '').trim();
     if (!targetId || pendingCharacterSessionId.value) {return;}
+    selectedCharacterPreviewId.value = targetId;
     selectedSessionId.value = '';
     sessionMessages.value = [];
     await setSelectedTavernSessionId('');
@@ -2154,7 +2544,8 @@ async function removeSession(sessionId: string, event?: Event) {
         activeView.value = 'home';
         return;
     }
-    activeView.value = 'home';
+    activeView.value = 'chat';
+    chatFocus.value = 'chat';
 }
 
 function openChatView() {
@@ -2194,6 +2585,7 @@ async function simulateApiRequest() {
             runtimeState: normalizeTavernSessionState(selectedSession.value?.state || {}),
             diagnostics: diagnostics.value,
             historyMode: historyMode.value,
+            applyRegex: applyTavernRegex,
         });
         if (requestSequence !== simulateRequestSequence || requestSessionId !== selectedSessionId.value) {return;}
         simulateRequestJson.value = result.requestSnapshot.rawRequestJson || result.requestSnapshot.rawMessagesJson || '';
@@ -2208,21 +2600,6 @@ async function simulateApiRequest() {
 function shortText(value = '', limit = 180) {
     const text = String(value || '').trim();
     return text.length > limit ? `${text.slice(0, limit)}...` : text;
-}
-
-function statusLabel(status = '') {
-    const labels: Record<string, string> = {
-        activated: '本次会带上',
-        budget_skipped: '超出预算，未带上',
-        not_matched: '本次未带上',
-        secondary_not_matched: '二级关键词不满足',
-        disabled: '已禁用',
-        suppressed_by_decorator: '装饰器抑制',
-        cooldown: '冷却中',
-        delay: '延迟中',
-        probability_failed: '概率判定未带上',
-    };
-    return labels[status] || status || '未知';
 }
 
 function managerStatusLabel(status = '') {
@@ -2257,6 +2634,24 @@ function formatMemoryFileMeta(file: TavernMemoryFileRecord) {
     return `${memoryFileStatusLabel(file.status)} · ${Math.max(0, String(file.content || '').length)} 字`;
 }
 
+function loadMemoryFileIntoEditor(file: TavernMemoryFileRecord | null | undefined) {
+    const content = String(file?.content || '');
+    memoryEditorLoadedPath.value = String(file?.path || '');
+    memoryEditorBaseContent.value = content;
+    memoryEditorDraft.value = content;
+    memoryEditorMode.value = 'preview';
+    memoryEditorStatus.value = '';
+}
+
+function selectMemoryFile(path = '') {
+    const nextPath = String(path || '').trim();
+    if (!nextPath || nextPath === selectedMemoryFilePath.value) {return;}
+    if (memoryEditorDirty.value && !window.confirm('当前记忆档案有未保存修改，切换后会放弃这份草稿。继续切换？')) {
+        return;
+    }
+    selectedMemoryFilePath.value = nextPath;
+}
+
 async function saveSelectedMemoryFile() {
     const file = selectedMemoryFile.value;
     if (!selectedSessionId.value || !file) {return;}
@@ -2264,6 +2659,8 @@ async function saveSelectedMemoryFile() {
     try {
         await writeTavernMemoryFile(selectedSessionId.value, file.path, memoryEditorDraft.value, { source: 'user' });
         await refreshManagerRecords(selectedSessionId.value);
+        memoryEditorLoadedPath.value = file.path;
+        memoryEditorBaseContent.value = memoryEditorDraft.value;
         memoryEditorMode.value = 'preview';
         memoryEditorStatus.value = '已保存';
         window.setTimeout(() => {
@@ -2275,7 +2672,7 @@ async function saveSelectedMemoryFile() {
 }
 
 function enterMemoryEditMode() {
-    if (!selectedMemoryFile.value) {return;}
+    if (!memoryEditorDocumentAvailable.value) {return;}
     memoryEditorMode.value = 'edit';
     void nextTick(() => {
         const textarea = document.querySelector<HTMLTextAreaElement>('[data-memory-editor-textarea="true"]');
@@ -2284,16 +2681,33 @@ function enterMemoryEditMode() {
 }
 
 function previewMemoryDraft() {
-    if (!selectedMemoryFile.value) {return;}
+    if (!memoryEditorDocumentAvailable.value) {return;}
     memoryEditorMode.value = 'preview';
 }
 
-function formatDebugJson(value: unknown) {
-    try {
-        return JSON.stringify(value ?? null, null, 2);
-    } catch {
-        return String(value || '');
+function discardMemoryDraft() {
+    if (!memoryEditorDocumentAvailable.value) {return;}
+    memoryEditorDraft.value = memoryEditorBaseContent.value;
+    memoryEditorMode.value = 'preview';
+    memoryEditorStatus.value = '已放弃修改';
+    window.setTimeout(() => {
+        if (memoryEditorStatus.value === '已放弃修改') {memoryEditorStatus.value = '';}
+    }, 1400);
+}
+
+function toolTraceSummary(value: unknown) {
+    if (!value) {return '';}
+    if (Array.isArray(value)) {return `工具调用 ${value.length} 次`;}
+    if (typeof value === 'object') {
+        const record = value as Record<string, unknown>;
+        const counts = ['calls', 'toolCalls', 'steps', 'trace']
+            .map((key) => Array.isArray(record[key]) ? (record[key] as unknown[]).length : 0)
+            .filter((count) => count > 0);
+        if (counts.length) {return `工具调用 ${Math.max(...counts)} 次`;}
+        const keys = Object.keys(record).length;
+        return keys ? `工具记录 ${keys} 项` : '';
     }
+    return '有工具记录';
 }
 
 async function retryManagerRun(run: TavernManagerRunRecord) {
@@ -2325,33 +2739,35 @@ async function retryManagerRun(run: TavernManagerRunRecord) {
     }
 }
 
-function candidateReason(entry: { status?: string; activationReason?: string; budgetShortfall?: number; budgetRemainingBefore?: number; matchedKeys?: string[]; matchedSecondaryKeys?: string[] }) {
-    if (entry.status === 'activated') {
-        const matched = [
-            ...(entry.matchedKeys || []),
-            ...(entry.matchedSecondaryKeys || []),
-        ].filter(Boolean);
-        if (matched.length) {return `触发关键词：${matched.join(', ')}`;}
-        if (entry.activationReason === 'constant') {return '常驻条目，本次固定带上';}
-        if (entry.activationReason === 'decorator') {return '装饰器要求本次带上';}
-        if (entry.activationReason === 'sticky') {return '粘滞状态，本次继续带上';}
-        return '本次会带上';
-    }
-    if (entry.status === 'budget_skipped') {
-        const shortfall = Number(entry.budgetShortfall) || 0;
-        return shortfall > 0 ? `预算不足，差 ${shortfall} 字` : '预算跳过';
-    }
-    return statusLabel(entry.status || '');
-}
-
 function roleLabel(role = '') {
+    if (role === 'assistant') {
+        return displayableTavernName(selectedSession.value?.characterName || effectiveCharacter.value.name || '', '角色');
+    }
     const labels: Record<string, string> = {
         system: '规则',
-        user: '你',
-        assistant: '角色',
+        user: '我',
         tool: '工具结果',
     };
     return labels[role] || role || '未知';
+}
+
+function thoughtBlocks(messageOrThoughts: TavernMessageRecord | Array<{ label?: string; text?: string }> | null | undefined) {
+    const source = Array.isArray(messageOrThoughts)
+        ? messageOrThoughts
+        : Array.isArray(messageOrThoughts?.thoughts) ? messageOrThoughts.thoughts : [];
+    return source
+        .map((thought, index) => ({
+            label: String(thought?.label || `思考 ${index + 1}`).trim() || `思考 ${index + 1}`,
+            text: String(thought?.text || '').trim(),
+        }))
+        .filter((thought) => thought.text);
+}
+
+function thoughtSummaryLabel(messageOrThoughts: TavernMessageRecord | Array<{ label?: string; text?: string }> | null | undefined, streaming = false) {
+    const thoughts = thoughtBlocks(messageOrThoughts);
+    if (!thoughts.length) {return '';}
+    const prefix = streaming ? '正在思考' : '展开思考块';
+    return thoughts.length > 1 ? `${prefix}（${thoughts.length} 段）` : prefix;
 }
 
 function formatMessageTime(value: unknown) {
@@ -2403,6 +2819,21 @@ function enhanceChatMarkdown() {
     if (!root?.querySelectorAll) {return;}
     root.querySelectorAll<HTMLElement>('.xb-tavern-markdown').forEach((node) => {
         const signature = node.dataset.markdownSignature || '';
+        if (node.dataset.markdownEnhanced === signature) {return;}
+        enhanceMarkdownContent(node, {
+            codeBlockClassName: 'xb-tavern-codeblock',
+            codeCopyClassName: 'xb-tavern-code-copy',
+        });
+        node.dataset.markdownEnhanced = signature;
+    });
+}
+
+function enhanceManagerMarkdown() {
+    const root = managerScrollRef.value;
+    if (!root?.querySelectorAll) {return;}
+    root.querySelectorAll<HTMLElement>('.xb-tavern-markdown').forEach((node) => {
+        const signature = node.dataset.markdownSignature || '';
+        if (node.dataset.markdownEnhanced === signature) {return;}
         enhanceMarkdownContent(node, {
             codeBlockClassName: 'xb-tavern-codeblock',
             codeCopyClassName: 'xb-tavern-code-copy',
@@ -2419,8 +2850,21 @@ function canEditMessage(message: TavernMessageRecord) {
     return !isRunning.value && !message.error && ['user', 'assistant'].includes(message.role);
 }
 
+function canRerunMessage(message: TavernMessageRecord) {
+    if (isRunning.value) {return false;}
+    if (message.role === 'user') {return true;}
+    const sorted = [...sessionMessages.value].sort((left, right) => left.order - right.order);
+    const index = sorted.findIndex((item) => item.order === message.order);
+    if (index < 0) {return false;}
+    return sorted.slice(0, index + 1).some((item) => item.role === 'user');
+}
+
 function isEditingMessage(message: TavernMessageRecord) {
     return editingMessageKey.value === messageKey(message);
+}
+
+function isEditingMessageDirty(message: TavernMessageRecord) {
+    return isEditingMessage(message) && editingMessageDraft.value.trim() !== String(message.content || '').trim();
 }
 
 function flashMessageAction(message: TavernMessageRecord, action: string, ok: boolean) {
@@ -2492,10 +2936,20 @@ function cancelEditMessage() {
     editingMessageDraft.value = '';
 }
 
-function autoSizeTextarea(textarea: HTMLTextAreaElement | null) {
+function autoSizeTextarea(
+    textarea: HTMLTextAreaElement | null,
+    options: { minHeight?: number; maxHeight?: number } = {},
+) {
     if (!textarea) {return;}
+    const minHeight = Number(options.minHeight ?? 144);
+    const maxHeight = Number(options.maxHeight ?? 420);
     textarea.style.height = 'auto';
-    textarea.style.height = `${Math.min(Math.max(textarea.scrollHeight, 144), 420)}px`;
+    textarea.style.height = `${Math.min(Math.max(textarea.scrollHeight, minHeight), maxHeight)}px`;
+}
+
+function resetTextareaHeight(textarea: HTMLTextAreaElement | null) {
+    if (!textarea) {return;}
+    textarea.style.height = '';
 }
 
 function handleEditKeydown(event: KeyboardEvent, message: TavernMessageRecord) {
@@ -2515,7 +2969,7 @@ function handleEditInput(event: Event) {
 }
 
 function handleComposeInput(event: Event) {
-    autoSizeTextarea(event.target as HTMLTextAreaElement);
+    autoSizeTextarea(event.target as HTMLTextAreaElement, { minHeight: 48, maxHeight: 180 });
 }
 
 async function saveEditMessage(message: TavernMessageRecord, options: { rerun?: boolean } = {}) {
@@ -2523,6 +2977,15 @@ async function saveEditMessage(message: TavernMessageRecord, options: { rerun?: 
     const content = editingMessageDraft.value.trim();
     if (!content) {
         flashMessageAction(message, 'edit', false);
+        return;
+    }
+    if (!options.rerun && !isEditingMessageDirty(message)) {
+        cancelEditMessage();
+        return;
+    }
+    if (options.rerun && message.role !== 'user') {
+        cancelEditMessage();
+        await rerunFromMessage(message);
         return;
     }
     const updated = await updateTavernMessage(message.sessionId, message.order, { content });
@@ -2558,7 +3021,12 @@ function findDeleteOrders(message: TavernMessageRecord) {
 
 async function deleteMessageTurn(message: TavernMessageRecord) {
     if (isRunning.value) {return;}
-    const deleted = await deleteTavernMessages(message.sessionId, findDeleteOrders(message));
+    const ordersToDelete = findDeleteOrders(message);
+    const confirmText = message.role === 'user'
+        ? `删除这一轮对话？将移除 ${ordersToDelete.length} 条记录。`
+        : '删除这条回复？';
+    if (!window.confirm(confirmText)) {return;}
+    const deleted = await deleteTavernMessages(message.sessionId, ordersToDelete);
     if (deleted > 0) {
         await markTavernMemoryStaleFromOrder(message.sessionId, message.order);
     }
@@ -2576,7 +3044,10 @@ async function deleteMessageTurn(message: TavernMessageRecord) {
 }
 
 async function rerunFromMessage(message: TavernMessageRecord) {
-    if (isRunning.value) {return;}
+    if (!canRerunMessage(message)) {
+        flashMessageAction(message, 'rerun', false);
+        return;
+    }
     const sorted = [...sessionMessages.value].sort((left, right) => left.order - right.order);
     const index = sorted.findIndex((item) => item.order === message.order);
     const userMessage = message.role === 'user'
@@ -2589,6 +3060,11 @@ async function rerunFromMessage(message: TavernMessageRecord) {
     const ordersToDelete = sorted
         .filter((item) => item.order > userMessage.order)
         .map((item) => item.order);
+    const latestOrder = sorted.at(-1)?.order ?? userMessage.order;
+    if (ordersToDelete.length > 1 || latestOrder > Math.max(...ordersToDelete, userMessage.order)) {
+        const ok = window.confirm(`从这里重新生成会移除后面的 ${ordersToDelete.length} 条记录。继续？`);
+        if (!ok) {return;}
+    }
     await deleteTavernMessages(userMessage.sessionId, ordersToDelete);
     await markTavernMemoryStaleFromOrder(userMessage.sessionId, userMessage.order);
     if (selectedSessionId.value) {
@@ -2600,26 +3076,6 @@ async function rerunFromMessage(message: TavernMessageRecord) {
         messageText: userMessage.content,
         reuseUserMessageOrder: userMessage.order,
     });
-}
-
-function insertionTargetLabel(target = '') {
-    const text = String(target || '');
-    const exact: Record<string, string> = {
-        'before character card': '角色卡前',
-        'after character card': '角色卡后',
-        'author note top': '作者备注前段',
-        'author note bottom': '作者备注后段',
-        'example messages top': '示例对话前段',
-        'example messages bottom': '示例对话后段',
-    };
-    if (exact[text]) {return exact[text];}
-    if (text.startsWith('history depth ')) {
-        return `插入历史第 ${text.replace('history depth ', '')} 层`;
-    }
-    if (text.startsWith('outlet:')) {
-        return `自定义出口：${text.replace('outlet:', '')}`;
-    }
-    return text || '未指定位置';
 }
 
 function updateChatScrollButtons() {
@@ -2668,21 +3124,38 @@ function scheduleHideManagerScrollHelpers() {
     }, 1500);
 }
 
-function isChatNearBottom() {
+function isChatNearBottom(threshold = 56) {
     const node = chatScrollRef.value;
     if (!node) {return true;}
-    return node.scrollHeight - node.scrollTop - node.clientHeight <= 56;
+    return node.scrollHeight - node.scrollTop - node.clientHeight <= threshold;
 }
 
-function isManagerNearBottom() {
+function isManagerNearBottom(threshold = 56) {
     const node = managerScrollRef.value;
     if (!node) {return true;}
-    return node.scrollHeight - node.scrollTop - node.clientHeight <= 56;
+    return node.scrollHeight - node.scrollTop - node.clientHeight <= threshold;
 }
 
-function scrollChatToBottom(force = false) {
+function collapseChatMessageWindowIfBottom(force = false) {
+    if (chatMessageWindowLimit.value <= AGENT_MESSAGE_WINDOW_DEFAULT) {return false;}
+    if (!force && !isChatNearBottom(8)) {return false;}
+    resetChatMessageWindowState();
+    return true;
+}
+
+function collapseManagerMessageWindowIfBottom(force = false) {
+    if (managerMessageWindowLimit.value <= AGENT_MESSAGE_WINDOW_DEFAULT) {return false;}
+    if (!force && !isManagerNearBottom(8)) {return false;}
+    resetManagerMessageWindowState();
+    return true;
+}
+
+function scrollChatToBottom(force = false, options: { collapseWindow?: boolean } = {}) {
     if (!force && !chatAutoScroll.value) {return;}
     if (force) {chatAutoScroll.value = true;}
+    if (options.collapseWindow) {
+        collapseChatMessageWindowIfBottom(true);
+    }
     void nextTick(() => {
         const node = chatScrollRef.value;
         if (!node) {return;}
@@ -2712,9 +3185,12 @@ function scrollChatToTop() {
     scheduleHideChatScrollHelpers();
 }
 
-function scrollManagerToBottom(force = false) {
+function scrollManagerToBottom(force = false, options: { collapseWindow?: boolean } = {}) {
     if (!force && !managerAutoScroll.value) {return;}
     if (force) {managerAutoScroll.value = true;}
+    if (options.collapseWindow) {
+        collapseManagerMessageWindowIfBottom(true);
+    }
     void nextTick(() => {
         const node = managerScrollRef.value;
         if (!node) {return;}
@@ -2926,6 +3402,7 @@ async function handleManagerSubmit() {
     const managerSessionId = selectedSessionId.value;
     const managerTurn = Number(sessionRuntimeState.value.turn || 0);
     managerInputDraft.value = '';
+    void nextTick(() => resetTextareaHeight(managerComposeTextareaRef.value));
     const controller = new AbortController();
     managerAssistantController.value = controller;
     isManagerAssistantRunning.value = true;
@@ -3076,11 +3553,9 @@ async function runOnce(options: { messageText?: string; reuseUserMessageOrder?: 
     activeRunController.value = controller;
     runtimeError.value = '';
     runtimeText.value = '';
+    runtimeThoughts.value = [];
     runtimeProvider.value = '';
     runtimeModel.value = '';
-    runtimeSnapshotJson.value = JSON.stringify({
-        status: 'running',
-    }, null, 2);
     isRunning.value = true;
     chatAutoScroll.value = true;
     resetChatMessageWindowState();
@@ -3098,8 +3573,10 @@ async function runOnce(options: { messageText?: string; reuseUserMessageOrder?: 
             signal: controller.signal,
             reuseUserMessageOrder: options.reuseUserMessageOrder,
             runManager: true,
+            applyRegex: applyTavernRegex,
             onStreamProgress: (snapshot) => {
                 if (typeof snapshot.text === 'string') {runtimeText.value = snapshot.text;}
+                if (Array.isArray(snapshot.thoughts)) {runtimeThoughts.value = thoughtBlocks(snapshot.thoughts);}
             },
             onUserMessageSaved: async (sessionId, message) => {
                 selectedSessionId.value = sessionId;
@@ -3107,6 +3584,7 @@ async function runOnce(options: { messageText?: string; reuseUserMessageOrder?: 
                 const exists = sessionMessages.value.some((item) => item.sessionId === message.sessionId && item.order === message.order);
                 sessionMessages.value = exists ? sessionMessages.value : [...sessionMessages.value, message].sort((left, right) => left.order - right.order);
                 currentUserMessage.value = '';
+                void nextTick(() => resetTextareaHeight(chatComposeTextareaRef.value));
                 await refreshSessions();
                 scrollChatToBottom(true);
             },
@@ -3123,22 +3601,15 @@ async function runOnce(options: { messageText?: string; reuseUserMessageOrder?: 
         });
         selectedSessionId.value = result.sessionId;
         runtimeText.value = '';
+        runtimeThoughts.value = [];
         runtimeError.value = result.error || '';
         runtimeProvider.value = result.provider || '';
         runtimeModel.value = result.model || '';
-        runtimeSnapshotJson.value = JSON.stringify({
-            provider: result.provider || '',
-            model: result.model || '',
-            previewMatchesRequest: result.previewMatchesRequest,
-            nextTurn: result.nextTurn,
-            buildSnapshot: result.buildSnapshot,
-            requestSnapshot: result.requestSnapshot,
-            error: result.error || '',
-        }, null, 2);
         await refreshSessions();
         await refreshManagerRecords(result.sessionId);
         scrollChatToBottom();
     } catch (error) {
+        runtimeThoughts.value = [];
         runtimeError.value = error instanceof Error ? error.message : String(error || 'run_failed');
     } finally {
         if (activeRunController.value === controller) {
@@ -3152,8 +3623,9 @@ async function runOnce(options: { messageText?: string; reuseUserMessageOrder?: 
 watch([
     () => visibleChatMessages.value.length,
     () => chatMessageWindow.value.startIndex,
-    () => chatMarkdownSignature.value,
+    () => visibleChatMarkdownSignature.value,
     () => runtimeText.value,
+    () => runtimeThoughtsSignature.value,
     () => activeView.value,
     () => chatFocus.value,
 ], () => {
@@ -3169,12 +3641,17 @@ watch([
 watch([
     () => visibleManagerChatMessages.value.length,
     () => managerMessageWindow.value.startIndex,
+    () => visibleManagerMarkdownSignature.value,
     () => isManagerAssistantRunning.value,
     () => activeView.value,
     () => chatFocus.value,
 ], () => {
     if (activeView.value === 'chat' && chatFocus.value === 'manager') {
         scrollManagerToBottom();
+        void nextTick(() => {
+            enhanceManagerMarkdown();
+            updateManagerScrollButtons();
+        });
     }
 });
 
@@ -3185,6 +3662,18 @@ watch(() => selectedSessionId.value, () => {
     managerAutoScroll.value = true;
     chatLastScrollTop = 0;
     managerLastScrollTop = 0;
+    memoryFileSearchText.value = '';
+    memoryFileGroupVisibleLimits.value = {};
+    chatSessionSearchText.value = '';
+    chatSidebarSessionLimit.value = CHAT_SIDEBAR_INITIAL_LIMIT;
+});
+
+watch([() => activeMemoryFiles.value.length, () => filteredChatSidebarSessionCount.value], ([memoryCount, sessionCount]) => {
+    if (chatSidePanel.value === 'memory' && !memoryCount && sessionCount) {
+        chatSidePanel.value = 'sessions';
+    } else if (chatSidePanel.value === 'sessions' && memoryCount && !sessionCount) {
+        chatSidePanel.value = 'memory';
+    }
 });
 
 onBeforeUpdate(() => {
@@ -3241,9 +3730,20 @@ watch([
 });
 
 watch(selectedMemoryFile, (file) => {
-    memoryEditorDraft.value = String(file?.content || '');
-    memoryEditorMode.value = 'preview';
-    memoryEditorStatus.value = '';
+    const nextPath = String(file?.path || '');
+    if (!nextPath) {
+        if (memoryEditorDirty.value) {
+            memoryEditorStatus.value = '当前档案已变化，草稿仍保留';
+            return;
+        }
+        loadMemoryFileIntoEditor(null);
+        return;
+    }
+    if (memoryEditorLoadedPath.value === nextPath && memoryEditorDirty.value) {
+        memoryEditorStatus.value = '档案已刷新，当前草稿仍保留';
+        return;
+    }
+    loadMemoryFileIntoEditor(file);
 }, { immediate: true });
 
 onMounted(async () => {
@@ -3293,153 +3793,242 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <main class="xb-tavern xb-os-shell">
-    <aside class="xb-os-rail">
-      <button
-        class="rail-brand"
-        type="button"
-        title="首页"
-        @click="activeView = 'home'"
-      >
-        <span>XB</span>
-        <strong>小白酒馆</strong>
-      </button>
-      <nav
-        class="rail-nav"
-        aria-label="页面"
-      >
-        <button
-          type="button"
-          :class="{ active: activeView === 'home' || activeView === 'characters' }"
-          @click="activeView = 'home'"
-        >
-          <span>01</span>
-          首页
-        </button>
-        <button
-          type="button"
-          :class="{ active: activeView === 'chat' }"
-          @click="openChatView"
-        >
-          <span>02</span>
-          聊天
-        </button>
-        <button
-          type="button"
-          :class="{ active: activeView === 'settings' }"
-          @click="activeView = 'settings'"
-        >
-          <span>03</span>
-          设置
-        </button>
-      </nav>
-      <span
-        class="mobile-settings-label"
-        aria-hidden="true"
-      >设置</span>
-      <div class="rail-status">
-        <span>{{ apiReady ? 'READY' : 'SETUP' }}</span>
-        <strong>{{ displayCharacterName }}</strong>
-        <small v-if="selectedSessionId">{{ chatSubtitle }}</small>
-      </div>
-      <button
-        class="rail-close"
-        type="button"
-        title="关闭"
-        aria-label="关闭"
-        @click="postToHost('xb-tavern:close')"
-      >
-        ×
-      </button>
-    </aside>
-
+  <main
+    class="xb-tavern xb-os-shell"
+    :class="{ 'is-home-view': activeView === 'home' || activeView === 'about' || activeView === 'characters', 'home-theme-dark': homeThemeDark }"
+  >
     <section class="xb-os-stage">
       <section
         v-if="activeView === 'home'"
         class="tavern-home xb-page home-command-center"
       >
+        <div class="home-corner-actions">
+          <button
+            type="button"
+            class="home-icon-button home-theme-button"
+            title="切换主题"
+            aria-label="切换主题"
+            @click="homeThemeDark = !homeThemeDark"
+          >
+            <span
+              v-if="homeThemeDark"
+              class="xb-theme-glyph"
+              aria-hidden="true"
+            >☾</span>
+            <svg
+              v-else
+              class="xb-theme-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.75"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <circle
+                cx="12"
+                cy="12"
+                r="4"
+              />
+              <path d="M12 2v2" />
+              <path d="M12 20v2" />
+              <path d="m4.93 4.93 1.41 1.41" />
+              <path d="m17.66 17.66 1.41 1.41" />
+              <path d="M2 12h2" />
+              <path d="M20 12h2" />
+              <path d="m6.34 17.66-1.41 1.41" />
+              <path d="m19.07 4.93-1.41 1.41" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            class="home-icon-button home-exit-button"
+            title="退出"
+            aria-label="退出"
+            @click="postToHost('xb-tavern:close')"
+          >
+            <svg
+              class="xb-exit-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.9"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <path d="M16 17l5-5-5-5" />
+              <path d="M21 12H9" />
+            </svg>
+          </button>
+        </div>
         <div class="home-hero home-command-hero">
           <div class="home-brand-panel">
-            <div class="home-brand-mark">
-              XB
-            </div>
             <p class="eyebrow">
-              角色共演
+              Private Narrative Archive
             </p>
-            <h2>{{ hasCharacter ? displayCharacterName : '选择角色' }}</h2>
+            <h2>Little White Tavern</h2>
             <p>
-              {{ selectedSessionId ? chatSubtitle : '选择角色，开一段新的对话。' }}
+              A quiet narrative desk where the scene, the archive, and the assistant stay in the same room.
             </p>
-            <div class="home-metric-strip">
-              <span>
-                <strong>{{ sessions.length }}</strong>
-                会话
-              </span>
-              <span>
-                <strong>{{ worldBookCount }}</strong>
-                世界书
-              </span>
-              <span>
-                <strong>{{ apiReady ? 'OK' : 'SET' }}</strong>
-                API
-              </span>
-            </div>
-          </div>
-          <div class="home-command-panel">
+            <p class="home-version-line">
+              {{ selectedSessionId ? chatSubtitle : `${characterCards.length} cards in archive` }}
+            </p>
             <button
               type="button"
-              class="home-action-main"
+              class="enter-btn home-enter-chat"
               @click="handleHomePrimaryAction"
             >
-              <strong>{{ selectedSessionId ? '继续聊天' : '选择角色' }}</strong>
-              <span>{{ selectedSessionId ? selectedSessionTitle : `${characterCards.length} 张角色卡可选` }}</span>
+              {{ selectedSessionId ? 'ENTER LAST CHAT' : 'OPEN CHARACTER ARCHIVE' }}
+            </button>
+          </div>
+          <div class="home-command-panel home-menu-panel">
+            <button
+              type="button"
+              class="home-menu-item"
+              @click="openSettingsWorkspace('worldbooks')"
+            >
+              <strong>世界书编录</strong>
+              <span>World Lore Books</span>
             </button>
             <button
               type="button"
-              class="home-action-main"
-              @click="handleHomeNewSession"
+              class="home-menu-item"
+              @click="openSettingsWorkspace('chatPreset')"
             >
-              <strong>{{ selectedSessionId ? '选择角色' : '刷新角色' }}</strong>
-              <span>{{ selectedSessionId ? '开新的独立会话' : '查看角色卡' }}</span>
+              <strong>聊天预设</strong>
+              <span>Prompt Presets</span>
+            </button>
+            <button
+              type="button"
+              class="home-menu-item"
+              @click="openCharacterSelect"
+            >
+              <strong>角色卡选择</strong>
+              <span>Character Cards</span>
+            </button>
+            <button
+              type="button"
+              class="home-menu-item"
+              @click="openSettingsWorkspace('regex')"
+            >
+              <strong>正则规则</strong>
+              <span>Text Filters</span>
+            </button>
+            <button
+              type="button"
+              class="home-menu-item highlight"
+              @click="activeView = 'about'"
+            >
+              <strong>关于</strong>
+              <span>Guide & Advantages</span>
             </button>
           </div>
         </div>
+      </section>
 
-        <section class="session-board home-session-board">
-          <div class="panel-head">
-            <div>
-              <h2>会话管理</h2>
-            </div>
+      <section
+        v-if="activeView === 'about'"
+        class="xb-page tavern-about-page"
+      >
+        <div class="home-corner-actions">
+          <button
+            type="button"
+            class="home-icon-button home-theme-button"
+            title="切换主题"
+            aria-label="切换主题"
+            @click="homeThemeDark = !homeThemeDark"
+          >
+            <span
+              v-if="homeThemeDark"
+              class="xb-theme-glyph"
+              aria-hidden="true"
+            >☾</span>
+            <svg
+              v-else
+              class="xb-theme-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.75"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <circle
+                cx="12"
+                cy="12"
+                r="4"
+              />
+              <path d="M12 2v2" />
+              <path d="M12 20v2" />
+              <path d="m4.93 4.93 1.41 1.41" />
+              <path d="m17.66 17.66 1.41 1.41" />
+              <path d="M2 12h2" />
+              <path d="M20 12h2" />
+              <path d="m6.34 17.66-1.41 1.41" />
+              <path d="m19.07 4.93-1.41 1.41" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            class="home-icon-button home-exit-button"
+            title="退出"
+            aria-label="退出"
+            @click="postToHost('xb-tavern:close')"
+          >
+            <svg
+              class="xb-exit-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.9"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <path d="M16 17l5-5-5-5" />
+              <path d="M21 12H9" />
+            </svg>
+          </button>
+        </div>
+        <button
+          type="button"
+          class="about-return-inline"
+          @click="activeView = 'home'"
+        >
+          RETURN TO INDEX
+        </button>
+        <section class="about-title-block">
+          <h1 class="about-title">
+            使用说明
+          </h1>
+          <div class="about-sub">
+            A CLEANER WAY TO PLAY
           </div>
-          <div class="home-session-list">
-            <div
-              v-for="session in sessions"
-              :key="session.id"
-              class="session-card"
-              :class="{ active: session.id === selectedSessionId }"
-            >
-              <button
-                type="button"
-                class="session-open"
-                @click="selectSession(session.id)"
-              >
-                <strong>{{ sessionDisplayTitle(session) || '未选择角色' }}</strong>
-                <small>第 {{ normalizeTavernSessionState(session.state || {}).turn || 0 }} 轮</small>
-              </button>
-              <button
-                type="button"
-                class="session-delete"
-                @click="removeSession(session.id, $event)"
-              >
-                删除
-              </button>
-            </div>
-            <p
-              v-if="!sessions.length"
-              class="muted"
-            >
-              还没有会话。
-            </p>
+        </section>
+        <section class="manifesto-body">
+          <p class="intro-dropcap">
+            这里不是另一个浮在外面的聊天壳。它把角色卡、世界书、聊天预设、正则和记忆档案放进同一个安静的工作台里，让你不用在一堆窗口之间来回找东西。
+          </p>
+          <p>入口从角色卡开始。选中一张卡后，才进入它自己的会话；每个会话会锁住当时的资料状态，避免你后来改了卡或世界书，旧对话突然变味。</p>
+          <div class="feature-block">
+            <h3>I. 角色与会话</h3>
+            <p>中间是角色聊天和助手聊天，可以翻转切换。角色聊天只负责沉浸互动；助手聊天负责整理、追问和维护记忆，不和角色正文混在一起。</p>
+          </div>
+          <div class="feature-block">
+            <h3>II. 酒馆资料</h3>
+            <p>世界书、聊天预设和正则都连接酒馆本体。你在这里看到和保存的，就是下一次聊天会使用的资料，不需要回旧界面猜哪一份生效。</p>
+          </div>
+          <div class="feature-block">
+            <h3>III. 记忆档案</h3>
+            <p>右侧默认是渲染后的记忆文件；需要时再点编辑。剧情脉络、状态栏、阶段档案和待整理事项分开存放，方便你看，也方便助手维护。</p>
+          </div>
+          <div class="feature-block quiet">
+            <p>请求日志只做一件事：让你看到上一次真正送出的内容，也可以模拟下一次发送。事实在那里，比解释可靠。</p>
           </div>
         </section>
       </section>
@@ -3448,6 +4037,68 @@ onUnmounted(() => {
         v-if="activeView === 'characters'"
         class="xb-page character-select-page"
       >
+        <div class="home-corner-actions">
+          <button
+            type="button"
+            class="home-icon-button home-theme-button"
+            title="切换主题"
+            aria-label="切换主题"
+            @click="homeThemeDark = !homeThemeDark"
+          >
+            <span
+              v-if="homeThemeDark"
+              class="xb-theme-glyph"
+              aria-hidden="true"
+            >☾</span>
+            <svg
+              v-else
+              class="xb-theme-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.75"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <circle
+                cx="12"
+                cy="12"
+                r="4"
+              />
+              <path d="M12 2v2" />
+              <path d="M12 20v2" />
+              <path d="m4.93 4.93 1.41 1.41" />
+              <path d="m17.66 17.66 1.41 1.41" />
+              <path d="M2 12h2" />
+              <path d="M20 12h2" />
+              <path d="m6.34 17.66-1.41 1.41" />
+              <path d="m19.07 4.93-1.41 1.41" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            class="home-icon-button home-exit-button"
+            title="退出"
+            aria-label="退出"
+            @click="postToHost('xb-tavern:close')"
+          >
+            <svg
+              class="xb-exit-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.9"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <path d="M16 17l5-5-5-5" />
+              <path d="M21 12H9" />
+            </svg>
+          </button>
+        </div>
         <header class="character-select-head">
           <button
             type="button"
@@ -3458,16 +4109,16 @@ onUnmounted(() => {
           </button>
           <div>
             <p class="eyebrow">
-              角色
+              CHARACTER ARCHIVE
             </p>
             <h2>选择角色卡</h2>
-            <p>选中一张角色卡后，会用它的角色资料和世界书创建新的独立会话。</p>
+            <p>先选中一张角色卡，再进入它自己的会话；角色资料、头像和关联世界书会一起成为这次叙事的入口。</p>
           </div>
           <button
             type="button"
             @click="refreshCharacterList"
           >
-            刷新列表
+            刷新档案
           </button>
         </header>
 
@@ -3480,38 +4131,126 @@ onUnmounted(() => {
 
         <section
           v-if="characterCards.length"
-          class="character-card-grid"
+          class="character-archive"
         >
-          <button
-            v-for="character in characterCards"
-            :key="character.id"
-            type="button"
-            class="character-card-option"
-            :class="{
-              current: character.id === liveCharacterId,
-              pending: character.id === pendingCharacterSessionId,
-            }"
-            :disabled="!!pendingCharacterSessionId"
-            @click="selectCharacterAndCreateSession(character.id)"
-          >
-            <span class="character-card-avatar">
-              <img
-                v-if="character.avatar"
-                :src="character.avatar"
-                alt=""
+          <div class="archive-toolbar">
+            <label class="archive-search">
+              <span>检索角色</span>
+              <input
+                v-model="characterSearchText"
+                type="search"
+                placeholder="输入角色名、设定或开场白"
               >
-              <span v-else>{{ character.name.slice(0, 1) }}</span>
-            </span>
-            <span class="character-card-body">
-              <span class="character-card-title">
-                <strong>{{ character.name }}</strong>
-                <small v-if="character.id === liveCharacterId">当前</small>
-                <small v-if="character.id === pendingCharacterSessionId">读取中</small>
-              </span>
-              <span class="character-card-desc">
-                {{ shortText(character.description || character.personality || character.scenario || character.firstMessage || '没有卡面摘要。', 150) }}
-              </span>
-            </span>
+            </label>
+            <p>
+              显示 {{ visibleCharacterCards.length }} / {{ filteredCharacterCards.length }}，共 {{ characterCards.length }} 张
+            </p>
+          </div>
+          <div
+            v-if="visibleCharacterCards.length"
+            class="character-archive-browser"
+          >
+            <div
+              ref="characterArchiveListRef"
+              class="character-card-grid"
+              tabindex="0"
+              aria-label="角色卡列表"
+              @keydown="handleCharacterArchiveKeydown"
+            >
+              <button
+                v-for="character in visibleCharacterCards"
+                :key="character.id"
+                type="button"
+                class="character-card-option"
+                :data-character-card-id="character.id"
+                :class="{
+                  current: character.id === liveCharacterId,
+                  selected: character.id === selectedCharacterPreview?.id,
+                  pending: character.id === pendingCharacterSessionId,
+                }"
+                :disabled="!!pendingCharacterSessionId"
+                @click="selectCharacterForPreview(character.id)"
+                @dblclick="selectCharacterAndCreateSession(character.id)"
+              >
+                <span class="character-card-avatar">
+                  <img
+                    v-if="avatarAvailable(character.avatar)"
+                    :src="character.avatar"
+                    loading="lazy"
+                    decoding="async"
+                    alt=""
+                    @error="rememberBrokenAvatar(character.avatar)"
+                  >
+                  <span v-else>{{ character.name.slice(0, 1) }}</span>
+                </span>
+                <span class="character-card-body">
+                  <span class="character-card-title">
+                    <strong>{{ character.name }}</strong>
+                    <small v-if="character.id === liveCharacterId">当前</small>
+                    <small v-if="character.id === pendingCharacterSessionId">读取中</small>
+                  </span>
+                  <span class="character-card-desc">
+                    {{ shortText(character.description || character.personality || character.scenario || character.firstMessage || '没有卡面摘要。', 72) }}
+                  </span>
+                </span>
+              </button>
+            </div>
+
+            <aside
+              v-if="selectedCharacterPreview"
+              class="character-preview-panel"
+            >
+              <div class="character-preview-media">
+                <img
+                  v-if="avatarAvailable(selectedCharacterPreview.avatar)"
+                  :src="selectedCharacterPreview.avatar"
+                  loading="lazy"
+                  decoding="async"
+                  alt=""
+                  @error="rememberBrokenAvatar(selectedCharacterPreview.avatar)"
+                >
+                <span v-else>{{ selectedCharacterPreview.name.slice(0, 1) }}</span>
+              </div>
+              <div class="character-preview-copy">
+                <p class="eyebrow">
+                  SELECTED CARD
+                </p>
+                <h3>{{ selectedCharacterPreview.name }}</h3>
+                <p>{{ selectedCharacterPreview.description || selectedCharacterPreview.personality || selectedCharacterPreview.scenario || '这张卡没有写卡面摘要。' }}</p>
+              </div>
+              <dl class="character-preview-notes">
+                <div>
+                  <dt>开场</dt>
+                  <dd>{{ shortText(selectedCharacterPreview.firstMessage || '没有开场白。', 180) }}</dd>
+                </div>
+                <div>
+                  <dt>场景</dt>
+                  <dd>{{ shortText(selectedCharacterPreview.scenario || '没有场景说明。', 160) }}</dd>
+                </div>
+              </dl>
+              <button
+                type="button"
+                class="character-enter-button"
+                :disabled="!!pendingCharacterSessionId"
+                @click="enterSelectedCharacter"
+              >
+                {{ selectedCharacterPreview.id === pendingCharacterSessionId ? '读取中' : '进入这张角色卡' }}
+              </button>
+            </aside>
+          </div>
+          <div
+            v-else
+            class="empty-note"
+          >
+            没有匹配的角色卡。
+          </div>
+          <button
+            v-if="hiddenCharacterCount"
+            type="button"
+            class="archive-load-more"
+            @click="characterVisibleLimit += CHARACTER_ARCHIVE_BATCH_SIZE"
+          >
+            再显示 {{ Math.min(hiddenCharacterCount, CHARACTER_ARCHIVE_BATCH_SIZE) }} 张
           </button>
         </section>
 
@@ -3535,13 +4274,98 @@ onUnmounted(() => {
         class="tavern-chat xb-page"
         :class="[`chat-focus-${chatFocus}`, `chat-layout-${chatLayout}`]"
       >
+        <div class="home-corner-actions page-corner-actions">
+          <button
+            type="button"
+            class="home-icon-button page-home-button"
+            title="首页"
+            aria-label="首页"
+            @click="activeView = 'home'"
+          >
+            <svg
+              class="xb-home-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M3 11.5 12 4l9 7.5" />
+              <path d="M5.5 10.5V20h13v-9.5" />
+              <path d="M9.5 20v-5.5h5V20" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            class="home-icon-button home-theme-button"
+            title="切换主题"
+            aria-label="切换主题"
+            @click="homeThemeDark = !homeThemeDark"
+          >
+            <span
+              v-if="homeThemeDark"
+              class="xb-theme-glyph"
+              aria-hidden="true"
+            >☾</span>
+            <svg
+              v-else
+              class="xb-theme-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.75"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <circle
+                cx="12"
+                cy="12"
+                r="4"
+              />
+              <path d="M12 2v2" />
+              <path d="M12 20v2" />
+              <path d="m4.93 4.93 1.41 1.41" />
+              <path d="m17.66 17.66 1.41 1.41" />
+              <path d="M2 12h2" />
+              <path d="M20 12h2" />
+              <path d="m6.34 17.66-1.41 1.41" />
+              <path d="m19.07 4.93-1.41 1.41" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            class="home-icon-button home-exit-button"
+            title="退出"
+            aria-label="退出"
+            @click="postToHost('xb-tavern:close')"
+          >
+            <svg
+              class="xb-exit-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.9"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <path d="M16 17l5-5-5-5" />
+              <path d="M21 12H9" />
+            </svg>
+          </button>
+        </div>
         <aside class="chat-side xb-sidebar">
           <section class="chat-profile xb-brand">
             <div class="avatar-orb">
               <img
-                v-if="characterAvatar"
-                :src="characterAvatar"
+                v-if="visibleCharacterAvatar"
+                :src="visibleCharacterAvatar"
                 alt=""
+                @error="rememberBrokenAvatar(visibleCharacterAvatar)"
               >
               <span v-else>{{ displayCharacterName.slice(0, 1) }}</span>
             </div>
@@ -3580,10 +4404,52 @@ onUnmounted(() => {
             </div>
           </section>
 
-          <section class="chat-side-block chat-directory-block">
+          <div
+            class="chat-side-switch"
+            role="tablist"
+            aria-label="左侧目录"
+          >
+            <button
+              type="button"
+              role="tab"
+              :aria-selected="chatSidePanel === 'memory'"
+              :class="{ active: chatSidePanel === 'memory' }"
+              @click="chatSidePanel = 'memory'"
+            >
+              <strong>记忆</strong>
+              <span>{{ activeMemoryFiles.length }}</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              :aria-selected="chatSidePanel === 'sessions'"
+              :class="{ active: chatSidePanel === 'sessions' }"
+              @click="chatSidePanel = 'sessions'"
+            >
+              <strong>会话</strong>
+              <span>{{ filteredChatSidebarSessionCount }}</span>
+            </button>
+          </div>
+
+          <section
+            v-if="chatSidePanel === 'sessions'"
+            class="chat-side-block chat-directory-block"
+          >
             <div class="side-block-head">
               <strong>会话目录</strong>
+              <span>{{ filteredChatSidebarSessionCount }}</span>
             </div>
+            <label
+              v-if="sessions.length"
+              class="memory-search session-search"
+            >
+              <span>检索会话</span>
+              <input
+                v-model="chatSessionSearchText"
+                type="search"
+                placeholder="角色名、会话名、轮次"
+              >
+            </label>
             <div class="session-list chat-directory-list xb-files">
               <div
                 v-for="session in chatSidebarSessions"
@@ -3599,29 +4465,52 @@ onUnmounted(() => {
                   <strong>{{ sessionDisplayTitle(session) || '未选择角色' }}</strong>
                   <small>第 {{ normalizeTavernSessionState(session.state || {}).turn || 0 }} 轮</small>
                 </button>
+                <button
+                  type="button"
+                  class="session-delete"
+                  title="删除会话"
+                  aria-label="删除会话"
+                  @click="removeSession(session.id, $event)"
+                >
+                  ×
+                </button>
               </div>
               <button
-                v-if="sessions.length > chatSidebarSessions.length"
+                v-if="hiddenChatSidebarSessionCount"
                 type="button"
                 class="session-more"
-                @click="activeView = 'home'"
+                @click="chatSidebarSessionLimit += CHAT_SIDEBAR_BATCH_SIZE"
               >
-                查看全部会话
+                再显示 {{ Math.min(hiddenChatSidebarSessionCount, CHAT_SIDEBAR_BATCH_SIZE) }} 个会话
               </button>
               <p
                 v-if="!chatSidebarSessions.length"
                 class="muted compact"
               >
-                当前角色还没有其他会话。
+                {{ chatSessionSearchText ? '没有匹配的会话。' : '当前角色还没有其他会话。' }}
               </p>
             </div>
           </section>
 
-          <section class="chat-side-block chat-directory-block">
+          <section
+            v-if="chatSidePanel === 'memory'"
+            class="chat-side-block chat-directory-block"
+          >
             <div class="side-block-head">
               <strong>记忆目录</strong>
               <span>{{ activeMemoryFiles.length }}</span>
             </div>
+            <label
+              v-if="memoryFiles.length"
+              class="memory-search"
+            >
+              <span>检索档案</span>
+              <input
+                v-model="memoryFileSearchText"
+                type="search"
+                placeholder="剧情脉络、状态、楼层"
+              >
+            </label>
             <div
               v-if="memoryFiles.length"
               class="memory-directory-list xb-files"
@@ -3633,7 +4522,7 @@ onUnmounted(() => {
               >
                 <div class="memory-file-group-title">
                   <span>{{ group.title }}</span>
-                  <em>{{ group.files.length }}</em>
+                  <em>{{ group.files.length }} / {{ group.filteredCount }} / {{ group.totalCount }}</em>
                 </div>
                 <div class="memory-file-tree">
                   <button
@@ -3642,13 +4531,28 @@ onUnmounted(() => {
                     type="button"
                     class="memory-file"
                     :class="{ active: selectedMemoryFile?.path === file.path, stale: file.status === 'stale' }"
-                    @click="selectedMemoryFilePath = file.path"
+                    @click="selectMemoryFile(file.path)"
                   >
                     <span class="memory-file-main">{{ memoryFileDisplayName(file) }}</span>
                     <small>{{ memoryFileKindLabel(file) }} · {{ memoryFileStatusLabel(file.status) }}</small>
                   </button>
+                  <button
+                    v-if="group.hiddenCount"
+                    type="button"
+                    class="memory-file memory-file-more"
+                    @click="expandMemoryFileGroup(group.key)"
+                  >
+                    <span class="memory-file-main">再显示 {{ Math.min(group.hiddenCount, group.key === 'turns' ? MEMORY_TURN_BATCH_SIZE : MEMORY_FILE_BATCH_SIZE) }} 个</span>
+                    <small>{{ group.title }} 还有 {{ group.hiddenCount }} 个未显示</small>
+                  </button>
                 </div>
               </div>
+              <p
+                v-if="memoryFileSearchText && !memoryDirectoryGroups.length"
+                class="muted compact"
+              >
+                没有匹配的记忆档案。
+              </p>
             </div>
             <p
               v-else
@@ -3679,7 +4583,7 @@ onUnmounted(() => {
                     class="prompt-inspector-trigger"
                     @click="openPromptInspector('history')"
                   >
-                    提示词
+                    请求日志
                   </button>
                   <button
                     type="button"
@@ -3691,150 +4595,196 @@ onUnmounted(() => {
                 </div>
               </header>
               <div
-                ref="chatScrollRef"
-                class="chat-scroll"
-                @scroll="handleChatScroll"
-                @wheel.passive="handleChatWheel"
-                @touchstart.passive="handleChatTouchStart"
-                @touchmove.passive="handleChatTouchMove"
+                class="chat-scroll-shell"
               >
                 <div
-                  v-if="chatMessageWindow.hiddenBefore"
-                  class="chat-history-gate"
-                  :data-chat-anchor-key="`gate:${chatMessageWindow.hiddenBefore}`"
+                  ref="chatScrollRef"
+                  class="chat-scroll"
+                  @scroll="handleChatScroll"
+                  @wheel.passive="handleChatWheel"
+                  @touchstart.passive="handleChatTouchStart"
+                  @touchmove.passive="handleChatTouchMove"
                 >
-                  较早记录 {{ chatMessageWindow.hiddenBefore }} 条
-                </div>
-                <div
-                  v-for="message in visibleChatMessages"
-                  :key="`${message.sessionId}-${message.order}`"
-                  :data-chat-anchor-key="`${message.sessionId}:${message.order}`"
-                  class="chat-bubble"
-                  :class="[
-                    message.role === 'user' ? 'from-user' : 'from-assistant',
-                    { 'is-error': message.error },
-                  ]"
-                >
-                  <div class="bubble-meta">
-                    <span>{{ message.error ? '错误' : roleLabel(message.role) }}</span>
-                    <small>{{ formatMessageTime(message.createdAt) }}</small>
+                  <div
+                    v-if="chatMessageWindow.hiddenBefore"
+                    class="chat-history-gate"
+                    :data-chat-anchor-key="`gate:${chatMessageWindow.hiddenBefore}`"
+                    role="button"
+                    tabindex="0"
+                    @click="revealOlderChatMessages(true)"
+                    @keydown.enter.prevent="revealOlderChatMessages(true)"
+                    @keydown.space.prevent="revealOlderChatMessages(true)"
+                  >
+                    展开较早记录 {{ chatMessageWindow.hiddenBefore }} 条
                   </div>
                   <div
-                    v-if="isEditingMessage(message)"
-                    class="message-edit-panel"
+                    v-for="message in visibleChatMessages"
+                    :key="`${message.sessionId}-${message.order}`"
+                    :data-chat-anchor-key="`${message.sessionId}:${message.order}`"
+                    class="chat-bubble"
+                    :class="[
+                      message.role === 'user' ? 'from-user' : 'from-assistant',
+                      { 'is-error': message.error },
+                    ]"
                   >
-                    <textarea
-                      v-model="editingMessageDraft"
-                      class="message-edit-box"
-                      rows="6"
-                      :data-message-editor="messageKey(message)"
-                      @input="handleEditInput"
-                      @keydown="handleEditKeydown($event, message)"
+                    <div class="bubble-meta">
+                      <span>{{ message.error ? '错误' : roleLabel(message.role) }}</span>
+                      <small>{{ formatMessageTime(message.createdAt) }}</small>
+                    </div>
+                    <div
+                      v-if="isEditingMessage(message)"
+                      class="message-edit-panel"
+                    >
+                      <textarea
+                        v-model="editingMessageDraft"
+                        class="message-edit-box"
+                        rows="6"
+                        :data-message-editor="messageKey(message)"
+                        @input="handleEditInput"
+                        @keydown="handleEditKeydown($event, message)"
+                      />
+                      <div class="message-edit-actions">
+                        <button
+                          type="button"
+                          :disabled="!isEditingMessageDirty(message)"
+                          @click="saveEditMessage(message)"
+                        >
+                          {{ message.role === 'user' ? '保存' : '保存修改' }}
+                        </button>
+                        <button
+                          v-if="message.role === 'user'"
+                          type="button"
+                          :disabled="!isEditingMessageDirty(message)"
+                          @click="saveEditMessage(message, { rerun: true })"
+                        >
+                          保存并重发
+                        </button>
+                        <button
+                          type="button"
+                          @click="cancelEditMessage"
+                        >
+                          取消
+                        </button>
+                      </div>
+                    </div>
+                    <details
+                      v-if="!isEditingMessage(message) && thoughtBlocks(message).length"
+                      class="tavern-thought-details"
+                    >
+                      <summary>{{ thoughtSummaryLabel(message) }}</summary>
+                      <div
+                        v-for="(thought, thoughtIndex) in thoughtBlocks(message)"
+                        :key="`${message.sessionId}-${message.order}-thought-${thoughtIndex}`"
+                        class="tavern-thought-block"
+                      >
+                        <div class="tavern-thought-label">
+                          {{ thought.label }}
+                        </div>
+                        <pre>{{ thought.text }}</pre>
+                      </div>
+                    </details>
+                    <div
+                      v-if="!isEditingMessage(message)"
+                      class="xb-tavern-markdown"
+                      :data-markdown-signature="markdownSignature(message.content)"
+                      v-html="renderChatMarkdown(message.content)"
                     />
-                    <div class="message-edit-actions">
+                    <div
+                      v-if="!isEditingMessage(message)"
+                      class="message-actions"
+                    >
                       <button
                         type="button"
-                        @click="saveEditMessage(message)"
+                        :class="actionFeedback(message, 'copy')"
+                        title="复制"
+                        aria-label="复制"
+                        @click="copyMessage(message)"
                       >
-                        保存
+                        ⧉
                       </button>
                       <button
                         type="button"
-                        @click="saveEditMessage(message, { rerun: true })"
+                        :disabled="!canEditMessage(message)"
+                        :class="actionFeedback(message, 'edit')"
+                        title="编辑"
+                        aria-label="编辑"
+                        @click="startEditMessage(message)"
                       >
-                        保存并重跑
+                        ✎
                       </button>
                       <button
                         type="button"
-                        @click="cancelEditMessage"
+                        :disabled="!canRerunMessage(message)"
+                        :class="actionFeedback(message, 'rerun')"
+                        :title="message.role === 'user' ? '从这里重发' : '重新生成这条回复'"
+                        :aria-label="message.role === 'user' ? '从这里重发' : '重新生成这条回复'"
+                        @click="rerunFromMessage(message)"
                       >
-                        取消
+                        ↻
+                      </button>
+                      <button
+                        type="button"
+                        :disabled="isRunning"
+                        :class="actionFeedback(message, 'delete')"
+                        title="删除"
+                        aria-label="删除"
+                        @click="deleteMessageTurn(message)"
+                      >
+                        ⌫
                       </button>
                     </div>
                   </div>
                   <div
-                    v-else
-                    class="xb-tavern-markdown"
-                    :data-markdown-signature="markdownSignature(message.content)"
-                    v-html="renderChatMarkdown(message.content)"
-                  />
-                  <div
-                    v-if="!isEditingMessage(message)"
-                    class="message-actions"
+                    v-if="isRunning && (runtimeText || runtimeThoughts.length)"
+                    data-chat-anchor-key="streaming:content"
+                    class="chat-bubble from-assistant streaming"
                   >
-                    <button
-                      type="button"
-                      :class="actionFeedback(message, 'copy')"
-                      title="复制"
-                      aria-label="复制"
-                      @click="copyMessage(message)"
+                    <div class="bubble-meta">
+                      <span>{{ roleLabel('assistant') }}</span>
+                      <small>生成中</small>
+                    </div>
+                    <details
+                      v-if="thoughtBlocks(runtimeThoughts).length"
+                      class="tavern-thought-details"
+                      open
                     >
-                      ⧉
-                    </button>
-                    <button
-                      type="button"
-                      :disabled="!canEditMessage(message)"
-                      :class="actionFeedback(message, 'edit')"
-                      title="编辑"
-                      aria-label="编辑"
-                      @click="startEditMessage(message)"
-                    >
-                      ✎
-                    </button>
-                    <button
-                      type="button"
-                      :disabled="isRunning"
-                      :class="actionFeedback(message, 'rerun')"
-                      title="重新生成"
-                      aria-label="重新生成"
-                      @click="rerunFromMessage(message)"
-                    >
-                      ↻
-                    </button>
-                    <button
-                      type="button"
-                      :disabled="isRunning"
-                      :class="actionFeedback(message, 'delete')"
-                      title="删除"
-                      aria-label="删除"
-                      @click="deleteMessageTurn(message)"
-                    >
-                      ⌫
-                    </button>
-                  </div>
-                </div>
-                <div
-                  v-if="isRunning && runtimeText"
-                  data-chat-anchor-key="streaming:content"
-                  class="chat-bubble from-assistant streaming"
-                >
-                  <div class="bubble-meta">
-                    <span>角色</span>
-                    <small>生成中</small>
+                      <summary>{{ thoughtSummaryLabel(runtimeThoughts, true) }}</summary>
+                      <div
+                        v-for="(thought, thoughtIndex) in thoughtBlocks(runtimeThoughts)"
+                        :key="`runtime-thought-${thoughtIndex}`"
+                        class="tavern-thought-block"
+                      >
+                        <div class="tavern-thought-label">
+                          {{ thought.label }}
+                        </div>
+                        <pre>{{ thought.text }}</pre>
+                      </div>
+                    </details>
+                    <div
+                      v-if="runtimeText"
+                      class="xb-tavern-markdown"
+                      :data-markdown-signature="markdownSignature(runtimeText)"
+                      v-html="renderChatMarkdown(runtimeText)"
+                    />
                   </div>
                   <div
-                    class="xb-tavern-markdown"
-                    :data-markdown-signature="markdownSignature(runtimeText)"
-                    v-html="renderChatMarkdown(runtimeText)"
-                  />
-                </div>
-                <div
-                  v-if="isRunning && !runtimeText"
-                  data-chat-anchor-key="streaming:empty"
-                  class="chat-bubble from-assistant streaming thinking"
-                >
-                  <div class="bubble-meta">
-                    <span>角色</span>
-                    <small>生成中</small>
+                    v-if="isRunning && !runtimeText && !thoughtBlocks(runtimeThoughts).length"
+                    data-chat-anchor-key="streaming:empty"
+                    class="chat-bubble from-assistant streaming thinking"
+                  >
+                    <div class="bubble-meta">
+                      <span>{{ roleLabel('assistant') }}</span>
+                      <small>生成中</small>
+                    </div>
+                    <p>正在组织回复...</p>
                   </div>
-                  <p>正在组织回复...</p>
+                  <p
+                    v-if="!chatMessages.length && !isRunning"
+                    class="chat-empty"
+                  >
+                    写一句话，开始。
+                  </p>
                 </div>
-                <p
-                  v-if="!chatMessages.length && !isRunning"
-                  class="chat-empty"
-                >
-                  写一句话，开始。
-                </p>
                 <div
                   class="chat-scroll-helpers"
                   :class="{ active: chatScrollControlsActive }"
@@ -3853,7 +4803,7 @@ onUnmounted(() => {
                     :class="{ visible: showChatScrollBottom }"
                     title="回到底部"
                     aria-label="回到底部"
-                    @click="scrollChatToBottom(true)"
+                    @click="scrollChatToBottom(true, { collapseWindow: true })"
                   >
                     ▼
                   </button>
@@ -3870,6 +4820,7 @@ onUnmounted(() => {
                   {{ latestErrorMessage }}
                 </div>
                 <textarea
+                  ref="chatComposeTextareaRef"
                   v-model="currentUserMessage"
                   rows="3"
                   placeholder="对角色说一句话..."
@@ -3905,7 +4856,7 @@ onUnmounted(() => {
                     class="prompt-inspector-trigger"
                     @click="openPromptInspector('history')"
                   >
-                    提示词
+                    请求日志
                   </button>
                   <button
                     type="button"
@@ -3917,142 +4868,167 @@ onUnmounted(() => {
                 </div>
               </header>
 
-              <div
-                ref="managerScrollRef"
-                class="manager-chat-scroll"
-                @scroll="handleManagerScroll"
-                @wheel.passive="handleManagerWheel"
-                @touchstart.passive="handleManagerTouchStart"
-                @touchmove.passive="handleManagerTouchMove"
-              >
+              <div class="chat-scroll-shell manager-scroll-shell">
                 <div
-                  v-if="managerCompactionOverlay?.active"
-                  class="manager-compaction-overlay"
-                  :class="{ resolved: managerCompactionOverlay.resolved }"
-                  role="status"
-                  aria-live="polite"
+                  ref="managerScrollRef"
+                  class="manager-chat-scroll"
+                  @scroll="handleManagerScroll"
+                  @wheel.passive="handleManagerWheel"
+                  @touchstart.passive="handleManagerTouchStart"
+                  @touchmove.passive="handleManagerTouchMove"
                 >
-                  <strong>{{ managerCompactionOverlay.status }}</strong>
-                  <small>
-                    {{ managerCompactionOverlay.currentTokens }} / {{ managerCompactionOverlay.triggerTokens || '...' }}
-                    <span v-if="managerCompactionOverlay.yieldTokens"> → {{ managerCompactionOverlay.yieldTokens }}</span>
-                  </small>
-                </div>
-                <div
-                  v-if="managerMessageWindow.hiddenBefore"
-                  class="chat-history-gate manager-history-gate"
-                  :data-manager-anchor-key="`gate:${managerMessageWindow.hiddenBefore}`"
-                >
-                  较早记录 {{ managerMessageWindow.hiddenBefore }} 条
-                </div>
-                <article
-                  v-for="message in visibleManagerChatMessages"
-                  :key="`${message.sessionId}-${message.order}`"
-                  :data-manager-anchor-key="`msg:${message.sessionId}:${message.order}`"
-                  class="manager-card manager-message"
-                  :class="message.role === 'user' ? 'manager-message-user' : 'manager-message-assistant'"
-                >
-                  <div class="manager-run-title">
-                    <strong>{{ message.role === 'user' ? '我' : '助手' }}</strong>
-                    <small>{{ formatMessageTime(message.createdAt) }}</small>
+                  <div
+                    v-if="managerCompactionOverlay?.active"
+                    class="manager-compaction-overlay"
+                    :class="{ resolved: managerCompactionOverlay.resolved }"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <strong>{{ managerCompactionOverlay.status }}</strong>
+                    <small>
+                      {{ managerCompactionOverlay.currentTokens }} / {{ managerCompactionOverlay.triggerTokens || '...' }}
+                      <span v-if="managerCompactionOverlay.yieldTokens"> → {{ managerCompactionOverlay.yieldTokens }}</span>
+                    </small>
                   </div>
                   <div
-                    class="xb-tavern-markdown"
-                    :data-markdown-signature="markdownSignature(message.content)"
-                    v-html="renderChatMarkdown(message.content)"
-                  />
-                </article>
-
-                <article
-                  class="manager-card manager-message manager-message-system"
-                  data-manager-anchor-key="meta:memory"
-                >
-                  <div class="manager-run-title">
-                    <strong>记忆档案</strong>
-                    <small>{{ activeMemoryFiles.length }}/{{ memoryFiles.length }}</small>
-                  </div>
-                  <p>{{ memoryIndexStatusLine }}</p>
-                  <p v-if="selectedMemoryFile">
-                    当前打开：{{ memoryFileDisplayName(selectedMemoryFile) }}
-                  </p>
-                </article>
-
-                <article
-                  v-for="episode in episodeSummaries.slice(0, 2)"
-                  :key="episode.id"
-                  :data-manager-anchor-key="`episode:${episode.id}`"
-                  class="manager-card manager-message manager-message-episode"
-                >
-                  <div class="manager-run-title">
-                    <strong>{{ episode.title }}</strong>
-                    <small>第 {{ episode.startTurn }}-{{ episode.endTurn }} 轮</small>
-                  </div>
-                  <p>{{ episode.summary || '暂无摘要。' }}</p>
-                  <p v-if="episode.unresolved?.length">
-                    未解决：{{ episode.unresolved.join('、') }}
-                  </p>
-                </article>
-
-                <article
-                  v-for="run in managerRuns"
-                  :key="run.id"
-                  :data-manager-anchor-key="`run:${run.id}`"
-                  class="manager-card manager-message manager-message-run"
-                  :class="`is-${run.status}`"
-                >
-                  <div class="manager-run-title">
-                    <strong>{{ managerStatusLabel(run.status) }}</strong>
-                    <small>{{ formatManagerSource(run) }}</small>
-                  </div>
-                  <p>{{ run.inputSummary }}</p>
-                  <small>{{ formatRunModelLine(run) }}</small>
-                  <p v-if="run.parsedAction">
-                    动作：{{ run.parsedAction }}
-                  </p>
-                  <p v-if="run.changedFiles?.length">
-                    文件：{{ run.changedFiles.join('、') }}
-                  </p>
-                  <details v-if="run.outputText">
-                    <summary>工作结论</summary>
-                    <pre>{{ run.outputText }}</pre>
-                  </details>
-                  <details v-if="run.toolTrace">
-                    <summary>改动记录</summary>
-                    <pre>{{ formatDebugJson(run.toolTrace) }}</pre>
-                  </details>
-                  <p v-if="run.error">
-                    {{ run.error }}
-                  </p>
-                  <button
-                    v-if="run.status === 'failed'"
-                    type="button"
-                    :disabled="managerBusy"
-                    @click="retryManagerRun(run)"
+                    v-if="managerMessageWindow.hiddenBefore"
+                    class="chat-history-gate manager-history-gate"
+                    :data-manager-anchor-key="`gate:${managerMessageWindow.hiddenBefore}`"
+                    role="button"
+                    tabindex="0"
+                    @click="revealOlderManagerMessages(true)"
+                    @keydown.enter.prevent="revealOlderManagerMessages(true)"
+                    @keydown.space.prevent="revealOlderManagerMessages(true)"
                   >
-                    重试
-                  </button>
-                </article>
-
-                <article
-                  v-for="summary in recentTurnSummaries.slice(0, 4)"
-                  :key="summary.id"
-                  :data-manager-anchor-key="`summary:${summary.id}`"
-                  class="manager-card manager-message manager-message-turn"
-                >
-                  <div class="manager-run-title">
-                    <strong>{{ formatSummarySource(summary) }}</strong>
-                    <small>{{ summary.tags?.join('、') || '无标签' }}</small>
+                    展开较早记录 {{ managerMessageWindow.hiddenBefore }} 条
                   </div>
-                  <p>{{ summary.summary }}</p>
-                </article>
+                  <article
+                    v-for="message in visibleManagerChatMessages"
+                    :key="`${message.sessionId}-${message.order}`"
+                    :data-manager-anchor-key="`msg:${message.sessionId}:${message.order}`"
+                    class="manager-card manager-message"
+                    :class="message.role === 'user' ? 'manager-message-user' : 'manager-message-assistant'"
+                  >
+                    <div class="manager-run-title">
+                      <strong>{{ message.role === 'user' ? '我' : '助手' }}</strong>
+                      <small>{{ formatMessageTime(message.createdAt) }}</small>
+                    </div>
+                    <div
+                      class="xb-tavern-markdown"
+                      :data-markdown-signature="markdownSignature(message.content)"
+                      v-html="renderChatMarkdown(message.content)"
+                    />
+                  </article>
 
-                <p
-                  v-if="!managerChatMessages.length && !managerRuns.length && !episodeSummaries.length && !turnSummaries.length"
-                  data-manager-anchor-key="empty"
-                  class="chat-empty"
-                >
-                  助手还没有工作记录。
-                </p>
+                  <details
+                    v-if="memoryFiles.length || episodeSummaries.length || managerRuns.length || turnSummaries.length"
+                    class="manager-work-drawer"
+                    data-manager-anchor-key="meta:work"
+                  >
+                    <summary>
+                      <strong>工作记录</strong>
+                      <span>{{ memoryFiles.length }} 份档案 · {{ managerRuns.length }} 次运行</span>
+                    </summary>
+                    <article
+                      class="manager-card manager-message manager-message-system"
+                      data-manager-anchor-key="meta:memory"
+                    >
+                      <div class="manager-run-title">
+                        <strong>记忆档案</strong>
+                        <small>{{ activeMemoryFiles.length }}/{{ memoryFiles.length }}</small>
+                      </div>
+                      <p>{{ memoryIndexStatusLine }}</p>
+                      <p v-if="selectedMemoryFile">
+                        当前打开：{{ memoryFileDisplayName(selectedMemoryFile) }}
+                      </p>
+                    </article>
+
+                    <article
+                      v-for="episode in episodeSummaries.slice(0, 2)"
+                      :key="episode.id"
+                      :data-manager-anchor-key="`episode:${episode.id}`"
+                      class="manager-card manager-message manager-message-episode"
+                    >
+                      <div class="manager-run-title">
+                        <strong>{{ episode.title }}</strong>
+                        <small>第 {{ episode.startTurn }}-{{ episode.endTurn }} 轮</small>
+                      </div>
+                      <p>{{ episode.summary || '暂无摘要。' }}</p>
+                      <p v-if="episode.unresolved?.length">
+                        未解决：{{ episode.unresolved.join('、') }}
+                      </p>
+                    </article>
+
+                    <article
+                      v-for="run in visibleManagerRuns"
+                      :key="run.id"
+                      :data-manager-anchor-key="`run:${run.id}`"
+                      class="manager-card manager-message manager-message-run"
+                      :class="`is-${run.status}`"
+                    >
+                      <div class="manager-run-title">
+                        <strong>{{ managerStatusLabel(run.status) }}</strong>
+                        <small>{{ formatManagerSource(run) }}</small>
+                      </div>
+                      <p>{{ run.inputSummary }}</p>
+                      <small>{{ formatRunModelLine(run) }}</small>
+                      <p v-if="run.parsedAction">
+                        动作：{{ run.parsedAction }}
+                      </p>
+                      <p v-if="run.changedFiles?.length">
+                        文件：{{ run.changedFiles.join('、') }}
+                      </p>
+                      <p v-if="run.outputText">
+                        结论：{{ shortText(run.outputText, 220) }}
+                      </p>
+                      <p v-if="run.toolTrace">
+                        {{ toolTraceSummary(run.toolTrace) }}
+                      </p>
+                      <p v-if="run.error">
+                        {{ run.error }}
+                      </p>
+                      <button
+                        v-if="run.status === 'failed'"
+                        type="button"
+                        :disabled="managerBusy"
+                        @click="retryManagerRun(run)"
+                      >
+                        重试
+                      </button>
+                    </article>
+                    <article
+                      v-if="hiddenManagerRunCount"
+                      class="manager-card manager-message manager-message-run manager-message-archive-note"
+                    >
+                      <div class="manager-run-title">
+                        <strong>较早工作记录</strong>
+                        <small>{{ hiddenManagerRunCount }} 条</small>
+                      </div>
+                      <p>较早的管理员运行记录已收起，避免长会话持续占用界面资源。</p>
+                    </article>
+
+                    <article
+                      v-for="summary in recentTurnSummaries.slice(0, 4)"
+                      :key="summary.id"
+                      :data-manager-anchor-key="`summary:${summary.id}`"
+                      class="manager-card manager-message manager-message-turn"
+                    >
+                      <div class="manager-run-title">
+                        <strong>{{ formatSummarySource(summary) }}</strong>
+                        <small>{{ summary.tags?.join('、') || '无标签' }}</small>
+                      </div>
+                      <p>{{ summary.summary }}</p>
+                    </article>
+                  </details>
+
+                  <p
+                    v-if="!managerChatMessages.length"
+                    data-manager-anchor-key="empty"
+                    class="chat-empty"
+                  >
+                    还没有和助手对话。
+                  </p>
+                </div>
                 <div
                   class="chat-scroll-helpers manager-scroll-helpers"
                   :class="{ active: managerScrollControlsActive }"
@@ -4071,7 +5047,7 @@ onUnmounted(() => {
                     :class="{ visible: showManagerScrollBottom }"
                     title="回到底部"
                     aria-label="回到底部"
-                    @click="scrollManagerToBottom(true)"
+                    @click="scrollManagerToBottom(true, { collapseWindow: true })"
                   >
                     ▼
                   </button>
@@ -4089,6 +5065,7 @@ onUnmounted(() => {
                   {{ managerInputStatus }}
                 </div>
                 <textarea
+                  ref="managerComposeTextareaRef"
                   v-model="managerInputDraft"
                   rows="3"
                   placeholder="和助手说一句话..."
@@ -4115,24 +5092,36 @@ onUnmounted(() => {
             </div>
             <div class="tavern-editor-actions xb-editor-actions">
               <button
-                v-if="memoryEditorMode === 'preview'"
                 type="button"
-                :disabled="!selectedMemoryFile"
+                class="tavern-editor-mode-button"
+                :class="{ active: memoryEditorMode === 'edit' }"
+                :disabled="!memoryEditorDocumentAvailable"
                 @click="enterMemoryEditMode"
               >
                 编辑
               </button>
               <button
-                v-if="memoryEditorMode === 'edit'"
                 type="button"
-                :disabled="!selectedMemoryFile"
+                class="tavern-editor-mode-button"
+                :class="{ active: memoryEditorMode === 'preview' }"
+                :disabled="!memoryEditorDocumentAvailable"
                 @click="previewMemoryDraft"
               >
                 预览
               </button>
               <button
-                v-if="memoryEditorMode === 'edit' || memoryEditorDirty"
+                v-if="memoryEditorDirty"
                 type="button"
+                class="tavern-editor-discard-button"
+                :disabled="!memoryEditorDocumentAvailable"
+                @click="discardMemoryDraft"
+              >
+                放弃
+              </button>
+              <button
+                v-if="memoryEditorDirty"
+                type="button"
+                class="tavern-editor-save-button"
                 :disabled="!selectedMemoryFile || !memoryEditorDirty"
                 @click="saveSelectedMemoryFile"
               >
@@ -4142,13 +5131,13 @@ onUnmounted(() => {
           </header>
           <div class="tavern-editor-body xb-editor-body">
             <div
-              v-if="selectedMemoryFile && memoryEditorMode === 'preview'"
+              v-if="memoryEditorDocumentAvailable && memoryEditorMode === 'preview'"
               class="tavern-editor-preview xb-tavern-markdown"
               :data-markdown-signature="markdownSignature(memoryEditorDraft)"
               v-html="renderChatMarkdown(memoryEditorDraft)"
             />
             <textarea
-              v-else-if="selectedMemoryFile"
+              v-else-if="memoryEditorDocumentAvailable"
               v-model="memoryEditorDraft"
               spellcheck="false"
               data-memory-editor-textarea="true"
@@ -4163,6 +5152,7 @@ onUnmounted(() => {
           <footer class="tavern-editor-foot xb-editor-foot">
             <span>{{ memoryEditorDirty ? '有未保存修改' : '已同步' }}</span>
             <span v-if="memoryEditorStatus">{{ memoryEditorStatus }}</span>
+            <span v-if="!selectedMemoryFile && memoryEditorLoadedPath">原档案暂不可用</span>
             <span v-if="selectedMemoryFile">{{ formatMemoryFileMeta(selectedMemoryFile) }}</span>
           </footer>
         </aside>
@@ -4173,6 +5163,90 @@ onUnmounted(() => {
         v-if="activeView === 'settings'"
         class="xb-layout xb-page settings-layout"
       >
+        <div class="home-corner-actions page-corner-actions">
+          <button
+            type="button"
+            class="home-icon-button page-home-button"
+            title="首页"
+            aria-label="首页"
+            @click="activeView = 'home'"
+          >
+            <svg
+              class="xb-home-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M3 11.5 12 4l9 7.5" />
+              <path d="M5.5 10.5V20h13v-9.5" />
+              <path d="M9.5 20v-5.5h5V20" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            class="home-icon-button home-theme-button"
+            title="切换主题"
+            aria-label="切换主题"
+            @click="homeThemeDark = !homeThemeDark"
+          >
+            <span
+              v-if="homeThemeDark"
+              class="xb-theme-glyph"
+              aria-hidden="true"
+            >☾</span>
+            <svg
+              v-else
+              class="xb-theme-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.75"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <circle
+                cx="12"
+                cy="12"
+                r="4"
+              />
+              <path d="M12 2v2" />
+              <path d="M12 20v2" />
+              <path d="m4.93 4.93 1.41 1.41" />
+              <path d="m17.66 17.66 1.41 1.41" />
+              <path d="M2 12h2" />
+              <path d="M20 12h2" />
+              <path d="m6.34 17.66-1.41 1.41" />
+              <path d="m19.07 4.93-1.41 1.41" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            class="home-icon-button home-exit-button"
+            title="退出"
+            aria-label="退出"
+            @click="postToHost('xb-tavern:close')"
+          >
+            <svg
+              class="xb-exit-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.9"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <path d="M16 17l5-5-5-5" />
+              <path d="M21 12H9" />
+            </svg>
+          </button>
+        </div>
         <aside class="xb-sidebar settings-sidebar">
           <div class="panel guide-card">
             <h2>设置</h2>
@@ -4194,6 +5268,7 @@ onUnmounted(() => {
               >
                 <strong>聊天预设</strong>
                 <span>酒馆提示词</span>
+                <em v-if="presetDirty">未保存</em>
               </button>
               <button
                 type="button"
@@ -4202,7 +5277,8 @@ onUnmounted(() => {
                 @click="activeSettingsWorkspace = 'worldbooks'"
               >
                 <strong>世界书</strong>
-                <span>原生 Lorebook</span>
+                <span>酒馆世界书</span>
+                <em v-if="worldbookDirty">未保存</em>
               </button>
               <button
                 type="button"
@@ -4211,7 +5287,8 @@ onUnmounted(() => {
                 @click="activeSettingsWorkspace = 'regex'"
               >
                 <strong>正则</strong>
-                <span>原生 Regex</span>
+                <span>酒馆正则</span>
+                <em v-if="regexDirty">未保存</em>
               </button>
               <button
                 type="button"
@@ -4221,6 +5298,7 @@ onUnmounted(() => {
               >
                 <strong>助手预设</strong>
                 <span>后台管理员</span>
+                <em v-if="assistantPresetDirty">未保存</em>
               </button>
             </div>
           </div>
@@ -4266,7 +5344,7 @@ onUnmounted(() => {
               <div>
                 <h2>聊天预设</h2>
                 <p class="muted compact">
-                  酒馆提示词
+                  酒馆提示词编排
                 </p>
               </div>
               <div class="panel-pills">
@@ -4278,21 +5356,43 @@ onUnmounted(() => {
               </div>
             </div>
             <div class="preset-command-bar">
-              <label>
-                <span>酒馆预设</span>
-                <select
-                  v-model="selectedPresetSourceId"
-                  @change="selectChatPresetFromHost(selectedPresetSourceId)"
-                >
-                  <option
-                    v-for="item in chatPresetOptions"
-                    :key="item.name"
-                    :value="item.name"
+              <div class="preset-source-field">
+                <label class="archive-search preset-source-search">
+                  <span>酒馆预设</span>
+                  <input
+                    v-model="chatPresetSourceSearchText"
+                    type="search"
+                    placeholder="搜索可用预设"
                   >
-                    {{ item.label }}
-                  </option>
-                </select>
-              </label>
+                </label>
+                <div class="preset-source-list">
+                  <div
+                    v-if="!visibleChatPresetOptions.length"
+                    class="inline-empty-note"
+                  >
+                    没有匹配的酒馆预设。
+                  </div>
+                  <button
+                    v-for="item in visibleChatPresetOptions"
+                    :key="item.name"
+                    type="button"
+                    class="preset-source-row"
+                    :class="{ selected: selectedPresetSourceId === item.name }"
+                    @click="selectChatPresetFromHost(item.name)"
+                  >
+                    <strong>{{ item.label }}</strong>
+                    <small>{{ selectedPresetSourceId === item.name ? '当前使用' : '酒馆原生' }}</small>
+                  </button>
+                </div>
+                <button
+                  v-if="hiddenChatPresetOptionCount"
+                  type="button"
+                  class="archive-load-more preset-source-more"
+                  @click="chatPresetSourceVisibleLimit += CHAT_PRESET_SOURCE_BATCH_SIZE"
+                >
+                  再显示 {{ Math.min(hiddenChatPresetOptionCount, CHAT_PRESET_SOURCE_BATCH_SIZE) }} 个
+                </button>
+              </div>
               <div class="preset-actions">
                 <button
                   type="button"
@@ -4309,7 +5409,7 @@ onUnmounted(() => {
                 </button>
                 <button
                   type="button"
-                  :disabled="!canEditPromptOrder"
+                  :disabled="!canEditPromptOrder || !presetDirty"
                   @click="saveCurrentPreset"
                 >
                   保存
@@ -4341,9 +5441,28 @@ onUnmounted(() => {
                     >
                   </label>
                 </div>
+                <div class="archive-toolbar preset-filterbar">
+                  <label class="archive-search">
+                    <span>检索条目</span>
+                    <input
+                      v-model="promptSearchText"
+                      type="search"
+                      placeholder="按名称、消息身份或内容搜索"
+                    >
+                  </label>
+                  <p>
+                    显示 {{ Math.min(filteredPromptEditorRows.length, promptVisibleLimit) }} / {{ filteredPromptEditorRows.length }}，共 {{ promptEditorRows.length }} 条
+                  </p>
+                </div>
                 <div class="prompt-manager-list">
                   <div
-                    v-for="(row, index) in promptEditorRows"
+                    v-if="!visiblePromptEditorRows.length"
+                    class="inline-empty-note"
+                  >
+                    没有匹配的提示词条目。
+                  </div>
+                  <div
+                    v-for="row in visiblePromptEditorRows"
                     :key="row.identifier"
                     class="prompt-manager-row"
                     :class="{ selected: selectedPromptIdentifier === row.identifier, disabled: !row.enabled, marker: row.marker }"
@@ -4355,7 +5474,7 @@ onUnmounted(() => {
                       title="选择"
                       @click.stop="selectedPromptIdentifier = row.identifier"
                     >
-                      {{ index + 1 }}
+                      {{ promptRowIndex(row.identifier) + 1 }}
                     </button>
                     <div class="prompt-row-main">
                       <strong>{{ row.name }}</strong>
@@ -4365,7 +5484,7 @@ onUnmounted(() => {
                       <button
                         type="button"
                         title="上移"
-                        :disabled="!canEditPromptOrder || index === 0"
+                        :disabled="!canEditPromptOrder || !!promptSearchText || promptRowIndex(row.identifier) === 0"
                         @click.stop="movePromptRow(row.identifier, -1)"
                       >
                         ↑
@@ -4373,7 +5492,7 @@ onUnmounted(() => {
                       <button
                         type="button"
                         title="下移"
-                        :disabled="!canEditPromptOrder || index === promptEditorRows.length - 1"
+                        :disabled="!canEditPromptOrder || !!promptSearchText || promptRowIndex(row.identifier) === promptEditorRows.length - 1"
                         @click.stop="movePromptRow(row.identifier, 1)"
                       >
                         ↓
@@ -4393,18 +5512,14 @@ onUnmounted(() => {
                     </div>
                   </div>
                 </div>
-                <details class="preset-advanced-json">
-                  <summary>高级 JSON</summary>
-                  <label class="preset-text-field">
-                    <span>原始预设</span>
-                    <textarea
-                      :value="JSON.stringify(preset.promptManager?.rawPreset || {}, null, 2)"
-                      rows="12"
-                      spellcheck="false"
-                      readonly
-                    />
-                  </label>
-                </details>
+                <button
+                  v-if="hiddenPromptCount"
+                  type="button"
+                  class="archive-load-more"
+                  @click="promptVisibleLimit += PROMPT_EDITOR_BATCH_SIZE"
+                >
+                  再显示 {{ Math.min(hiddenPromptCount, PROMPT_EDITOR_BATCH_SIZE) }} 条
+                </button>
               </section>
 
               <aside class="preset-preview-panel prompt-detail-panel">
@@ -4433,14 +5548,14 @@ onUnmounted(() => {
                     >
                   </label>
                   <label>
-                    <span>Role</span>
+                    <span>消息身份</span>
                     <select
                       :value="selectedPromptRow.role"
                       @change="updatePromptByIdentifier(selectedPromptRow.identifier, { role: ($event.target as HTMLSelectElement).value })"
                     >
-                      <option value="system">system</option>
-                      <option value="user">user</option>
-                      <option value="assistant">assistant</option>
+                      <option value="system">系统</option>
+                      <option value="user">用户</option>
+                      <option value="assistant">助手</option>
                     </select>
                   </label>
                   <label class="preset-text-field">
@@ -4453,6 +5568,12 @@ onUnmounted(() => {
                       @input="updatePromptByIdentifier(selectedPromptRow.identifier, { content: ($event.target as HTMLTextAreaElement).value })"
                     />
                   </label>
+                  <p
+                    v-if="selectedPromptRow.marker"
+                    class="muted compact"
+                  >
+                    这是酒馆顺序占位，不编辑正文。
+                  </p>
                 </div>
                 <div
                   v-else
@@ -4462,12 +5583,19 @@ onUnmounted(() => {
                 </div>
                 <div class="preset-order-list compact-preview">
                   <div
-                    v-for="row in presetRows"
+                    v-for="row in visiblePresetPreviewRows"
                     :key="row.previewId"
                     class="preset-order-row"
                   >
                     <strong>{{ row.previewLabel }}</strong>
                     <small>{{ promptRoleDisplay(String(row.role || 'system')) }}</small>
+                  </div>
+                  <div
+                    v-if="hiddenPresetPreviewCount"
+                    class="preset-order-row preset-order-more"
+                  >
+                    <strong>还有 {{ hiddenPresetPreviewCount }} 条未显示</strong>
+                    <small>左侧检索或继续展开条目</small>
                   </div>
                 </div>
               </aside>
@@ -4482,7 +5610,7 @@ onUnmounted(() => {
               <div>
                 <h2>世界书</h2>
                 <p class="muted compact">
-                  酒馆原生 Lorebook
+                  世界书编录
                 </p>
               </div>
               <div class="panel-pills">
@@ -4496,18 +5624,10 @@ onUnmounted(() => {
             <div class="preset-command-bar">
               <label>
                 <span>当前世界书</span>
-                <select
-                  v-model="selectedWorldbookName"
-                  @change="loadWorldbookFromHost(selectedWorldbookName)"
+                <input
+                  :value="selectedWorldbookName || '未选择'"
+                  readonly
                 >
-                  <option
-                    v-for="item in worldbookOptions"
-                    :key="item.name"
-                    :value="item.name"
-                  >
-                    {{ item.name }}
-                  </option>
-                </select>
               </label>
               <div class="preset-actions">
                 <button
@@ -4544,8 +5664,16 @@ onUnmounted(() => {
                   <strong>世界书</strong>
                   <span>启用影响下一次请求</span>
                 </div>
+                <label class="archive-search native-search">
+                  <span>检索世界书</span>
+                  <input
+                    v-model="worldbookSearchText"
+                    type="search"
+                    placeholder="输入书名"
+                  >
+                </label>
                 <button
-                  v-for="item in worldbookOptions"
+                  v-for="item in visibleWorldbookOptions"
                   :key="item.name"
                   type="button"
                   class="native-list-row"
@@ -4566,15 +5694,37 @@ onUnmounted(() => {
                     >
                   </label>
                 </button>
+                <button
+                  v-if="hiddenWorldbookCount"
+                  type="button"
+                  class="native-add-row"
+                  @click="worldbookVisibleLimit += WORLDBOOK_BATCH_SIZE"
+                >
+                  再显示 {{ Math.min(hiddenWorldbookCount, WORLDBOOK_BATCH_SIZE) }} 本
+                </button>
+                <div
+                  v-if="!visibleWorldbookOptions.length"
+                  class="inline-empty-note"
+                >
+                  没有匹配的世界书。
+                </div>
               </aside>
 
               <section class="native-list-panel entry-list-panel">
                 <div class="assistant-preset-nav-head">
                   <strong>条目</strong>
-                  <span>{{ worldbookEntries.length }} 条</span>
+                  <span>{{ filteredWorldbookEntries.length }} / {{ worldbookEntries.length }} 条</span>
                 </div>
+                <label class="archive-search native-search">
+                  <span>检索条目</span>
+                  <input
+                    v-model="worldbookEntrySearchText"
+                    type="search"
+                    placeholder="名称、关键词或正文"
+                  >
+                </label>
                 <button
-                  v-for="entry in worldbookEntries"
+                  v-for="entry in visibleWorldbookEntries"
                   :key="String(entry.uid)"
                   type="button"
                   class="native-list-row"
@@ -4585,6 +5735,20 @@ onUnmounted(() => {
                   <strong>{{ entry.comment || `条目 ${entry.uid}` }}</strong>
                   <small>{{ linesFromList(entry.key) || '无关键词' }}</small>
                 </button>
+                <button
+                  v-if="hiddenWorldbookEntryCount"
+                  type="button"
+                  class="native-add-row"
+                  @click="worldbookEntryVisibleLimit += WORLDBOOK_ENTRY_BATCH_SIZE"
+                >
+                  再显示 {{ Math.min(hiddenWorldbookEntryCount, WORLDBOOK_ENTRY_BATCH_SIZE) }} 条
+                </button>
+                <div
+                  v-if="!visibleWorldbookEntries.length"
+                  class="inline-empty-note"
+                >
+                  没有匹配的条目。
+                </div>
                 <button
                   type="button"
                   class="native-add-row"
@@ -4684,7 +5848,7 @@ onUnmounted(() => {
                   v-else
                   class="empty-note"
                 >
-                  选择一本世界书。
+                  {{ selectedWorldbookName ? '选择一个条目。' : '选择一本世界书。' }}
                 </div>
               </section>
             </div>
@@ -4698,7 +5862,7 @@ onUnmounted(() => {
               <div>
                 <h2>正则</h2>
                 <p class="muted compact">
-                  酒馆原生 Regex
+                  酒馆正则
                 </p>
               </div>
               <div class="panel-pills">
@@ -4733,7 +5897,7 @@ onUnmounted(() => {
                 </button>
                 <button
                   type="button"
-                  :disabled="!regexDraft.scriptName"
+                  :disabled="!regexDraft.scriptName || !regexDirty"
                   @click="saveCurrentRegexScript"
                 >
                   保存
@@ -4748,17 +5912,25 @@ onUnmounted(() => {
             </div>
             <div class="native-settings-studio regex-studio">
               <aside class="native-list-panel regex-group-panel">
+                <label class="archive-search native-search">
+                  <span>检索正则</span>
+                  <input
+                    v-model="regexSearchText"
+                    type="search"
+                    placeholder="名称、匹配式或替换文本"
+                  >
+                </label>
                 <div
-                  v-for="group in regexGroups"
+                  v-for="group in regexGroupsForDisplay"
                   :key="group.key"
                   class="regex-group-block"
                 >
                   <div class="assistant-preset-nav-head">
                     <strong>{{ group.label }}</strong>
-                    <span>{{ group.allowed === false ? '未允许' : `${group.scripts.length} 条` }}</span>
+                    <span>{{ group.allowed === false ? '未允许' : `${group.visibleRows.length} / ${group.filteredCount} / ${group.totalCount} 条` }}</span>
                   </div>
                   <button
-                    v-for="row in regexScriptRows.filter((item) => item.groupKey === group.key)"
+                    v-for="row in group.visibleRows"
                     :key="row.key"
                     type="button"
                     class="native-list-row"
@@ -4770,12 +5942,26 @@ onUnmounted(() => {
                     <small>{{ row.script.findRegex || '空匹配式' }}</small>
                   </button>
                   <button
+                    v-if="group.hiddenCount"
+                    type="button"
+                    class="native-add-row"
+                    @click="expandRegexGroup(group.key)"
+                  >
+                    再显示 {{ Math.min(group.hiddenCount, REGEX_GROUP_BATCH_SIZE) }} 条
+                  </button>
+                  <button
                     type="button"
                     class="native-add-row"
                     @click="createRegexScript(group)"
                   >
                     新增{{ group.label }}
                   </button>
+                </div>
+                <div
+                  v-if="regexSearchText && !regexGroupsForDisplay.length"
+                  class="inline-empty-note"
+                >
+                  没有匹配的正则。
                 </div>
               </aside>
 
@@ -4912,7 +6098,7 @@ onUnmounted(() => {
                   v-else
                   class="empty-note"
                 >
-                  选择一条正则。
+                  选择一条正则，或在左侧新建。
                 </div>
               </section>
             </div>
@@ -4938,27 +6124,49 @@ onUnmounted(() => {
               </div>
             </div>
             <div class="preset-command-bar">
-              <label>
-                <span>当前预设</span>
-                <select
-                  v-model="activeAssistantPresetId"
-                  @change="selectAssistantPreset(activeAssistantPresetId)"
-                >
-                  <option
-                    v-for="item in assistantPresets"
-                    :key="item.id"
-                    :value="item.id"
+              <div class="preset-source-field">
+                <label class="archive-search preset-source-search">
+                  <span>助手预设</span>
+                  <input
+                    v-model="assistantPresetSearchText"
+                    type="search"
+                    placeholder="搜索管理员口径"
                   >
-                    {{ item.name }}
-                  </option>
-                </select>
-              </label>
+                </label>
+                <div class="preset-source-list">
+                  <div
+                    v-if="!visibleAssistantPresetRecords.length"
+                    class="inline-empty-note"
+                  >
+                    没有匹配的助手预设。
+                  </div>
+                  <button
+                    v-for="item in visibleAssistantPresetRecords"
+                    :key="item.id"
+                    type="button"
+                    class="preset-source-row"
+                    :class="{ selected: activeAssistantPresetId === item.id }"
+                    @click="selectAssistantPreset(item.id)"
+                  >
+                    <strong>{{ item.name }}</strong>
+                    <small>{{ item.isBuiltIn ? '内置' : '自定义' }}{{ item.description ? ` · ${item.description}` : '' }}</small>
+                  </button>
+                </div>
+                <button
+                  v-if="hiddenAssistantPresetCount"
+                  type="button"
+                  class="archive-load-more preset-source-more"
+                  @click="assistantPresetVisibleLimit += ASSISTANT_PRESET_BATCH_SIZE"
+                >
+                  再显示 {{ Math.min(hiddenAssistantPresetCount, ASSISTANT_PRESET_BATCH_SIZE) }} 个
+                </button>
+              </div>
               <div class="preset-actions">
                 <button
                   type="button"
                   @click="deriveAssistantPreset"
                 >
-                  复制
+                  另存副本
                 </button>
                 <button
                   type="button"
@@ -4969,6 +6177,7 @@ onUnmounted(() => {
                 </button>
                 <button
                   type="button"
+                  :disabled="!assistantPresetDirty"
                   @click="saveCurrentAssistantPreset"
                 >
                   保存
@@ -5000,8 +6209,8 @@ onUnmounted(() => {
             <div class="assistant-preset-studio">
               <aside class="assistant-preset-item-list">
                 <div class="assistant-preset-nav-head">
-                  <strong>条目顺序</strong>
-                  <span>左侧顺序就是进入管理员提示词的顺序</span>
+                  <strong>记忆文件</strong>
+                  <span>一档一项</span>
                 </div>
                 <button
                   v-for="item in assistantPresetItems"
@@ -5011,17 +6220,17 @@ onUnmounted(() => {
                   :class="{ selected: selectedAssistantPresetItem?.id === item.id }"
                   @click="selectAssistantPresetItem(item.id)"
                 >
-                  <span>{{ item.orderIndex }}</span>
-                  <strong>{{ item.content || '空条目' }}</strong>
-                  <small>{{ item.sectionLabel }}</small>
+                  <span>{{ item.summary }}</span>
+                  <strong>{{ item.label }}</strong>
+                  <small>{{ shortText(item.content || '未填写职责。', 54) }}</small>
                 </button>
               </aside>
 
               <section class="assistant-preset-detail-panel">
                 <div class="assistant-preset-line-head">
                   <div>
-                    <strong>{{ selectedAssistantPresetItem?.sectionLabel || '预设条目' }}</strong>
-                    <span>{{ selectedAssistantPresetItem?.sectionSummary || '选择左侧一条后编辑。' }}</span>
+                    <strong>{{ selectedAssistantPresetItem?.label || '记忆文件' }}</strong>
+                    <span>{{ selectedAssistantPresetItem?.summary || '选择左侧一项后编辑。' }}</span>
                   </div>
                 </div>
                 <div
@@ -5029,11 +6238,11 @@ onUnmounted(() => {
                   class="assistant-preset-detail-fields"
                 >
                   <label>
-                    <span>内容</span>
+                    <span>职责说明</span>
                     <textarea
                       :value="selectedAssistantPresetItem.content"
-                      rows="5"
-                      placeholder="一行写一条规则"
+                      rows="12"
+                      placeholder="写这个记忆文件应该维护什么、保留什么、避免什么。"
                       @input="updateSelectedAssistantPresetItem(($event.target as HTMLTextAreaElement).value)"
                     />
                   </label>
@@ -5048,17 +6257,6 @@ onUnmounted(() => {
                 </button>
               </section>
             </div>
-            <details class="preset-advanced-json">
-              <summary>最终提示词预览</summary>
-              <label class="preset-text-field">
-                <span>运行时 system prompt</span>
-                <textarea
-                  :value="assistantPromptPreview"
-                  rows="20"
-                  readonly
-                />
-              </label>
-            </details>
           </div>
         </section>
       </section>
@@ -5077,9 +6275,9 @@ onUnmounted(() => {
         <header class="prompt-inspector-head">
           <div>
             <p class="eyebrow">
-              请求记录
+              请求日志
             </p>
-            <h2>API 请求</h2>
+            <h2>请求日志</h2>
             <p>{{ lastRequestRawJson ? '上一次真实调用' : '暂无真实调用' }}</p>
           </div>
           <button
@@ -5100,14 +6298,14 @@ onUnmounted(() => {
             :class="{ active: promptInspectorTab === 'history' }"
             @click="promptInspectorTab = 'history'"
           >
-            历史
+            上次调用
           </button>
           <button
             type="button"
             :class="{ active: promptInspectorTab === 'simulate' }"
             @click="promptInspectorTab = 'simulate'"
           >
-            模拟
+            模拟发送
           </button>
         </div>
 
@@ -5140,7 +6338,7 @@ onUnmounted(() => {
           >
             <div class="prompt-simulate-panel">
               <div>
-                <label for="request-simulate-input">输入</label>
+                <label for="request-simulate-input">模拟本轮发言</label>
                 <textarea
                   id="request-simulate-input"
                   v-model="simulateRequestInput"
@@ -5152,7 +6350,7 @@ onUnmounted(() => {
                 type="button"
                 @click="simulateApiRequest"
               >
-                模拟
+                生成请求
               </button>
             </div>
             <p

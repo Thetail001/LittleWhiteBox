@@ -24,6 +24,7 @@ declare module '*.js' {
     export default value;
     export const extensionFolderPath: string;
     export function getRequestHeaders(): Record<string, string>;
+    export function getThumbnailUrl(type: string, file: string, t?: boolean): string;
     export function getContext(): Record<string, unknown>;
     export function saveSettingsDebounced(): void;
     export function getPresetManager(apiId?: string): {
@@ -58,6 +59,7 @@ declare module '*.js' {
     export const SCRIPT_TYPES: { GLOBAL: number; SCOPED: number; PRESET: number };
     export const regex_placement: Record<string, number>;
     export const substitute_find_regex: { NONE: number; RAW: number; ESCAPED: number };
+    export function getRegexedString(rawString: string, placement: number, options?: Record<string, unknown>): string;
     export function getScriptsByType(scriptType: number, options?: { allowedOnly?: boolean }): Array<Record<string, unknown>>;
     export function saveScriptsByType(scripts: Array<Record<string, unknown>>, scriptType: number): Promise<void>;
     export function isScopedScriptsAllowed(character?: unknown): boolean;

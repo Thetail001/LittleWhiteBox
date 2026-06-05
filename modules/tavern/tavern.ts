@@ -10,6 +10,7 @@ import {
     selectTavernChatPresetBundle,
 } from './host/chat-presets.js';
 import {
+    applyTavernRegex,
     deleteTavernRegexScript,
     listTavernRegexScripts,
     saveTavernRegexScript,
@@ -255,6 +256,8 @@ async function handleRegexRequest(type: string, payload: Record<string, unknown>
             result = await saveTavernRegexScript(payload.payload);
         } else if (type === 'xb-tavern:delete-regex-script') {
             result = await deleteTavernRegexScript(payload.payload);
+        } else if (type === 'xb-tavern:apply-regex') {
+            result = applyTavernRegex(payload.payload);
         }
         replyHostResult(requestId, {
             ok: true,
@@ -365,6 +368,7 @@ function handleFrameMessage(event: MessageEvent): void {
         case 'xb-tavern:list-regex-scripts':
         case 'xb-tavern:save-regex-script':
         case 'xb-tavern:delete-regex-script':
+        case 'xb-tavern:apply-regex':
             void handleRegexRequest(data.type, data.payload || {});
             break;
         default:

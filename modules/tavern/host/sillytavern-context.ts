@@ -1,5 +1,5 @@
 import { getContext } from '../../../../../../extensions.js';
-import { getRequestHeaders } from '../../../../../../../script.js';
+import { getRequestHeaders, getThumbnailUrl } from '../../../../../../../script.js';
 
 interface TavernHostOptions {
     characterId?: string | number;
@@ -57,7 +57,11 @@ function normalizeCharacterAvatar(value: unknown = ''): string {
     if (/^(data:|blob:|https?:)/i.test(text)) {return text;}
     if (text === 'none') {return '';}
     if (text.startsWith('img/')) {return toAbsoluteAvatarUrl(text);}
-    return `/thumbnail?type=avatar&file=${encodeURIComponent(text)}`;
+    try {
+        return getThumbnailUrl('avatar', text);
+    } catch {
+        return `/thumbnail?type=avatar&file=${encodeURIComponent(text)}`;
+    }
 }
 
 function pickUserAvatarFromDom(): string {
@@ -278,7 +282,7 @@ function listCharacters(ctx: Record<string, unknown> = getContext?.() || {}): Ta
             scenario: normalizeText(data.scenario || character.scenario),
             firstMessage: normalizeText(data.first_mes || character.first_mes),
         };
-    }).filter((character) => character.name);
+    }).filter((character) => character.name && !isSystemCharacterName(character.name));
 }
 
 async function fetchWorldbook(name = ''): Promise<Record<string, unknown>> {

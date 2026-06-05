@@ -1025,8 +1025,8 @@ export function injectEbookStyles(rootId = 'xb-ebook-root') {
             line-height: 1.65;
         }
         .xb-msg.is-editing {
-            width: min(92%, 760px);
-            max-width: min(92%, 760px);
+            width: min(100%, calc(100% - 34px));
+            max-width: none;
         }
         .xb-msg-user {
             align-self: flex-end;
