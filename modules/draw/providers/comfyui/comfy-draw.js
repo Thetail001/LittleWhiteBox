@@ -1066,13 +1066,8 @@ async function fetchComfyCloudImageFromWorkflow(workflow, { signal, timeoutMs, p
                 const location = viewResponse.headers.get('location');
                 if (!location) throw new Error('Cloud 返回 302 但没有 Location 头');
                 
-                // 将签名 URL 转换为代理路径 URL
-                const locationUrl = new URL(location);
-                const proxyBase = new URL(cloudSettings.host);
-                // 保持签名参数，但走代理路径
-                const proxyUrl = new URL(proxyBase.pathname + locationUrl.pathname.replace(/^\//, '') + locationUrl.search, proxyBase);
-                
-                const imageResponse = await fetch(proxyUrl.toString(), {
+                // 直接访问签名 URL（不通过代理路径拼接）
+                const imageResponse = await fetch(location, {
                     signal: deadline.signal,
                 });
                 if (!imageResponse.ok) throw new Error(`下载图片失败: HTTP ${imageResponse.status}`);
