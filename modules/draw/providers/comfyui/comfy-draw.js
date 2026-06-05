@@ -745,7 +745,13 @@ function isDirectOrCloudConnection(settings = getSettings()) {
 function createComfyUrl(path, query = {}, settings = getSettings()) {
     const base = String(settings.host || '').trim();
     if (!base) throw new Error('请先填写 ComfyUI 地址');
-    const url = new URL(path, base.endsWith('/') ? base : `${base}/`);
+    const baseUrl = new URL(base.endsWith('/') ? base : `${base}/`);
+    const pathStr = String(path || '');
+    // 如果 host 有子路径（如 /api/comfy-cloud），且 path 是绝对路径，去掉前导 / 变成相对路径
+    const isAbsolutePath = pathStr.startsWith('/');
+    const hasSubPath = baseUrl.pathname !== '/';
+    const relativePath = isAbsolutePath && hasSubPath ? pathStr.slice(1) : pathStr;
+    const url = new URL(relativePath, baseUrl);
     Object.entries(query || {}).forEach(([key, value]) => {
         if (value !== undefined && value !== null) url.searchParams.set(key, String(value));
     });
