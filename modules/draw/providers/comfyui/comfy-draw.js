@@ -1048,15 +1048,16 @@ async function fetchComfyCloudImageFromWorkflow(workflow, { signal, timeoutMs, p
         }
 
         // 5. 下载图片（/api/view 返回 302 重定向到签名 URL）
-        const isProxy = !settings.host.includes('cloud.comfy.org');
+        const cloudSettings = getSettings();
+        const isProxy = !cloudSettings.host.includes('cloud.comfy.org');
         if (isProxy) {
             // 代理路径：手动处理 302，避免浏览器跨域
             const viewResponse = await fetch(createComfyUrl('/api/view', {
                 filename: imgInfo.filename,
                 subfolder: imgInfo.subfolder,
                 type: imgInfo.type,
-            }, settings), {
-                headers: getComfyAuthHeaders(settings),
+            }, cloudSettings), {
+                headers: getComfyAuthHeaders(cloudSettings),
                 redirect: 'manual',
                 signal: deadline.signal,
             });
@@ -1067,7 +1068,7 @@ async function fetchComfyCloudImageFromWorkflow(workflow, { signal, timeoutMs, p
                 
                 // 将签名 URL 转换为代理路径 URL
                 const locationUrl = new URL(location);
-                const proxyBase = new URL(settings.host);
+                const proxyBase = new URL(cloudSettings.host);
                 // 保持签名参数，但走代理路径
                 const proxyUrl = new URL(proxyBase.pathname + locationUrl.pathname.replace(/^\//, '') + locationUrl.search, proxyBase);
                 
