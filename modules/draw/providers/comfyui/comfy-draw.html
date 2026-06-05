@@ -520,6 +520,7 @@ select.input { cursor: pointer; }
                         <select id="comfy-connection-mode" class="input">
                             <option value="proxy">酒馆后端代理</option>
                             <option value="direct">浏览器直连</option>
+                            <option value="cloud">Comfy Cloud 云端</option>
                         </select>
                         <p id="comfy-connection-hint" class="form-hint">酒馆代理会通过 SillyTavern 转发请求；这里不填写 ComfyUI 认证信息。</p>
                         <p id="comfy-connection-mode-note" class="form-hint">如果代理偶发拿不到图，可以先检查 ComfyUI 输出目录，或换浏览器直连对照。</p>
@@ -535,7 +536,7 @@ select.input { cursor: pointer; }
                     <div class="form-row">
                         <div id="comfy-auth-row" class="form-group hidden">
                             <label class="form-label">认证信息</label>
-                            <input id="comfy-draw-auth" class="input" type="text" placeholder="Basic Auth: user:pass">
+                            <input id="comfy-draw-auth" class="input" type="text" placeholder="直连时填 user:pass，云端时填 API Key">
                         </div>
                         <div class="form-group">
                             <label class="form-label">超时时间 (毫秒)</label>

@@ -423,7 +423,7 @@ function normalizeSettings(raw = {}) {
         overrideSize: String(raw.overrideSize || 'default'),
         showFloorButton: raw.showFloorButton !== false,
         showFloatingButton: raw.showFloatingButton !== false,
-        connectionMode: raw.connectionMode === 'direct' ? 'direct' : 'proxy',
+        connectionMode: raw.connectionMode === 'direct' ? 'direct' : raw.connectionMode === 'cloud' ? 'cloud' : 'proxy',
         auth: String(raw.auth ?? ''),
         timeout: normalizeNumber(raw.timeout, DEFAULT_COMFY_DRAW_SETTINGS.timeout, 10000, 600000),
         selectedPresetId,
@@ -724,11 +724,22 @@ function createComfyDeadlineSignal(signal, timeoutMs) {
 function getComfyAuthHeaders(settings = getSettings()) {
     const auth = String(settings.auth || '').trim();
     if (!auth) return {};
+    if (settings.connectionMode === 'cloud') {
+        return { 'X-API-Key': auth };
+    }
     return { Authorization: `Basic ${btoa(auth)}` };
+}
+
+function isCloudConnection(settings = getSettings()) {
+    return settings.connectionMode === 'cloud';
 }
 
 function isDirectConnection(settings = getSettings()) {
     return settings.connectionMode === 'direct';
+}
+
+function isDirectOrCloudConnection(settings = getSettings()) {
+    return settings.connectionMode === 'direct' || settings.connectionMode === 'cloud';
 }
 
 function createComfyUrl(path, query = {}, settings = getSettings()) {
@@ -753,6 +764,19 @@ async function readBlobAsBase64(blob) {
 async function requestComfyTransport(path, body = {}, { signal, timeoutMs } = {}) {
     const settings = getSettings();
     if (!settings.host) throw new Error('请先填写 ComfyUI 地址');
+    if (isCloudConnection(settings) && path === 'ping') {
+        await testComfyCloudConnection({ signal, timeoutMs });
+        return { ok: true, json: async () => ({}) };
+    }
+    if (isCloudConnection(settings) && path === 'generate') {
+        const workflow = JSON.parse(body?.prompt || '{}')?.prompt;
+        const data = await fetchComfyCloudImageFromWorkflow(workflow, {
+            signal,
+            timeoutMs,
+            preferredSaveImageNodeId: body?.preferredSaveImageNodeId,
+        });
+        return { ok: true, json: async () => ({ data }) };
+    }
     if (isDirectConnection(settings) && path === 'ping') {
         await testComfyDirectConnection({ signal, timeoutMs });
         return { ok: true, json: async () => ({}) };
@@ -828,6 +852,7 @@ async function fetchComfyDirectBlob(path, query = {}, { signal, timeoutMs } = {}
     try {
         const response = await fetch(createComfyUrl(path, query, settings), {
             headers: getComfyAuthHeaders(settings),
+            redirect: 'follow',
             signal: directSignal.signal,
         });
         if (!response.ok) {
@@ -948,7 +973,110 @@ async function fetchComfyDirectImageFromWorkflow(workflow, { signal, timeoutMs, 
     }
 }
 
+async function testComfyCloudConnection({ signal, timeoutMs } = {}) {
+    const settings = getSettings();
+    const directSignal = createComfyRequestSignal(signal, timeoutMs ?? settings.timeout ?? 120000);
+    try {
+        const response = await fetch(createComfyUrl('/api/user', {}, settings), {
+            headers: getComfyAuthHeaders(settings),
+            signal: directSignal.signal,
+        });
+        if (!response.ok) {
+            const text = await response.text().catch(() => '');
+            throw new Error(text || `HTTP ${response.status}`);
+        }
+    } catch (error) {
+        if (error?.name === 'AbortError') throw new Error(signal?.aborted ? '已取消' : '生成超时');
+        throw error;
+    } finally {
+        directSignal.cleanup();
+    }
+}
+
+async function fetchComfyCloudImageFromWorkflow(workflow, { signal, timeoutMs, preferredSaveImageNodeId } = {}) {
+    const deadline = createComfyDeadlineSignal(signal, timeoutMs);
+    try {
+        // 1. 提交工作流
+        const data = await fetchComfyDirectJson('/api/prompt', {
+            method: 'POST',
+            body: JSON.stringify({ prompt: workflow }),
+            signal: deadline.signal,
+            timeoutMs,
+        });
+        const promptId = data?.prompt_id;
+        if (!promptId) throw new Error('Comfy Cloud 未返回任务 ID');
+
+        // 2. 轮询状态
+        let status = 'pending';
+        while (!deadline.signal.aborted) {
+            const statusRes = await fetchComfyDirectJson(`/api/job/${promptId}/status`, {
+                signal: deadline.signal,
+                timeoutMs,
+            });
+            status = statusRes?.status || 'pending';
+
+            if (status === 'completed' || status === 'failed' || status === 'cancelled') break;
+
+            await waitWithAbort(deadline.signal, 2000);
+        }
+        if (deadline.signal.aborted) throw new Error(signal?.aborted ? '已取消' : '生成超时');
+
+        if (status === 'failed') throw new Error('Comfy Cloud 生成失败');
+        if (status === 'cancelled') throw new Error('Comfy Cloud 任务已取消');
+        if (status !== 'completed') throw new Error(`Comfy Cloud 任务状态异常: ${status}`);
+
+        // 3. 获取任务详情（outputs）
+        const job = await fetchComfyDirectJson(`/api/jobs/${promptId}`, {
+            signal: deadline.signal,
+            timeoutMs,
+        });
+
+        if (!job?.outputs) {
+            throw new Error('Comfy Cloud 已返回成功，但未找到图片输出。请检查工作流是否包含 SaveImage 节点。');
+        }
+
+        // 4. 解析输出图片
+        const imgInfo = resolveComfyCloudOutputImage(job.outputs, preferredSaveImageNodeId);
+        if (!imgInfo) {
+            throw new Error('Comfy Cloud 未返回图片数据。请检查工作流是否包含 SaveImage 节点。');
+        }
+
+        // 5. 下载图片（/api/view 返回 302 重定向，fetch 自动跟随）
+        const blob = await fetchComfyDirectBlob('/api/view', {
+            filename: imgInfo.filename,
+            subfolder: imgInfo.subfolder,
+            type: imgInfo.type,
+        }, { signal: deadline.signal, timeoutMs });
+        return await readBlobAsBase64(blob);
+    } finally {
+        deadline.cleanup();
+    }
+}
+
+function resolveComfyCloudOutputImage(outputs, preferredSaveImageNodeId = '') {
+    const preferredNodeId = String(preferredSaveImageNodeId || '').trim();
+
+    // 优先使用指定的 SaveImage 节点
+    if (preferredNodeId) {
+        const preferredOutput = outputs[preferredNodeId];
+        const assets = extractComfyOutputAssets(preferredOutput);
+        if (assets.length) return assets[0];
+    }
+
+    // 查找所有 SaveImage 节点输出
+    for (const [nodeId, output] of Object.entries(outputs)) {
+        const assets = extractComfyOutputAssets(output);
+        if (assets.length) return assets[0];
+    }
+
+    return null;
+}
+
 async function fetchComfyModels({ signal, timeoutMs } = {}) {
+    if (isCloudConnection()) {
+        const data = await fetchComfyDirectJson('/api/object_info', { signal, timeoutMs });
+        return normalizeComfyModelList(data);
+    }
     if (isDirectConnection()) {
         return await fetchComfyDirectModels({ signal, timeoutMs });
     }
@@ -966,6 +1094,13 @@ async function fetchComfyModels({ signal, timeoutMs } = {}) {
 }
 
 async function fetchComfySamplers({ signal, timeoutMs } = {}) {
+    if (isCloudConnection()) {
+        const data = await fetchComfyDirectJson('/api/object_info', { signal, timeoutMs });
+        return {
+            samplers: data.KSampler?.input?.required?.sampler_name?.[0] || [],
+            schedulers: data.KSampler?.input?.required?.scheduler?.[0] || [],
+        };
+    }
     if (isDirectConnection()) {
         return await fetchComfyDirectSamplers({ signal, timeoutMs });
     }
@@ -1277,7 +1412,7 @@ export async function generateComfyImage({ prompt, negativePrompt = '', params =
     const requestBody = {
         prompt: JSON.stringify({ prompt: injected }),
     };
-    if (isDirectConnection(settings) && settings.workflowMode === 'custom') {
+    if (isDirectOrCloudConnection(settings) && settings.workflowMode === 'custom') {
         requestBody.preferredSaveImageNodeId = String(settings.customWorkflow?.nodeSaveImage || '').trim();
     }
 
@@ -2264,7 +2399,12 @@ function readForm() {
     return {
         ...current,
         host: getValue('comfy-draw-host').trim(),
-        connectionMode: getValue('comfy-connection-mode') === 'direct' ? 'direct' : 'proxy',
+        connectionMode: (() => {
+            const mode = getValue('comfy-connection-mode');
+            if (mode === 'direct') return 'direct';
+            if (mode === 'cloud') return 'cloud';
+            return 'proxy';
+        })(),
         auth: getValue('comfy-draw-auth').trim(),
         timeout: normalizeNumber(getValue('comfy-draw-timeout'), current.timeout, 10000, 600000),
         builtinWorkflowId: getValue('comfy-builtin-workflow') || current.builtinWorkflowId || DEFAULT_COMFY_DRAW_SETTINGS.builtinWorkflowId,
@@ -2390,30 +2530,48 @@ function readPromptPresetFromForm(basePreset = getActivePromptPreset(getSettings
 
 function updateConnectionModeUI(mode = getSettings().connectionMode) {
     const isDirect = mode === 'direct';
+    const isCloud = mode === 'cloud';
     const authRow = getSettingsElement('comfy-auth-row');
     const connectionHint = getSettingsElement('comfy-connection-hint');
     const connectionModeNote = getSettingsElement('comfy-connection-mode-note');
     const hostHint = getSettingsElement('comfy-host-hint');
     const status = getSettingsElement('comfy-draw-api-status');
     const workflowStatus = getSettingsElement('comfy-draw-workflow-status');
-    const statusText = isDirect
-        ? '当前使用浏览器直连 ComfyUI。'
-        : '当前使用酒馆后端代理连接 ComfyUI。';
-    authRow?.classList.toggle('hidden', !isDirect);
+    let statusText;
+    if (isCloud) {
+        statusText = '当前使用浏览器直连 Comfy Cloud。';
+    } else if (isDirect) {
+        statusText = '当前使用浏览器直连 ComfyUI。';
+    } else {
+        statusText = '当前使用酒馆后端代理连接 ComfyUI。';
+    }
+    authRow?.classList.toggle('hidden', !isDirect && !isCloud);
     if (connectionHint) {
-        connectionHint.textContent = isDirect
-            ? '浏览器直连会从当前浏览器访问 ComfyUI；需要登录时可在这里填写认证信息。'
-            : '酒馆代理会通过 SillyTavern 转发请求；这里不填写 ComfyUI 认证信息。';
+        if (isCloud) {
+            connectionHint.textContent = '浏览器直连 Comfy Cloud；在下方认证信息中填写 API Key。';
+        } else if (isDirect) {
+            connectionHint.textContent = '浏览器直连会从当前浏览器访问 ComfyUI；需要登录时可在这里填写认证信息。';
+        } else {
+            connectionHint.textContent = '酒馆代理会通过 SillyTavern 转发请求；这里不填写 ComfyUI 认证信息。';
+        }
     }
     if (connectionModeNote) {
-        connectionModeNote.textContent = isDirect
-            ? '如果直连偶发连接失败，可以先换酒馆代理对照。'
-            : '如果代理偶发拿不到图，可以先检查 ComfyUI 输出目录，或换浏览器直连对照。';
+        if (isCloud) {
+            connectionModeNote.textContent = 'Comfy Cloud 是云端服务，无需本地安装。如遇连接失败，请检查 API Key 是否有效。';
+        } else if (isDirect) {
+            connectionModeNote.textContent = '如果直连偶发连接失败，可以先换酒馆代理对照。';
+        } else {
+            connectionModeNote.textContent = '如果代理偶发拿不到图，可以先检查 ComfyUI 输出目录，或换浏览器直连对照。';
+        }
     }
     if (hostHint) {
-        hostHint.textContent = isDirect
-            ? '填写当前浏览器能访问到的 ComfyUI 地址。'
-            : '填写酒馆服务器能访问到的 ComfyUI 地址。';
+        if (isCloud) {
+            hostHint.textContent = '填写 Comfy Cloud 地址，例如 https://cloud.comfy.org';
+        } else if (isDirect) {
+            hostHint.textContent = '填写当前浏览器能访问到的 ComfyUI 地址。';
+        } else {
+            hostHint.textContent = '填写酒馆服务器能访问到的 ComfyUI 地址。';
+        }
     }
     if (status) {
         status.textContent = statusText;
