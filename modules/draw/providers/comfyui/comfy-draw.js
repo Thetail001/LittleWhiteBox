@@ -1021,7 +1021,7 @@ async function fetchComfyCloudImageFromWorkflow(workflow, { signal, timeoutMs, p
             });
             status = statusRes?.status || 'pending';
 
-            if (status === 'completed' || status === 'failed' || status === 'cancelled') break;
+            if (status === 'completed' || status === 'success' || status === 'failed' || status === 'cancelled') break;
 
             await waitWithAbort(deadline.signal, 2000);
         }
@@ -1029,7 +1029,7 @@ async function fetchComfyCloudImageFromWorkflow(workflow, { signal, timeoutMs, p
 
         if (status === 'failed') throw new Error('Comfy Cloud 生成失败');
         if (status === 'cancelled') throw new Error('Comfy Cloud 任务已取消');
-        if (status !== 'completed') throw new Error(`Comfy Cloud 任务状态异常: ${status}`);
+        if (status !== 'completed' && status !== 'success') throw new Error(`Comfy Cloud 任务状态异常: ${status}`);
 
         // 3. 获取任务详情（outputs）
         const job = await fetchComfyDirectJson(`/api/jobs/${promptId}`, {
