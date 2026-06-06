@@ -1067,22 +1067,29 @@ async function fetchComfyCloudImageFromWorkflow(workflow, { signal, timeoutMs, p
                 type: imgInfo.type,
             });
 
-            // 使用 no-cors 模式获取最终重定向 URL（浏览器会跟随 302 到 GCS）
+            // 使用 redirect: manual 获取 302 的 Location header
+            // 同源请求下可以安全读取 Location header
             const response = await fetch(viewUrl, {
-                mode: 'no-cors',
-                redirect: 'follow',
+                redirect: 'manual',
                 headers: getComfyAuthHeaders(),
                 signal: downloadController.signal,
             });
 
-            const finalUrl = response.url;
-            console.log('[ComfyDraw] Cloud image URL:', finalUrl);
-
-            if (finalUrl && finalUrl !== viewUrl.toString()) {
-                return finalUrl;
+            if (response.status === 302 || response.status === 301 || response.status === 307 || response.status === 308) {
+                const location = response.headers.get('Location');
+                if (location) {
+                    console.log('[ComfyDraw] GCS signed URL:', location);
+                    return location;
+                }
             }
 
-            throw new Error('无法获取图片下载 URL');
+            // 如果 manual 没拿到 Location，尝试 follow 方式下载（本地模式适用）
+            if (response.ok) {
+                const blob = await response.blob();
+                return await readBlobAsBase64(blob);
+            }
+
+            throw new Error(`无法获取图片下载 URL: HTTP ${response.status}`);
         } catch (error) {
             if (error?.name === 'AbortError') throw new Error(signal?.aborted ? '已取消' : '生成超时');
             throw error;
