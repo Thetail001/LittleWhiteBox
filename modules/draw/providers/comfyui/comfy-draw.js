@@ -1067,29 +1067,51 @@ async function fetchComfyCloudImageFromWorkflow(workflow, { signal, timeoutMs, p
                 type: imgInfo.type,
             });
 
-            // 使用 redirect: manual 获取 302 的 Location header
-            // 同源请求下可以安全读取 Location header
-            const response = await fetch(viewUrl, {
+            // 方案 A: 尝试 redirect: manual 读取 Location（仅对同源重定向有效）
+            const manualResponse = await fetch(viewUrl, {
                 redirect: 'manual',
                 headers: getComfyAuthHeaders(),
                 signal: downloadController.signal,
             });
-
-            if (response.status === 302 || response.status === 301 || response.status === 307 || response.status === 308) {
-                const location = response.headers.get('Location');
+            if (manualResponse.status === 302 || manualResponse.status === 301 || manualResponse.status === 307 || manualResponse.status === 308) {
+                const location = manualResponse.headers.get('Location');
                 if (location) {
-                    console.log('[ComfyDraw] GCS signed URL:', location);
+                    console.log('[ComfyDraw] GCS URL via manual redirect:', location);
                     return location;
                 }
             }
 
-            // 如果 manual 没拿到 Location，尝试 follow 方式下载（本地模式适用）
-            if (response.ok) {
-                const blob = await response.blob();
+            // 方案 B: 使用 Performance API 捕获 fetch 跟随重定向到 GCS 的 URL
+            // fetch 到 /api/view 会 302 到 GCS，即使 CORS 阻止 fetch 响应，
+            // Performance API 仍会记录网络请求的最终 URL
+            const beforeUrls = new Set(performance.getEntriesByType('resource').map(e => e.name));
+            
+            fetch(viewUrl, {
+                redirect: 'follow',
+                headers: getComfyAuthHeaders(),
+                signal: downloadController.signal,
+            }).catch(() => {
+                // 故意忽略 CORS 错误，我们只关心 Performance API 是否记录了 GCS URL
+            });
+
+            // 等待 Performance API 记录新资源
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            const afterEntries = performance.getEntriesByType('resource');
+            for (const entry of afterEntries) {
+                if (!beforeUrls.has(entry.name) && entry.name.includes('googleapis.com')) {
+                    console.log('[ComfyDraw] GCS URL via Performance API:', entry.name);
+                    return entry.name;
+                }
+            }
+
+            // 方案 C: 如果 Performance API 没抓到，尝试直接下载（本地模式适用）
+            if (manualResponse.ok) {
+                const blob = await manualResponse.blob();
                 return await readBlobAsBase64(blob);
             }
 
-            throw new Error(`无法获取图片下载 URL: HTTP ${response.status}`);
+            throw new Error(`无法获取图片下载 URL: HTTP ${manualResponse.status}`);
         } catch (error) {
             if (error?.name === 'AbortError') throw new Error(signal?.aborted ? '已取消' : '生成超时');
             throw error;
