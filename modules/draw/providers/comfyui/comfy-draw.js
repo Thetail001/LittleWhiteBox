@@ -1047,77 +1047,14 @@ async function fetchComfyCloudImageFromWorkflow(workflow, { signal, timeoutMs, p
             throw new Error('Comfy Cloud 未返回图片数据。请检查工作流是否包含 SaveImage 节点。');
         }
 
-        // 5. 获取图片：使用 no-cors fetch 获取最终重定向 URL（GCS 签名 URL）
-        const downloadTimeout = 60000;
-        const downloadController = new AbortController();
-        const downloadTimer = setTimeout(() => downloadController.abort(), downloadTimeout);
-        if (signal) {
-            signal.addEventListener('abort', () => downloadController.abort());
-        }
-        
-        try {
-            // 优先使用 Comfy Cloud 提供的直接 URL
-            if (imgInfo.url) {
-                return imgInfo.url;
-            }
-
-            const viewUrl = createComfyUrl('/api/view', {
-                filename: imgInfo.filename,
-                subfolder: imgInfo.subfolder,
-                type: imgInfo.type,
-            });
-
-            // 方案 A: 尝试 redirect: manual 读取 Location（仅对同源重定向有效）
-            const manualResponse = await fetch(viewUrl, {
-                redirect: 'manual',
-                headers: getComfyAuthHeaders(),
-                signal: downloadController.signal,
-            });
-            if (manualResponse.status === 302 || manualResponse.status === 301 || manualResponse.status === 307 || manualResponse.status === 308) {
-                const location = manualResponse.headers.get('Location');
-                if (location) {
-                    console.log('[ComfyDraw] GCS URL via manual redirect:', location);
-                    return location;
-                }
-            }
-
-            // 方案 B: 使用 Performance API 捕获 fetch 跟随重定向到 GCS 的 URL
-            // fetch 到 /api/view 会 302 到 GCS，即使 CORS 阻止 fetch 响应，
-            // Performance API 仍会记录网络请求的最终 URL
-            const beforeUrls = new Set(performance.getEntriesByType('resource').map(e => e.name));
-            
-            fetch(viewUrl, {
-                redirect: 'follow',
-                headers: getComfyAuthHeaders(),
-                signal: downloadController.signal,
-            }).catch(() => {
-                // 故意忽略 CORS 错误，我们只关心 Performance API 是否记录了 GCS URL
-            });
-
-            // 等待 Performance API 记录新资源
-            await new Promise(resolve => setTimeout(resolve, 500));
-            
-            const afterEntries = performance.getEntriesByType('resource');
-            for (const entry of afterEntries) {
-                if (!beforeUrls.has(entry.name) && entry.name.includes('googleapis.com')) {
-                    console.log('[ComfyDraw] GCS URL via Performance API:', entry.name);
-                    return entry.name;
-                }
-            }
-
-            // 方案 C: 如果 Performance API 没抓到，尝试直接下载（本地模式适用）
-            if (manualResponse.ok) {
-                const blob = await manualResponse.blob();
-                return await readBlobAsBase64(blob);
-            }
-
-            throw new Error(`无法获取图片下载 URL: HTTP ${manualResponse.status}`);
-        } catch (error) {
-            if (error?.name === 'AbortError') throw new Error(signal?.aborted ? '已取消' : '生成超时');
-            throw error;
-        } finally {
-            clearTimeout(downloadTimer);
-        }
+        // 5. 返回 Nginx 代理路径，让浏览器通过 Nginx 加载图片
+        // 原理：浏览器请求同源路径 -> Nginx 代理到 Comfy Cloud (带 X-API-Key) -> 302 到 GCS -> 浏览器 follow 302 加载图片
+        // <img> 标签 follow 302 没有 CORS 限制，不需要 auth 头
+        const proxyViewUrl = new URL('/api/comfy-cloud/api/view', window.location.origin);
+        proxyViewUrl.searchParams.set('filename', imgInfo.filename);
+        proxyViewUrl.searchParams.set('subfolder', imgInfo.subfolder || '');
+        proxyViewUrl.searchParams.set('type', imgInfo.type);
+        return proxyViewUrl.toString();
     } finally {
         deadline.cleanup();
     }
