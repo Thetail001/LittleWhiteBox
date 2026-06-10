@@ -503,11 +503,11 @@ export function createEbookApp(options = {}) {
         const sendButton = root.querySelector('#xb-agent-form button[type="submit"]');
         if (sendButton) {
             sendButton.classList.toggle('is-busy', !!state.isBusy);
-            sendButton.textContent = state.isBusy ? '■' : '➤';
-            sendButton.title = state.isBusy ? '停止' : '发送';
+            sendButton.textContent = state.isCancellingRun ? '…' : state.isBusy ? '■' : '➤';
+            sendButton.title = state.isCancellingRun ? '正在停止' : state.isBusy ? '停止' : '发送';
             sendButton.setAttribute('aria-label', sendButton.title);
             if (state.isBusy) {
-                sendButton.disabled = false;
+                sendButton.disabled = !!state.isCancellingRun;
             }
         }
 

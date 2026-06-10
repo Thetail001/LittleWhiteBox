@@ -19,6 +19,11 @@ import {
     FALLBACK_TAVERN_CHAT_PRESET_ID,
     normalizeTavernChatPromptPresetBundle,
 } from './chat-presets';
+import {
+    createSeedMapDocument,
+    TAVERN_MAP_DOC_ID,
+    TAVERN_MAP_DOC_TYPE,
+} from './map-state-seed';
 
 export interface TavernSessionRecord {
     id: string;
@@ -560,8 +565,11 @@ export async function createTavernSession(input: Partial<TavernSessionRecord> = 
         summary: String(input.summary || ''),
         state: cloneSerializable(normalizeTavernSessionState(input.state || {}), {}),
     };
-    await tavernSessionsTable.put(session);
-    await tavernMetaTable.put({ key: 'selectedSessionId', value: session.id, updatedAt: timestamp });
+    await db.transaction('rw', tavernSessionsTable, tavernMetaTable, tavernStateDocumentsTable, async () => {
+        await tavernSessionsTable.put(session);
+        await tavernMetaTable.put({ key: 'selectedSessionId', value: session.id, updatedAt: timestamp });
+        await ensureSeedStructuredStateDocument(session.id, { touchSession: false });
+    });
     return session;
 }
 
@@ -1139,6 +1147,40 @@ export async function getTavernStructuredStateDocument(
     const documentId = String(docId || 'main').trim() || 'main';
     if (!id || !type || !documentId) {return null;}
     return await tavernStateDocumentsTable.get([id, type, documentId]) || null;
+}
+
+export async function ensureSeedStructuredStateDocument(
+    sessionId = '',
+    options: {
+        touchSession?: boolean;
+    } = {},
+): Promise<TavernStructuredStateDocumentRecord | null> {
+    const id = String(sessionId || '').trim();
+    if (!id) {return null;}
+    return await db.transaction('rw', tavernStateDocumentsTable, tavernSessionsTable, async () => {
+        const existing = await tavernStateDocumentsTable.get([id, TAVERN_MAP_DOC_TYPE, TAVERN_MAP_DOC_ID]);
+        if (existing) {return existing;}
+        const timestamp = now();
+        const record: TavernStructuredStateDocumentRecord = {
+            sessionId: id,
+            docType: TAVERN_MAP_DOC_TYPE,
+            docId: TAVERN_MAP_DOC_ID,
+            title: '地图',
+            revision: 0,
+            data: createSeedMapDocument(),
+            digest: '',
+            status: 'active',
+            source: 'system-seed',
+            staleFromOrder: undefined,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+        };
+        await tavernStateDocumentsTable.put(record);
+        if (options.touchSession !== false) {
+            await tavernSessionsTable.update(id, { updatedAt: timestamp });
+        }
+        return record;
+    });
 }
 
 export async function putTavernStructuredStateDocument(

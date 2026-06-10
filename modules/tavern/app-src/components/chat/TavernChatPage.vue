@@ -33,6 +33,7 @@ const {
     chatWorkspacePanel,
     copyMessage,
     copyManagerMessage,
+    currentManagerWorkRun,
     currentUserMessage,
     deleteMessageTurn,
     deleteManagerMessageTurn,
@@ -43,16 +44,14 @@ const {
     discardMemoryDraft,
     editingMessageDraft,
     enterMemoryEditMode,
-    episodeSummaries,
     formatRunActivityLine,
+    formatRunIssueLine,
     formatRunInputLine,
     formatRunMapLine,
     formatRunMemoryLine,
-    formatManagerSource,
     formatMemoryFileMeta,
     formatMessageTime,
     formatRunModelLine,
-    formatSummarySource,
     handleChatScroll,
     handleChatSubmit,
     handleChatTouchMove,
@@ -76,9 +75,12 @@ const {
     isDrawingMessage,
     isEditingMessageDirty,
     isEditingManagerMessageDirty,
+    isCancellingRun,
+    isManagerAssistantCancelling,
     isManagerAssistantRunning,
     isRunning,
     latestErrorMessage,
+    archivedManagerRuns,
     managerAutoScroll,
     managerActionFeedback,
     managerBusy,
@@ -116,7 +118,6 @@ const {
     openPromptInspector,
     postToHost,
     previewMemoryDraft,
-    recentTurnSummaries,
     rememberBrokenAvatar,
     renderChatMarkdown,
     rerunFromMessage,
@@ -145,14 +146,12 @@ const {
     thoughtBlocks,
     thoughtSummaryLabel,
     toolTraceSummary,
-    turnSummaries,
     updateChatScrollButtons,
     updateManagerScrollButtons,
     visibleChatMessages,
     visibleCharacterAvatar,
     visibleManagerChatItems,
     visibleManagerChatMessages,
-    visibleManagerRuns,
     visibleUserAvatar,
 } = ui;
 
@@ -571,7 +570,7 @@ onUpdated(() => {
               class="primary-action"
               :disabled="!canSendMessage"
             >
-              {{ isRunning ? '停止' : '发送' }}
+              {{ isCancellingRun ? '正在停止' : isRunning ? '停止' : '发送' }}
             </button>
           </form>
         </section>
@@ -807,7 +806,6 @@ onUpdated(() => {
                 v-if="liveManagerRun"
                 class="manager-tool-turn manager-tool-turn-live"
                 data-manager-anchor-key="meta:live-manager-run"
-                open
               >
                 <summary>
                   <span>正在处理</span>
@@ -869,15 +867,100 @@ onUpdated(() => {
               </details>
 
               <details
-                v-if="memoryFiles.length || episodeSummaries.length || managerRuns.length || turnSummaries.length"
+                v-if="memoryFiles.length || managerRuns.length"
                 class="manager-work-drawer"
                 data-manager-anchor-key="meta:work"
               >
                 <summary>
                   <strong>工作记录</strong>
-                  <span>{{ memoryFiles.length }} 份档案 · {{ managerRuns.length }} 次运行</span>
+                  <span v-if="currentManagerWorkRun">{{ managerStatusLabel(currentManagerWorkRun.status) }} · {{ formatRunInputLine(currentManagerWorkRun) }}</span>
+                  <span v-else>{{ activeMemoryFiles.length }}/{{ memoryFiles.length }} 份档案</span>
                 </summary>
                 <article
+                  v-if="currentManagerWorkRun"
+                  :data-manager-anchor-key="`run:${currentManagerWorkRun.id}`"
+                  class="manager-card manager-message manager-message-run manager-work-current"
+                  :class="[`is-${currentManagerWorkRun.status}`, `tone-${managerRunTone(currentManagerWorkRun)}`]"
+                >
+                  <div class="manager-run-title">
+                    <strong>本次后台工作</strong>
+                    <small>{{ managerStatusLabel(currentManagerWorkRun.status) }}</small>
+                  </div>
+                  <p class="manager-work-source">
+                    {{ formatRunInputLine(currentManagerWorkRun) }}
+                  </p>
+                  <small>{{ formatRunModelLine(currentManagerWorkRun) }}</small>
+                  <small class="manager-run-activity">{{ formatRunActivityLine(currentManagerWorkRun) }}</small>
+                  <div class="manager-work-status-grid">
+                    <p>{{ formatRunMemoryLine(currentManagerWorkRun) }}</p>
+                    <p>{{ formatRunMapLine(currentManagerWorkRun) }}</p>
+                  </div>
+                  <p v-if="currentManagerWorkRun.outputText">
+                    结果：{{ shortText(currentManagerWorkRun.outputText, 180) }}
+                  </p>
+                  <p
+                    v-if="formatRunIssueLine(currentManagerWorkRun)"
+                    class="manager-work-issue-line"
+                  >
+                    {{ formatRunIssueLine(currentManagerWorkRun) }}
+                  </p>
+                  <details
+                    v-if="managerToolTraceItems(currentManagerWorkRun.toolTrace).length"
+                    class="manager-work-debug"
+                  >
+                    <summary>{{ toolTraceSummary(currentManagerWorkRun.toolTrace) }}</summary>
+                    <div class="manager-tool-list">
+                      <div
+                        v-for="tool in managerToolTraceItems(currentManagerWorkRun.toolTrace)"
+                        :key="tool.id"
+                        class="manager-tool-item"
+                        :class="managerToolTone(tool)"
+                      >
+                        <div class="manager-tool-head">
+                          <span>{{ tool.name }}</span>
+                          <em>{{ managerToolStatusLabel(tool) }}<template v-if="tool.elapsedLabel"> · {{ tool.elapsedLabel }}</template></em>
+                        </div>
+                        <details
+                          v-if="tool.thoughts.length"
+                          class="manager-tool-thoughts"
+                        >
+                          <summary>{{ thoughtSummaryLabel(tool.thoughts, false) }}</summary>
+                          <div
+                            v-for="(thought, thoughtIndex) in tool.thoughts"
+                            :key="`${tool.id}-stored-thought-${thoughtIndex}`"
+                            class="chat-thought-block"
+                          >
+                            <strong>{{ thought.label }}</strong>
+                            <pre>{{ thought.text }}</pre>
+                          </div>
+                        </details>
+                        <div
+                          v-if="tool.preface"
+                          class="manager-tool-preface xb-tavern-markdown"
+                          :data-markdown-signature="markdownSignature(tool.preface)"
+                          v-html="renderChatMarkdown(tool.preface)"
+                        />
+                        <small v-if="tool.args">{{ tool.args }}</small>
+                        <p v-if="tool.summary">
+                          {{ tool.summary }}
+                        </p>
+                        <p v-if="tool.path">
+                          {{ tool.path }}
+                        </p>
+                      </div>
+                    </div>
+                  </details>
+                  <button
+                    v-if="currentManagerWorkRun.status === 'failed'"
+                    type="button"
+                    :disabled="managerBusy"
+                    @click="retryManagerRun(currentManagerWorkRun)"
+                  >
+                    重试
+                  </button>
+                </article>
+                <article
+                  v-else
                   class="manager-card manager-message manager-message-system"
                   data-manager-anchor-key="meta:memory"
                 >
@@ -891,125 +974,30 @@ onUpdated(() => {
                   </p>
                 </article>
 
-                <article
-                  v-for="episode in episodeSummaries.slice(0, 2)"
-                  :key="episode.id"
-                  :data-manager-anchor-key="`episode:${episode.id}`"
-                  class="manager-card manager-message manager-message-episode"
+                <details
+                  v-if="archivedManagerRuns.length || hiddenManagerRunCount"
+                  class="manager-work-history"
                 >
-                  <div class="manager-run-title">
-                    <strong>{{ episode.title }}</strong>
-                    <small>第 {{ episode.startTurn }}-{{ episode.endTurn }} 轮</small>
-                  </div>
-                  <p>{{ episode.summary || '暂无摘要。' }}</p>
-                  <p v-if="episode.unresolved?.length">
-                    未解决：{{ episode.unresolved.join('、') }}
-                  </p>
-                </article>
-
-                <article
-                  v-for="run in visibleManagerRuns"
-                  :key="run.id"
-                  :data-manager-anchor-key="`run:${run.id}`"
-                  class="manager-card manager-message manager-message-run"
-                  :class="[`is-${run.status}`, `tone-${managerRunTone(run)}`]"
-                >
-                  <div class="manager-run-title">
-                    <strong>{{ managerStatusLabel(run.status) }}</strong>
-                    <small>{{ formatManagerSource(run) }}</small>
-                  </div>
-                  <p>{{ formatRunInputLine(run) }}</p>
-                  <small>{{ formatRunModelLine(run) }}</small>
-                  <small class="manager-run-activity">{{ formatRunActivityLine(run) }}</small>
-                  <p v-if="run.parsedAction">
-                    动作：{{ run.parsedAction }}
-                  </p>
-                  <p>{{ formatRunMemoryLine(run) }}</p>
-                  <p>{{ formatRunMapLine(run) }}</p>
-                  <p v-if="run.outputText">
-                    结论：{{ shortText(run.outputText, 220) }}
-                  </p>
-                  <p v-if="run.toolTrace">
-                    {{ toolTraceSummary(run.toolTrace) }}
-                  </p>
+                  <summary>
+                    <strong>历史记录</strong>
+                    <span>{{ archivedManagerRuns.length + hiddenManagerRunCount }} 条</span>
+                  </summary>
                   <div
-                    v-if="managerToolTraceItems(run.toolTrace).length"
-                    class="manager-tool-list"
+                    v-for="run in archivedManagerRuns"
+                    :key="run.id"
+                    class="manager-history-row"
+                    :class="[`tone-${managerRunTone(run)}`]"
                   >
-                    <div
-                      v-for="tool in managerToolTraceItems(run.toolTrace)"
-                      :key="tool.id"
-                      class="manager-tool-item"
-                      :class="managerToolTone(tool)"
-                    >
-                      <div class="manager-tool-head">
-                        <span>{{ tool.name }}</span>
-                        <em>{{ managerToolStatusLabel(tool) }}<template v-if="tool.elapsedLabel"> · {{ tool.elapsedLabel }}</template></em>
-                      </div>
-                      <details
-                        v-if="tool.thoughts.length"
-                        class="manager-tool-thoughts"
-                      >
-                        <summary>{{ thoughtSummaryLabel(tool.thoughts, false) }}</summary>
-                        <div
-                          v-for="(thought, thoughtIndex) in tool.thoughts"
-                          :key="`${tool.id}-stored-thought-${thoughtIndex}`"
-                          class="chat-thought-block"
-                        >
-                          <strong>{{ thought.label }}</strong>
-                          <pre>{{ thought.text }}</pre>
-                        </div>
-                      </details>
-                      <div
-                        v-if="tool.preface"
-                        class="manager-tool-preface xb-tavern-markdown"
-                        :data-markdown-signature="markdownSignature(tool.preface)"
-                        v-html="renderChatMarkdown(tool.preface)"
-                      />
-                      <small v-if="tool.args">{{ tool.args }}</small>
-                      <p v-if="tool.summary">
-                        {{ tool.summary }}
-                      </p>
-                      <p v-if="tool.path">
-                        {{ tool.path }}
-                      </p>
+                    <div>
+                      <strong>{{ managerStatusLabel(run.status) }}</strong>
+                      <small>{{ formatRunInputLine(run) }}</small>
                     </div>
+                    <span>{{ toolTraceSummary(run.toolTrace) || formatRunActivityLine(run) }}</span>
                   </div>
-                  <p v-if="run.error">
-                    {{ run.error }}
+                  <p v-if="hiddenManagerRunCount">
+                    更早 {{ hiddenManagerRunCount }} 条已收起。
                   </p>
-                  <button
-                    v-if="run.status === 'failed'"
-                    type="button"
-                    :disabled="managerBusy"
-                    @click="retryManagerRun(run)"
-                  >
-                    重试
-                  </button>
-                </article>
-                <article
-                  v-if="hiddenManagerRunCount"
-                  class="manager-card manager-message manager-message-run manager-message-archive-note"
-                >
-                  <div class="manager-run-title">
-                    <strong>较早工作记录</strong>
-                    <small>{{ hiddenManagerRunCount }} 条</small>
-                  </div>
-                  <p>较早的管理员运行记录已收起，避免长会话持续占用界面资源。</p>
-                </article>
-
-                <article
-                  v-for="summary in recentTurnSummaries.slice(0, 4)"
-                  :key="summary.id"
-                  :data-manager-anchor-key="`summary:${summary.id}`"
-                  class="manager-card manager-message manager-message-turn"
-                >
-                  <div class="manager-run-title">
-                    <strong>{{ formatSummarySource(summary) }}</strong>
-                    <small v-if="summary.tags?.length">{{ summary.tags.join('、') }}</small>
-                  </div>
-                  <p>{{ summary.summary }}</p>
-                </article>
+                </details>
               </details>
 
               <p
@@ -1054,7 +1042,7 @@ onUpdated(() => {
               class="primary-action"
               :disabled="!canSendManagerMessage"
             >
-              {{ isManagerAssistantRunning ? '停止' : '发送' }}
+              {{ isManagerAssistantCancelling ? '正在停止' : isManagerAssistantRunning ? '停止' : '发送' }}
             </button>
           </form>
         </section>

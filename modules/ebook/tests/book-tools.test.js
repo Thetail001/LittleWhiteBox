@@ -1278,6 +1278,82 @@ test('Book tool definitions expose filePath consistently for Read, Write, and Ed
     assert.deepEqual(editDefinition.function.parameters.required, ['filePath', 'edits']);
 });
 
+test('Book agent cancel is immediate before provider request starts', async () => {
+    let releaseRefresh;
+    const refreshGate = new Promise((resolve) => {
+        releaseRefresh = resolve;
+    });
+    const state = {
+        book: { id: 'book-cancel-preflight', title: '取消窗口测试' },
+        files: [],
+        selectedPath: 'book/chapters/001.md',
+        editorContent: '',
+        messages: [],
+        toolTrace: [],
+        openToolTurnKeys: [],
+        activeTurnStartIndex: -1,
+        openThoughtKeys: [],
+        isBusy: false,
+        isCancellingRun: false,
+        activeController: null,
+        status: '就绪',
+    };
+    let adapterCalled = false;
+    let renderCount = 0;
+    const runner = createEbookAgentRunner({
+        state,
+        async refreshBooksAndFiles() {
+            await refreshGate;
+        },
+        render() {
+            renderCount += 1;
+        },
+        showToast() {},
+        persistConversation() {},
+        isEditorDirty() {
+            return false;
+        },
+        getActiveProviderConfig() {
+            return {
+                provider: 'test',
+                temperature: 0.2,
+                maxTokens: 1000,
+                reasoningEnabled: false,
+                reasoningEffort: 'medium',
+            };
+        },
+        createAdapter() {
+            adapterCalled = true;
+            return {
+                async chat() {
+                    return { text: '不应该请求模型。', toolCalls: [] };
+                },
+            };
+        },
+    });
+
+    const runPromise = runner.runAgent('写一段。');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const activeController = state.activeController;
+
+    assert.ok(activeController);
+    assert.equal(activeController.signal.aborted, false);
+    assert.equal(runner.cancelActiveRun(), true);
+    assert.equal(activeController.signal.aborted, true);
+    assert.equal(state.isCancellingRun, true);
+    assert.equal(state.status, '正在停止...');
+
+    releaseRefresh();
+    await runPromise;
+
+    assert.equal(adapterCalled, false);
+    assert.equal(state.isBusy, false);
+    assert.equal(state.isCancellingRun, false);
+    assert.equal(state.activeController, null);
+    assert.match(state.messages.at(-1)?.content || '', /已取消本次操作/);
+    assert.ok(renderCount >= 2);
+});
+
 test('Book agent automatically passes review context into DelegateRun', async () => {
     const state = {
         book: { id: 'book-delegate-context', title: '分身上下文测试' },

@@ -5,10 +5,14 @@ import type {
     TavernStructuredStatePatchRecord,
 } from '../../shared/session-db';
 import type { TavernMapDocument, TavernMapElement } from '../../shared/structured-state';
+import { isRenderableMapDocument } from '../../shared/map-state-content';
+import { createSeedMapDocument } from '../../shared/map-state-seed';
+import { applyTrustedMapPatchOps } from '../../shared/map-state-ops';
+import { getTavernMapDisplayViewBox, getTavernMapElementBounds } from '../map-display';
 
 type MapReplayMode = 'full' | 'patch' | 'timeline';
 type MapRenderLayer = 'fill' | 'line' | 'label';
-type MapOpKind = 'add' | 'modify' | 'remove' | 'replace' | 'reset' | 'stable';
+type MapOpKind = 'add' | 'modify' | 'remove' | 'stable';
 
 interface MapRenderItem {
     element: TavernMapElement;
@@ -28,7 +32,6 @@ interface MapRenderItem {
     y: number;
     fontSize: number;
     anchor: string;
-    transform?: string;
 }
 
 interface MapReplayFrame {
@@ -51,104 +54,36 @@ const replayMode = ref<MapReplayMode>('patch');
 const timelineIndex = ref(0);
 let timelineTimer: number | undefined;
 
-const mapDocument = computed<TavernMapDocument | null>(() => {
-    const data = props.document?.data;
-    if (!data || typeof data !== 'object' || Array.isArray(data)) {return null;}
-    const record = data as Partial<TavernMapDocument>;
-    return {
-        meta: record.meta && typeof record.meta === 'object' && !Array.isArray(record.meta) ? record.meta : {},
-        elements: Array.isArray(record.elements) ? record.elements as TavernMapElement[] : [],
-    };
-});
-
 function cloneValue<T>(value: T): T {
     return JSON.parse(JSON.stringify(value)) as T;
 }
 
-function mergeRecord(target: Record<string, unknown>, patch: Record<string, unknown>): Record<string, unknown> {
-    const next = { ...target };
-    Object.entries(patch).forEach(([key, value]) => {
-        if (value === null) {
-            delete next[key];
-            return;
-        }
-        if (value && typeof value === 'object' && !Array.isArray(value) && next[key] && typeof next[key] === 'object' && !Array.isArray(next[key])) {
-            next[key] = mergeRecord(next[key] as Record<string, unknown>, value as Record<string, unknown>);
-            return;
-        }
-        next[key] = cloneValue(value);
-    });
-    return next;
-}
-
 function defaultDisplayMap(): TavernMapDocument {
-    return {
-        meta: { name: '地图', theme: 'parchment', viewBox: [0, 0, 800, 600] },
-        elements: [],
-    };
+    return createSeedMapDocument();
 }
 
 function normalizeDisplayMap(value: unknown): TavernMapDocument {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {return defaultDisplayMap();}
     const source = value as Partial<TavernMapDocument>;
-    const meta = source.meta && typeof source.meta === 'object' && !Array.isArray(source.meta) ? cloneValue(source.meta) : {};
+    const fallback = defaultDisplayMap();
     return {
-        meta,
+        meta: source.meta && typeof source.meta === 'object' && !Array.isArray(source.meta)
+            ? {
+                ...fallback.meta,
+                ...cloneValue(source.meta),
+            }
+            : fallback.meta,
         elements: Array.isArray(source.elements)
-            ? cloneValue(source.elements).filter((element): element is TavernMapElement => !!element && typeof element === 'object' && !Array.isArray(element) && typeof element.id === 'string')
+            ? cloneValue(source.elements).filter((element): element is TavernMapElement => !!element && typeof element === 'object' && !Array.isArray(element) && typeof (element as TavernMapElement).id === 'string')
             : [],
     };
 }
 
-function applyDisplayMapOps(source: TavernMapDocument, ops: Array<Record<string, unknown>>): TavernMapDocument {
-    let document = normalizeDisplayMap(source);
-    ops.forEach((op) => {
-        const opName = String(op.op || '').trim();
-        if (opName === 'init' || opName === 'reset') {
-            document = normalizeDisplayMap(op.document || { meta: op.meta, elements: op.elements });
-            return;
-        }
-        if (opName === 'add') {
-            const element = op.element;
-            if (!element || typeof element !== 'object' || Array.isArray(element) || typeof (element as TavernMapElement).id !== 'string') {return;}
-            const nextElement = cloneValue(element as TavernMapElement);
-            const index = document.elements.findIndex((item) => item.id === nextElement.id);
-            if (index >= 0) {
-                document.elements[index] = nextElement;
-                return;
-            }
-            document.elements.push(nextElement);
-            return;
-        }
-        if (opName === 'remove') {
-            const id = String(op.id || '').trim();
-            if (!id) {return;}
-            document.elements = document.elements.filter((item) => item.id !== id);
-            return;
-        }
-        if (opName === 'modify') {
-            const id = String(op.id || '').trim();
-            const changes = op.changes && typeof op.changes === 'object' && !Array.isArray(op.changes) ? op.changes as Record<string, unknown> : null;
-            if (!id || !changes) {return;}
-            document.elements = document.elements.map((element) => element.id === id
-                ? mergeRecord(element, changes) as TavernMapElement
-                : element);
-            return;
-        }
-        if (opName === 'replace') {
-            const id = String(op.id || '').trim();
-            const element = op.element;
-            if (!id || !element || typeof element !== 'object' || Array.isArray(element)) {return;}
-            document.elements = document.elements.map((item) => item.id === id ? cloneValue(element as TavernMapElement) : item);
-            return;
-        }
-        if (opName === 'meta') {
-            const changes = op.changes && typeof op.changes === 'object' && !Array.isArray(op.changes) ? op.changes as Record<string, unknown> : null;
-            if (changes) {document.meta = mergeRecord(document.meta, changes) as TavernMapDocument['meta'];}
-        }
-    });
-    return document;
-}
+const mapDocument = computed<TavernMapDocument | null>(() => {
+    const data = props.document?.data;
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {return null;}
+    return normalizeDisplayMap(data);
+});
 
 const latestPatch = computed(() => props.patches.at(-1) || null);
 const timelineFrames = computed<MapReplayFrame[]>(() => {
@@ -156,9 +91,9 @@ const timelineFrames = computed<MapReplayFrame[]>(() => {
     let document = defaultDisplayMap();
     return sorted.map((patch, index) => {
         const ops = Array.isArray(patch.ops) ? patch.ops as Array<Record<string, unknown>> : [];
-        document = applyDisplayMapOps(document, ops);
+        document = applyTrustedMapPatchOps(normalizeDisplayMap(document), ops);
         return {
-            revision: Number(patch.revision) || index + 1,
+            revision: Number(patch.revision || index + 1),
             document: cloneValue(document),
             patch,
             index,
@@ -170,10 +105,7 @@ const activeTimelineFrame = computed(() => {
     const index = Math.max(0, Math.min(timelineIndex.value, timelineFrames.value.length - 1));
     return timelineFrames.value[index] || null;
 });
-const canReplayTimeline = computed(() => {
-    if (!timelineFrames.value.length) {return false;}
-    return Number(timelineFrames.value[0]?.revision || 0) <= 1;
-});
+const canReplayTimeline = computed(() => timelineFrames.value.length > 0 && Number(timelineFrames.value[0]?.revision || 0) <= 1);
 const activePatch = computed(() => replayMode.value === 'timeline' ? activeTimelineFrame.value?.patch || latestPatch.value : latestPatch.value);
 const activeMapDocument = computed(() => replayMode.value === 'timeline' ? activeTimelineFrame.value?.document || mapDocument.value : mapDocument.value);
 const latestOps = computed(() => Array.isArray(activePatch.value?.ops) ? activePatch.value?.ops as Array<Record<string, unknown>> : []);
@@ -182,12 +114,10 @@ const latestOpById = computed(() => {
     const map = new Map<string, MapOpKind>();
     latestOps.value.forEach((op) => {
         const opName = String(op.op || '').trim();
-        const kind = opName as MapOpKind;
         const element = op.element && typeof op.element === 'object' && !Array.isArray(op.element) ? op.element as Record<string, unknown> : null;
         const id = String(op.id || element?.id || '').trim();
-        if (id && ['add', 'modify', 'remove', 'replace'].includes(kind)) {map.set(id, kind);}
-        if (opName === 'reset' || (opName === 'init' && op.replaceDocument === true)) {
-            latestChangedIds.value.forEach((changedId) => map.set(changedId, 'reset'));
+        if (id && (opName === 'add' || opName === 'modify' || opName === 'remove')) {
+            map.set(id, opName as MapOpKind);
         }
     });
     return map;
@@ -201,16 +131,10 @@ const removedOps = computed(() => latestOps.value
     .filter((item) => item.id));
 const removedElements = computed<TavernMapElement[]>(() => {
     const source = Array.isArray(activePatch.value?.removedElements) ? activePatch.value?.removedElements : [];
-    return (source || [])
-        .filter((item): item is TavernMapElement => !!item && typeof item === 'object' && !Array.isArray(item) && typeof (item as TavernMapElement).id === 'string');
+    return source.filter((item): item is TavernMapElement => !!item && typeof item === 'object' && !Array.isArray(item) && typeof (item as TavernMapElement).id === 'string');
 });
 
-const viewBoxArray = computed<[number, number, number, number]>(() => {
-    const source = activeMapDocument.value?.meta?.viewBox;
-    if (!Array.isArray(source) || source.length !== 4) {return [0, 0, 800, 600];}
-    const values = source.map((item) => Number(item));
-    return values.every((item) => Number.isFinite(item)) ? values as [number, number, number, number] : [0, 0, 800, 600];
-});
+const viewBoxArray = computed<[number, number, number, number]>(() => getTavernMapDisplayViewBox(activeMapDocument.value));
 const viewBox = computed(() => viewBoxArray.value.join(' '));
 const theme = computed(() => String(activeMapDocument.value?.meta?.theme || 'parchment'));
 const title = computed(() => String(replayMode.value === 'timeline'
@@ -225,6 +149,7 @@ const digestLines = computed(() => digest.value.split('\n').map((line) => line.t
 const elementCount = computed(() => activeMapDocument.value?.elements.length || 0);
 const totalPatchCount = computed(() => props.patches.length);
 const timelineLabel = computed(() => activeTimelineFrame.value ? `${activeTimelineFrame.value.index + 1} / ${timelineFrames.value.length}` : '0 / 0');
+const hasRenderableMap = computed(() => isRenderableMapDocument(activeMapDocument.value));
 
 watch(() => props.document?.revision, () => {
     replayMode.value = 'patch';
@@ -261,27 +186,27 @@ function numberPair(value: unknown, fallback: [number, number] = [0, 0]): [numbe
     return Number.isFinite(left) && Number.isFinite(right) ? [left, right] : fallback;
 }
 
-function pointsToPath(points: unknown, closed = false): string {
+function absolutePoints(element: TavernMapElement, points: Array<[number, number]>): Array<[number, number]> {
+    return points.map(([dx, dy]) => [element.at[0] + dx, element.at[1] + dy]);
+}
+
+function pointsToPath(points: Array<[number, number]>, closed = false): string {
     if (!Array.isArray(points) || points.length < 2) {return '';}
-    const pairs = points.map((point) => numberPair(point, [NaN, NaN])).filter(([x, y]) => Number.isFinite(x) && Number.isFinite(y));
-    if (pairs.length < 2) {return '';}
-    const path = [`M ${pairs[0][0]} ${pairs[0][1]}`, ...pairs.slice(1).map(([x, y]) => `L ${x} ${y}`)];
+    const path = [`M ${points[0][0]} ${points[0][1]}`, ...points.slice(1).map(([x, y]) => `L ${x} ${y}`)];
     if (closed) {path.push('Z');}
     return path.join(' ');
 }
 
-function curveToPath(points: unknown, closed = false): string {
+function curveToPath(points: Array<[number, number]>, closed = false): string {
     if (!Array.isArray(points) || points.length < 2) {return '';}
-    const pairs = points.map((point) => numberPair(point, [NaN, NaN])).filter(([x, y]) => Number.isFinite(x) && Number.isFinite(y));
-    if (pairs.length < 2) {return '';}
-    if (pairs.length === 2) {return pointsToPath(pairs, closed);}
+    if (points.length === 2) {return pointsToPath(points, closed);}
     const tension = 0.3;
-    const path = [`M ${pairs[0][0]} ${pairs[0][1]}`];
-    for (let index = 0; index < pairs.length - 1; index += 1) {
-        const p0 = pairs[Math.max(index - 1, 0)];
-        const p1 = pairs[index];
-        const p2 = pairs[index + 1];
-        const p3 = pairs[Math.min(index + 2, pairs.length - 1)];
+    const path = [`M ${points[0][0]} ${points[0][1]}`];
+    for (let index = 0; index < points.length - 1; index += 1) {
+        const p0 = points[Math.max(index - 1, 0)];
+        const p1 = points[index];
+        const p2 = points[index + 1];
+        const p3 = points[Math.min(index + 2, points.length - 1)];
         path.push(`C ${p1[0] + (p2[0] - p0[0]) * tension} ${p1[1] + (p2[1] - p0[1]) * tension}, ${p2[0] - (p3[0] - p1[0]) * tension} ${p2[1] - (p3[1] - p1[1]) * tension}, ${p2[0]} ${p2[1]}`);
     }
     if (closed) {path.push('Z');}
@@ -289,55 +214,45 @@ function curveToPath(points: unknown, closed = false): string {
 }
 
 function rectToPath(element: TavernMapElement): string {
-    const [x, y] = numberPair(element.pos);
-    const [width, height] = numberPair(element.size, [10, 10]);
+    const [x, y] = element.at;
+    const [width, height] = numberPair(element.rect, [10, 10]);
     return `M ${x} ${y} L ${x + width} ${y} L ${x + width} ${y + height} L ${x} ${y + height} Z`;
 }
 
 function circleToPath(element: TavernMapElement): string {
-    const [cx, cy] = numberPair(element.center || element.pos);
-    const radius = Number(element.r || element.radius || 8);
+    const [cx, cy] = element.at;
+    const radius = Number(element.circle || 8);
     const r = Number.isFinite(radius) && radius > 0 ? radius : 8;
     return `M ${cx - r} ${cy} A ${r} ${r} 0 1 0 ${cx + r} ${cy} A ${r} ${r} 0 1 0 ${cx - r} ${cy}`;
 }
 
-function arcToPath(element: TavernMapElement): string {
-    const [cx, cy] = numberPair(element.center || element.pos);
-    const radius = Number(element.r || element.radius || 20);
-    const r = Number.isFinite(radius) && radius > 0 ? radius : 20;
-    const start = Number(element.startAngle || 0) * Math.PI / 180;
-    const endAngle = Number(element.endAngle ?? 90);
-    const end = endAngle * Math.PI / 180;
-    return `M ${cx + r * Math.cos(start)} ${cy + r * Math.sin(start)} A ${r} ${r} 0 ${endAngle > 180 ? 1 : 0} 1 ${cx + r * Math.cos(end)} ${cy + r * Math.sin(end)}`;
-}
-
 function iconToPath(element: TavernMapElement): string {
-    const [x, y] = numberPair(element.pos);
-    const size = Number(element.size || 10);
-    const s = Number.isFinite(size) && size > 0 ? size : 10;
+    const [x, y] = element.at;
+    const s = 10;
     const h = s / 2;
     const icon = String(element.icon || '+');
     if (icon === 'x') {return `M ${x - h} ${y - h} L ${x + h} ${y + h} M ${x + h} ${y - h} L ${x - h} ${y + h}`;}
     if (icon === 'o') {return `M ${x - h} ${y} A ${h} ${h} 0 1 0 ${x + h} ${y} A ${h} ${h} 0 1 0 ${x - h} ${y}`;}
+    if (icon === 'tree') {return `M ${x} ${y - 8} L ${x - 6} ${y + 2} L ${x + 6} ${y + 2} Z M ${x} ${y + 2} L ${x} ${y + 8}`;}
+    if (icon === 'star') {return `M ${x} ${y - 7} L ${x + 2} ${y - 2} L ${x + 7} ${y - 2} L ${x + 3} ${y + 1} L ${x + 5} ${y + 7} L ${x} ${y + 3} L ${x - 5} ${y + 7} L ${x - 3} ${y + 1} L ${x - 7} ${y - 2} L ${x - 2} ${y - 2} Z`;}
     if (icon === 'arrow-n') {return `M ${x} ${y + s} L ${x} ${y - s} M ${x - h} ${y - h} L ${x} ${y - s} L ${x + h} ${y - h}`;}
     if (icon === 'arrow-s') {return `M ${x} ${y - s} L ${x} ${y + s} M ${x - h} ${y + h} L ${x} ${y + s} L ${x + h} ${y + h}`;}
+    if (icon === 'arrow-e') {return `M ${x - s} ${y} L ${x + s} ${y} M ${x + h} ${y - h} L ${x + s} ${y} L ${x + h} ${y + h}`;}
+    if (icon === 'arrow-w') {return `M ${x + s} ${y} L ${x - s} ${y} M ${x - h} ${y - h} L ${x - s} ${y} L ${x - h} ${y + h}`;}
     return `M ${x - h} ${y} L ${x + h} ${y} M ${x} ${y - h} L ${x} ${y + h}`;
 }
 
 function elementPath(element: TavernMapElement): string {
-    if (element.type === 'line') {return pointsToPath(element.points, element.closed === true);}
-    if (element.type === 'curve') {return curveToPath(element.points, element.closed === true);}
-    if (element.type === 'rect') {return rectToPath(element);}
-    if (element.type === 'circle') {return circleToPath(element);}
-    if (element.type === 'arc') {return arcToPath(element);}
-    if (element.type === 'icon') {return iconToPath(element);}
-    if (element.type === 'fill') {return pointsToPath(element.points, true);}
+    if (element.rect) {return rectToPath(element);}
+    if (typeof element.circle === 'number') {return circleToPath(element);}
+    if (element.path) {return pointsToPath(absolutePoints(element, element.path), element.closed === true);}
+    if (element.curve) {return curveToPath(absolutePoints(element, element.curve), element.closed === true);}
+    if (element.icon) {return iconToPath(element);}
     return '';
 }
 
 function elementColor(element: TavernMapElement): string {
-    const style = element.style && typeof element.style === 'object' ? element.style as Record<string, unknown> : {};
-    if (style.color) {return String(style.color);}
+    if (element.style?.color) {return String(element.style.color);}
     const colors: Record<string, string> = {
         wall: '#2f2418',
         road: '#9a8253',
@@ -356,9 +271,7 @@ function elementColor(element: TavernMapElement): string {
 }
 
 function elementFill(element: TavernMapElement): string {
-    const style = element.style && typeof element.style === 'object' ? element.style as Record<string, unknown> : {};
-    if (style.fill) {return String(style.fill);}
-    if (element.color) {return String(element.color);}
+    if (element.fill) {return String(element.fill);}
     const fills: Record<string, string> = {
         water: 'rgba(63, 136, 167, 0.24)',
         terrain: 'rgba(87, 121, 70, 0.18)',
@@ -366,32 +279,25 @@ function elementFill(element: TavernMapElement): string {
         magic: 'rgba(126, 83, 154, 0.16)',
         secret: 'rgba(63, 56, 48, 0.10)',
     };
-    return fills[String(element.cat || '')] || 'rgba(92, 70, 36, 0.10)';
+    const hasAreaShape = !!element.rect || typeof element.circle === 'number' || ((!!element.path || !!element.curve) && element.closed === true);
+    return hasAreaShape ? (fills[String(element.cat || '')] || 'rgba(92, 70, 36, 0.08)') : 'none';
 }
 
 function strokeWidth(element: TavernMapElement): number {
-    const style = element.style && typeof element.style === 'object' ? element.style as Record<string, unknown> : {};
-    const width = Number(style.width || element.width || 2);
+    const width = Number(element.style?.width || 2);
     return Number.isFinite(width) && width > 0 ? width : 2;
 }
 
 function dashArray(element: TavernMapElement): string {
-    const style = element.style && typeof element.style === 'object' ? element.style as Record<string, unknown> : {};
-    return String(style.dash || '');
-}
-
-function textPosition(element: TavernMapElement): [number, number] {
-    return numberPair(element.pos);
+    return String(element.style?.dash || '');
 }
 
 function estimatePathLength(element: TavernMapElement, path: string): number {
-    if (element.type === 'circle') {
-        const radius = Number(element.r || element.radius || 8);
-        return Math.max(32, Math.PI * 2 * (Number.isFinite(radius) ? radius : 8));
+    if (typeof element.circle === 'number') {
+        return Math.max(32, Math.PI * 2 * element.circle);
     }
-    if (element.type === 'rect') {
-        const [width, height] = numberPair(element.size, [10, 10]);
-        return Math.max(40, Math.abs(width) * 2 + Math.abs(height) * 2);
+    if (element.rect) {
+        return Math.max(40, Math.abs(element.rect[0]) * 2 + Math.abs(element.rect[1]) * 2);
     }
     const coordinates = path.match(/-?\d+(?:\.\d+)?/g)?.map(Number) || [];
     let length = 0;
@@ -408,52 +314,94 @@ function opKindFor(element: TavernMapElement): MapOpKind {
     return latestOpById.value.get(element.id) || (latestChangedIds.value.has(element.id) ? 'modify' : 'stable');
 }
 
-function buildRenderItem(element: TavernMapElement, index: number, forcedOpKind?: MapOpKind): MapRenderItem {
-    const path = elementPath(element);
-    const [x, y] = textPosition(element);
+function buildRenderItemsForElement(element: TavernMapElement, index: number, forcedOpKind?: MapOpKind): MapRenderItem[] {
+    if (!getTavernMapElementBounds(element)) {return [];}
     const opKind = forcedOpKind || opKindFor(element);
-    const layer: MapRenderLayer = element.type === 'fill' ? 'fill' : element.type === 'text' ? 'label' : 'line';
-    const length = estimatePathLength(element, path);
     const baseDelay = forcedOpKind === 'remove'
         ? index * 110
         : replayMode.value === 'full'
             ? index * 115
             : opKind === 'stable' ? 0 : index * 30;
-    const durationMs = forcedOpKind === 'remove'
-        ? 1050
-        : layer === 'label'
-            ? 900
-            : Math.max(680, Math.min(2200, length * 4.2));
-    return {
+
+    if (element.text) {
+        return [{
+            element,
+            id: `${element.id}-label`,
+            layer: 'label',
+            path: '',
+            color: forcedOpKind === 'remove' ? '#b94035' : elementColor(element),
+            fill: 'none',
+            strokeWidth: 0,
+            dash: '',
+            delayMs: baseDelay,
+            durationMs: 900,
+            length: 60,
+            opKind,
+            text: element.text,
+            x: element.at[0],
+            y: element.at[1],
+            fontSize: 14,
+            anchor: 'middle',
+        }];
+    }
+
+    const path = elementPath(element);
+    if (!path) {return [];}
+    const length = estimatePathLength(element, path);
+    const durationMs = forcedOpKind === 'remove' ? 1050 : Math.max(680, Math.min(2200, length * 4.2));
+    const color = forcedOpKind === 'remove' ? '#b94035' : elementColor(element);
+    const fill = forcedOpKind === 'remove' ? 'rgba(185, 64, 53, 0.16)' : elementFill(element);
+    const items: MapRenderItem[] = [];
+    if (fill !== 'none') {
+        items.push({
+            element,
+            id: `${element.id}-fill`,
+            layer: 'fill',
+            path,
+            color,
+            fill,
+            strokeWidth: 0,
+            dash: '',
+            delayMs: baseDelay,
+            durationMs,
+            length,
+            opKind,
+            text: '',
+            x: 0,
+            y: 0,
+            fontSize: 0,
+            anchor: 'middle',
+        });
+    }
+    items.push({
         element,
-        id: element.id,
-        layer,
+        id: `${element.id}-line`,
+        layer: 'line',
         path,
-        color: forcedOpKind === 'remove' ? '#b94035' : elementColor(element),
-        fill: forcedOpKind === 'remove' ? 'rgba(185, 64, 53, 0.16)' : elementFill(element),
+        color,
+        fill: 'none',
         strokeWidth: strokeWidth(element),
         dash: dashArray(element),
         delayMs: baseDelay,
         durationMs,
         length,
         opKind,
-        text: String(element.content || ''),
-        x,
-        y,
-        fontSize: Number(element.size || 14),
-        anchor: String(element.anchor || 'middle'),
-        transform: element.rotate ? `rotate(${Number(element.rotate) || 0} ${x} ${y})` : undefined,
-    };
+        text: '',
+        x: 0,
+        y: 0,
+        fontSize: 0,
+        anchor: 'middle',
+    });
+    return items;
 }
 
-const renderItems = computed<MapRenderItem[]>(() => {
-    return (activeMapDocument.value?.elements || []).map((element, index) => buildRenderItem(element, index));
-});
+const renderItems = computed<MapRenderItem[]>(() => (activeMapDocument.value?.elements || [])
+    .flatMap((element, index) => buildRenderItemsForElement(element, index)));
 
 const fillItems = computed(() => renderItems.value.filter((item) => item.layer === 'fill'));
 const lineItems = computed(() => renderItems.value.filter((item) => item.layer === 'line'));
 const labelItems = computed(() => renderItems.value.filter((item) => item.layer === 'label'));
-const removedRenderItems = computed(() => removedElements.value.map((element, index) => buildRenderItem(element, index, 'remove')));
+const removedRenderItems = computed(() => removedElements.value.flatMap((element, index) => buildRenderItemsForElement(element, index, 'remove')));
 const removedFillItems = computed(() => removedRenderItems.value.filter((item) => item.layer === 'fill'));
 const removedLineItems = computed(() => removedRenderItems.value.filter((item) => item.layer === 'line'));
 const removedLabelItems = computed(() => removedRenderItems.value.filter((item) => item.layer === 'label'));
@@ -468,9 +416,9 @@ const progressStyle = computed(() => ({
 }));
 const penStyle = computed(() => {
     const animated = animatedItems.value.find((item) => item.layer !== 'label' && item.path) || animatedItems.value[0];
-    if (!animated) {return { display: 'none' };}
+    if (!animated || !animated.path) {return { display: 'none' };}
     return {
-        offsetPath: `path("${animated.path || `M ${animated.x} ${animated.y} L ${animated.x + 1} ${animated.y}`}")`,
+        offsetPath: `path("${animated.path}")`,
         animationDelay: `${animated.delayMs}ms`,
         animationDuration: `${animated.durationMs}ms`,
     };
@@ -505,7 +453,7 @@ function itemClass(item: MapRenderItem) {
         `op-${item.opKind}`,
         {
             'is-animated': replayMode.value === 'full' || item.opKind !== 'stable',
-            'is-latest': latestChangedIds.value.has(item.id),
+            'is-latest': latestChangedIds.value.has(item.element.id),
         },
     ];
 }
@@ -569,7 +517,7 @@ function stepTimeline(offset: number) {
           type="button"
           class="tavern-editor-mode-button"
           :class="{ active: replayMode === 'full' }"
-          :disabled="!activeMapDocument"
+          :disabled="!hasRenderableMap"
           @click="replayFullMap"
         >
           完整重绘
@@ -587,7 +535,7 @@ function stepTimeline(offset: number) {
     </header>
 
     <div
-      v-if="activeMapDocument"
+      v-if="hasRenderableMap"
       class="tavern-map-canvas"
       :class="[`theme-${theme}`, `mode-${replayMode}`]"
     >
@@ -597,6 +545,7 @@ function stepTimeline(offset: number) {
       <svg
         :key="replayKey"
         :viewBox="viewBox"
+        preserveAspectRatio="xMidYMid meet"
         role="img"
         :aria-label="title"
       >
@@ -656,7 +605,7 @@ function stepTimeline(offset: number) {
             v-for="item in lineItems"
             :key="item.id"
             :d="item.path"
-            fill="none"
+            :fill="item.fill"
             :stroke="item.color"
             :stroke-width="item.strokeWidth"
             :stroke-dasharray="item.dash"
@@ -675,7 +624,6 @@ function stepTimeline(offset: number) {
             :font-size="item.fontSize"
             :fill="item.color"
             :text-anchor="item.anchor"
-            :transform="item.transform"
             :class="itemClass(item)"
             :style="itemStyle(item)"
           >
@@ -695,7 +643,7 @@ function stepTimeline(offset: number) {
             v-for="item in removedLineItems"
             :key="`removed-line-${item.id}`"
             :d="item.path"
-            fill="none"
+            :fill="item.fill"
             :stroke="item.color"
             :stroke-width="item.strokeWidth"
             :stroke-dasharray="item.dash"
@@ -712,7 +660,6 @@ function stepTimeline(offset: number) {
             :font-size="item.fontSize"
             :fill="item.color"
             :text-anchor="item.anchor"
-            :transform="item.transform"
             :class="itemClass(item)"
             :style="itemStyle(item)"
           >
@@ -770,8 +717,8 @@ function stepTimeline(offset: number) {
       v-else
       class="tavern-map-empty"
     >
-      <strong>还没有地图</strong>
-      <span>剧情出现明确空间变化后，助手会在后台维护。</span>
+      <strong>地图待初始化</strong>
+      <span>当前会话已备好种子地图；剧情出现明确空间变化后，后台会激活并维护它。</span>
     </div>
 
     <footer

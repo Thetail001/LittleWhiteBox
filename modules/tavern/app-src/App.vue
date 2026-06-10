@@ -284,6 +284,7 @@ const composeErrorMessage = ref('');
 const runtimeProvider = ref('');
 const runtimeModel = ref('');
 const isRunning = ref(false);
+const isCancellingRun = ref(false);
 const tavernDrawStatus = ref({ provider: 'disabled', enabled: false, ready: false });
 const drawingMessageKey = ref('');
 const drawStatusMessageKey = ref('');
@@ -312,6 +313,7 @@ const managerInputDraft = ref('');
 const managerInputStatus = ref('');
 const managerChatMessages = ref<TavernManagerMessageRecord[]>([]);
 const isManagerAssistantRunning = ref(false);
+const isManagerAssistantCancelling = ref(false);
 const managerCompactionOverlay = ref<{
     id: string;
     active: boolean;
@@ -943,8 +945,19 @@ const latestSavedChatError = computed(() => {
     return lastMessage?.error ? `${lastMessage.sessionId}:${lastMessage.order}:${lastMessage.content || ''}` : '';
 });
 const latestManagerRun = computed(() => managerRuns.value[0] || null);
-const visibleManagerRuns = computed(() => managerRuns.value.slice(0, MANAGER_RUN_VISIBLE_LIMIT));
-const hiddenManagerRunCount = computed(() => Math.max(0, managerRuns.value.length - visibleManagerRuns.value.length));
+const currentManagerWorkRun = computed(() => (
+    managerRuns.value.find((run) => isManagerRunLive(run.status)) || latestManagerRun.value
+));
+const archivedManagerRuns = computed(() => {
+    const currentId = String(currentManagerWorkRun.value?.id || '');
+    return managerRuns.value
+        .filter((run) => String(run.id || '') !== currentId)
+        .slice(0, MANAGER_RUN_VISIBLE_LIMIT);
+});
+const hiddenManagerRunCount = computed(() => {
+    const currentCount = currentManagerWorkRun.value ? 1 : 0;
+    return Math.max(0, managerRuns.value.length - currentCount - archivedManagerRuns.value.length);
+});
 const managerBusy = computed(() => managerRuns.value.some((run) => ['queued', 'running'].includes(run.status)));
 const recentTurnSummaries = computed(() => [...turnSummaries.value].reverse().slice(0, 8));
 const filteredChatSidebarSessions = computed(() => {
@@ -1165,8 +1178,8 @@ const apiRuntimeLine = computed(() => {
     const config = resolvedProviderConfig.value;
     return `预设「${config.currentPresetName || '默认'}」 · ${config.providerLabel} / ${config.model || '未选择模型'}`;
 });
-const canSendMessage = computed(() => isRunning.value || !!currentUserMessage.value.trim());
-const canSendManagerMessage = computed(() => isManagerAssistantRunning.value || (!!selectedSessionId.value && !!managerInputDraft.value.trim()));
+const canSendMessage = computed(() => !isCancellingRun.value && (isRunning.value || !!currentUserMessage.value.trim()));
+const canSendManagerMessage = computed(() => !isManagerAssistantCancelling.value && (isManagerAssistantRunning.value || (!!selectedSessionId.value && !!managerInputDraft.value.trim())));
 const placementLabels: Record<string, string> = {
     top: '最前面',
     beforeCharacter: '角色卡前',
@@ -2996,7 +3009,7 @@ function managerStatusLabel(status = '') {
         failed: '失败',
         cancelled: '已取消',
         superseded: '已作废',
-        rolled_back: '已回滚',
+        rolled_back: '未采用',
     };
     return labels[status] || status || '未知';
 }
@@ -3051,6 +3064,21 @@ function formatRunActivityLine(run: TavernManagerRunRecord) {
     return updatedAt ? `最后更新 ${formatDurationAgo(updatedAt)}` : '';
 }
 
+function formatRunIssueLine(run: TavernManagerRunRecord) {
+    const error = String(run.error || '').trim();
+    const labels: Record<string, string> = {
+        manager_memory_tool_failed: '记忆工具返回失败，系统没有采用这次结果。',
+        manager_memory_tool_required: '本轮没有完成必要的记忆维护，系统没有采用这次结果。',
+        manager_aborted: '本次后台工作已停止，系统没有采用这次结果。',
+        manager_source_messages_changed: '原文消息已经变化，系统没有采用这次结果。',
+    };
+    if (/工具轮次达到上限/.test(error)) {return `原因：${error} 系统没有采用这次结果。`;}
+    if (error && labels[error]) {return `原因：${labels[error]}`;}
+    if (run.status === 'rolled_back') {return '原因：本次结果已撤回，当前记忆和地图保持上一版。';}
+    if (error) {return `原因：${error}`;}
+    return '';
+}
+
 function formatRunInputLine(run: TavernManagerRunRecord) {
     const roleTurn = `第 ${Math.max(0, Number(run.turn) || 0)} 轮`;
     const source = Number.isFinite(Number(run.userOrder)) && Number.isFinite(Number(run.assistantOrder))
@@ -3064,21 +3092,21 @@ function formatRunMemoryLine(run: TavernManagerRunRecord) {
     const files = Array.isArray(run.changedFiles) ? run.changedFiles : [];
     if (run.status === 'queued') {return '记忆：等待开始';}
     if (run.status === 'running') {return '记忆：正在整理';}
-    if (run.status === 'failed') {return files.length ? `记忆：已写入 ${files.join('、')}，但本轮失败` : '记忆：未完成';}
+    if (run.status === 'failed') {return files.length ? `记忆：已写入 ${files.length} 份档案，但本轮失败` : '记忆：未完成';}
     if (['cancelled', 'superseded'].includes(run.status)) {return '记忆：已停止，未采用本轮结果';}
-    if (run.status === 'rolled_back') {return '记忆：本轮结果已回滚';}
+    if (run.status === 'rolled_back') {return '记忆：未采用，已撤回本轮写入';}
     if (!files.length) {return '记忆：没有写入文件';}
-    return `记忆：${files.join('、')}`;
+    return `记忆：已更新 ${files.length} 份档案`;
 }
 
 function formatRunMapLine(run: TavernManagerRunRecord) {
     const states = Array.isArray(run.changedStates) ? run.changedStates : [];
     if (run.status === 'queued') {return '地图：等待开始';}
     if (run.status === 'running') {return '地图：正在判断本轮有没有空间变化';}
-    if (run.status === 'failed') {return states.length ? `地图：已写入 ${states.join('、')}，但本轮失败` : '地图：未完成';}
+    if (run.status === 'failed') {return states.length ? `地图：已写入 ${states.length} 份状态，但本轮失败` : '地图：未完成';}
     if (['cancelled', 'superseded'].includes(run.status)) {return '地图：已停止，未采用本轮结果';}
-    if (run.status === 'rolled_back') {return '地图：本轮结果已回滚';}
-    if (states.length) {return `地图：已更新 ${states.join('、')}`;}
+    if (run.status === 'rolled_back') {return '地图：未采用，已撤回本轮更新';}
+    if (states.length) {return `地图：已更新 ${states.length} 份状态`;}
     return '地图：本轮没有明确空间变化，未更新';
 }
 
@@ -3173,6 +3201,8 @@ function toolTraceSummary(value: unknown) {
 
 function managerToolTraceItems(value: unknown) {
     if (!Array.isArray(value)) {return [];}
+    const seenPrefaces = new Set<string>();
+    const seenThoughts = new Set<string>();
     return value
         .map((item, index) => {
             const record = item && typeof item === 'object' ? item as Record<string, unknown> : {};
@@ -3184,9 +3214,18 @@ function managerToolTraceItems(value: unknown) {
                     ? Number(record.finishedAt) - Number(record.startedAt)
                     : 0
             ));
+            const round = Math.max(1, Number(record.round) || 1);
+            const rawPreface = String(record.preface || '').trim();
+            const prefaceKey = `${round}\n${rawPreface}`;
+            const preface = rawPreface && !seenPrefaces.has(prefaceKey) ? rawPreface : '';
+            if (rawPreface) {seenPrefaces.add(prefaceKey);}
+            const rawThoughts = thoughtBlocks(Array.isArray(record.thoughts) ? record.thoughts as Array<{ label?: string; text?: string }> : []);
+            const thoughtsKey = `${round}\n${JSON.stringify(rawThoughts)}`;
+            const thoughts = rawThoughts.length && !seenThoughts.has(thoughtsKey) ? rawThoughts : [];
+            if (rawThoughts.length) {seenThoughts.add(thoughtsKey);}
             return {
                 id: String(record.id || `${name}-${index}`),
-                round: Math.max(1, Number(record.round) || 1),
+                round,
                 name,
                 status,
                 ok,
@@ -3194,8 +3233,8 @@ function managerToolTraceItems(value: unknown) {
                 path: String(record.path || '').trim(),
                 summary: String(record.summary || record.error || '').trim(),
                 error: String(record.error || '').trim(),
-                preface: String(record.preface || '').trim(),
-                thoughts: thoughtBlocks(Array.isArray(record.thoughts) ? record.thoughts as Array<{ label?: string; text?: string }> : []),
+                preface,
+                thoughts,
                 elapsedLabel: elapsedMs ? `${(elapsedMs / 1000).toFixed(1)}s` : '',
             };
         });
@@ -4502,6 +4541,7 @@ async function sendManagerQuestion(
     const controller = new AbortController();
     managerAssistantController.value = controller;
     isManagerAssistantRunning.value = true;
+    isManagerAssistantCancelling.value = false;
     managerInputStatus.value = '运行中';
     managerAutoScroll.value = true;
     resetManagerMessageWindowState();
@@ -4638,12 +4678,17 @@ async function sendManagerQuestion(
         if (managerAssistantController.value === controller) {
             managerAssistantController.value = null;
         }
+        isManagerAssistantCancelling.value = false;
         isManagerAssistantRunning.value = false;
     }
 }
 
 async function handleManagerSubmit() {
     if (isManagerAssistantRunning.value) {
+        if (!isManagerAssistantCancelling.value) {
+            isManagerAssistantCancelling.value = true;
+            managerInputStatus.value = '正在停止...';
+        }
         managerAssistantController.value?.abort();
         return;
     }
@@ -4656,7 +4701,12 @@ async function handleManagerSubmit() {
 }
 
 function cancelActiveRun() {
-    activeRunController.value?.abort();
+    if (!isRunning.value || !activeRunController.value) {return;}
+    if (!isCancellingRun.value) {
+        isCancellingRun.value = true;
+        runtimeText.value = runtimeText.value || '正在停止...';
+    }
+    activeRunController.value.abort();
 }
 
 function handleChatSubmit() {
@@ -4684,22 +4734,27 @@ async function runOnce(options: { messageText?: string; reuseUserMessageOrder?: 
         showComposeError('先写一句话。');
         return;
     }
-    if (!selectedSessionId.value) {
-        await createSessionFromContext();
-    }
-    const runtimeContext = await resolveRuntimeContextForSession(selectedSessionId.value);
     const controller = new AbortController();
     activeRunController.value = controller;
+    isRunning.value = true;
+    isCancellingRun.value = false;
     runtimeError.value = '';
     clearComposeError();
     runtimeText.value = '';
     runtimeThoughts.value = [];
     runtimeProvider.value = '';
     runtimeModel.value = '';
-    isRunning.value = true;
     chatAutoScroll.value = true;
     resetChatMessageWindowState();
     try {
+        if (!selectedSessionId.value) {
+            await createSessionFromContext();
+        }
+        const runtimeContext = await resolveRuntimeContextForSession(selectedSessionId.value);
+        if (controller.signal.aborted) {
+            runtimeText.value = '';
+            return;
+        }
         const result = await runXbTavernTurn({
             sessionId: selectedSessionId.value,
             agentConfig: agentConfig.value,
@@ -4758,6 +4813,7 @@ async function runOnce(options: { messageText?: string; reuseUserMessageOrder?: 
         if (activeRunController.value === controller) {
             activeRunController.value = null;
         }
+        isCancellingRun.value = false;
         isRunning.value = false;
         scrollChatToBottom();
     }
@@ -4943,6 +4999,7 @@ provide(TAVERN_APP_UI_CONTEXT, {
     chatWorkspacePanel,
     copyMessage,
     copyManagerMessage,
+    currentManagerWorkRun,
     createRegexScript,
     currentUserMessage,
     deleteCurrentRegexScript,
@@ -4966,6 +5023,7 @@ provide(TAVERN_APP_UI_CONTEXT, {
     filteredChatSidebarSessionCount,
     filteredPromptEditorRows,
     formatRunActivityLine,
+    formatRunIssueLine,
     formatRunInputLine,
     formatRunMapLine,
     formatRunMemoryLine,
@@ -5003,11 +5061,14 @@ provide(TAVERN_APP_UI_CONTEXT, {
     isEditingManagerMessage,
     isEditingMessageDirty,
     isEditingManagerMessageDirty,
+    isCancellingRun,
+    isManagerAssistantCancelling,
     isManagerAssistantRunning,
     isRunning,
     latestErrorMessage,
     linesFromList,
     listFromLines,
+    archivedManagerRuns,
     managerAutoScroll,
     managerActionFeedback,
     managerBusy,
@@ -5144,7 +5205,6 @@ provide(TAVERN_APP_UI_CONTEXT, {
     visibleChatPresetOptions,
     visibleManagerChatItems,
     visibleManagerChatMessages,
-    visibleManagerRuns,
     visiblePromptEditorRows,
     visibleUserAvatar,
     visibleWorldbookOptions,

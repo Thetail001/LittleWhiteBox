@@ -43,6 +43,7 @@ import db, {
 import { DEFAULT_XB_TAVERN_PRESET_ID, createDefaultXbTavernPreset } from '../shared/presets';
 import { buildXbTavernMessages, createXbTavernBuildSnapshot } from '../shared/message-assembler';
 import {
+    MAX_MANAGER_TOOL_ROUNDS,
     cancelAndRollbackXbTavernManagersForMessageRange,
     runXbTavernManagerChat,
     runXbTavernManagerAfterTurn,
@@ -127,6 +128,23 @@ test('tavern session db keeps session display names clean', async () => {
     });
     assert.equal(named.title, 'Seraphina');
     assert.equal(named.characterName, 'Seraphina');
+});
+
+test('new tavern sessions start with a seed map document', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Seed map' });
+    const document = await getTavernStructuredStateDocument(session.id, 'tavern.map', 'main');
+
+    assert.equal(document?.revision, 0);
+    assert.equal((document?.data as { meta?: { status?: string } })?.meta?.status, 'uninitialized');
+    assert.equal((document?.data as { elements?: unknown[] })?.elements?.length, 0);
+    const hint = (document?.data as { meta?: { hint?: string } })?.meta?.hint || '';
+    assert.match(hint, /室内场景样例/);
+    assert.match(hint, /室外场景样例/);
+    assert.match(hint, /至少放一个空间几何元素/);
+    assert.equal((await listTavernStructuredStatePatches({ sessionId: session.id })).length, 0);
 });
 
 test('tavern session db stores only cloneable snapshots from runtime inputs', async () => {
@@ -720,12 +738,12 @@ test('StatePatch creates and updates tavern map documents with semantic ops', as
     assert.equal(remove.ok, true);
     assert.equal(remove.revision, 3);
     assert.equal(remove.removedElements?.[0]?.id, 'north-door');
-    assert.equal(remove.removedElements?.[0]?.type, 'arc');
+    assert.equal(Array.isArray(remove.removedElements?.[0]?.curve), true);
     const patches = await listTavernStructuredStatePatches({ sessionId: session.id });
     assert.equal(patches.at(-1)?.changedIds?.includes('north-door'), true);
-    const removed = patches.at(-1)?.removedElements as Array<{ id?: string; type?: string }> | undefined;
+    const removed = patches.at(-1)?.removedElements as Array<{ id?: string; curve?: unknown[] }> | undefined;
     assert.equal(removed?.[0]?.id, 'north-door');
-    assert.equal(removed?.[0]?.type, 'arc');
+    assert.equal(Array.isArray(removed?.[0]?.curve), true);
 });
 
 test('StatePatch rejects quoted ops, revision conflicts, invalid ids, and keeps atomic state', async () => {
@@ -762,7 +780,196 @@ test('StatePatch rejects quoted ops, revision conflicts, invalid ids, and keeps 
     assert.equal(elements.some((element) => element.id === 'valid-later'), false);
 });
 
-test('StatePatch dryRun and reset semantics prevent accidental full-map replacement', async () => {
+test('StatePatch rejects map elements without drawable geometry', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Map geometry discipline' });
+    const invalid = await executeTavernStateTool(session.id, 'StatePatch', {
+        ops: [
+            { op: 'add', element: { id: 'floating-label', type: 'text', cat: 'label', content: 'Nowhere' } },
+            { op: 'add', element: { id: 'empty-line', type: 'line', cat: 'road' } },
+            { op: 'add', element: { id: 'valid-room', type: 'rect', pos: [10, 10], size: [80, 50], cat: 'wall' } },
+        ],
+    });
+
+    assert.equal(invalid.ok, false);
+    assert.equal(invalid.changed, false);
+    assert.match(JSON.stringify(invalid.details), /map_element_at_required:floating-label/);
+    const seed = await getTavernStructuredStateDocument(session.id, 'tavern.map', 'main');
+    assert.equal(seed?.revision, 0);
+    assert.equal((seed?.data as { meta?: { status?: string } })?.meta?.status, 'uninitialized');
+
+    const valid = await executeTavernStateTool(session.id, 'StatePatch', {
+        ops: [
+            { op: 'add', element: { id: 'current-position', type: 'icon', cat: 'marker', pos: [60, 35], icon: 'o' } },
+            { op: 'add', element: { id: 'room-label', type: 'text', cat: 'label', pos: [60, 65], content: 'Forest clearing' } },
+        ],
+    });
+
+    assert.equal(valid.ok, true);
+    assert.equal(valid.appliedCount, 2);
+});
+
+test('StatePatch accepts common map geometry aliases and explains failures', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Map alias ergonomics' });
+    const result = await executeTavernStateTool(session.id, 'StatePatch', {
+        ops: [{
+            op: 'init',
+            meta: { name: 'Alias map', viewBox: [0, 0, 400, 300] },
+            elements: [
+                { id: 'room', type: 'rect', x: 20, y: 30, width: 200, height: 120, cat: 'wall' },
+                { id: 'player', type: 'circle', cx: 80, cy: 90, radius: 6, cat: 'marker' },
+                { id: 'road', type: 'line', x1: 20, y1: 160, x2: 260, y2: 160, cat: 'road' },
+                { id: 'label', type: 'text', x: 90, y: 72, label: 'Clearing', cat: 'label' },
+            ],
+        }],
+    });
+
+    assert.equal(result.ok, true);
+    const document = await getTavernStructuredStateDocument(session.id, 'tavern.map', 'main');
+    const elements = (document?.data as { elements?: Array<Record<string, unknown>> })?.elements || [];
+    assert.deepEqual(elements.find((element) => element.id === 'room')?.at, [20, 30]);
+    assert.deepEqual(elements.find((element) => element.id === 'room')?.rect, [200, 120]);
+    assert.deepEqual(elements.find((element) => element.id === 'player')?.at, [80, 90]);
+    assert.equal(elements.find((element) => element.id === 'player')?.circle, 6);
+    assert.deepEqual(elements.find((element) => element.id === 'road')?.at, [20, 160]);
+    assert.deepEqual(elements.find((element) => element.id === 'road')?.path, [[0, 0], [240, 0]]);
+    assert.equal(elements.find((element) => element.id === 'label')?.text, 'Clearing');
+
+    const invalid = await executeTavernStateTool(session.id, 'StatePatch', {
+        ops: [{ op: 'add', element: { id: 'bad-label', type: 'text', cat: 'label', content: 'No position' } }],
+    });
+    assert.equal(invalid.ok, false);
+    assert.match(invalid.summary, /bad-label 缺少位置/);
+    assert.match(JSON.stringify(invalid.details), /at:\[x,y\]/);
+});
+
+test('StatePatch keeps system-derived label ids readable while rejecting reserved ids from model input', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Map derived labels' });
+    const write = await executeTavernStateTool(session.id, 'StatePatch', {
+        ops: [{
+            op: 'add',
+            element: { id: 'room', at: [20, 30], rect: [140, 90], cat: 'wall', text: 'South room' },
+        }],
+    });
+
+    assert.equal(write.ok, true);
+    assert.equal(write.appliedCount, 2);
+    const summary = await executeTavernStateTool(session.id, 'StateRead', { mode: 'summary' });
+    assert.equal(summary.ok, true);
+    const document = await executeTavernStateTool(session.id, 'StateRead', { mode: 'document' });
+    const ids = ((document.document as { elements?: Array<{ id?: string }> })?.elements || []).map((element) => element.id);
+    assert.deepEqual(ids.sort(), ['__label__room', 'room']);
+
+    const reserved = await executeTavernStateTool(session.id, 'StatePatch', {
+        ops: [{
+            op: 'add',
+            element: { id: '__label__intruder', at: [0, 0], text: 'Bad', cat: 'label' },
+        }],
+    });
+    assert.equal(reserved.ok, false);
+    assert.match(reserved.summary, /系统保留前缀/);
+});
+
+test('StatePatch infers path anchors without at and keeps at optional in the public schema', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Map inferred anchors' });
+    const result = await executeTavernStateTool(session.id, 'StatePatch', {
+        ops: [{
+            op: 'add',
+            element: { id: 'road', path: [[20, 160], [260, 160]], cat: 'road' },
+        }],
+    });
+
+    assert.equal(result.ok, true);
+    const document = await getTavernStructuredStateDocument(session.id, 'tavern.map', 'main');
+    const road = ((document?.data as { elements?: Array<Record<string, unknown>> })?.elements || []).find((element) => element.id === 'road');
+    assert.deepEqual(road?.at, [20, 160]);
+    assert.deepEqual(road?.path, [[0, 0], [240, 0]]);
+
+    const statePatch = getTavernStateToolDefinitions().find((tool) => tool.function.name === 'StatePatch');
+    const required = (((statePatch?.function.parameters as { properties?: { ops?: { items?: { properties?: { element?: { required?: string[] } } } } } })
+        ?.properties?.ops?.items?.properties?.element?.required) || []);
+    assert.equal(required.includes('at'), false);
+});
+
+test('StatePatch ignores model soft remove flags and still reports missing targets', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Map remove discipline' });
+    const result = await executeTavernStateTool(session.id, 'StatePatch', {
+        ops: [{ op: 'remove', id: 'missing', soft: true }],
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.error, 'state_patch_failed');
+    assert.match(result.summary, /missing 不存在/);
+});
+
+test('StatePatch keeps weak maps uninitialized until they have spatial content', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Map activation gate' });
+    const weak = await executeTavernStateTool(session.id, 'StatePatch', {
+        ops: [
+            { op: 'meta', set: { name: 'Only label', viewBox: [0, 0, 400, 300], status: 'active' } },
+            { op: 'add', element: { id: 'label', at: [200, 120], text: 'Only label', cat: 'label' } },
+        ],
+    });
+
+    assert.equal(weak.ok, true);
+    assert.match((weak.warnings || []).join('\n'), /至少需要一个空间几何元素/);
+    const weakRead = await executeTavernStateTool(session.id, 'StateRead', { mode: 'summary' });
+    assert.equal(weakRead.meta?.status, 'uninitialized');
+
+    const strong = await executeTavernStateTool(session.id, 'StatePatch', {
+        baseRevision: weakRead.revision,
+        ops: [
+            { op: 'add', element: { id: 'ground', at: [200, 160], circle: 80, cat: 'terrain' } },
+        ],
+    });
+
+    assert.equal(strong.ok, true);
+    const strongRead = await executeTavernStateTool(session.id, 'StateRead', { mode: 'summary' });
+    assert.equal(strongRead.meta?.status, 'active');
+});
+
+test('StatePatch accepts large initial map patches without the old low op ceiling', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Large map init' });
+    const ops = Array.from({ length: 120 }, (_, index) => ({
+        op: 'add',
+        element: {
+            id: `tile-${index + 1}`,
+            type: 'rect',
+            pos: [(index % 20) * 12, Math.floor(index / 20) * 12],
+            size: [8, 8],
+            cat: 'terrain',
+        },
+    }));
+
+    const result = await executeTavernStateTool(session.id, 'StatePatch', { ops });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.appliedCount, 120);
+    const doc = await getTavernStructuredStateDocument(session.id, 'tavern.map', 'main');
+    assert.equal(((doc?.data as { elements?: unknown[] })?.elements || []).length, 120);
+});
+
+test('StatePatch dryRun keeps revision stable and legacy reset/init inputs are still absorbed atomically', async () => {
     await db.delete();
     await db.open();
 
@@ -781,7 +988,7 @@ test('StatePatch dryRun and reset semantics prevent accidental full-map replacem
         }],
     });
     assert.equal(unsafeInit.ok, false);
-    assert.equal(unsafeInit.error, 'state_init_existing_document_requires_reset');
+    assert.equal(unsafeInit.error, 'state_patch_failed');
 
     const dryRun = await executeTavernStateTool(session.id, 'StatePatch', {
         baseRevision: 1,
@@ -793,24 +1000,7 @@ test('StatePatch dryRun and reset semantics prevent accidental full-map replacem
     assert.equal((await getTavernStructuredStateDocument(session.id, 'tavern.map', 'main'))?.revision, 1);
     assert.equal((await listTavernStructuredStatePatches({ sessionId: session.id })).length, 1);
 
-    const missingRevision = await executeTavernStateTool(session.id, 'StatePatch', {
-        ops: [{ op: 'reset', document: { meta: { name: 'New Map' }, elements: [] } }],
-    });
-    assert.equal(missingRevision.ok, false);
-    assert.equal(missingRevision.error, 'state_base_revision_required');
-
-    const mixedReset = await executeTavernStateTool(session.id, 'StatePatch', {
-        baseRevision: 1,
-        ops: [
-            { op: 'reset', document: { meta: { name: 'New Map' }, elements: [] } },
-            { op: 'add', element: { id: 'late-room', type: 'rect', pos: [0, 0], size: [10, 10], cat: 'wall' } },
-        ],
-    });
-    assert.equal(mixedReset.ok, false);
-    assert.equal(mixedReset.error, 'state_whole_document_replace_must_be_single_op');
-
     const reset = await executeTavernStateTool(session.id, 'StatePatch', {
-        baseRevision: 1,
         ops: [{
             op: 'reset',
             document: {
@@ -854,7 +1044,8 @@ test('StatePatch snapshots roll back manager map writes and preserve conflicts',
 
     const rollback = await rollbackManagerStateRunsForMessageRange(session.id, userMessage.order);
     assert.equal(rollback.rolledBack, 1);
-    assert.equal(await getTavernStructuredStateDocument(session.id, 'tavern.map', 'main'), null);
+    const rolledBack = await getTavernStructuredStateDocument(session.id, 'tavern.map', 'main');
+    assert.equal((rolledBack?.data as { meta?: { status?: string } })?.meta?.status, 'uninitialized');
     assert.equal((await listTavernStructuredStatePatches({ sessionId: session.id })).length, 0);
     assert.equal((await listTavernStructuredStatePatches({ sessionId: session.id, includeRolledBack: true }))[0]?.status, 'rolled_back');
 
@@ -930,7 +1121,8 @@ test('manager range cancellation rolls back state-only writes without leaving ca
 
     const rollback = await cancelAndRollbackXbTavernManagersForMessageRange(session.id, assistantMessage.order);
     assert.equal(rollback.rolledBack, 1);
-    assert.equal(await getTavernStructuredStateDocument(session.id, 'tavern.map', 'main'), null);
+    const rolledBack = await getTavernStructuredStateDocument(session.id, 'tavern.map', 'main');
+    assert.equal((rolledBack?.data as { meta?: { status?: string } })?.meta?.status, 'uninitialized');
     assert.equal((await listTavernManagerRuns(session.id))[0]?.status, 'rolled_back');
 });
 
@@ -943,12 +1135,10 @@ test('State tools are in the unified manager tool schema', () => {
     assert.equal(names.includes('StatePatch'), true);
 
     const statePatch = getTavernStateToolDefinitions().find((tool) => tool.function.name === 'StatePatch');
-    assert.match(statePatch?.function.description || '', /not raw JSON Patch/);
-    assert.match(statePatch?.function.description || '', /ops` must be a real JSON array/);
-    assert.match(statePatch?.function.description || '', /atomic/);
-    assert.match(statePatch?.function.description || '', /dryRun:true/);
-    assert.match(statePatch?.function.description || '', /reset/);
-    assert.match(statePatch?.function.description || '', /single-op patch/);
+    assert.match(statePatch?.function.description || '', /meta\/add\/modify\/remove/);
+    assert.match(statePatch?.function.description || '', /one atomic transaction/);
+    assert.match(statePatch?.function.description || '', /at:\[x,y\]/);
+    assert.match(statePatch?.function.description || '', /Legacy init\/reset\/replace input is still absorbed/);
 });
 
 test('tavern manager uses memory tools and records tool trace', async () => {
@@ -1020,6 +1210,107 @@ test('tavern manager uses memory tools and records tool trace', async () => {
     assert.equal(run?.status, 'completed');
     assert.equal(Array.isArray(run?.toolTrace), true);
     assert.equal(run?.changedFiles?.[0], turnPath);
+});
+
+test('tavern manager stores one preface for parallel tool calls in the same round', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Parallel trace display' });
+    const userMessage = await appendTavernMessage(session.id, { role: 'user', content: '记录两件事。' });
+    const assistantMessage = await appendTavernMessage(session.id, { role: 'assistant', content: '她提到北门和银钥匙。' });
+    let calls = 0;
+
+    const result = await runXbTavernManagerAfterTurn({
+        sessionId: session.id,
+        agentConfig: {},
+        userMessage,
+        assistantMessage,
+        turn: 1,
+        executeManagerOnce: async () => {
+            calls += 1;
+            if (calls === 1) {
+                return {
+                    provider: 'fake-manager',
+                    model: 'memory-model',
+                    text: '同时写两份档案。',
+                    thoughts: [{ label: '归档', text: '同一轮并行工具共享这段思考。' }],
+                    toolCalls: [{
+                        id: 'write-session',
+                        name: 'MemoryWrite',
+                        arguments: { filePath: 'memory/session.md', content: '北门存在。' },
+                    }, {
+                        id: 'write-state',
+                        name: 'MemoryWrite',
+                        arguments: { filePath: 'memory/state.md', content: '银钥匙在场。' },
+                    }],
+                };
+            }
+            return {
+                provider: 'fake-manager',
+                model: 'memory-model',
+                text: '已写入。',
+            };
+        },
+    });
+
+    assert.equal(result.ok, true);
+    const run = (await listTavernManagerRuns(session.id))[0];
+    const trace = run?.toolTrace as Array<{ preface?: string; thoughts?: unknown[] }>;
+    assert.equal(trace?.[0]?.preface, '同时写两份档案。');
+    assert.equal(trace?.[1]?.preface, '');
+    assert.equal((trace?.[0]?.thoughts || []).length, 1);
+    assert.equal((trace?.[1]?.thoughts || []).length, 0);
+});
+
+test('tavern manager tool loop follows ebook round budget instead of stopping after eight rounds', async () => {
+    await db.delete();
+    await db.open();
+
+    assert.equal(MAX_MANAGER_TOOL_ROUNDS, 48);
+
+    const session = await createTavernSession({ title: 'Long manager tool loop' });
+    const userMessage = await appendTavernMessage(session.id, { role: 'user', content: '把这些线索都整理进去。' });
+    const assistantMessage = await appendTavernMessage(session.id, { role: 'assistant', content: '她连续列出了九个地点线索。' });
+    let calls = 0;
+
+    const result = await runXbTavernManagerAfterTurn({
+        sessionId: session.id,
+        agentConfig: {},
+        userMessage,
+        assistantMessage,
+        turn: 1,
+        executeManagerOnce: async () => {
+            calls += 1;
+            if (calls <= 9) {
+                return {
+                    provider: 'fake-manager',
+                    model: 'memory-model',
+                    text: '',
+                    toolCalls: [{
+                        id: `write-${calls}`,
+                        name: 'MemoryWrite',
+                        arguments: {
+                            filePath: `memory/turns/long-loop-${calls}.md`,
+                            content: `# 线索 ${calls}\n\n第 ${calls} 条线索。`,
+                        },
+                    }],
+                };
+            }
+            return {
+                provider: 'fake-manager',
+                model: 'memory-model',
+                text: '九条线索已整理。',
+            };
+        },
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(calls, 10);
+    const run = (await listTavernManagerRuns(session.id))[0];
+    assert.equal(run?.status, 'completed');
+    assert.equal((run?.toolTrace as unknown[] | undefined)?.length, 9);
+    assert.equal((await listTavernMemoryFiles(session.id)).filter((file) => file.path.startsWith('memory/turns/long-loop-')).length, 9);
 });
 
 test('tavern manager preserves streamed thoughts and provider tool replay payloads', async () => {

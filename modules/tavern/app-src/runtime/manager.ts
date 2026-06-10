@@ -162,7 +162,7 @@ const activeAutoManagerRuns = new Map<string, {
     userOrder: number;
     assistantOrder: number;
 }>();
-const MAX_MANAGER_TOOL_ROUNDS = 8;
+export const MAX_MANAGER_TOOL_ROUNDS = 48;
 
 function normalizeText(value: unknown = '', limit = 4000): string {
     const text = String(value || '').trim();
@@ -238,8 +238,9 @@ function buildAutoManagerUserPrompt(input: {
         '[本轮要求]',
         '1. 先按需读取相关记忆文件，再维护本轮记忆。',
         '2. 如需记录本轮流水，优先写入上面的建议路径；正文写法由助手预设决定，不需要固定标题。',
-        '3. 必要时同步更新 session/state/episode/inbox 和结构化状态。',
-        '4. 最终只用自然语言简短交代结果。',
+        '3. 地图检查分两步：先无条件 StateRead summary 看 `meta.status`。若还是 `uninitialized`，只要本轮存在明确当前场景/地点/空间，就按 hint 用一次 meta + add 初始化 `tavern.map/main`；若已是 `active`，再只在本轮有明确空间变化（地点/路线/门/危险/物品或人物位置）时增量 add/modify/remove/meta，无变化就跳过。',
+        '4. 必要时同步更新 session/state/episode/inbox；地图不能替代本轮流水和文字记忆。',
+        '5. 收束为简短处理结论：说明本轮写入、跳过或待判断的结果。',
     ].join('\n');
 }
 
@@ -324,7 +325,19 @@ function summarizeToolArguments(args: Record<string, unknown> = {}): string {
 }
 
 function summarizeToolResult(result: TavernMemoryToolResult | TavernStateToolResult): string {
-    return normalizeText(result.summary || result.error || '', 240);
+    const summary = normalizeText(result.summary || result.error || '', 360);
+    if (result.ok !== false) {return summary;}
+    const details = (result as { details?: unknown }).details;
+    if (!Array.isArray(details) || !details.length) {return summary;}
+    const detailText = details
+        .slice(0, 2)
+        .map((item) => {
+            const record = item && typeof item === 'object' ? item as Record<string, unknown> : {};
+            return normalizeText(record.hint || record.error || item, 180);
+        })
+        .filter(Boolean)
+        .join('；');
+    return normalizeText([summary, detailText].filter(Boolean).join(' '), 420);
 }
 
 function isStateToolName(name = ''): boolean {
@@ -486,7 +499,7 @@ async function runManagerAgentWithTools(input: {
         if (!toolCalls.length) {
             if (!hasVisibleText(finalText) && toolTrace.length && !reminded) {
                 reminded = true;
-                const reminder = '你已经拿到了工具结果。现在不要继续调用工具，直接简短说明本轮处理结论。';
+                const reminder = '工具结果已经齐备，请收束为本轮处理结论。';
                 if (supportsSessionToolLoop) {
                     pendingFinalAnswerReminderText = reminder;
                 } else {
@@ -524,7 +537,7 @@ async function runManagerAgentWithTools(input: {
         protocolMessages.push(assistantToolMessage);
 
         const toolResponses: Array<{ id?: string; name?: string; response?: unknown }> = [];
-        for (const toolCall of toolCalls) {
+        for (const [toolIndex, toolCall] of toolCalls.entries()) {
             const args = safeJsonParse(toolCall.arguments, {});
             throwIfManagerAborted(input.signal);
             const traceEntry: Record<string, unknown> = {
@@ -536,8 +549,8 @@ async function runManagerAgentWithTools(input: {
                 args: summarizeToolArguments(args),
                 path: '',
                 summary: '工具运行中，等待返回。',
-                preface: finalText,
-                thoughts: resultThoughts,
+                preface: toolIndex === 0 ? finalText : '',
+                thoughts: toolIndex === 0 ? resultThoughts : [],
                 startedAt: Date.now(),
             };
             toolTrace.push(traceEntry);
@@ -598,7 +611,7 @@ async function runManagerAgentWithTools(input: {
         }
     }
 
-    throw new Error('manager_tool_round_limit');
+    throw new Error(`工具轮次达到上限（${MAX_MANAGER_TOOL_ROUNDS}），已停止。`);
 }
 
 async function assertManagerSourceMessagesCurrent(input: XbTavernManagerRunInput): Promise<void> {

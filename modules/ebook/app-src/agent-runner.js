@@ -513,7 +513,10 @@ export function createEbookAgentRunner(deps = {}) {
         if (!taskText || state.isBusy || !state.book) return;
         const appendUserMessage = options.appendUserMessage !== false;
         const initialBookId = state.book.id;
+        const controller = new AbortController();
         state.isBusy = true;
+        state.isCancellingRun = false;
+        state.activeController = controller;
         state.status = 'AI 正在阅读作品...';
         state.agentAutoScroll = true;
         state.agentForceScrollBottomOnce = true;
@@ -536,6 +539,8 @@ export function createEbookAgentRunner(deps = {}) {
             await refreshBooksAndFiles();
         } catch (error) {
             state.isBusy = false;
+            state.isCancellingRun = false;
+            state.activeController = null;
             state.status = '就绪';
             state.messages.push({
                 role: 'assistant',
@@ -546,8 +551,20 @@ export function createEbookAgentRunner(deps = {}) {
             render();
             return;
         }
+        if (controller.signal.aborted) {
+            state.isBusy = false;
+            state.isCancellingRun = false;
+            state.activeController = null;
+            state.status = '就绪';
+            state.messages.push({ role: 'assistant', content: '已取消本次操作。', error: true });
+            await persistConversation?.(initialBookId);
+            render();
+            return;
+        }
         if (!state.book) {
             state.isBusy = false;
+            state.isCancellingRun = false;
+            state.activeController = null;
             state.status = '就绪';
             render();
             return;
@@ -556,8 +573,6 @@ export function createEbookAgentRunner(deps = {}) {
         const runBookId = runBook.id;
         await persistConversation?.(runBookId);
 
-        const controller = new AbortController();
-        state.activeController = controller;
         const providerConfig = getActiveProviderConfig();
         let streamingAssistantMessage = null;
 
@@ -920,6 +935,7 @@ export function createEbookAgentRunner(deps = {}) {
             await persistConversation?.(runBookId);
         } finally {
             state.isBusy = false;
+            state.isCancellingRun = false;
             state.activeController = null;
             state.toolTrace = [];
             state.liveToolTurn = null;
@@ -930,7 +946,16 @@ export function createEbookAgentRunner(deps = {}) {
     }
 
     function cancelActiveRun() {
-        state.activeController?.abort();
+        if (!state.isBusy || !state.activeController) return false;
+        if (!state.isCancellingRun) {
+            state.isCancellingRun = true;
+            state.status = '正在停止...';
+            renderStreamingSurface();
+        }
+        if (!state.activeController.signal?.aborted) {
+            state.activeController.abort();
+        }
+        return true;
     }
 
     async function rerunFromMessageIndex(messageIndex = -1) {

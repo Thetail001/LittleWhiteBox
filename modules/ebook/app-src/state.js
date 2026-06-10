@@ -39,6 +39,7 @@ export function createEbookState() {
         compactionOverlay: null,
         protocolNotice: null,
         isBusy: false,
+        isCancellingRun: false,
         activeController: null,
         agentAutoScroll: true,
         agentForceScrollBottomOnce: false,

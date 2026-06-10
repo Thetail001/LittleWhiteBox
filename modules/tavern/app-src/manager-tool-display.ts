@@ -35,6 +35,12 @@ export interface ManagerToolTurnDisplayItem {
 
 export type ManagerChatDisplayItem = ManagerMessageDisplayItem | ManagerToolTurnDisplayItem;
 
+export interface ManagerStreamToolCall {
+    id?: string;
+    name?: string;
+    arguments?: string;
+}
+
 export interface ManagerStreamSnapshot {
     text?: string;
     thoughts?: Array<{ label?: string; text?: string }>;
@@ -44,7 +50,38 @@ export interface ManagerStreamSnapshot {
 
 export interface ManagerStreamDisplayPatch {
     content: string;
-    toolCalls: unknown[];
+    toolCalls: ManagerStreamToolCall[];
+}
+
+function normalizeManagerStreamToolCalls(toolCalls: unknown[] | null | undefined): ManagerStreamToolCall[] {
+    if (!Array.isArray(toolCalls) || !toolCalls.length) { return []; }
+    return toolCalls
+        .map((toolCall) => {
+            const record = toolCall && typeof toolCall === 'object' ? toolCall as Record<string, unknown> : {};
+            const fn = record.function && typeof record.function === 'object' ? record.function as Record<string, unknown> : {};
+            const id = typeof record.id === 'string'
+                ? record.id
+                : typeof record.tool_call_id === 'string'
+                    ? record.tool_call_id
+                    : undefined;
+            const name = typeof record.name === 'string'
+                ? record.name
+                : typeof fn.name === 'string'
+                    ? fn.name
+                    : undefined;
+            const rawArguments = record.arguments ?? fn.arguments;
+            const argumentsText = typeof rawArguments === 'string'
+                ? rawArguments
+                : rawArguments === undefined
+                    ? undefined
+                    : JSON.stringify(rawArguments);
+            return {
+                ...(id ? { id } : {}),
+                ...(name ? { name } : {}),
+                ...(argumentsText ? { arguments: argumentsText } : {}),
+            };
+        })
+        .filter((toolCall) => Boolean(toolCall.id || toolCall.name || toolCall.arguments));
 }
 
 function shortText(value = '', limit = 180) {
@@ -57,7 +94,7 @@ function managerMessageKey(message: Pick<TavernManagerMessageRecord, 'sessionId'
 }
 
 function managerMessageHasToolCalls(message: TavernManagerMessageRecord | XbTavernMessage | null | undefined): boolean {
-    if (!message || typeof message !== 'object') {return false;}
+    if (!message || typeof message !== 'object') { return false; }
     const record = message as unknown as Record<string, unknown>;
     if (record.error === true || ['aborted', 'error'].includes(String(record.finishReason || '').trim())) {
         return false;
@@ -91,7 +128,7 @@ function normalizeManagerToolCalls(message: TavernManagerMessageRecord | XbTaver
 }
 
 function parseManagerToolJson(value: unknown): Record<string, unknown> {
-    if (!value || typeof value !== 'string') {return {};}
+    if (!value || typeof value !== 'string') { return {}; }
     try {
         const parsed = JSON.parse(value);
         return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
@@ -101,17 +138,17 @@ function parseManagerToolJson(value: unknown): Record<string, unknown> {
 }
 
 function summarizeManagerToolResult(message: TavernManagerMessageRecord | undefined): string {
-    if (!message) {return '等待工具返回。';}
+    if (!message) { return '等待工具返回。'; }
     const display = String(message.toolDisplay || '').trim();
-    if (display) {return shortText(display, 360);}
+    if (display) { return shortText(display, 360); }
     const parsed = parseManagerToolJson(message.content);
     const summary = String(parsed.summary || parsed.message || parsed.error || '').trim();
-    if (summary) {return shortText(summary, 360);}
+    if (summary) { return shortText(summary, 360); }
     const path = String(parsed.path || parsed.filePath || parsed.docId || '').trim();
     const changed = parsed.changed === true ? '已变更' : parsed.changed === false ? '无变化' : '';
     const ok = parsed.ok === false ? '失败' : parsed.ok === true ? '成功' : '';
     const compact = [ok, changed, path].filter(Boolean).join(' · ');
-    if (compact) {return compact;}
+    if (compact) { return compact; }
     return shortText(String(message.content || '').trim(), 360) || '工具已返回。';
 }
 
@@ -159,7 +196,7 @@ export function buildManagerChatDisplayItems(messages: TavernManagerMessageRecor
     const items: ManagerChatDisplayItem[] = [];
     for (let index = 0; index < sorted.length; index += 1) {
         const message = sorted[index];
-        if (!message || !['user', 'assistant', 'tool'].includes(message.role)) {continue;}
+        if (!message || !['user', 'assistant', 'tool'].includes(message.role)) { continue; }
         if (message.role === 'assistant' && managerMessageHasToolCalls(message)) {
             const rounds: ManagerToolRoundDisplayItem[] = [];
             let nextIndex = index;
@@ -181,7 +218,7 @@ export function buildManagerChatDisplayItems(messages: TavernManagerMessageRecor
             index = nextIndex - 1;
             continue;
         }
-        if (message.role === 'tool') {continue;}
+        if (message.role === 'tool') { continue; }
         items.push({
             kind: 'message',
             key: managerMessageKey(message),
@@ -196,7 +233,7 @@ export function managerToolTurnSummary(item: ManagerToolTurnDisplayItem): string
     const failed = item.calls.filter((call) => !call.ok).length;
     const pending = item.calls.filter((call) => !call.toolMessage).length;
     const roundText = item.rounds.length > 1 ? `${item.rounds.length} 轮 · ` : '';
-    if (pending) {return `${roundText}工具调用 ${item.calls.length} 次 · ${pending} 个等待返回`;}
+    if (pending) { return `${roundText}工具调用 ${item.calls.length} 次 · ${pending} 个等待返回`; }
     return failed ? `${roundText}工具调用 ${item.calls.length} 次 · ${failed} 次失败` : `${roundText}工具调用 ${item.calls.length} 次 · 全部成功`;
 }
 
@@ -211,12 +248,12 @@ export function managerToolTurnPreview(item: ManagerToolTurnDisplayItem): string
 }
 
 export function createManagerStreamToolDraftState() {
-    let toolCalls: unknown[] = [];
+    let toolCalls: ManagerStreamToolCall[] = [];
     let toolDraftActive = false;
     return {
         update(snapshot: ManagerStreamSnapshot = {}): ManagerStreamDisplayPatch {
             const incomingToolCalls = Array.isArray(snapshot.toolCalls) && snapshot.toolCalls.length
-                ? snapshot.toolCalls
+                ? normalizeManagerStreamToolCalls(snapshot.toolCalls)
                 : null;
             const hasVisibleStreamText = typeof snapshot.text === 'string' && snapshot.text.trim().length > 0;
             if (incomingToolCalls) {

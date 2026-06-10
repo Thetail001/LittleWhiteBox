@@ -1563,7 +1563,7 @@ function renderStudioShell(options = {}) {
     const writeActionAttr = state.isBusy ? 'disabled' : '';
     const agentActionAttr = (state.isBusy || !readiness.canRun) ? 'disabled' : '';
     const agentInputAttr = (!state.isBusy && !readiness.canRun) ? 'disabled' : '';
-    const sendButtonAttr = (!state.isBusy && !readiness.canRun) ? 'disabled' : '';
+    const sendButtonAttr = state.isCancellingRun || (!state.isBusy && !readiness.canRun) ? 'disabled' : '';
     const agentInputDraft = String(state.agentInputDraft || '');
     const canClearConversation = !!state.messages?.length;
     const layoutClass = ['focus-editor', 'focus-agent'].includes(state.studioLayout)
@@ -1696,7 +1696,7 @@ function renderStudioShell(options = {}) {
                                 <div class="xb-compose-hint" id="xb-compose-hint">Enter 发送 · Shift+Enter 换行</div>
                             </div>
                             <div class="xb-agent-compose-actions">
-                                <button type="submit" class="${state.isBusy ? 'is-busy' : ''}" title="${state.isBusy ? '停止' : '发送'}" aria-label="${state.isBusy ? '停止' : '发送'}" ${sendButtonAttr}>${state.isBusy ? '■' : '➤'}</button>
+                                <button type="submit" class="${state.isBusy ? 'is-busy' : ''}" title="${state.isCancellingRun ? '正在停止' : state.isBusy ? '停止' : '发送'}" aria-label="${state.isCancellingRun ? '正在停止' : state.isBusy ? '停止' : '发送'}" ${sendButtonAttr}>${state.isCancellingRun ? '…' : state.isBusy ? '■' : '➤'}</button>
                             </div>
                         </div>
                     </form>
