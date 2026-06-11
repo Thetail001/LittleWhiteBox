@@ -641,21 +641,27 @@ export async function retrieveXbTavernMemoryContext(input: {
     sessionId: string;
     queryText?: string;
     ignoredTerms?: string[];
+    includeMemoryFiles?: boolean;
+    includeStructuredStates?: boolean;
 }): Promise<XbTavernMemoryContext> {
     const sessionId = String(input.sessionId || '').trim();
     if (!sessionId) {return {};}
+    const includeMemoryFiles = input.includeMemoryFiles !== false;
+    const includeStructuredStates = input.includeStructuredStates !== false;
     const [memoryFiles, structuredStates] = await Promise.all([
-        listTavernMemoryFiles(sessionId),
-        listTavernStructuredStateDigests(sessionId),
+        includeMemoryFiles ? listTavernMemoryFiles(sessionId) : Promise.resolve([]),
+        includeStructuredStates ? listTavernStructuredStateDigests(sessionId) : Promise.resolve([]),
     ]);
     if (!memoryFiles.some(isRecallMemoryFile) && !structuredStates.length) {return {};}
-    await ensureXbTavernMemoryTokenizerReady();
+    if (memoryFiles.some(isRecallMemoryFile)) {
+        await ensureXbTavernMemoryTokenizerReady();
+    }
     return {
-        ...selectXbTavernMemoryContext({
+        ...(memoryFiles.some(isRecallMemoryFile) ? selectXbTavernMemoryContext({
             memoryFiles,
             queryText: input.queryText,
             ignoredTerms: input.ignoredTerms,
-        }),
+        }) : {}),
         structuredStates,
     };
 }

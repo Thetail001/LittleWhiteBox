@@ -1,3 +1,5 @@
+import type { TavernContractManagerPromptOptions } from './session-contract';
+
 export interface TavernAssistantPreset {
     id: string;
     name: string;
@@ -21,73 +23,124 @@ type AssistantPresetInput = Partial<TavernAssistantPreset> & {
 
 export const DEFAULT_TAVERN_ASSISTANT_PRESET_ID = 'littlewhitebox-assistant-default';
 
-const FIXED_MANAGER_SYSTEM_PROMPT = [
-    '# 小白酒馆后台管理员',
-    '',
-    '## Role',
-    [
+interface TavernManagerPromptOptions extends Partial<TavernContractManagerPromptOptions> {
+    includeMemory?: boolean;
+    includeCartography?: boolean;
+}
+
+function normalizeManagerPromptOptions(options: TavernManagerPromptOptions = {}) {
+    return {
+        includeMemory: options.includeMemory !== false,
+        includeCartography: options.includeCartography !== false,
+    };
+}
+
+function joinSection(title: string, lines: string[] = []): string {
+    const content = lines.map((line) => normalizeText(line)).filter(Boolean);
+    return content.length ? ['## ' + title, content.join('\n')].join('\n') : '';
+}
+
+function buildFixedManagerSystemPrompt(options: TavernManagerPromptOptions = {}): string {
+    const { includeMemory, includeCartography } = normalizeManagerPromptOptions(options);
+    const managedSurfaces = [
+        includeMemory ? '记忆档案' : '',
+        includeCartography ? '结构化空间状态' : '',
+    ].filter(Boolean);
+    const backstageFocus = includeMemory && includeCartography
+        ? '事实、关系、阶段、线索、空间状态和待判断问题。'
+        : includeMemory
+            ? '事实、关系、阶段、线索和待判断问题。'
+            : includeCartography
+                ? '事实、空间边界、位置关系和待判断问题。'
+                : '证据、上下文和待判断问题。';
+    const maintenanceScope = includeMemory && includeCartography
+        ? '维护关系、状态、地点、时间、物品、伏笔、阶段压力、空间变化和仍待判断的问题。'
+        : includeMemory
+            ? '维护关系、状态、地点、时间、物品、伏笔、阶段压力和仍待判断的问题。'
+            : includeCartography
+                ? '维护当前场景的空间边界、路线、位置、危险和仍待判断的问题。'
+                : '需要时帮助用户核对后台资料、解释现状并指出仍待判断的问题。';
+    const evidenceLine = includeMemory && includeCartography
+        ? '在用户找你梳理线索、校正记忆或查看地图时，用证据回答；不确定就查原文，不用气势替代事实。'
+        : includeMemory
+            ? '在用户找你梳理线索或校正记忆时，用证据回答；不确定就查原文，不用气势替代事实。'
+            : includeCartography
+                ? '在用户找你查看地图或核对空间状态时，用证据回答；不确定就查原文，不用气势替代事实。'
+                : '在用户找你核对后台资料时，用证据回答；不确定就查原文，不用气势替代事实。';
+
+    const roleLines = [
         '你是小白酒馆的后台统筹者，运行在用户当前 RP 会话背面。',
-        '舞台前由用户和角色沉浸互动；你在舞台后整理已经发生的事实、关系、阶段、线索、空间状态和待判断问题。',
-        '你维护当前 session 的记忆档案和结构化状态；主聊天负责沉浸互动，你负责把原文沉淀成可检索、可修正、可承接的后台资料。',
-        '自动 after-turn 和手动管理员聊天共用同一套身份、工具和记忆规则。区别只在触发方式和本轮 user 输入。',
-    ].join('\n'),
-    '',
-    '## Responsibilities',
-    [
-        '把已经发生的 RP 原文整理成后续可承接的长期记忆，而不是把整段聊天原文重新塞回主聊天。',
-        '维护关系、状态、地点、时间、物品、伏笔、阶段压力、空间变化和仍待判断的问题。',
-        '让档案可读、可改、可追溯：重要事实应落到对应文件或状态文档里，不只停留在最终回复里。',
-        '在用户找你梳理线索、校正记忆或查看地图时，用证据回答；不确定就查原文，不用气势替代事实。',
-    ].join('\n'),
-    '',
-    '## Current Session',
-    [
+        `舞台前由用户和角色沉浸互动；你在舞台后整理已经发生的${backstageFocus}`,
+        managedSurfaces.length
+            ? `你维护当前 session 的${managedSurfaces.join('和')}；主聊天负责沉浸互动，你负责把原文沉淀成可检索、可修正、可承接的后台资料。`
+            : '主聊天负责沉浸互动；你在后台核对证据、梳理上下文，并在用户明确要求时协助查看既有资料。',
+        '自动 after-turn 和手动管理员聊天共用同一套身份与证据标准。区别只在触发方式和本轮 user 输入。',
+    ];
+
+    const responsibilityLines = [
+        includeMemory ? '把已经发生的 RP 原文整理成后续可承接的长期记忆，而不是把整段聊天原文重新塞回主聊天。' : '',
+        maintenanceScope,
+        managedSurfaces.length
+            ? '让档案可读、可改、可追溯：重要事实应落到对应文件或状态文档里，不只停留在最终回复里。'
+            : '回答时以证据为准：需要核对时先读原文或既有档案，不用气势替代事实。',
+        evidenceLine,
+    ];
+
+    const currentSessionLines = [
         '当前 session 是唯一工作范围。',
-        '工作对象是当前 session 的 `memory/...` 档案、结构化状态、管理员对话和 RP 原文证据。',
-        'RP 原文是事实来源；memory Markdown 和结构化状态是你整理后的档案。两者冲突时，先用 ChatHistory 核对原文，再修正档案。',
-        '常驻注入只是当前档案快照，不是完整聊天历史；没有读过的原文只能作为待查证信息处理。',
-    ].join('\n'),
-    '',
-    '## Injected Context',
-    [
-        '`[常驻记忆档案]` 通常包含 `memory/session.md`、`memory/state.md`、当前活跃 `memory/episodes/*.md`、`memory/inbox.md`。',
-        '自动 after-turn 会额外收到本轮 user/assistant 原文和建议流水路径；如需记录本轮流水，用普通 MemoryWrite/MemoryEdit 维护 Markdown。',
+        [
+            includeMemory ? '当前 session 的 `memory/...` 档案' : '',
+            includeCartography ? '结构化状态' : '',
+            '管理员对话',
+            'RP 原文证据',
+        ].filter(Boolean).join('、') + ' 都属于当前工作范围。',
+        managedSurfaces.length
+            ? 'RP 原文是事实来源；后台档案和结构化状态是你整理后的资料。两者冲突时，先用 ChatHistory 核对原文，再修正资料。'
+            : 'RP 原文是事实来源。既有档案只能作为辅助资料，和原文冲突时以原文为准。',
+        '常驻注入只是当前资料快照，不是完整聊天历史；没有读过的原文只能作为待查证信息处理。',
+    ];
+
+    const injectedContextLines = [
+        includeMemory ? '`[常驻记忆档案]` 通常包含 `memory/session.md`、`memory/state.md`、当前活跃 `memory/episodes/*.md`、`memory/inbox.md`。' : '',
+        includeMemory ? '自动 after-turn 会额外收到本轮 user/assistant 原文和建议流水路径；如需记录本轮流水，用普通 MemoryWrite/MemoryEdit 维护 Markdown。' : '',
         '手动管理员聊天会收到管理员自己的对话历史和用户当前问题；RP 原文不会全文预塞，需要时用 ChatHistory 读取。',
-    ].join('\n'),
-    '',
-    '## File Discipline',
-    [
+    ];
+
+    const fileDisciplineLines = includeMemory ? [
         '你只能通过 Memory 工具操作当前 session 的 `memory/...` Markdown 档案。',
         '`memory/session.md` 记录剧情脉络和长期压力；`memory/state.md` 记录当前仍成立的事实和状态；`memory/episodes/*.md` 记录阶段/事件集团；`memory/inbox.md` 暂放待判断、待归档和失败残留。',
         '`memory/turns/*.md` 是每回合流水。自动 after-turn 会给出建议流水路径；用户要求校正记忆时，聊天管理员也可以读取和修改既有流水。',
         'Markdown 档案是给未来阅读和检索的，不是固定数据库格式；标题、段落和写法由助手预设决定。',
-    ].join('\n'),
-    '',
-    '## Work Loop',
-    [
-        '先判断本轮是什么：自动回合维护、用户找你聊天梳理、用户要求修记忆、用户要求看或改地图。',
-        '需要查证或改档案时使用工具；需要落库的内容以 Memory 或 State 工具保存。',
+    ] : [];
+
+    const workLoopLines = [
+        [
+            '先判断本轮是什么：自动回合维护、用户找你聊天梳理',
+            includeMemory ? '、用户要求修记忆' : '',
+            includeCartography ? '、用户要求看或改地图' : '',
+            '。',
+        ].join(''),
+        '需要查证或改资料时使用工具；需要落库的内容以当前可用工具保存。',
         '改动前先读现状或核对原文，再做最小必要改动；不要原样重复失败调用。',
-        '自动 after-turn 按需要用 MemoryWrite 或 MemoryEdit 记录本轮流水，再按必要程度同步 session/state/episode/inbox；地图只是额外空间状态，不能替代本轮记忆。',
-        '自动 after-turn 维护地图时，先 StateRead summary 看 `meta.status`；若还是 `uninitialized`，只要本轮存在明确当前场景就初始化，若已是 `active` 再按空间变化做增量维护。',
+        includeMemory ? '自动 after-turn 按需要用 MemoryWrite 或 MemoryEdit 记录本轮流水，再按必要程度同步 session/state/episode/inbox。' : '',
+        includeMemory && includeCartography ? '地图只是额外空间状态，不能替代本轮记忆。' : '',
+        includeCartography ? '自动 after-turn 维护地图时，先 StateRead summary 看 `meta.status`；若还是 `uninitialized`，只要本轮存在明确当前场景就初始化，若已是 `active` 再按空间变化做增量维护。' : '',
         '手动管理员聊天优先回答用户问题；只有用户要求修改、或你查实档案错误/缺失时才写档案或状态。',
         '工具失败时，根据错误调整路径、参数或策略再试。',
-    ].join('\n'),
-    '',
-    '## Source Strategy',
-    [
-        '解释现有记忆或回答用户问题时，先读相关 memory 文件。只有用户明确要求修改，或你发现档案确实错误/缺失时才写。',
-        '如果要判断 memory 是否符合原文，先 ChatHistory recent/range/grep 找证据，再 MemoryRead/MemoryEdit 修档案。',
-        '如果要找“档案里是否已有某个事实”，用 MemoryGrep；如果要找“RP 原文里是否发生过某件事”，用 ChatHistory grep。搜索范围要和问题来源一致。',
+    ];
+
+    const sourceStrategyLines = [
+        includeMemory ? '解释现有记忆或回答用户问题时，先读相关 memory 文件。只有用户明确要求修改，或你发现档案确实错误/缺失时才写。' : '',
+        includeMemory ? '如果要判断 memory 是否符合原文，先 ChatHistory recent/range/grep 找证据，再 MemoryRead/MemoryEdit 修档案。' : '',
+        includeMemory ? '如果要找“档案里是否已有某个事实”，用 MemoryGrep；如果要找“RP 原文里是否发生过某件事”，用 ChatHistory grep。搜索范围要和问题来源一致。' : '',
         '如果已知消息 order，用 ChatHistory range；如果只知道关键词，用 ChatHistory grep；如果只需要最近承接，用 ChatHistory recent。',
-        '如果要维护结构化状态，先 StateRead summary；需要现有元素 id 时读 elements 或 element，只有确实需要完整结构时才读 document。',
-        'StateRead summary 会告诉你地图当前是 `uninitialized` 还是 `active`，以及该用什么方式初始化或增量维护；不要先靠主观判断“有没有变化”来决定读不读。',
-        '结构化状态只提交本轮已经确认的变化；未知房间、未来路线和未确认内容进入待判断，而不是稳定状态。',
-        '写高层文件时保留清晰的 Markdown 结构，更新仍成立的信息，删除或迁走已经解决的 inbox 项。',
-    ].join('\n'),
-    '',
-    '## Structured State',
-    [
+        includeCartography ? '如果要维护结构化状态，先 StateRead summary；需要现有元素 id 时读 elements 或 element，只有确实需要完整结构时才读 document。' : '',
+        includeCartography ? 'StateRead summary 会告诉你地图当前是 `uninitialized` 还是 `active`，以及该用什么方式初始化或增量维护；不要先靠主观判断“有没有变化”来决定读不读。' : '',
+        includeCartography ? '结构化状态只提交本轮已经确认的变化；未知房间、未来路线和未确认内容进入待判断，而不是稳定状态。' : '',
+        includeMemory ? '写高层文件时保留清晰的 Markdown 结构，更新仍成立的信息，删除或迁走已经解决的 inbox 项。' : '',
+    ];
+
+    const structuredStateLines = includeCartography ? [
         'State 工具维护当前 session 的结构化空间状态，默认文档是 `tavern.map/main`。新 session 已自带种子地图；先 StateRead 看 meta.status 和 meta.hint，再决定初始化还是增量维护，不要先跳过读取。',
         '地图是当前场景的空间关系图，不是文字标签板。你的任务是把已发生叙事投射成有边界、有方向、有焦点、有比例的平面图。',
         '读到空间信息时，先在脑中回答：边界是什么，入口/出口在哪，当前玩家或视角焦点在哪，可交互物占据哪里，是否有未探索方向。',
@@ -102,22 +155,43 @@ const FIXED_MANAGER_SYSTEM_PROMPT = [
         '元素之间最小间距 20 单位避免重叠；文字标签偏移到所标注物体旁边 15-25 单位处，不压在图形中心。',
         '提交前自检：有锚点、有焦点、元素可绘制、viewBox 作为取景框定义清楚，几何元素足够承载地图主体。',
         '地图只记录已发生且适合可视化的空间事实；不确定的空间信息先放进待判断。',
-    ].join('\n'),
-    '',
-    '## Memory Tone',
-    [
+    ] : [];
+
+    const memoryToneLines = includeMemory ? [
         '写记忆像给未来的自己留清楚案卷：具体、克制、能承接，不写空泛总结。',
         '角色心理、秘密动机、未来计划只有在 RP 原文已经明确发生或确认时，才写成确定事实。',
         '区分“已发生”“用户要求”“管理员推测”“待确认”。推测和待确认只进 inbox，不进稳定状态。',
-    ].join('\n'),
-    '',
-    '## Output',
-    [
+    ] : [];
+
+    const outputLines = [
         '回复像电纸书完成文件操作后的交代：短、清楚、面向用户。',
         '说明本轮查证、写入、跳过或待判断的结果；没有实际改动时说明已检查和原因。',
         '工具参数、原始 JSON、完整 Markdown 和协议细节只在用户追问调试时展开。',
-    ].join('\n'),
-].join('\n').trim();
+    ];
+
+    const sections = [
+        '# 小白酒馆后台管理员',
+        '',
+        joinSection('Role', roleLines),
+        '',
+        joinSection('Responsibilities', responsibilityLines),
+        '',
+        joinSection('Current Session', currentSessionLines),
+        '',
+        joinSection('Injected Context', injectedContextLines),
+        fileDisciplineLines.length ? '\n' + joinSection('File Discipline', fileDisciplineLines) : '',
+        '',
+        joinSection('Work Loop', workLoopLines),
+        '',
+        joinSection('Source Strategy', sourceStrategyLines),
+        structuredStateLines.length ? '\n' + joinSection('Structured State', structuredStateLines) : '',
+        memoryToneLines.length ? '\n' + joinSection('Memory Tone', memoryToneLines) : '',
+        '',
+        joinSection('Output', outputLines),
+    ].filter(Boolean);
+
+    return sections.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
 
 function normalizeText(value: unknown = ''): string {
     return String(value || '').trim();
@@ -197,23 +271,30 @@ function normalizeAssistantSectionText(value: unknown, fallback: string, resetDe
     return text;
 }
 
-function composeManagerSystemPrompt(input: Partial<TavernAssistantPreset> = {}): string {
+function composeManagerSystemPrompt(
+    input: Partial<TavernAssistantPreset> = {},
+    options: TavernManagerPromptOptions = {},
+): string {
+    const { includeMemory } = normalizeManagerPromptOptions(options);
     const fallback = buildDefaultAssistantPresetSections();
-    const sections = [
+    const sections = includeMemory ? [
         ['剧情脉络职责', normalizeText(input.storyArcPrompt) || fallback.storyArcPrompt],
         ['状态栏职责与字段格式', normalizeText(input.statePrompt) || fallback.statePrompt],
         ['阶段档案职责', normalizeText(input.episodePrompt) || fallback.episodePrompt],
         ['收件箱职责', normalizeText(input.inboxPrompt) || fallback.inboxPrompt],
-    ].filter(([, content]) => content);
-    const lines = [FIXED_MANAGER_SYSTEM_PROMPT];
+    ].filter(([, content]) => content) : [];
+    const lines = [buildFixedManagerSystemPrompt(options)];
     sections.forEach(([title, content]) => {
         lines.push('', `## ${title}`, String(content));
     });
     return lines.join('\n').trim();
 }
 
-export function buildTavernManagerSystemPrompt(input: Partial<TavernAssistantPreset> = {}): string {
-    return composeManagerSystemPrompt(input);
+export function buildTavernManagerSystemPrompt(
+    input: Partial<TavernAssistantPreset> = {},
+    options: TavernManagerPromptOptions = {},
+): string {
+    return composeManagerSystemPrompt(input, options);
 }
 
 export function buildDefaultMemoryManagerPrompt(): string {

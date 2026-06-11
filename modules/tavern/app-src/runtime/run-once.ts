@@ -2,6 +2,7 @@ import { createAgentAdapter } from '../../../agent-core/provider-config.js';
 import {
     type XbTavernBuildSnapshot,
     type XbTavernContext,
+    type XbTavernMemoryContext,
     type XbTavernMessage,
     type XbTavernMessageBuildResult,
     type XbTavernNativeWorldInfoRuntime,
@@ -11,6 +12,14 @@ import {
     XBTavernWorldPosition,
 } from '../../shared/message-assembler';
 import type { TavernAssistantPreset } from '../../shared/assistant-presets';
+import {
+    hasTavernSessionContractOverride,
+    mergeTavernSessionContract,
+    normalizeTavernSessionContract,
+    resolveTavernSessionContractRuntime,
+    type TavernSessionContract,
+    type TavernSessionContractRuntime,
+} from '../../shared/session-contract';
 import {
     appendTavernMessage,
     createTavernSession,
@@ -267,6 +276,43 @@ function resolveInputChatPreset(input: {
     preset?: TavernChatPromptPresetBundle;
 } = {}): TavernChatPromptPresetBundle {
     return input.chatPreset || input.preset || {};
+}
+
+function resolveSessionContract(state?: TavernSessionState | null): TavernSessionContract {
+    return normalizeTavernSessionContract(state?.contract);
+}
+
+function normalizeRuntimeSessionStateWithContract(
+    state: Partial<TavernSessionState> | null | undefined,
+    existingContract: Partial<TavernSessionContract> | null | undefined,
+): TavernSessionState {
+    const source = state && typeof state === 'object' && !Array.isArray(state) ? state : {};
+    return normalizeTavernSessionState({
+        ...source,
+        contract: hasTavernSessionContractOverride(source.contract)
+            ? mergeTavernSessionContract(existingContract, source.contract)
+            : mergeTavernSessionContract(existingContract, undefined),
+    });
+}
+
+function filterMemoryContextByRuntime(
+    memoryContext: XbTavernMemoryContext | undefined,
+    runtime: TavernSessionContractRuntime,
+): XbTavernMemoryContext | undefined {
+    if (!memoryContext) {return memoryContext;}
+    if (!runtime.includeMemoryFiles && !runtime.includeStructuredStates) {
+        return {};
+    }
+    const filtered: XbTavernMemoryContext = {};
+    if (runtime.includeMemoryFiles) {
+        if (Array.isArray(memoryContext.episodeSummaries)) {filtered.episodeSummaries = memoryContext.episodeSummaries;}
+        if (Array.isArray(memoryContext.turnSummaries)) {filtered.turnSummaries = memoryContext.turnSummaries;}
+        if (Array.isArray(memoryContext.memoryFiles)) {filtered.memoryFiles = memoryContext.memoryFiles;}
+    }
+    if (runtime.includeStructuredStates && Array.isArray(memoryContext.structuredStates)) {
+        filtered.structuredStates = memoryContext.structuredStates;
+    }
+    return filtered;
 }
 
 function addRegexSummary(target: TavernRegexApplicationSummary, source?: TavernRegexApplicationSummary): void {
@@ -931,6 +977,7 @@ async function ensureRunSession(input: XbTavernRunTurnInput, buildSnapshot?: XbT
     const chatPreset = resolveInputChatPreset(input);
     const contextSnapshot = input.contextSnapshot || {};
     const character = contextSnapshot.character || {};
+    const initialRuntimeState = normalizeTavernSessionState(input.runtimeState || {});
     return await createTavernSession({
         title: String(character.name || '未选择角色'),
         characterId: String(character.id || ''),
@@ -943,6 +990,7 @@ async function ensureRunSession(input: XbTavernRunTurnInput, buildSnapshot?: XbT
         presetName: String(chatPreset.name || ''),
         state: {
             turn: 0,
+            contract: initialRuntimeState.contract,
             worldEntryStates: {},
             nativeWorldInfoTimedState: { sticky: {}, cooldown: {} },
         },
@@ -1005,6 +1053,8 @@ export async function simulateXbTavernRequest(input: XbTavernSimulateRequestInpu
     const liveContext = resolveSessionContext(session, input.contextSnapshot);
     assertUsableTavernContext(liveContext);
     const sessionState = normalizeTavernSessionState(session?.state || input.runtimeState || {});
+    const sessionContract = resolveSessionContract(sessionState);
+    const sessionContractRuntime = resolveTavernSessionContractRuntime(sessionContract);
     const inputRegex = await runTavernStage('simulate_user_input_regex', () => applySingleTavernRegex({
         applyRegex: input.applyRegex,
         placement: 'userInput',
@@ -1041,13 +1091,16 @@ export async function simulateXbTavernRequest(input: XbTavernSimulateRequestInpu
         options: substituteOptions,
     }));
     const memoryQuery = await runTavernStage('simulate_memory_query', () => buildXbTavernMemoryQuery(contextForBuild, currentUserMessage));
-    const memoryContext = session
+    const memoryContext = session && (sessionContractRuntime.includeMemoryFiles || sessionContractRuntime.includeStructuredStates)
         ? await runTavernStage('simulate_memory_retrieval', () => retrieveXbTavernMemoryContext({
             sessionId: session.id,
             queryText: memoryQuery,
             ignoredTerms: buildXbTavernMemoryIgnoredTerms(contextForBuild),
+            includeMemoryFiles: sessionContractRuntime.includeMemoryFiles,
+            includeStructuredStates: sessionContractRuntime.includeStructuredStates,
         }))
         : undefined;
+    const filteredMemoryContext = filterMemoryContextByRuntime(memoryContext, sessionContractRuntime);
     const brain = await runTavernStage('simulate_brain_build', () => buildXbTavernBrainAsync({
         context: contextForBuild,
         chatPreset,
@@ -1055,7 +1108,7 @@ export async function simulateXbTavernRequest(input: XbTavernSimulateRequestInpu
         historyMode: input.historyMode || 'raw',
         turn: sessionState.turn,
         entryStates: sessionState.worldEntryStates,
-        memoryContext,
+        memoryContext: filteredMemoryContext,
         diagnostics: input.diagnostics || {},
         regexApplications,
         transformConversationMessages: async (messages) => {
@@ -1149,17 +1202,23 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
     const historyMessages = reusedUserMessage
         ? sessionMessages.filter((message) => message.order < reusedUserMessage.order)
         : sessionMessages;
+    const persistedSessionState = normalizeTavernSessionState(baseSession.state || input.runtimeState || {});
     const sessionState = reusedUserMessage
-        ? normalizeTavernSessionState(await deriveTavernSessionStateFromMessagesAsync({
-            messages: historyMessages,
-            contextSnapshot: liveContext,
-            chatPreset: input.chatPreset,
-            historyMode: input.historyMode || 'raw',
-            diagnostics: input.diagnostics,
-            applySubstituteParams: input.applySubstituteParams,
-            getNativeWorldInfoRuntime: input.getNativeWorldInfoRuntime,
-        }))
-        : normalizeTavernSessionState(baseSession.state || input.runtimeState || {});
+        ? normalizeRuntimeSessionStateWithContract(
+            await deriveTavernSessionStateFromMessagesAsync({
+                messages: historyMessages,
+                contextSnapshot: liveContext,
+                chatPreset: input.chatPreset,
+                historyMode: input.historyMode || 'raw',
+                diagnostics: input.diagnostics,
+                applySubstituteParams: input.applySubstituteParams,
+                getNativeWorldInfoRuntime: input.getNativeWorldInfoRuntime,
+            }),
+            persistedSessionState.contract,
+        )
+        : persistedSessionState;
+    const sessionContract = resolveSessionContract(sessionState);
+    const sessionContractRuntime = resolveTavernSessionContractRuntime(sessionContract);
     const shouldReplaceSessionState = !!reusedUserMessage;
     const rawCurrentUserMessage = stripTavernImageMarkers(reusedUserMessage?.content || input.currentUserMessage);
     const regexApplications: TavernRegexApplicationSummary = {};
@@ -1203,11 +1262,16 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
         options: substituteOptions,
     }));
     const memoryQuery = await runTavernStage('turn_memory_query', () => buildXbTavernMemoryQuery(contextForBuild, currentUserMessage));
-    const memoryContext = await runTavernStage('turn_memory_retrieval', () => retrieveXbTavernMemoryContext({
-        sessionId: baseSession.id,
-        queryText: memoryQuery,
-        ignoredTerms: buildXbTavernMemoryIgnoredTerms(contextForBuild),
-    }));
+    const memoryContext = (sessionContractRuntime.includeMemoryFiles || sessionContractRuntime.includeStructuredStates)
+        ? await runTavernStage('turn_memory_retrieval', () => retrieveXbTavernMemoryContext({
+            sessionId: baseSession.id,
+            queryText: memoryQuery,
+            ignoredTerms: buildXbTavernMemoryIgnoredTerms(contextForBuild),
+            includeMemoryFiles: sessionContractRuntime.includeMemoryFiles,
+            includeStructuredStates: sessionContractRuntime.includeStructuredStates,
+        }))
+        : undefined;
+    const filteredMemoryContext = filterMemoryContextByRuntime(memoryContext, sessionContractRuntime);
     const brain = await runTavernStage('turn_brain_build', () => buildXbTavernBrainAsync({
         context: contextForBuild,
         chatPreset,
@@ -1215,7 +1279,7 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
         historyMode: input.historyMode || 'raw',
         turn: sessionState.turn,
         entryStates: sessionState.worldEntryStates,
-        memoryContext,
+        memoryContext: filteredMemoryContext,
         diagnostics: input.diagnostics || {},
         regexApplications,
         transformConversationMessages: async (messages) => {
@@ -1381,7 +1445,7 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
         const canRunManager = input.runManager === true
             && !assistantMessage.error
             && !['aborted', 'error'].includes(assistantFinishReason);
-        if (canRunManager) {
+        if (canRunManager && sessionContractRuntime.hasAutomaticManagerWork) {
             const manager = await scheduleXbTavernManagerAfterTurn({
                 sessionId: session.id,
                 agentConfig: input.agentConfig,
@@ -1389,6 +1453,7 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
                 assistantMessage,
                 turn: nextTurn,
                 assistantPreset: input.assistantPreset,
+                sessionContract,
                 awaitCompletion: input.awaitManager === true,
                 executeManagerOnce: input.executeManagerOnce,
                 onManagerRunSaved: async (run) => {

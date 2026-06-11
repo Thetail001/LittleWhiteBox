@@ -41,6 +41,7 @@ import db, {
     listTavernStructuredStatePatches,
 } from '../shared/session-db';
 import { DEFAULT_XB_TAVERN_PRESET_ID, createDefaultXbTavernPreset } from '../shared/presets';
+import { DEFAULT_TAVERN_SESSION_CONTRACT, mergeTavernSessionContract } from '../shared/session-contract';
 import { buildXbTavernMessages, createXbTavernBuildSnapshot } from '../shared/message-assembler';
 import {
     MAX_MANAGER_TOOL_ROUNDS,
@@ -305,6 +306,7 @@ test('tavern session state stores turn and merges world entry states', async () 
 
     assert.deepEqual(normalizeTavernSessionState(session.state), {
         turn: 2,
+        contract: DEFAULT_TAVERN_SESSION_CONTRACT,
         worldEntryStates: {
             'Lore\u0000gate': { stickyUntilTurn: 4 },
         },
@@ -351,7 +353,56 @@ test('tavern session state stores turn and merges world entry states', async () 
     assert.deepEqual(replaced?.state?.worldEntryStates, {
         'Lore\u0000fresh': { stickyUntilTurn: 2 },
     });
+    assert.deepEqual(replaced?.state?.contract, DEFAULT_TAVERN_SESSION_CONTRACT);
     assert.equal(replaced?.state?.lastProvider, '');
+});
+
+test('replaceTavernSessionState preserves stored contract when runtime rebuild omits config fields', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({
+        title: 'Contract replace',
+        state: {
+            turn: 2,
+            contract: {
+                memoryArchiving: false,
+                cartographyEngine: false,
+                actionChecks: true,
+                randomEncounters: true,
+                questOrchestration: false,
+            },
+            worldEntryStates: {
+                'Lore\u0000gate': { stickyUntilTurn: 4 },
+            },
+        },
+    });
+
+    await replaceTavernSessionState(session.id, {
+        turn: 5,
+        worldEntryStates: {
+            'Lore\u0000gate': { cooldownUntilTurn: 8 },
+        },
+    });
+
+    const replaced = await getTavernSession(session.id);
+    assert.deepEqual(normalizeTavernSessionState(replaced?.state), {
+        turn: 5,
+        contract: {
+            memoryArchiving: false,
+            cartographyEngine: false,
+            actionChecks: true,
+            randomEncounters: true,
+            questOrchestration: false,
+        },
+        worldEntryStates: {
+            'Lore\u0000gate': { cooldownUntilTurn: 8 },
+        },
+        nativeWorldInfoTimedState: {
+            sticky: {},
+            cooldown: {},
+        },
+    });
 });
 
 test('tavern memory db stores turn summaries, episodes, and manager runs', async () => {
@@ -1210,6 +1261,226 @@ test('tavern manager uses memory tools and records tool trace', async () => {
     assert.equal(run?.status, 'completed');
     assert.equal(Array.isArray(run?.toolTrace), true);
     assert.equal(run?.changedFiles?.[0], turnPath);
+});
+
+test('tavern auto manager prompt omits unauthorized module instructions from both system and user messages', async () => {
+    await db.delete();
+    await db.open();
+
+    const memorySession = await createTavernSession({ title: 'Memory-only prompt' });
+    const memoryUser = await appendTavernMessage(memorySession.id, { role: 'user', content: '把线索记下来。' });
+    const memoryAssistant = await appendTavernMessage(memorySession.id, { role: 'assistant', content: '线索已经明确。' });
+    let memoryPrompt = '';
+    await runXbTavernManagerAfterTurn({
+        sessionId: memorySession.id,
+        agentConfig: {},
+        userMessage: memoryUser,
+        assistantMessage: memoryAssistant,
+        turn: 1,
+        sessionContract: mergeTavernSessionContract(undefined, {
+            memoryArchiving: true,
+            cartographyEngine: false,
+        }),
+        executeManagerOnce: async (options) => {
+            memoryPrompt = JSON.stringify(options.messages);
+            return { provider: 'fake-manager', model: 'memory-only', text: '已检查。' };
+        },
+    });
+    assert.match(memoryPrompt, /MemoryWrite/);
+    assert.doesNotMatch(memoryPrompt, /StateRead summary/);
+    assert.doesNotMatch(memoryPrompt, /## Structured State/);
+    assert.doesNotMatch(memoryPrompt, /地图不能替代本轮流水和文字记忆/);
+    assert.doesNotMatch(memoryPrompt, /空间关系图/);
+
+    const mapSession = await createTavernSession({ title: 'Map-only prompt' });
+    const mapUser = await appendTavernMessage(mapSession.id, { role: 'user', content: '看看前面地形。' });
+    const mapAssistant = await appendTavernMessage(mapSession.id, { role: 'assistant', content: '前面是一条狭长走廊。' });
+    let mapPrompt = '';
+    await runXbTavernManagerAfterTurn({
+        sessionId: mapSession.id,
+        agentConfig: {},
+        userMessage: mapUser,
+        assistantMessage: mapAssistant,
+        turn: 1,
+        sessionContract: mergeTavernSessionContract(undefined, {
+            memoryArchiving: false,
+            cartographyEngine: true,
+        }),
+        executeManagerOnce: async (options) => {
+            mapPrompt = JSON.stringify(options.messages);
+            return { provider: 'fake-manager', model: 'map-only', text: '已检查。' };
+        },
+    });
+    assert.match(mapPrompt, /StateRead summary/);
+    assert.match(mapPrompt, /当前契约只授权地图系统；不要补写 memory Markdown/);
+    assert.doesNotMatch(mapPrompt, /MemoryWrite/);
+    assert.doesNotMatch(mapPrompt, /memory\/session\.md/);
+    assert.doesNotMatch(mapPrompt, /建议流水路径：/);
+});
+
+test('tavern auto manager denies unauthorized MemoryWrite without side effects', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Blocked memory write' });
+    const userMessage = await appendTavernMessage(session.id, { role: 'user', content: '别写记忆。' });
+    const assistantMessage = await appendTavernMessage(session.id, { role: 'assistant', content: '那就只看地图。' });
+    let calls = 0;
+
+    const executeManagerOnce = (async (options) => {
+        calls += 1;
+        if (calls === 1) {
+            return {
+                provider: 'fake-manager',
+                model: 'map-only',
+                text: '我先试着写记忆。',
+                toolCalls: [{
+                    id: 'blocked-memory',
+                    name: 'MemoryWrite',
+                    arguments: {
+                        filePath: 'memory/session.md',
+                        content: 'should not be written',
+                    },
+                }],
+            };
+        }
+        assert.equal(options.toolResponses?.[0]?.name, 'MemoryWrite');
+        assert.match(JSON.stringify(options.toolResponses?.[0]?.response || {}), /契约未授权 Memory Archiving/);
+        return {
+            provider: 'fake-manager',
+            model: 'map-only',
+            text: '已跳过未授权记忆写入。',
+        };
+    }) as Parameters<typeof runXbTavernManagerAfterTurn>[0]['executeManagerOnce'] & { supportsSessionToolLoop?: boolean };
+    executeManagerOnce.supportsSessionToolLoop = true;
+
+    const result = await runXbTavernManagerAfterTurn({
+        sessionId: session.id,
+        agentConfig: {},
+        userMessage,
+        assistantMessage,
+        turn: 1,
+        sessionContract: mergeTavernSessionContract(undefined, {
+            memoryArchiving: false,
+            cartographyEngine: true,
+        }),
+        executeManagerOnce,
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(calls, 2);
+    assert.deepEqual(result.changedFiles, []);
+    assert.equal((await listTavernMemoryFiles(session.id)).some((file) => file.path === 'memory/session.md'), false);
+    const run = (await listTavernManagerRuns(session.id))[0];
+    assert.match(JSON.stringify(run?.toolTrace || []), /契约未授权 Memory Archiving/);
+});
+
+test('tavern auto manager denies unauthorized StatePatch without side effects', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Blocked state patch' });
+    const userMessage = await appendTavernMessage(session.id, { role: 'user', content: '别动地图。' });
+    const assistantMessage = await appendTavernMessage(session.id, { role: 'assistant', content: '那我只整理文字。' });
+    let calls = 0;
+
+    const executeManagerOnce = (async (options) => {
+        calls += 1;
+        if (calls === 1) {
+            return {
+                provider: 'fake-manager',
+                model: 'memory-only',
+                text: '我先试着改地图。',
+                toolCalls: [{
+                    id: 'blocked-state',
+                    name: 'StatePatch',
+                    arguments: {
+                        ops: [{
+                            op: 'add',
+                            element: { id: 'marker', at: [80, 60], icon: 'o', cat: 'marker' },
+                        }],
+                    },
+                }],
+            };
+        }
+        assert.equal(options.toolResponses?.[0]?.name, 'StatePatch');
+        assert.match(JSON.stringify(options.toolResponses?.[0]?.response || {}), /契约未授权 Cartography Engine/);
+        return {
+            provider: 'fake-manager',
+            model: 'memory-only',
+            text: '已跳过未授权地图改动。',
+        };
+    }) as Parameters<typeof runXbTavernManagerAfterTurn>[0]['executeManagerOnce'] & { supportsSessionToolLoop?: boolean };
+    executeManagerOnce.supportsSessionToolLoop = true;
+
+    const result = await runXbTavernManagerAfterTurn({
+        sessionId: session.id,
+        agentConfig: {},
+        userMessage,
+        assistantMessage,
+        turn: 1,
+        sessionContract: mergeTavernSessionContract(undefined, {
+            memoryArchiving: true,
+            cartographyEngine: false,
+        }),
+        executeManagerOnce,
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(calls, 2);
+    assert.deepEqual(result.changedStates, []);
+    assert.equal((await listTavernStructuredStatePatches({ sessionId: session.id })).length, 0);
+    const run = (await listTavernManagerRuns(session.id))[0];
+    assert.match(JSON.stringify(run?.toolTrace || []), /契约未授权 Cartography Engine/);
+});
+
+test('tavern manager chat keeps full tool access even when the stored contract disables auto work', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({
+        title: 'Manual manager full tools',
+        state: {
+            contract: mergeTavernSessionContract(undefined, {
+                memoryArchiving: false,
+                cartographyEngine: false,
+            }),
+        },
+    });
+    let calls = 0;
+    const result = await runXbTavernManagerChat({
+        sessionId: session.id,
+        agentConfig: {},
+        question: '把这件事记到 session 里。',
+        executeManagerOnce: async (options) => {
+            calls += 1;
+            if (calls === 1) {
+                assert.match(JSON.stringify(options.messages), /MemoryWrite/);
+                return {
+                    provider: 'fake-manager',
+                    model: 'chat-tools',
+                    text: '我直接更新现有记忆。',
+                    toolCalls: [{
+                        id: 'manual-write',
+                        name: 'MemoryWrite',
+                        arguments: {
+                            filePath: 'memory/session.md',
+                            content: '# Session\n\n手动管理员仍可写入。',
+                        },
+                    }],
+                };
+            }
+            return {
+                provider: 'fake-manager',
+                model: 'chat-tools',
+                text: '已写入。',
+            };
+        },
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(calls, 2);
+    assert.match((await getTavernMemoryFile(session.id, 'memory/session.md'))?.content || '', /手动管理员仍可写入/);
 });
 
 test('tavern manager stores one preface for parallel tool calls in the same round', async () => {

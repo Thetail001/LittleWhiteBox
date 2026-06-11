@@ -36,6 +36,12 @@ import {
     type TavernTurnSummaryRecord,
 } from '../../shared/session-db';
 import { executeTavernStateTool, TAVERN_STATE_TOOL_NAMES, type TavernStateToolResult } from '../../shared/structured-state';
+import { resolveTavernSessionContractRuntime, type TavernSessionContract, type TavernSessionContractRuntime } from '../../shared/session-contract';
+import {
+    buildDeniedAutoManagerToolResult,
+    filterAutoManagerToolDefinitions,
+    isAutoManagerToolAllowed,
+} from './contract-policy';
 import { getXbTavernProviderLabel } from './provider';
 
 const resolveConversationTokens = (contextTokens as unknown as {
@@ -81,6 +87,7 @@ export interface XbTavernManagerRunInput {
     turn: number;
     trigger?: string;
     managerRunId?: string;
+    sessionContract?: TavernSessionContract;
     recentTurnSummaries?: TavernTurnSummaryRecord[];
     recentEpisodeSummaries?: TavernEpisodeSummaryRecord[];
     assistantPreset?: TavernAssistantPreset;
@@ -191,8 +198,15 @@ function safeJsonParse(value: unknown, fallback: Record<string, unknown> = {}): 
     }
 }
 
-function buildManagerSystemPrompt(assistantPreset: TavernAssistantPreset | undefined): string {
-    return buildTavernManagerSystemPrompt(assistantPreset).trim();
+function buildManagerSystemPrompt(
+    assistantPreset: TavernAssistantPreset | undefined,
+    options: { includeMemory?: boolean; includeCartography?: boolean } = {},
+): string {
+    return buildTavernManagerSystemPrompt(assistantPreset, options).trim();
+}
+
+function resolveSessionContractRuntime(contract?: Partial<TavernSessionContract> | null): TavernSessionContractRuntime {
+    return resolveTavernSessionContractRuntime(contract);
 }
 
 function selectActiveEpisodeBlock(memoryFiles: Array<{ path: string; status: string; updatedAt: number; content: string }>): string {
@@ -222,13 +236,41 @@ function buildAutoManagerUserPrompt(input: {
     userMessage: TavernMessageRecord;
     assistantMessage: TavernMessageRecord;
     memoryFiles: Array<{ path: string; status: string; updatedAt: number; content: string }>;
+    runtime: TavernSessionContractRuntime;
 }): string {
-    return [
-        buildResidentMemoryBlock(input.memoryFiles),
-        '',
+    const allowMemory = input.runtime.managerPromptOptions.includeMemory;
+    const allowMap = input.runtime.managerPromptOptions.includeCartography;
+    const requirements: string[] = [];
+    let step = 1;
+    if (allowMemory) {
+        requirements.push(`${step}. 先按需读取相关记忆文件，再维护本轮记忆。`);
+        step += 1;
+        requirements.push(`${step}. 如需记录本轮流水，优先写入上面的建议路径；正文写法由助手预设决定，不需要固定标题。`);
+        step += 1;
+    }
+    if (allowMap) {
+        requirements.push(`${step}. 地图检查分两步：先无条件 StateRead summary 看 \`meta.status\`。若还是 \`uninitialized\`，只要本轮存在明确当前场景/地点/空间，就按 hint 用一次 meta + add 初始化 \`tavern.map/main\`；若已是 \`active\`，再只在本轮有明确空间变化（地点/路线/门/危险/物品或人物位置）时增量 add/modify/remove/meta，无变化就跳过。`);
+        step += 1;
+    }
+    if (allowMemory && allowMap) {
+        requirements.push(`${step}. 必要时同步更新 session/state/episode/inbox；地图不能替代本轮流水和文字记忆。`);
+        step += 1;
+    } else if (allowMemory) {
+        requirements.push(`${step}. 必要时同步更新 session/state/episode/inbox。`);
+        step += 1;
+    } else if (allowMap) {
+        requirements.push(`${step}. 当前契约只授权地图系统；不要补写 memory Markdown。`);
+        step += 1;
+    } else {
+        requirements.push(`${step}. 当前契约未授权后台记忆或地图维护；不要写 memory 或 State，只需明确说明已跳过。`);
+        step += 1;
+    }
+    requirements.push(`${step}. 收束为简短处理结论：说明本轮写入、跳过或待判断的结果。`);
+
+    const blocks = [
+        ...(allowMemory ? [buildResidentMemoryBlock(input.memoryFiles), ''] : []),
         '[本轮 RP 原文]',
-        `建议流水路径：${input.turnMemoryPath}`,
-        '',
+        ...(allowMemory ? [`建议流水路径：${input.turnMemoryPath}`, ''] : []),
         '[用户消息]',
         input.userMessage.content,
         '',
@@ -236,12 +278,9 @@ function buildAutoManagerUserPrompt(input: {
         input.assistantMessage.content,
         '',
         '[本轮要求]',
-        '1. 先按需读取相关记忆文件，再维护本轮记忆。',
-        '2. 如需记录本轮流水，优先写入上面的建议路径；正文写法由助手预设决定，不需要固定标题。',
-        '3. 地图检查分两步：先无条件 StateRead summary 看 `meta.status`。若还是 `uninitialized`，只要本轮存在明确当前场景/地点/空间，就按 hint 用一次 meta + add 初始化 `tavern.map/main`；若已是 `active`，再只在本轮有明确空间变化（地点/路线/门/危险/物品或人物位置）时增量 add/modify/remove/meta，无变化就跳过。',
-        '4. 必要时同步更新 session/state/episode/inbox；地图不能替代本轮流水和文字记忆。',
-        '5. 收束为简短处理结论：说明本轮写入、跳过或待判断的结果。',
-    ].join('\n');
+        ...requirements,
+    ];
+    return blocks.join('\n');
 }
 
 function buildChatManagerUserPrompt(input: {
@@ -421,6 +460,7 @@ async function runManagerAgentWithTools(input: {
     userOrder?: number;
     assistantOrder?: number;
     beforeWriteGuard?: () => Promise<void> | void;
+    sessionContract?: TavernSessionContract;
     signal?: AbortSignal;
     executeManagerOnce?: (options: XbTavernManagerOnceOptions) => Promise<XbTavernManagerOnceResult>;
     onStreamProgress?: (snapshot: TavernManagerStreamSnapshot) => void;
@@ -446,7 +486,9 @@ async function runManagerAgentWithTools(input: {
         || ((options: XbTavernManagerOnceOptions) => runManagerOnceWithAdapter(defaultAdapter!, providerConfig, options));
     const supportsSessionToolLoop = !!defaultAdapter?.supportsSessionToolLoop
         || (input.executeManagerOnce as { supportsSessionToolLoop?: boolean } | undefined)?.supportsSessionToolLoop === true;
-    const tools = getTavernManagerToolDefinitions();
+    const tools = input.caller === 'auto'
+        ? filterAutoManagerToolDefinitions(getTavernManagerToolDefinitions(), input.sessionContract)
+        : getTavernManagerToolDefinitions();
     const toolTrace: Array<Record<string, unknown>> = [];
     const protocolMessages: XbTavernMessage[] = [];
     const changedFiles = new Set<string>();
@@ -555,22 +597,24 @@ async function runManagerAgentWithTools(input: {
             };
             toolTrace.push(traceEntry);
             await persistRunningManagerToolTrace(input.managerRunId, toolTrace);
-            const toolResult = isStateToolName(toolCall.name)
-                ? await executeTavernStateTool(input.sessionId, toolCall.name, args, {
-                    caller: input.caller,
-                    managerRunId: input.managerRunId,
-                    sourceUserOrder: input.userOrder,
-                    sourceAssistantOrder: input.assistantOrder,
-                    beforeWriteGuard: input.beforeWriteGuard,
-                })
-                : await executeTavernMemoryTool(input.sessionId, toolCall.name, args, {
-                    caller: input.caller,
-                    managerRunId: input.managerRunId,
-                    turn: input.turn,
-                    sourceUserOrder: input.userOrder,
-                    sourceAssistantOrder: input.assistantOrder,
-                    beforeWriteGuard: input.beforeWriteGuard,
-                });
+            const toolResult = input.caller === 'auto' && !isAutoManagerToolAllowed(toolCall.name, input.sessionContract)
+                ? buildDeniedAutoManagerToolResult(toolCall.name, input.sessionContract)
+                : isStateToolName(toolCall.name)
+                    ? await executeTavernStateTool(input.sessionId, toolCall.name, args, {
+                        caller: input.caller,
+                        managerRunId: input.managerRunId,
+                        sourceUserOrder: input.userOrder,
+                        sourceAssistantOrder: input.assistantOrder,
+                        beforeWriteGuard: input.beforeWriteGuard,
+                    })
+                    : await executeTavernMemoryTool(input.sessionId, toolCall.name, args, {
+                        caller: input.caller,
+                        managerRunId: input.managerRunId,
+                        turn: input.turn,
+                        sourceUserOrder: input.userOrder,
+                        sourceAssistantOrder: input.assistantOrder,
+                        beforeWriteGuard: input.beforeWriteGuard,
+                    });
             const resultPath = 'path' in toolResult ? toolResult.path : '';
             const resultStateKey = 'docType' in toolResult && toolResult.docType ? `${toolResult.docType}/${toolResult.docId || ''}` : '';
             if (toolResult.changed && resultPath) {
@@ -686,11 +730,19 @@ async function finalizeManagerRun(record: TavernManagerRunRecord, patch: Partial
 }
 
 async function buildAutoManagerMessages(input: XbTavernManagerRunInput): Promise<XbTavernMessage[]> {
-    await ensureTavernMemoryDefaults(input.sessionId);
-    const memoryFiles = await listTavernMemoryFiles(input.sessionId, { includeStale: true });
+    const contractRuntime = resolveSessionContractRuntime(input.sessionContract);
+    if (contractRuntime.includeMemoryFiles) {
+        await ensureTavernMemoryDefaults(input.sessionId);
+    }
+    const memoryFiles = contractRuntime.includeMemoryFiles
+        ? await listTavernMemoryFiles(input.sessionId, { includeStale: true })
+        : [];
     const turnMemoryPath = resolveTurnMemoryPath(input);
     return [
-        { role: 'system', content: buildManagerSystemPrompt(input.assistantPreset) },
+        {
+            role: 'system',
+            content: buildManagerSystemPrompt(input.assistantPreset, contractRuntime.managerPromptOptions),
+        },
         {
             role: 'user',
             content: buildAutoManagerUserPrompt({
@@ -699,6 +751,7 @@ async function buildAutoManagerMessages(input: XbTavernManagerRunInput): Promise
                 userMessage: input.userMessage,
                 assistantMessage: input.assistantMessage,
                 memoryFiles,
+                runtime: contractRuntime,
             }),
         },
     ];
@@ -764,6 +817,7 @@ async function runManagerTask(input: {
     caller: 'auto' | 'chat';
     requireChangedFiles: boolean;
     beforeWriteGuard?: () => Promise<void> | void;
+    sessionContract?: TavernSessionContract;
     signal?: AbortSignal;
     executeManagerOnce?: (options: XbTavernManagerOnceOptions) => Promise<XbTavernManagerOnceResult>;
     onStreamProgress?: (snapshot: TavernManagerStreamSnapshot) => void;
@@ -811,6 +865,7 @@ async function runManagerTask(input: {
             userOrder: input.userOrder,
             assistantOrder: input.assistantOrder,
             beforeWriteGuard: input.beforeWriteGuard,
+            sessionContract: input.sessionContract,
             signal: input.signal,
             executeManagerOnce: input.executeManagerOnce,
             onStreamProgress: input.onStreamProgress,
@@ -1025,6 +1080,33 @@ export async function ensureTavernManagerChatBudget(input: EnsureTavernManagerCh
 export async function runXbTavernManagerAfterTurn(input: XbTavernManagerRunInput): Promise<XbTavernManagerRunResult> {
     const sessionId = String(input.sessionId || '').trim();
     if (!sessionId) {throw new Error('manager_session_required');}
+    const contractRuntime = resolveSessionContractRuntime(input.sessionContract);
+    if (!contractRuntime.hasAutomaticManagerWork) {
+        const skipped = input.managerRunId
+            ? await updateTavernManagerRun(input.managerRunId, {
+                status: 'completed',
+                outputText: '契约未授权后台记忆或地图维护，本轮已跳过。',
+                parsedAction: 'manager_skipped_by_contract',
+                error: '',
+            })
+            : await createTavernManagerRun({
+                sessionId,
+                trigger: input.trigger || 'after_turn',
+                turn: input.turn,
+                userOrder: input.userMessage.order,
+                assistantOrder: input.assistantMessage.order,
+                status: 'completed',
+                inputSummary: 'contract skipped',
+                outputText: '契约未授权后台记忆或地图维护，本轮已跳过。',
+                parsedAction: 'manager_skipped_by_contract',
+            });
+        return {
+            ok: true,
+            managerRun: skipped!,
+            changedFiles: [],
+            changedStates: [],
+        };
+    }
     const inputSummary = buildInputSummary({
         trigger: input.trigger || 'after_turn',
         turn: input.turn,
@@ -1068,6 +1150,7 @@ export async function runXbTavernManagerAfterTurn(input: XbTavernManagerRunInput
                 throwIfManagerAborted(input.signal);
                 await assertManagerSourceMessagesCurrent(input);
             },
+            sessionContract: input.sessionContract,
             signal: input.signal,
             executeManagerOnce: input.executeManagerOnce,
         });

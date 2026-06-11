@@ -1,12 +1,18 @@
 <script setup lang="ts">
-import { computed, onBeforeUpdate, onUpdated } from 'vue';
+import { computed, onBeforeUpdate, onUpdated, ref, watch } from 'vue';
 import { captureElementScrollState, restoreElementScrollState, type ElementScrollSnapshot } from '../../scroll-state';
 import TavernCornerActions from '../TavernCornerActions.vue';
 import TavernMapPanel from '../TavernMapPanel.vue';
 import TavernMemoryEditor from '../TavernMemoryEditor.vue';
 import TavernScrollControls from '../TavernScrollControls.vue';
+import TavernContractModal from './TavernContractModal.vue';
 import { useTavernAppUiContext } from '../tavern-app-context';
 import TavernChatSidebar from './TavernChatSidebar.vue';
+import {
+    normalizeTavernSessionContract,
+    type TavernContractPermissionKey,
+    type TavernSessionContract,
+} from '../../../shared/session-contract';
 
 const ui = useTavernAppUiContext();
 const {
@@ -130,12 +136,15 @@ const {
     runtimeThoughts,
     saveEditMessage,
     saveEditManagerMessage,
+    saveSessionContract,
     saveSelectedMemoryFile,
+    sessionContract,
     scrollChatToBottom,
     scrollChatToTop,
     scrollManagerToBottom,
     scrollManagerToTop,
     selectedMemoryFile,
+    selectedSessionId,
     shortText,
     showChatScrollBottom,
     showChatScrollTop,
@@ -157,12 +166,17 @@ const {
 
 let pendingChatScrollSnapshot: ElementScrollSnapshot | null = null;
 let pendingManagerScrollSnapshot: ElementScrollSnapshot | null = null;
+const contractModalOpen = ref(false);
+const contractSaving = ref(false);
+const contractError = ref('');
+const contractDraft = ref<TavernSessionContract>(normalizeTavernSessionContract(sessionContract.value));
 
 const currentStateFile = computed(() => (
     (memoryFiles.value || []).find((file: { path?: string }) => file.path === 'memory/state.md') || null
 ));
 const currentStateContent = computed(() => String(currentStateFile.value?.content || '').trim());
 const currentStatePreviewHtml = computed(() => renderChatMarkdown(currentStateContent.value));
+const contractDraftDirty = computed(() => JSON.stringify(contractDraft.value) !== JSON.stringify(sessionContract.value));
 const liveManagerRun = computed(() => (
     (managerRuns.value || []).find((run: { status?: string }) => ['queued', 'running'].includes(String(run.status || ''))) || null
 ));
@@ -183,6 +197,56 @@ function setManagerScrollRef(element: Element | null) {
 function setManagerComposeTextareaRef(element: Element | null) {
     managerComposeTextareaRef.value = element instanceof HTMLTextAreaElement ? element : null;
 }
+
+function openContractModal() {
+    contractError.value = '';
+    contractDraft.value = normalizeTavernSessionContract(sessionContract.value);
+    contractModalOpen.value = true;
+}
+
+function closeContractModal() {
+    contractError.value = '';
+    contractModalOpen.value = false;
+}
+
+function toggleContractDraft(key: TavernContractPermissionKey) {
+    contractDraft.value = {
+        ...contractDraft.value,
+        [key]: !contractDraft.value[key],
+    };
+}
+
+async function sealContract() {
+    if (!selectedSessionId.value) {
+        contractError.value = '';
+        contractModalOpen.value = false;
+        return;
+    }
+    contractError.value = '';
+    contractSaving.value = true;
+    try {
+        const saved = await saveSessionContract(contractDraft.value);
+        if (!saved) {
+            throw new Error('contract_save_failed');
+        }
+        contractModalOpen.value = false;
+    } catch {
+        contractError.value = '契约保存失败，请重试。';
+    } finally {
+        contractSaving.value = false;
+    }
+}
+
+watch(() => sessionContract.value, (value) => {
+    if (contractModalOpen.value) {return;}
+    contractDraft.value = normalizeTavernSessionContract(value);
+}, { deep: true });
+
+watch(() => selectedSessionId.value, () => {
+    contractError.value = '';
+    contractModalOpen.value = false;
+    contractDraft.value = normalizeTavernSessionContract(sessionContract.value);
+});
 
 onBeforeUpdate(() => {
     pendingChatScrollSnapshot = captureElementScrollState(chatScrollRef.value, {
@@ -267,6 +331,7 @@ onUpdated(() => {
                 class="contract-trigger"
                 title="契约"
                 aria-label="契约"
+                @click="openContractModal"
               >
                 契约
               </button>
@@ -593,6 +658,7 @@ onUpdated(() => {
                 class="contract-trigger"
                 title="契约"
                 aria-label="契约"
+                @click="openContractModal"
               >
                 契约
               </button>
@@ -1113,5 +1179,17 @@ onUpdated(() => {
         @save="saveSelectedMemoryFile"
       />
     </aside>
+
+    <TavernContractModal
+      v-if="contractModalOpen"
+      :draft-contract="contractDraft"
+      :dirty="contractDraftDirty"
+      :saving="contractSaving"
+      :can-save="!!selectedSessionId"
+      :error-text="contractError"
+      @close="closeContractModal"
+      @toggle="toggleContractDraft"
+      @save="sealContract"
+    />
   </section>
 </template>

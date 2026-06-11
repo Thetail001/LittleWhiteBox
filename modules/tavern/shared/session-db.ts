@@ -24,6 +24,12 @@ import {
     TAVERN_MAP_DOC_ID,
     TAVERN_MAP_DOC_TYPE,
 } from './map-state-seed';
+import {
+    hasTavernSessionContractOverride,
+    mergeTavernSessionContract,
+    normalizeTavernSessionContract,
+    type TavernSessionContract,
+} from './session-contract';
 
 export interface TavernSessionRecord {
     id: string;
@@ -44,6 +50,7 @@ export interface TavernSessionRecord {
 
 export interface TavernSessionState {
     turn?: number;
+    contract?: TavernSessionContract;
     worldEntryStates?: Record<string, XbTavernWorldEntryState>;
     nativeWorldInfoTimedState?: XbTavernNativeWorldInfoTimedState;
     lastBuildSnapshot?: XbTavernBuildSnapshot;
@@ -525,9 +532,14 @@ export function normalizeTavernSessionState(value: unknown): TavernSessionState 
     return {
         ...source,
         turn: Math.max(0, Number(source.turn) || 0),
+        contract: normalizeTavernSessionContract(source.contract),
         worldEntryStates: normalizeWorldEntryStates(source.worldEntryStates),
         nativeWorldInfoTimedState: normalizeNativeWorldInfoTimedState(source.nativeWorldInfoTimedState),
     };
+}
+
+function hasOwnStateField(value: unknown, key: keyof TavernSessionState): boolean {
+    return !!value && typeof value === 'object' && !Array.isArray(value) && Object.prototype.hasOwnProperty.call(value, key);
 }
 
 export function mergeWorldEntryStates(
@@ -668,7 +680,13 @@ export async function updateTavernSessionState(sessionId = '', patch: Partial<Ta
         ...currentState,
         ...patch,
         turn: Math.max(0, Number(patch.turn ?? currentState.turn) || 0),
+        contract: hasOwnStateField(patch, 'contract')
+            ? mergeTavernSessionContract(currentState.contract, hasTavernSessionContractOverride(patch.contract) ? patch.contract : undefined)
+            : currentState.contract,
         worldEntryStates: mergeWorldEntryStates(currentState.worldEntryStates || {}, patchState.worldEntryStates || {}),
+        nativeWorldInfoTimedState: hasOwnStateField(patch, 'nativeWorldInfoTimedState')
+            ? patchState.nativeWorldInfoTimedState
+            : currentState.nativeWorldInfoTimedState,
     };
     await tavernSessionsTable.update(id, {
         state: cloneSerializable(state, {}),
@@ -684,11 +702,16 @@ export async function replaceTavernSessionState(sessionId = '', stateInput: Part
     const existing = await getTavernSession(id);
     if (!existing) {return null;}
     const timestamp = now();
+    const currentState = normalizeTavernSessionState(existing.state || {});
     const normalized = normalizeTavernSessionState(stateInput);
     const state: TavernSessionState = {
         ...stateInput,
         turn: Math.max(0, Number(normalized.turn) || 0),
+        contract: hasOwnStateField(stateInput, 'contract')
+            ? mergeTavernSessionContract(currentState.contract, hasTavernSessionContractOverride(stateInput.contract) ? stateInput.contract : undefined)
+            : currentState.contract,
         worldEntryStates: normalized.worldEntryStates || {},
+        nativeWorldInfoTimedState: normalized.nativeWorldInfoTimedState,
     };
     await tavernSessionsTable.update(id, {
         state: cloneSerializable(state, {}),

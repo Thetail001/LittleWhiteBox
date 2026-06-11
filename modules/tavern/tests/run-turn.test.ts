@@ -20,12 +20,14 @@ import {
 } from '../shared/memory-files';
 import { executeTavernStateTool } from '../shared/structured-state';
 import { createDefaultXbTavernPreset } from '../shared/presets';
+import { buildTavernManagerSystemPrompt } from '../shared/assistant-presets';
 import {
     buildXbTavernMemoryIgnoredTerms,
     buildXbTavernMemoryQuery,
     selectXbTavernMemoryContext,
     setXbTavernMemoryTokenizerForTest,
 } from '../shared/memory-retrieval';
+import { mergeTavernSessionContract } from '../shared/session-contract';
 import {
     buildContextHistory,
     buildTavernRequestSnapshot,
@@ -258,6 +260,29 @@ test('xb tavern run turn can trigger manager summary with delegate config', asyn
     const runs = await listTavernManagerRuns(result.sessionId);
     assert.equal(runs[0]?.status, 'completed');
     assert.equal(runs[0]?.model, 'manager-model');
+});
+
+test('tavern manager prompt strips unauthorized module rules cleanly', () => {
+    const memoryOnly = buildTavernManagerSystemPrompt({}, {
+        includeMemory: true,
+        includeCartography: false,
+    });
+    assert.match(memoryOnly, /MemoryWrite/);
+    assert.doesNotMatch(memoryOnly, /## Structured State/);
+    assert.doesNotMatch(memoryOnly, /StateRead/);
+    assert.doesNotMatch(memoryOnly, /查看地图/);
+    assert.doesNotMatch(memoryOnly, /空间关系图/);
+    assert.doesNotMatch(memoryOnly, /地图只是额外空间状态/);
+
+    const mapOnly = buildTavernManagerSystemPrompt({}, {
+        includeMemory: false,
+        includeCartography: true,
+    });
+    assert.match(mapOnly, /## Structured State/);
+    assert.match(mapOnly, /StateRead summary/);
+    assert.doesNotMatch(mapOnly, /MemoryWrite/);
+    assert.doesNotMatch(mapOnly, /memory\/session\.md/);
+    assert.doesNotMatch(mapOnly, /校正记忆/);
 });
 
 test('xb tavern run turn retrieves relevant old memory beyond recent summaries', async () => {
@@ -1182,6 +1207,126 @@ test('xb tavern simulated request injects map digest without full map JSON', asy
     assert.ok(Number(result.buildSnapshot.structuredStates?.[0]?.digestChars) > 0);
 });
 
+test('xb tavern simulated request injects only memory files when cartography is disabled', async () => {
+    await resetDb();
+    const preset = createDefaultXbTavernPreset();
+    const session = await createTavernSession({
+        title: 'Memory only contract',
+        characterId: 'char-memory',
+        characterName: 'Archivist',
+        contextSnapshot: {
+            character: { id: 'char-memory', name: 'Archivist', description: 'Keeps notes.' },
+        },
+        presetId: preset.id,
+        presetName: preset.name,
+        state: {
+            contract: mergeTavernSessionContract(undefined, {
+                memoryArchiving: true,
+                cartographyEngine: false,
+            }),
+        },
+    });
+    await writeTavernMemoryFile(session.id, 'memory/session.md', '# Session\nSECRET_MEMORY_NOTE', { source: 'user' });
+    await executeTavernStateTool(session.id, 'StatePatch', {
+        ops: [{
+            op: 'meta',
+            set: {
+                name: 'Hidden Cellar',
+                viewBox: [0, 0, 500, 400],
+                status: 'active',
+            },
+        }, {
+            op: 'add',
+            element: { id: 'cellar-room', at: [30, 30], rect: [120, 80], cat: 'wall' },
+        }],
+    });
+
+    const result = await simulateXbTavernRequest({
+        sessionId: session.id,
+        agentConfig: {
+            currentPresetName: '酒馆 OpenAI',
+            presets: {
+                '酒馆 OpenAI': {
+                    provider: 'sillytavern-openai-compatible',
+                    modelConfigs: {
+                        'sillytavern-openai-compatible': {
+                            model: 'gpt-test',
+                        },
+                    },
+                },
+            },
+        },
+        contextSnapshot: session.contextSnapshot || {},
+        preset,
+        currentUserMessage: '把档案给我。',
+    });
+
+    assert.match(result.buildSnapshot.rawMessagesJson, /SECRET_MEMORY_NOTE/);
+    assert.doesNotMatch(result.buildSnapshot.rawMessagesJson, /可视化结构状态摘要/);
+    assert.equal(result.buildSnapshot.structuredStates, undefined);
+});
+
+test('xb tavern simulated request injects only structured state when memory archiving is disabled', async () => {
+    await resetDb();
+    const preset = createDefaultXbTavernPreset();
+    const session = await createTavernSession({
+        title: 'Map only contract',
+        characterId: 'char-map-only',
+        characterName: 'Scout',
+        contextSnapshot: {
+            character: { id: 'char-map-only', name: 'Scout', description: 'Checks routes.' },
+        },
+        presetId: preset.id,
+        presetName: preset.name,
+        state: {
+            contract: mergeTavernSessionContract(undefined, {
+                memoryArchiving: false,
+                cartographyEngine: true,
+            }),
+        },
+    });
+    await writeTavernMemoryFile(session.id, 'memory/session.md', '# Session\nSECRET_MEMORY_NOTE', { source: 'user' });
+    await executeTavernStateTool(session.id, 'StatePatch', {
+        ops: [{
+            op: 'meta',
+            set: {
+                name: 'River Road',
+                viewBox: [0, 0, 500, 400],
+                status: 'active',
+            },
+        }, {
+            op: 'add',
+            element: { id: 'camp', at: [120, 90], rect: [180, 120], cat: 'terrain' },
+        }],
+    });
+
+    const result = await simulateXbTavernRequest({
+        sessionId: session.id,
+        agentConfig: {
+            currentPresetName: '酒馆 OpenAI',
+            presets: {
+                '酒馆 OpenAI': {
+                    provider: 'sillytavern-openai-compatible',
+                    modelConfigs: {
+                        'sillytavern-openai-compatible': {
+                            model: 'gpt-test',
+                        },
+                    },
+                },
+            },
+        },
+        contextSnapshot: session.contextSnapshot || {},
+        preset,
+        currentUserMessage: '前面有什么路？',
+    });
+
+    assert.match(result.buildSnapshot.rawMessagesJson, /可视化结构状态摘要/);
+    assert.match(result.buildSnapshot.rawMessagesJson, /River Road/);
+    assert.doesNotMatch(result.buildSnapshot.rawMessagesJson, /SECRET_MEMORY_NOTE/);
+    assert.doesNotMatch(result.buildSnapshot.rawMessagesJson, /固定记忆档案/);
+    assert.equal(result.buildSnapshot.structuredStates?.[0]?.docId, 'main');
+});
+
 test('xb tavern simulated request ignores unusable empty session snapshots', async () => {
     await resetDb();
     const preset = createDefaultXbTavernPreset();
@@ -1798,6 +1943,69 @@ test('xb tavern rerun deletes future messages and rebuilds state from remaining 
     assert.deepEqual(session?.state?.worldEntryStates, {
         'Lore\u0000sticky-entry': { stickyUntilTurn: 8 },
     });
+});
+
+test('xb tavern rerun preserves contract and skips automatic manager work when disabled', async () => {
+    await resetDb();
+    const preset = createDefaultXbTavernPreset();
+    let managerCalls = 0;
+    const first = await runXbTavernTurn({
+        agentConfig: { provider: 'fake-provider', model: 'fake-model' },
+        contextSnapshot: {
+            character: { id: 'char-1', name: 'Aster' },
+        },
+        preset,
+        currentUserMessage: 'Keep the contract.',
+        runtimeState: {
+            contract: mergeTavernSessionContract(undefined, {
+                memoryArchiving: false,
+                cartographyEngine: false,
+            }),
+        },
+        runManager: true,
+        awaitManager: true,
+        executeRunOnce: async (options: TavernRunOnceOptions) => ({
+            text: 'First answer.',
+            requestSnapshot: buildTavernRequestSnapshot(options.agentConfig, options.messages),
+        }),
+        executeManagerOnce: async () => {
+            managerCalls += 1;
+            throw new Error('manager should stay disabled');
+        },
+    });
+
+    assert.equal(first.managerRunId, '');
+    assert.equal(first.managerStatus, '');
+    assert.equal(managerCalls, 0);
+
+    const rerun = await runXbTavernTurn({
+        sessionId: first.sessionId,
+        agentConfig: { provider: 'fake-provider', model: 'fake-model' },
+        contextSnapshot: {
+            character: { id: 'char-1', name: 'Aster' },
+        },
+        preset,
+        currentUserMessage: 'ignored',
+        reuseUserMessageOrder: 0,
+        runManager: true,
+        awaitManager: true,
+        executeRunOnce: async (options: TavernRunOnceOptions) => ({
+            text: 'Rerun answer.',
+            requestSnapshot: buildTavernRequestSnapshot(options.agentConfig, options.messages),
+        }),
+        executeManagerOnce: async () => {
+            managerCalls += 1;
+            throw new Error('manager should stay disabled');
+        },
+    });
+
+    assert.equal(rerun.managerRunId, '');
+    assert.equal(rerun.managerStatus, '');
+    assert.equal(managerCalls, 0);
+    assert.equal((await listTavernManagerRuns(first.sessionId)).length, 0);
+    const session = await getTavernSession(first.sessionId);
+    assert.equal(session?.state?.contract?.memoryArchiving, false);
+    assert.equal(session?.state?.contract?.cartographyEngine, false);
 });
 
 test('xb tavern rerun preserves rollback conflicts instead of rebuilding them away', async () => {

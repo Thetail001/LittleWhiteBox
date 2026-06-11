@@ -1,0 +1,135 @@
+<script setup lang="ts">
+import { computed } from 'vue';
+import {
+    countActiveTavernSessionContract,
+    TAVERN_CONTRACT_MANDATES,
+    TAVERN_CONTRACT_TIER_LABELS,
+    type TavernContractMandateDefinition,
+    type TavernContractPermissionKey,
+    type TavernContractTier,
+    type TavernSessionContract,
+} from '../../../shared/session-contract';
+
+const props = defineProps<{
+    draftContract: TavernSessionContract;
+    dirty: boolean;
+    saving: boolean;
+    canSave: boolean;
+    errorText?: string;
+}>();
+
+const emit = defineEmits<{
+    (event: 'close'): void;
+    (event: 'toggle', key: TavernContractPermissionKey): void;
+    (event: 'save'): void;
+}>();
+
+const groupedMandates = computed(() => {
+    const groups = new Map<TavernContractTier, TavernContractMandateDefinition[]>();
+    TAVERN_CONTRACT_MANDATES.forEach((mandate) => {
+        const current = groups.get(mandate.tier) || [];
+        current.push(mandate);
+        groups.set(mandate.tier, current);
+    });
+    return Array.from(groups.entries()).map(([tier, mandates]) => ({ tier, mandates }));
+});
+
+const activeCount = computed(() => countActiveTavernSessionContract(props.draftContract));
+</script>
+
+<template>
+  <div
+    class="tavern-contract-overlay"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="tavern-contract-title"
+    @click.self="$emit('close')"
+    @keydown.esc="$emit('close')"
+  >
+    <section
+      class="tavern-contract-modal"
+      tabindex="-1"
+    >
+      <header class="tavern-contract-head">
+        <div class="tavern-contract-heading">
+          <h2 id="tavern-contract-title">
+            THE PACT
+          </h2>
+          <p class="eyebrow">
+            PLAYER — AGENT COVENANT
+          </p>
+        </div>
+        <button
+          type="button"
+          class="tavern-contract-close"
+          aria-label="关闭契约"
+          @click="$emit('close')"
+        >
+          ×
+        </button>
+      </header>
+
+      <div class="tavern-contract-body">
+        <p class="tavern-contract-preamble">
+          Before the story begins, define what your Agent is allowed to do.
+          Each sealed mandate grants a specific authority.
+          Amend freely at any time.
+        </p>
+
+        <section
+          v-for="group in groupedMandates"
+          :key="group.tier"
+          class="tavern-contract-tier"
+        >
+          <div class="tavern-contract-tier-bar">
+            <span>{{ TAVERN_CONTRACT_TIER_LABELS[group.tier] }}</span>
+          </div>
+
+          <article
+            v-for="mandate in group.mandates"
+            :key="mandate.key"
+            class="tavern-contract-mandate"
+            :class="{ 'is-off': !draftContract[mandate.key] }"
+          >
+            <button
+              type="button"
+              class="tavern-contract-seal"
+              :class="{ active: draftContract[mandate.key] }"
+              :aria-pressed="draftContract[mandate.key] ? 'true' : 'false'"
+              @click="$emit('toggle', mandate.key)"
+            >
+              <span>{{ mandate.icon }}</span>
+            </button>
+
+            <div class="tavern-contract-copy">
+              <h3>{{ mandate.title }}</h3>
+              <p class="tavern-contract-description">
+                {{ mandate.description }}
+              </p>
+            </div>
+          </article>
+        </section>
+      </div>
+
+      <footer class="tavern-contract-foot">
+        <button
+          type="button"
+          class="tavern-contract-save"
+          :disabled="saving || !canSave"
+          @click="$emit('save')"
+        >
+          {{ saving ? 'SEALING...' : 'SEAL THE COVENANT' }}
+        </button>
+        <p class="tavern-contract-note">
+          {{ activeCount }} OF {{ TAVERN_CONTRACT_MANDATES.length }} MANDATES ACTIVE
+        </p>
+        <p
+          v-if="errorText"
+          class="tavern-contract-error"
+        >
+          {{ errorText }}
+        </p>
+      </footer>
+    </section>
+  </div>
+</template>

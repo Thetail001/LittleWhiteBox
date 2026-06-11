@@ -56,6 +56,7 @@ import {
     saveTavernAssistantPreset,
     setActiveTavernAssistantPresetId,
     setSelectedTavernSessionId,
+    updateTavernSessionState,
     updateTavernManagerMessage,
     updateTavernMessage,
     updateTavernSessionSnapshot,
@@ -72,6 +73,10 @@ import {
     type TavernTurnSummaryRecord,
 } from '../shared/session-db';
 import { getTavernMapStateForSession } from '../shared/structured-state';
+import {
+    normalizeTavernSessionContract,
+    type TavernSessionContract,
+} from '../shared/session-contract';
 import {
     createDefaultTavernAssistantPreset,
     normalizeTavernAssistantPreset,
@@ -681,6 +686,7 @@ const selectedAssistantPresetItem = computed(() => (
 ));
 const selectedSession = computed(() => sessions.value.find((item) => item.id === selectedSessionId.value) || null);
 const sessionRuntimeState = computed(() => normalizeTavernSessionState(selectedSession.value?.state || {}));
+const sessionContract = computed<TavernSessionContract>(() => normalizeTavernSessionContract(sessionRuntimeState.value.contract));
 const activeView = ref<AppView>(readInitialView());
 const activeSettingsWorkspace = ref<SettingsWorkspaceKey>(readInitialSettingsWorkspace());
 const homeThemeDark = ref(readInitialTavernThemeDark());
@@ -2646,6 +2652,20 @@ async function refreshSessions() {
     }
 }
 
+async function saveSessionContract(nextContract: Partial<TavernSessionContract> = {}) {
+    const sessionId = String(selectedSessionId.value || '').trim();
+    if (!sessionId) {return null;}
+    const updated = await updateTavernSessionState(sessionId, {
+        contract: normalizeTavernSessionContract({
+            ...sessionContract.value,
+            ...nextContract,
+        }),
+    });
+    if (!updated) {return null;}
+    sessions.value = sessions.value.map((session) => session.id === updated.id ? updated : session);
+    return updated;
+}
+
 async function refreshManagerRecords(sessionId = selectedSessionId.value) {
     const id = String(sessionId || '').trim();
     if (!id) {
@@ -2703,6 +2723,7 @@ async function pollLiveManagerRecords() {
 
 async function rebuildSelectedSessionRuntimeState(messages: TavernMessageRecord[] = sessionMessages.value) {
     if (!selectedSessionId.value) {return;}
+    const currentSessionState = normalizeTavernSessionState(selectedSession.value?.state || {});
     const runtimeContext = await resolveRuntimeContextForSession(selectedSessionId.value);
     const state = await deriveTavernSessionStateFromMessagesAsync({
         messages,
@@ -2713,7 +2734,10 @@ async function rebuildSelectedSessionRuntimeState(messages: TavernMessageRecord[
         applySubstituteParams: applyTavernSubstituteParams,
         getNativeWorldInfoRuntime: getNativeWorldbookRuntime,
     });
-    await replaceTavernSessionState(selectedSessionId.value, state);
+    await replaceTavernSessionState(selectedSessionId.value, {
+        ...state,
+        contract: currentSessionState.contract,
+    });
     await refreshSessions();
 }
 
@@ -3281,6 +3305,7 @@ async function retryManagerRun(run: TavernManagerRunRecord) {
             turn: run.turn,
             trigger: 'manual_retry',
             assistantPreset: activeAssistantPreset.value,
+            sessionContract: sessionContract.value,
         });
         managerActionStatus.value = result.ok ? '' : `失败：${result.error || 'manager_retry_failed'}`;
     } catch (error) {
@@ -5163,6 +5188,7 @@ provide(TAVERN_APP_UI_CONTEXT, {
     saveCurrentRegexScript,
     saveEditMessage,
     saveEditManagerMessage,
+    saveSessionContract,
     saveSelectedMemoryFile,
     scrollChatToBottom,
     scrollChatToTop,
@@ -5178,6 +5204,7 @@ provide(TAVERN_APP_UI_CONTEXT, {
     selectedPromptRow,
     selectedRegexKey,
     selectedRegexRow,
+    sessionContract,
     selectedSessionId,
     selectedWorldbook,
     selectedWorldbookName,
