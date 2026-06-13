@@ -40509,7 +40509,7 @@ var ree = { class: "chat-mobile-topbar" }, see = { class: "chat-mobile-primary-r
       ], 512), [[ca, e.tab === "simulate"]])])
     ])], 32));
   }
-}), ire = ore, are = { class: "xb-sidebar settings-sidebar" }, lre = { class: "panel guide-card" }, ure = { class: "guide-steps" }, cre = ["onClick"], dre = { key: 0 }, fre = /* @__PURE__ */ tn({
+}), ire = ore, are = { class: "xb-sidebar settings-sidebar" }, lre = { class: "panel guide-card" }, ure = { class: "guide-steps" }, cre = ["onClick"], dre = { class: "guide-label-full" }, fre = { class: "guide-label-mobile" }, hre = { key: 0 }, pre = /* @__PURE__ */ tn({
   __name: "TavernSettingsSidebar",
   props: {
     active: {},
@@ -40523,93 +40523,93 @@ var ree = { class: "chat-mobile-topbar" }, see = { class: "chat-mobile-primary-r
       type: "button",
       class: Re(["guide-step", { active: e.active === o.key }]),
       onClick: (i) => n("select", o.key)
-    }, [_("strong", null, q(o.label), 1), o.badge ? (k(), $("em", dre, q(o.badge), 1)) : he("", !0)], 10, cre))), 128))])])]));
+    }, [_("strong", null, [_("span", dre, q(o.label), 1), _("span", fre, q(o.mobileLabel || o.label), 1)]), o.badge ? (k(), $("em", hre, q(o.badge), 1)) : he("", !0)], 10, cre))), 128))])])]));
   }
-}), hre = fre, pre = { class: "panel step-panel api-workspace" }, mre = { class: "panel-head" }, gre = { class: "api-scroll-body" }, vre = /* @__PURE__ */ tn({
+}), mre = pre, gre = { class: "panel step-panel api-workspace" }, vre = { class: "panel-head" }, yre = /* @__PURE__ */ tn({
   __name: "TavernApiSettingsPanel",
   setup(e) {
-    const { activeSettingsWorkspace: t, apiSettingsRootRef: n, apiReady: r, apiReadyDetail: s, apiRuntimeLine: o } = gi();
-    function i(a) {
-      n.value = a instanceof HTMLElement ? a : null;
+    const { activeSettingsWorkspace: t, apiSettingsRootRef: n, apiReady: r } = gi();
+    function s(o) {
+      n.value = o instanceof HTMLElement ? o : null;
     }
-    return (a, l) => jt((k(), $("div", pre, [_("div", mre, [l[0] || (l[0] = _("div", null, [_("h2", null, "API 配置")], -1)), _("span", { class: Re(["pill", { warning: !b(r) }]) }, q(b(r) ? "可发模" : "需配置"), 3)]), _("div", gre, [_("div", { class: Re(["what-to-check", { warning: !b(r) }]) }, [l[1] || (l[1] = _("strong", null, "当前模型：", -1)), _("span", null, q(b(r) ? b(o) : b(s)), 1)], 2), _("div", {
-      ref: i,
+    return (o, i) => jt((k(), $("div", gre, [_("div", vre, [i[0] || (i[0] = _("div", null, [_("h2", null, "API 配置")], -1)), _("span", { class: Re(["pill", { warning: !b(r) }]) }, q(b(r) ? "可发模" : "需配置"), 3)]), _("div", { class: "api-scroll-body" }, [_("div", {
+      ref: s,
       class: "tavern-api-settings"
     })])], 512)), [[ca, b(t) === "api"]]);
   }
-}), yre = vre, _re = { class: "panel step-panel preset-workspace" }, bre = { class: "panel-head preset-page-head" }, wre = { class: "panel-pills" }, Sre = {
+}), _re = yre, bre = { class: "panel step-panel preset-workspace" }, wre = { class: "panel-head preset-page-head" }, Sre = { class: "panel-pills" }, Tre = {
   key: 0,
   class: "pill warning"
-}, Tre = { class: "pill" }, Ere = { class: "preset-command-bar" }, Are = { class: "preset-source-field" }, Cre = { class: "archive-search preset-source-search" }, xre = { class: "preset-source-list" }, Ire = {
+}, Ere = { class: "pill" }, Are = { class: "preset-command-bar" }, Cre = { class: "preset-source-field" }, xre = { class: "archive-search preset-source-search" }, Ire = { class: "preset-source-list" }, Mre = {
   key: 0,
   class: "inline-empty-note"
-}, Mre = ["onClick"], Rre = { class: "preset-actions" }, Pre = ["disabled"], kre = ["disabled"], Nre = {
+}, Rre = ["onClick"], Pre = { class: "preset-actions" }, kre = ["disabled"], Nre = ["disabled"], $re = {
   key: 0,
   class: "preset-status-line"
-}, $re = { class: "preset-studio" }, Dre = { class: "preset-edit-main prompt-sequence-panel" }, Lre = { class: "preset-form-grid prompt-sequence-summary" }, Ore = ["value"], Fre = ["value"], Bre = { class: "archive-toolbar preset-filterbar" }, Ure = { class: "archive-search" }, qre = { class: "prompt-manager-list" }, Hre = {
+}, Dre = { class: "preset-studio" }, Lre = { class: "preset-edit-main prompt-sequence-panel" }, Ore = { class: "preset-form-grid prompt-sequence-summary" }, Fre = ["value"], Bre = ["value"], Ure = { class: "archive-toolbar preset-filterbar" }, qre = { class: "archive-search" }, Hre = { class: "prompt-manager-list" }, Gre = {
   key: 0,
   class: "inline-empty-note"
-}, Gre = ["onClick"], Vre = ["onClick"], Wre = { class: "prompt-row-main" }, Kre = { class: "prompt-row-actions" }, Jre = ["disabled", "onClick"], zre = ["disabled", "onClick"], Yre = [
+}, Vre = ["onClick"], Wre = ["onClick"], Kre = { class: "prompt-row-main" }, Jre = { class: "prompt-row-actions" }, zre = ["disabled", "onClick"], Yre = ["disabled", "onClick"], Xre = [
   "checked",
   "disabled",
   "onChange"
-], Xre = { class: "preset-preview-panel prompt-detail-panel prompt-editor-panel" }, Qre = { class: "preset-preview-head" }, Zre = {
+], Qre = { class: "preset-preview-panel prompt-detail-panel prompt-editor-panel" }, Zre = { class: "preset-preview-head" }, jre = {
   key: 0,
   class: "prompt-detail-form prompt-editor-form"
-}, jre = ["value"], ese = ["value"], tse = { class: "preset-text-field" }, nse = ["value", "disabled"], rse = {
+}, ese = ["value"], tse = ["value"], nse = { class: "preset-text-field" }, rse = ["value", "disabled"], sse = {
   key: 0,
   class: "muted compact"
-}, sse = {
+}, ose = {
   key: 1,
   class: "empty-note"
-}, ose = /* @__PURE__ */ tn({
+}, ise = /* @__PURE__ */ tn({
   __name: "TavernChatPresetSettingsPanel",
   setup(e) {
     const { activePromptOrderLabel: t, activeSettingsWorkspace: n, canEditPromptOrder: r, CHAT_PRESET_SOURCE_BATCH_SIZE: s, chatPresetSourceSearchText: o, chatPresetSourceVisibleLimit: i, discardPresetChanges: a, filteredPromptEditorRows: l, hiddenChatPresetOptionCount: u, hiddenPromptCount: d, movePromptRow: p, preset: m, presetDirty: v, presetRows: y, presetStatus: w, presetTotalChars: S, PROMPT_EDITOR_BATCH_SIZE: A, promptEditorRows: E, promptRoleDisplay: x, promptRowIndex: I, promptSearchText: R, promptVisibleLimit: M, saveCurrentPreset: B, selectChatPresetFromHost: P, selectedPresetSourceId: D, selectedPromptIdentifier: F, selectedPromptRow: se, togglePromptRow: oe, updatePromptByIdentifier: ce, visibleChatPresetOptions: le, visiblePromptEditorRows: K } = gi();
-    return (z, ee) => jt((k(), $("div", _re, [
-      _("div", bre, [ee[10] || (ee[10] = _("div", null, [_("h2", null, "聊天预设")], -1)), _("div", wre, [b(v) ? (k(), $("span", Sre, "未保存")) : he("", !0), _("span", Tre, q(b(y).length) + " 条 · " + q(b(S)) + " 字", 1)])]),
-      _("div", Ere, [_("div", Are, [
-        _("label", Cre, [ee[11] || (ee[11] = _("span", null, "酒馆预设", -1)), jt(_("input", {
+    return (z, ee) => jt((k(), $("div", bre, [
+      _("div", wre, [ee[10] || (ee[10] = _("div", null, [_("h2", null, "聊天预设")], -1)), _("div", Sre, [b(v) ? (k(), $("span", Tre, "未保存")) : he("", !0), _("span", Ere, q(b(y).length) + " 条 · " + q(b(S)) + " 字", 1)])]),
+      _("div", Are, [_("div", Cre, [
+        _("label", xre, [ee[11] || (ee[11] = _("span", null, "酒馆预设", -1)), jt(_("input", {
           "onUpdate:modelValue": ee[0] || (ee[0] = (ae) => /* @__PURE__ */ Tt(o) ? o.value = ae : null),
           type: "search",
           placeholder: "搜索可用预设"
         }, null, 512), [[Hr, b(o)]])]),
-        _("div", xre, [b(le).length ? he("", !0) : (k(), $("div", Ire, " 没有匹配的酒馆预设。 ")), (k(!0), $(Ge, null, ot(b(le), (ae) => (k(), $("button", {
+        _("div", Ire, [b(le).length ? he("", !0) : (k(), $("div", Mre, " 没有匹配的酒馆预设。 ")), (k(!0), $(Ge, null, ot(b(le), (ae) => (k(), $("button", {
           key: ae.name,
           type: "button",
           class: Re(["preset-source-row", { selected: b(D) === ae.name }]),
           onClick: (ve) => b(P)(ae.name)
-        }, [_("strong", null, q(ae.label), 1), _("small", null, q(b(D) === ae.name ? "当前使用" : "酒馆原生"), 1)], 10, Mre))), 128))]),
+        }, [_("strong", null, q(ae.label), 1), _("small", null, q(b(D) === ae.name ? "当前使用" : "酒馆原生"), 1)], 10, Rre))), 128))]),
         b(u) ? (k(), $("button", {
           key: 0,
           type: "button",
           class: "archive-load-more preset-source-more",
           onClick: ee[1] || (ee[1] = (ae) => i.value += b(s))
         }, " 再显示 " + q(Math.min(b(u), b(s))) + " 个 ", 1)) : he("", !0)
-      ]), _("div", Rre, [_("button", {
+      ]), _("div", Pre, [_("button", {
         type: "button",
         disabled: !b(v),
         onClick: ee[2] || (ee[2] = (...ae) => b(a) && b(a)(...ae))
-      }, " 放弃 ", 8, Pre), _("button", {
+      }, " 放弃 ", 8, kre), _("button", {
         type: "button",
         disabled: !b(r) || !b(v),
         onClick: ee[3] || (ee[3] = (...ae) => b(B) && b(B)(...ae))
-      }, " 保存 ", 8, kre)])]),
-      b(w) ? (k(), $("div", Nre, [_("span", null, q(b(w)), 1)])) : he("", !0),
-      _("div", $re, [_("section", Dre, [
-        _("div", Lre, [_("label", null, [ee[12] || (ee[12] = _("span", null, "当前来源", -1)), _("input", {
+      }, " 保存 ", 8, Nre)])]),
+      b(w) ? (k(), $("div", $re, [_("span", null, q(b(w)), 1)])) : he("", !0),
+      _("div", Dre, [_("section", Lre, [
+        _("div", Ore, [_("label", null, [ee[12] || (ee[12] = _("span", null, "当前来源", -1)), _("input", {
           value: b(m).promptManager?.name || "",
           readonly: ""
-        }, null, 8, Ore)]), _("label", null, [ee[13] || (ee[13] = _("span", null, "顺序", -1)), _("input", {
+        }, null, 8, Fre)]), _("label", null, [ee[13] || (ee[13] = _("span", null, "顺序", -1)), _("input", {
           value: b(t),
           readonly: ""
-        }, null, 8, Fre)])]),
-        _("div", Bre, [_("label", Ure, [ee[14] || (ee[14] = _("span", null, "检索条目", -1)), jt(_("input", {
+        }, null, 8, Bre)])]),
+        _("div", Ure, [_("label", qre, [ee[14] || (ee[14] = _("span", null, "检索条目", -1)), jt(_("input", {
           "onUpdate:modelValue": ee[4] || (ee[4] = (ae) => /* @__PURE__ */ Tt(R) ? R.value = ae : null),
           type: "search",
           placeholder: "按名称、消息身份或内容搜索"
         }, null, 512), [[Hr, b(R)]])]), _("p", null, " 显示 " + q(Math.min(b(l).length, b(M))) + " / " + q(b(l).length) + "，共 " + q(b(E).length) + " 条 ", 1)]),
-        _("div", qre, [b(K).length ? he("", !0) : (k(), $("div", Hre, " 没有匹配的提示词条目。 ")), (k(!0), $(Ge, null, ot(b(K), (ae) => (k(), $("div", {
+        _("div", Hre, [b(K).length ? he("", !0) : (k(), $("div", Gre, " 没有匹配的提示词条目。 ")), (k(!0), $(Ge, null, ot(b(K), (ae) => (k(), $("div", {
           key: ae.identifier,
           class: Re(["prompt-manager-row", {
             selected: b(F) === ae.identifier,
@@ -40623,21 +40623,21 @@ var ree = { class: "chat-mobile-topbar" }, see = { class: "chat-mobile-primary-r
             class: "prompt-row-index",
             title: "选择",
             onClick: Hn((ve) => F.value = ae.identifier, ["stop"])
-          }, q(b(I)(ae.identifier) + 1), 9, Vre),
-          _("div", Wre, [_("strong", null, q(ae.name), 1), _("small", null, q(b(x)(ae.role)), 1)]),
-          _("div", Kre, [
+          }, q(b(I)(ae.identifier) + 1), 9, Wre),
+          _("div", Kre, [_("strong", null, q(ae.name), 1), _("small", null, q(b(x)(ae.role)), 1)]),
+          _("div", Jre, [
             _("button", {
               type: "button",
               title: "上移",
               disabled: !b(r) || !!b(R) || b(I)(ae.identifier) === 0,
               onClick: Hn((ve) => b(p)(ae.identifier, -1), ["stop"])
-            }, " ↑ ", 8, Jre),
+            }, " ↑ ", 8, zre),
             _("button", {
               type: "button",
               title: "下移",
               disabled: !b(r) || !!b(R) || b(I)(ae.identifier) === b(E).length - 1,
               onClick: Hn((ve) => b(p)(ae.identifier, 1), ["stop"])
-            }, " ↓ ", 8, zre),
+            }, " ↓ ", 8, Yre),
             _("label", {
               class: "prompt-toggle",
               title: "启用",
@@ -40648,20 +40648,20 @@ var ree = { class: "chat-mobile-topbar" }, see = { class: "chat-mobile-primary-r
               checked: ae.enabled,
               disabled: !b(r),
               onChange: (ve) => b(oe)(ae.identifier, ve.target.checked)
-            }, null, 40, Yre)])
+            }, null, 40, Xre)])
           ])
-        ], 10, Gre))), 128))]),
+        ], 10, Vre))), 128))]),
         b(d) ? (k(), $("button", {
           key: 0,
           type: "button",
           class: "archive-load-more",
           onClick: ee[6] || (ee[6] = (ae) => M.value += b(A))
         }, " 再显示 " + q(Math.min(b(d), b(A))) + " 条 ", 1)) : he("", !0)
-      ]), _("aside", Xre, [_("div", Qre, [_("strong", null, q(b(se)?.name || "提示词条目"), 1), _("span", null, q(b(x)(String(b(se)?.role || "system"))), 1)]), b(se) ? (k(), $("div", Zre, [
+      ]), _("aside", Qre, [_("div", Zre, [_("strong", null, q(b(se)?.name || "提示词条目"), 1), _("span", null, q(b(x)(String(b(se)?.role || "system"))), 1)]), b(se) ? (k(), $("div", jre, [
         _("label", null, [ee[15] || (ee[15] = _("span", null, "名称", -1)), _("input", {
           value: b(se).name,
           onInput: ee[7] || (ee[7] = (ae) => b(ce)(b(se).identifier, { name: ae.target.value }))
-        }, null, 40, jre)]),
+        }, null, 40, ese)]),
         _("label", null, [ee[17] || (ee[17] = _("span", null, "消息身份", -1)), _("select", {
           value: b(se).role,
           onChange: ee[8] || (ee[8] = (ae) => b(ce)(b(se).identifier, { role: ae.target.value }))
@@ -40669,58 +40669,58 @@ var ree = { class: "chat-mobile-topbar" }, see = { class: "chat-mobile-primary-r
           _("option", { value: "system" }, "系统", -1),
           _("option", { value: "user" }, "用户", -1),
           _("option", { value: "assistant" }, "助手", -1)
-        ])], 40, ese)]),
-        _("label", tse, [ee[18] || (ee[18] = _("span", null, "内容", -1)), _("textarea", {
+        ])], 40, tse)]),
+        _("label", nse, [ee[18] || (ee[18] = _("span", null, "内容", -1)), _("textarea", {
           value: b(se).content,
           rows: "16",
           spellcheck: "false",
           disabled: b(se).marker,
           onInput: ee[9] || (ee[9] = (ae) => b(ce)(b(se).identifier, { content: ae.target.value }))
-        }, null, 40, nse)]),
-        b(se).marker ? (k(), $("p", rse, " 这是酒馆顺序占位，不编辑正文。 ")) : he("", !0)
-      ])) : (k(), $("div", sse, " 当前预设没有可编辑条目。 "))])])
+        }, null, 40, rse)]),
+        b(se).marker ? (k(), $("p", sse, " 这是酒馆顺序占位，不编辑正文。 ")) : he("", !0)
+      ])) : (k(), $("div", ose, " 当前预设没有可编辑条目。 "))])])
     ], 512)), [[ca, b(n) === "chatPreset"]]);
   }
-}), ise = ose, ase = { class: "panel step-panel native-workspace" }, lse = { class: "panel-head preset-page-head" }, use = { class: "panel-pills panel-head-actions" }, cse = { class: "pill" }, dse = {
+}), ase = ise, lse = { class: "panel step-panel native-workspace" }, use = { class: "panel-head preset-page-head" }, cse = { class: "panel-pills panel-head-actions" }, dse = { class: "pill" }, fse = {
   key: 0,
   class: "pill"
-}, fse = {
+}, hse = {
   key: 0,
   class: "preset-status-line"
-}, hse = { class: "native-settings-studio worldbook-overview-grid" }, pse = { class: "native-list-panel worldbook-index-panel" }, mse = { class: "archive-search native-search" }, gse = ["onClick", "onKeydown"], vse = ["aria-label"], yse = { class: "native-row-copy" }, _se = { key: 0 }, bse = ["onClick"], wse = {
+}, pse = { class: "native-settings-studio worldbook-overview-grid" }, mse = { class: "native-list-panel worldbook-index-panel" }, gse = { class: "archive-search native-search" }, vse = ["onClick", "onKeydown"], yse = ["aria-label"], _se = { class: "native-row-copy" }, bse = { key: 0 }, wse = ["onClick"], Sse = {
   key: 1,
   class: "inline-empty-note"
-}, Sse = { class: "native-detail-panel worldbook-overview-detail worldbook-gateway-panel" }, Tse = {
+}, Tse = { class: "native-detail-panel worldbook-overview-detail worldbook-gateway-panel" }, Ese = {
   key: 0,
   class: "worldbook-preview-surface"
-}, Ese = { class: "preset-preview-head worldbook-selected-head" }, Ase = { key: 0 }, Cse = {
+}, Ase = { class: "preset-preview-head worldbook-selected-head" }, Cse = { key: 0 }, xse = {
   key: 0,
   class: "worldbook-link-badge"
-}, xse = {
+}, Ise = {
   key: 0,
   class: "worldbook-preview-status"
-}, Ise = { class: "worldbook-metric-grid" }, Mse = {
+}, Mse = { class: "worldbook-metric-grid" }, Rse = {
   key: 0,
   class: "worldbook-entry-preview-list"
-}, Rse = {
+}, Pse = {
   key: 0,
   class: "worldbook-entry-keys"
-}, Pse = {
-  key: 1,
-  class: "empty-note"
 }, kse = {
   key: 1,
   class: "empty-note"
-}, Nse = /* @__PURE__ */ tn({
+}, Nse = {
+  key: 1,
+  class: "empty-note"
+}, $se = /* @__PURE__ */ tn({
   __name: "TavernWorldbooksSettingsPanel",
   setup(e) {
     const { activeSettingsWorkspace: t, hiddenWorldbookCount: n, hiddenWorldbookPreviewEntryCount: r, openSelectedWorldbookEditor: s, selectedWorldbook: o, selectedWorldbookName: i, showMoreWorldbookPreviewEntries: a, visibleWorldbookOptions: l, WORLDBOOK_BATCH_SIZE: u, WORLDBOOK_PREVIEW_BATCH_SIZE: d, worldbookGlobalCount: p, worldbookOptions: m, worldbookPreview: v, worldbookPreviewStatus: y, worldbookSearchText: w, worldbookSourceSummary: S, worldbookStatus: A, worldbookVisibleLimit: E } = gi();
-    return (x, I) => jt((k(), $("div", ase, [
-      _("div", lse, [I[3] || (I[3] = _("div", null, [_("h2", null, "世界书")], -1)), _("div", use, [_("span", cse, q(b(m).length) + " 本", 1), b(p) ? (k(), $("span", dse, q(b(p)) + " 本全局", 1)) : he("", !0)])]),
-      b(A) ? (k(), $("div", fse, [_("span", null, q(b(A)), 1)])) : he("", !0),
-      _("div", hse, [_("aside", pse, [
+    return (x, I) => jt((k(), $("div", lse, [
+      _("div", use, [I[3] || (I[3] = _("div", null, [_("h2", null, "世界书")], -1)), _("div", cse, [_("span", dse, q(b(m).length) + " 本", 1), b(p) ? (k(), $("span", fse, q(b(p)) + " 本全局", 1)) : he("", !0)])]),
+      b(A) ? (k(), $("div", hse, [_("span", null, q(b(A)), 1)])) : he("", !0),
+      _("div", pse, [_("aside", mse, [
         I[5] || (I[5] = _("div", { class: "assistant-preset-nav-head" }, [_("strong", null, "世界书")], -1)),
-        _("label", mse, [I[4] || (I[4] = _("span", null, "检索世界书", -1)), jt(_("input", {
+        _("label", gse, [I[4] || (I[4] = _("span", null, "检索世界书", -1)), jt(_("input", {
           "onUpdate:modelValue": I[0] || (I[0] = (R) => /* @__PURE__ */ Tt(w) ? w.value = R : null),
           type: "search",
           placeholder: "输入书名"
@@ -40739,65 +40739,65 @@ var ree = { class: "chat-mobile-topbar" }, see = { class: "chat-mobile-primary-r
           }, [_("i", {
             class: Re(["source-light source-global", { active: R.globalActive }]),
             title: "全局世界书"
-          }, "全", 2)], 8, vse),
-          _("span", yse, [_("strong", null, q(R.name), 1), b(S)(R) ? (k(), $("small", _se, q(b(S)(R)), 1)) : he("", !0)]),
+          }, "全", 2)], 8, yse),
+          _("span", _se, [_("strong", null, q(R.name), 1), b(S)(R) ? (k(), $("small", bse, q(b(S)(R)), 1)) : he("", !0)]),
           _("button", {
             type: "button",
             class: "worldbook-row-open",
             title: "打开酒馆编辑器",
             onClick: Hn((M) => b(s)(R.name), ["stop"])
-          }, " 打开 ", 8, bse)
-        ], 42, gse))), 128)),
+          }, " 打开 ", 8, wse)
+        ], 42, vse))), 128)),
         b(n) ? (k(), $("button", {
           key: 0,
           type: "button",
           class: "native-add-row",
           onClick: I[1] || (I[1] = (R) => E.value += b(u))
         }, " 再显示 " + q(Math.min(b(n), b(u))) + " 本 ", 1)) : he("", !0),
-        b(l).length ? he("", !0) : (k(), $("div", wse, " 没有匹配的世界书。 "))
-      ]), _("section", Sse, [b(o) ? (k(), $("div", Tse, [_("div", Ese, [_("div", null, [_("strong", null, q(b(o).name), 1), b(S)(b(o)) ? (k(), $("span", Ase, q(b(S)(b(o))), 1)) : he("", !0)]), b(o).globalActive ? (k(), $("span", Cse, "全局世界书")) : he("", !0)]), b(y) ? (k(), $("div", xse, q(b(y)), 1)) : b(v) && b(v).name === b(o).name ? (k(), $(Ge, { key: 1 }, [_("div", Ise, [
+        b(l).length ? he("", !0) : (k(), $("div", Sse, " 没有匹配的世界书。 "))
+      ]), _("section", Tse, [b(o) ? (k(), $("div", Ese, [_("div", Ase, [_("div", null, [_("strong", null, q(b(o).name), 1), b(S)(b(o)) ? (k(), $("span", Cse, q(b(S)(b(o))), 1)) : he("", !0)]), b(o).globalActive ? (k(), $("span", xse, "全局世界书")) : he("", !0)]), b(y) ? (k(), $("div", Ise, q(b(y)), 1)) : b(v) && b(v).name === b(o).name ? (k(), $(Ge, { key: 1 }, [_("div", Mse, [
         _("span", null, [_("strong", null, q(b(v).entryCount), 1), I[6] || (I[6] = _("small", null, "条目", -1))]),
         _("span", null, [_("strong", null, q(b(v).enabledCount), 1), I[7] || (I[7] = _("small", null, "启用", -1))]),
         _("span", null, [_("strong", null, q(b(v).constantCount), 1), I[8] || (I[8] = _("small", null, "常驻", -1))]),
         _("span", null, [_("strong", null, q(b(v).keywordCount), 1), I[9] || (I[9] = _("small", null, "关键词", -1))]),
         _("span", null, [_("strong", null, q(b(v).totalChars), 1), I[10] || (I[10] = _("small", null, "正文字符", -1))])
-      ]), b(v).entries.length ? (k(), $("div", Mse, [(k(!0), $(Ge, null, ot(b(v).entries, (R) => (k(), $("article", {
+      ]), b(v).entries.length ? (k(), $("div", Rse, [(k(!0), $(Ge, null, ot(b(v).entries, (R) => (k(), $("article", {
         key: R.uid || R.name,
         class: Re(["worldbook-entry-preview", { disabled: !R.enabled }])
       }, [
         _("header", null, [_("strong", null, q(R.name), 1), _("span", null, q(R.constant ? "常驻" : R.enabled ? "启用" : "关闭"), 1)]),
-        R.keys.length || R.secondaryKeys.length ? (k(), $("p", Rse, q([...R.keys, ...R.secondaryKeys].slice(0, 8).join(" / ")), 1)) : he("", !0),
+        R.keys.length || R.secondaryKeys.length ? (k(), $("p", Pse, q([...R.keys, ...R.secondaryKeys].slice(0, 8).join(" / ")), 1)) : he("", !0),
         _("p", null, q(R.contentPreview || "没有正文预览。"), 1)
       ], 2))), 128)), b(r) ? (k(), $("button", {
         key: 0,
         type: "button",
         class: "native-add-row worldbook-preview-more",
         onClick: I[2] || (I[2] = (...R) => b(a) && b(a)(...R))
-      }, " 再显示 " + q(Math.min(b(r), b(d))) + " 条 ", 1)) : he("", !0)])) : (k(), $("div", Pse, " 这本世界书暂无条目。 "))], 64)) : he("", !0)])) : (k(), $("div", kse, " 选择一本世界书后查看预览。 "))])])
+      }, " 再显示 " + q(Math.min(b(r), b(d))) + " 条 ", 1)) : he("", !0)])) : (k(), $("div", kse, " 这本世界书暂无条目。 "))], 64)) : he("", !0)])) : (k(), $("div", Nse, " 选择一本世界书后查看预览。 "))])])
     ], 512)), [[ca, b(t) === "worldbooks"]]);
   }
-}), $se = Nse, Dse = { class: "panel step-panel native-workspace" }, Lse = { class: "panel-head preset-page-head" }, Ose = { class: "panel-pills" }, Fse = {
+}), Dse = $se, Lse = { class: "panel step-panel native-workspace" }, Ose = { class: "panel-head preset-page-head" }, Fse = { class: "panel-pills" }, Bse = {
   key: 0,
   class: "pill warning"
-}, Bse = { class: "pill" }, Use = { class: "preset-command-bar" }, qse = ["value"], Hse = { class: "preset-actions" }, Gse = ["disabled"], Vse = ["disabled"], Wse = {
+}, Use = { class: "pill" }, qse = { class: "preset-command-bar" }, Hse = ["value"], Gse = { class: "preset-actions" }, Vse = ["disabled"], Wse = ["disabled"], Kse = {
   key: 0,
   class: "preset-status-line"
-}, Kse = { class: "native-settings-studio regex-studio" }, Jse = { class: "native-list-panel regex-group-panel regex-library-panel" }, zse = { class: "archive-search native-search" }, Yse = { class: "assistant-preset-nav-head" }, Xse = ["onClick"], Qse = ["onClick"], Zse = ["onClick"], jse = {
+}, Jse = { class: "native-settings-studio regex-studio" }, zse = { class: "native-list-panel regex-group-panel regex-library-panel" }, Yse = { class: "archive-search native-search" }, Xse = { class: "assistant-preset-nav-head" }, Qse = ["onClick"], Zse = ["onClick"], jse = ["onClick"], eoe = {
   key: 0,
   class: "inline-empty-note"
-}, eoe = { class: "native-detail-panel regex-detail-panel" }, toe = { class: "preset-preview-head" }, noe = { class: "regex-editor-grid" }, roe = { class: "regex-editor-section regex-pattern-section" }, soe = { class: "native-form-grid regex-editor-meta" }, ooe = ["value"], ioe = ["value"], aoe = { class: "preset-text-field regex-main-field" }, loe = ["value"], uoe = { class: "preset-text-field regex-support-field" }, coe = ["value"], doe = { class: "regex-editor-section regex-placement-section" }, foe = { class: "native-check-row placement-row regex-editor-switches" }, hoe = ["checked", "onChange"], poe = { class: "regex-editor-section regex-ephemeral-section" }, moe = { class: "native-check-row regex-editor-switches" }, goe = { class: "inline-check" }, voe = ["checked"], yoe = { class: "inline-check" }, _oe = ["checked"], boe = { class: "regex-editor-section regex-options-section" }, woe = { class: "native-check-row regex-editor-switches" }, Soe = { class: "inline-check" }, Toe = ["checked"], Eoe = { class: "inline-check" }, Aoe = ["checked"], Coe = { class: "native-form-grid regex-advanced-grid" }, xoe = ["value"], Ioe = ["value"], Moe = ["value"], Roe = { class: "preset-actions native-danger-row" }, Poe = ["disabled"], koe = {
+}, toe = { class: "native-detail-panel regex-detail-panel" }, noe = { class: "preset-preview-head" }, roe = { class: "regex-editor-grid" }, soe = { class: "regex-editor-section regex-pattern-section" }, ooe = { class: "native-form-grid regex-editor-meta" }, ioe = ["value"], aoe = ["value"], loe = { class: "preset-text-field regex-main-field" }, uoe = ["value"], coe = { class: "preset-text-field regex-support-field" }, doe = ["value"], foe = { class: "regex-editor-section regex-placement-section" }, hoe = { class: "native-check-row placement-row regex-editor-switches" }, poe = ["checked", "onChange"], moe = { class: "regex-editor-section regex-ephemeral-section" }, goe = { class: "native-check-row regex-editor-switches" }, voe = { class: "inline-check" }, yoe = ["checked"], _oe = { class: "inline-check" }, boe = ["checked"], woe = { class: "regex-editor-section regex-options-section" }, Soe = { class: "native-check-row regex-editor-switches" }, Toe = { class: "inline-check" }, Eoe = ["checked"], Aoe = { class: "inline-check" }, Coe = ["checked"], xoe = { class: "native-form-grid regex-advanced-grid" }, Ioe = ["value"], Moe = ["value"], Roe = ["value"], Poe = { class: "preset-actions native-danger-row" }, koe = ["disabled"], Noe = {
   key: 1,
   class: "empty-note"
-}, Noe = /* @__PURE__ */ tn({
+}, $oe = /* @__PURE__ */ tn({
   __name: "TavernRegexSettingsPanel",
   setup(e) {
     const { activeSettingsWorkspace: t, applyActiveRegexScript: n, createRegexScript: r, deleteCurrentRegexScript: s, expandRegexGroup: o, linesFromList: i, listFromLines: a, refreshRegexFromHost: l, REGEX_GROUP_BATCH_SIZE: u, regexDirty: d, regexDraft: p, regexDraftTypeLabel: m, regexGroupsForDisplay: v, regexPlacementLabel: y, regexScriptRows: w, regexSearchText: S, regexStatus: A, saveCurrentRegexScript: E, selectedRegexKey: x, selectedRegexRow: I, selectRegexScript: R, toggleRegexPlacement: M, updateRegexPatch: B } = gi();
-    return (P, D) => jt((k(), $("div", Dse, [
-      _("div", Lse, [D[16] || (D[16] = _("div", null, [_("h2", null, "正则")], -1)), _("div", Ose, [b(d) ? (k(), $("span", Fse, "未保存")) : he("", !0), _("span", Bse, q(b(w).length) + " 条", 1)])]),
-      _("div", Use, [_("label", null, [D[17] || (D[17] = _("span", null, "当前类型", -1)), _("input", {
+    return (P, D) => jt((k(), $("div", Lse, [
+      _("div", Ose, [D[16] || (D[16] = _("div", null, [_("h2", null, "正则")], -1)), _("div", Fse, [b(d) ? (k(), $("span", Bse, "未保存")) : he("", !0), _("span", Use, q(b(w).length) + " 条", 1)])]),
+      _("div", qse, [_("label", null, [D[17] || (D[17] = _("span", null, "当前类型", -1)), _("input", {
         value: b(m)(),
         readonly: ""
-      }, null, 8, qse)]), _("div", Hse, [
+      }, null, 8, Hse)]), _("div", Gse, [
         _("button", {
           type: "button",
           onClick: D[0] || (D[0] = (...F) => b(l) && b(l)(...F))
@@ -40806,16 +40806,16 @@ var ree = { class: "chat-mobile-topbar" }, see = { class: "chat-mobile-primary-r
           type: "button",
           disabled: !b(d),
           onClick: D[1] || (D[1] = (F) => b(n)(b(I)))
-        }, " 放弃 ", 8, Gse),
+        }, " 放弃 ", 8, Vse),
         _("button", {
           type: "button",
           disabled: !b(p).scriptName || !b(d),
           onClick: D[2] || (D[2] = (...F) => b(E) && b(E)(...F))
-        }, " 保存 ", 8, Vse)
+        }, " 保存 ", 8, Wse)
       ])]),
-      b(A) ? (k(), $("div", Wse, [_("span", null, q(b(A)), 1)])) : he("", !0),
-      _("div", Kse, [_("aside", Jse, [
-        _("label", zse, [D[18] || (D[18] = _("span", null, "检索正则", -1)), jt(_("input", {
+      b(A) ? (k(), $("div", Kse, [_("span", null, q(b(A)), 1)])) : he("", !0),
+      _("div", Jse, [_("aside", zse, [
+        _("label", Yse, [D[18] || (D[18] = _("span", null, "检索正则", -1)), jt(_("input", {
           "onUpdate:modelValue": D[3] || (D[3] = (F) => /* @__PURE__ */ Tt(S) ? S.value = F : null),
           type: "search",
           placeholder: "名称、匹配式或替换文本"
@@ -40824,7 +40824,7 @@ var ree = { class: "chat-mobile-topbar" }, see = { class: "chat-mobile-primary-r
           key: F.key,
           class: "regex-group-block"
         }, [
-          _("div", Yse, [_("strong", null, q(F.label), 1), _("span", null, q(F.allowed === !1 ? "未允许" : `${F.visibleRows.length} / ${F.filteredCount} / ${F.totalCount} 条`), 1)]),
+          _("div", Xse, [_("strong", null, q(F.label), 1), _("span", null, q(F.allowed === !1 ? "未允许" : `${F.visibleRows.length} / ${F.filteredCount} / ${F.totalCount} 条`), 1)]),
           (k(!0), $(Ge, null, ot(F.visibleRows, (se) => (k(), $("button", {
             key: se.key,
             type: "button",
@@ -40837,47 +40837,47 @@ var ree = { class: "chat-mobile-topbar" }, see = { class: "chat-mobile-primary-r
             _("span", null, q(se.script.disabled ? "停" : "用"), 1),
             _("strong", null, q(se.script.scriptName || "未命名正则"), 1),
             _("small", null, q(se.script.findRegex || "空匹配式"), 1)
-          ], 10, Xse))), 128)),
+          ], 10, Qse))), 128)),
           F.hiddenCount ? (k(), $("button", {
             key: 0,
             type: "button",
             class: "native-add-row",
             onClick: (se) => b(o)(F.key)
-          }, " 再显示 " + q(Math.min(F.hiddenCount, b(u))) + " 条 ", 9, Qse)) : he("", !0),
+          }, " 再显示 " + q(Math.min(F.hiddenCount, b(u))) + " 条 ", 9, Zse)) : he("", !0),
           _("button", {
             type: "button",
             class: "native-add-row",
             onClick: (se) => b(r)(F)
-          }, " 新增" + q(F.label), 9, Zse)
+          }, " 新增" + q(F.label), 9, jse)
         ]))), 128)),
-        b(S) && !b(v).length ? (k(), $("div", jse, " 没有匹配的正则。 ")) : he("", !0)
-      ]), _("section", eoe, [b(x) || b(p).scriptName ? (k(), $(Ge, { key: 0 }, [
-        _("div", toe, [_("strong", null, q(b(p).scriptName || "新正则"), 1), _("span", null, q(b(m)()), 1)]),
-        _("div", noe, [
-          _("section", roe, [
+        b(S) && !b(v).length ? (k(), $("div", eoe, " 没有匹配的正则。 ")) : he("", !0)
+      ]), _("section", toe, [b(x) || b(p).scriptName ? (k(), $(Ge, { key: 0 }, [
+        _("div", noe, [_("strong", null, q(b(p).scriptName || "新正则"), 1), _("span", null, q(b(m)()), 1)]),
+        _("div", roe, [
+          _("section", soe, [
             D[23] || (D[23] = _("div", { class: "regex-section-title" }, " 查找与替换 ", -1)),
-            _("div", soe, [_("label", null, [D[19] || (D[19] = _("span", null, "名称", -1)), _("input", {
+            _("div", ooe, [_("label", null, [D[19] || (D[19] = _("span", null, "名称", -1)), _("input", {
               value: b(p).scriptName || "",
               onInput: D[4] || (D[4] = (F) => b(B)({ scriptName: F.target.value }))
-            }, null, 40, ooe)]), _("label", null, [D[20] || (D[20] = _("span", null, "匹配", -1)), _("input", {
+            }, null, 40, ioe)]), _("label", null, [D[20] || (D[20] = _("span", null, "匹配", -1)), _("input", {
               value: b(p).findRegex || "",
               spellcheck: "false",
               onInput: D[5] || (D[5] = (F) => b(B)({ findRegex: F.target.value }))
-            }, null, 40, ioe)])]),
-            _("label", aoe, [D[21] || (D[21] = _("span", null, "替换为", -1)), _("textarea", {
+            }, null, 40, aoe)])]),
+            _("label", loe, [D[21] || (D[21] = _("span", null, "替换为", -1)), _("textarea", {
               value: b(p).replaceString || "",
               rows: "5",
               spellcheck: "false",
               onInput: D[6] || (D[6] = (F) => b(B)({ replaceString: F.target.value }))
-            }, null, 40, loe)]),
-            _("label", uoe, [D[22] || (D[22] = _("span", null, "裁剪字符串", -1)), _("textarea", {
+            }, null, 40, uoe)]),
+            _("label", coe, [D[22] || (D[22] = _("span", null, "裁剪字符串", -1)), _("textarea", {
               value: b(i)(b(p).trimStrings),
               rows: "3",
               spellcheck: "false",
               onInput: D[7] || (D[7] = (F) => b(B)({ trimStrings: b(a)(F.target.value) }))
-            }, null, 40, coe)])
+            }, null, 40, doe)])
           ]),
-          _("section", doe, [D[24] || (D[24] = _("div", { class: "regex-section-title" }, " 作用范围 ", -1)), _("div", foe, [(k(), $(Ge, null, ot([
+          _("section", foe, [D[24] || (D[24] = _("div", { class: "regex-section-title" }, " 作用范围 ", -1)), _("div", hoe, [(k(), $(Ge, null, ot([
             1,
             2,
             3,
@@ -40890,28 +40890,28 @@ var ree = { class: "chat-mobile-topbar" }, see = { class: "chat-mobile-primary-r
             type: "checkbox",
             checked: (b(p).placement || []).includes(F),
             onChange: (se) => b(M)(F, se.target.checked)
-          }, null, 40, hoe), _("span", null, q(b(y)(F)), 1)])), 64))])]),
-          _("section", poe, [D[27] || (D[27] = _("div", { class: "regex-section-title" }, " 表层替换 ", -1)), _("div", moe, [_("label", goe, [_("input", {
+          }, null, 40, poe), _("span", null, q(b(y)(F)), 1)])), 64))])]),
+          _("section", moe, [D[27] || (D[27] = _("div", { class: "regex-section-title" }, " 表层替换 ", -1)), _("div", goe, [_("label", voe, [_("input", {
             type: "checkbox",
             checked: b(p).markdownOnly === !0,
             onChange: D[8] || (D[8] = (F) => b(B)({ markdownOnly: F.target.checked }))
-          }, null, 40, voe), D[25] || (D[25] = _("span", null, "只改显示", -1))]), _("label", yoe, [_("input", {
+          }, null, 40, yoe), D[25] || (D[25] = _("span", null, "只改显示", -1))]), _("label", _oe, [_("input", {
             type: "checkbox",
             checked: b(p).promptOnly === !0,
             onChange: D[9] || (D[9] = (F) => b(B)({ promptOnly: F.target.checked }))
-          }, null, 40, _oe), D[26] || (D[26] = _("span", null, "只改提示词", -1))])])]),
-          _("section", boe, [
+          }, null, 40, boe), D[26] || (D[26] = _("span", null, "只改提示词", -1))])])]),
+          _("section", woe, [
             D[34] || (D[34] = _("div", { class: "regex-section-title" }, " 其他选项 ", -1)),
-            _("div", woe, [_("label", Soe, [_("input", {
+            _("div", Soe, [_("label", Toe, [_("input", {
               type: "checkbox",
               checked: b(p).disabled === !0,
               onChange: D[10] || (D[10] = (F) => b(B)({ disabled: F.target.checked }))
-            }, null, 40, Toe), D[28] || (D[28] = _("span", null, "停用", -1))]), _("label", Eoe, [_("input", {
+            }, null, 40, Eoe), D[28] || (D[28] = _("span", null, "停用", -1))]), _("label", Aoe, [_("input", {
               type: "checkbox",
               checked: b(p).runOnEdit === !0,
               onChange: D[11] || (D[11] = (F) => b(B)({ runOnEdit: F.target.checked }))
-            }, null, 40, Aoe), D[29] || (D[29] = _("span", null, "编辑时执行", -1))])]),
-            _("div", Coe, [
+            }, null, 40, Coe), D[29] || (D[29] = _("span", null, "编辑时执行", -1))])]),
+            _("div", xoe, [
               _("label", null, [D[31] || (D[31] = _("span", null, "查找宏", -1)), _("select", {
                 value: b(p).substituteRegex ?? 0,
                 onChange: D[12] || (D[12] = (F) => b(B)({ substituteRegex: Number(F.target.value) }))
@@ -40919,70 +40919,70 @@ var ree = { class: "chat-mobile-topbar" }, see = { class: "chat-mobile-primary-r
                 _("option", { value: 0 }, "不替换", -1),
                 _("option", { value: 1 }, "原样替换", -1),
                 _("option", { value: 2 }, "转义替换", -1)
-              ])], 40, xoe)]),
+              ])], 40, Ioe)]),
               _("label", null, [D[32] || (D[32] = _("span", null, "最小深度", -1)), _("input", {
                 type: "number",
                 value: b(p).minDepth ?? "",
                 onInput: D[13] || (D[13] = (F) => b(B)({ minDepth: F.target.value === "" ? null : Number(F.target.value) }))
-              }, null, 40, Ioe)]),
+              }, null, 40, Moe)]),
               _("label", null, [D[33] || (D[33] = _("span", null, "最大深度", -1)), _("input", {
                 type: "number",
                 value: b(p).maxDepth ?? "",
                 onInput: D[14] || (D[14] = (F) => b(B)({ maxDepth: F.target.value === "" ? null : Number(F.target.value) }))
-              }, null, 40, Moe)])
+              }, null, 40, Roe)])
             ])
           ])
         ]),
-        _("div", Roe, [_("button", {
+        _("div", Poe, [_("button", {
           type: "button",
           disabled: !b(I),
           onClick: D[15] || (D[15] = (...F) => b(s) && b(s)(...F))
-        }, " 删除正则 ", 8, Poe)])
-      ], 64)) : (k(), $("div", koe, " 选择一条正则，或在左侧新建。 "))])])
+        }, " 删除正则 ", 8, koe)])
+      ], 64)) : (k(), $("div", Noe, " 选择一条正则，或在左侧新建。 "))])])
     ], 512)), [[ca, b(t) === "regex"]]);
   }
-}), $oe = Noe, Doe = { class: "panel step-panel preset-workspace" }, Loe = { class: "panel-head preset-page-head" }, Ooe = { class: "panel-pills" }, Foe = {
+}), Doe = $oe, Loe = { class: "panel step-panel preset-workspace" }, Ooe = { class: "panel-head preset-page-head" }, Foe = { class: "panel-pills" }, Boe = {
   key: 0,
   class: "pill warning"
-}, Boe = { class: "pill" }, Uoe = { class: "preset-command-bar" }, qoe = { class: "preset-source-field" }, Hoe = { class: "archive-search preset-source-search" }, Goe = { class: "preset-source-list" }, Voe = {
+}, Uoe = { class: "pill" }, qoe = { class: "preset-command-bar" }, Hoe = { class: "preset-source-field" }, Goe = { class: "archive-search preset-source-search" }, Voe = { class: "preset-source-list" }, Woe = {
   key: 0,
   class: "inline-empty-note"
-}, Woe = ["onClick"], Koe = { class: "preset-actions" }, Joe = ["disabled"], zoe = ["disabled"], Yoe = {
+}, Koe = ["onClick"], Joe = { class: "preset-actions" }, zoe = ["disabled"], Yoe = ["disabled"], Xoe = {
   key: 0,
   class: "preset-status-line"
-}, Xoe = { class: "preset-meta-strip" }, Qoe = ["value"], Zoe = ["value"], joe = { class: "assistant-preset-studio" }, eie = { class: "assistant-preset-item-list archive-item-list" }, tie = ["onClick"], nie = { class: "assistant-preset-detail-panel archive-editor-panel" }, rie = { class: "assistant-preset-line-head" }, sie = {
+}, Qoe = { class: "preset-meta-strip" }, Zoe = ["value"], joe = ["value"], eie = { class: "assistant-preset-studio" }, tie = { class: "assistant-preset-item-list archive-item-list" }, nie = ["onClick"], rie = { class: "assistant-preset-detail-panel archive-editor-panel" }, sie = { class: "assistant-preset-line-head" }, oie = {
   key: 0,
   class: "assistant-preset-detail-fields"
-}, oie = ["value"], iie = {
+}, iie = ["value"], aie = {
   key: 1,
   type: "button",
   class: "assistant-preset-empty-add",
   disabled: ""
-}, aie = /* @__PURE__ */ tn({
+}, lie = /* @__PURE__ */ tn({
   __name: "TavernAssistantPresetSettingsPanel",
   setup(e) {
     const { activeAssistantPresetId: t, activeSettingsWorkspace: n, ASSISTANT_PRESET_BATCH_SIZE: r, assistantPreset: s, assistantPresetDirty: o, assistantPresetItems: i, assistantPresetSearchText: a, assistantPresetStatus: l, assistantPresetVisibleLimit: u, deriveAssistantPreset: d, discardAssistantPresetChanges: p, hiddenAssistantPresetCount: m, saveCurrentAssistantPreset: v, selectAssistantPreset: y, selectAssistantPresetItem: w, selectedAssistantPresetItem: S, shortText: A, updateAssistantPresetPatch: E, updateSelectedAssistantPresetItem: x, visibleAssistantPresetRecords: I } = gi();
-    return (R, M) => jt((k(), $("div", Doe, [
-      _("div", Loe, [M[8] || (M[8] = _("div", null, [_("h2", null, "助手预设")], -1)), _("div", Ooe, [b(o) ? (k(), $("span", Foe, "未保存")) : he("", !0), _("span", Boe, q(b(s).name || "未命名"), 1)])]),
-      _("div", Uoe, [_("div", qoe, [
-        _("label", Hoe, [M[9] || (M[9] = _("span", null, "助手预设", -1)), jt(_("input", {
+    return (R, M) => jt((k(), $("div", Loe, [
+      _("div", Ooe, [M[8] || (M[8] = _("div", null, [_("h2", null, "助手预设")], -1)), _("div", Foe, [b(o) ? (k(), $("span", Boe, "未保存")) : he("", !0), _("span", Uoe, q(b(s).name || "未命名"), 1)])]),
+      _("div", qoe, [_("div", Hoe, [
+        _("label", Goe, [M[9] || (M[9] = _("span", null, "助手预设", -1)), jt(_("input", {
           "onUpdate:modelValue": M[0] || (M[0] = (B) => /* @__PURE__ */ Tt(a) ? a.value = B : null),
           type: "search",
           placeholder: "搜索管理员口径"
         }, null, 512), [[Hr, b(a)]])]),
-        _("div", Goe, [b(I).length ? he("", !0) : (k(), $("div", Voe, " 没有匹配的助手预设。 ")), (k(!0), $(Ge, null, ot(b(I), (B) => (k(), $("button", {
+        _("div", Voe, [b(I).length ? he("", !0) : (k(), $("div", Woe, " 没有匹配的助手预设。 ")), (k(!0), $(Ge, null, ot(b(I), (B) => (k(), $("button", {
           key: B.id,
           type: "button",
           class: Re(["preset-source-row", { selected: b(t) === B.id }]),
           onClick: (P) => b(y)(B.id)
-        }, [_("strong", null, q(B.name), 1), _("small", null, q(B.isBuiltIn ? "内置" : "自定义") + q(B.description ? ` · ${B.description}` : ""), 1)], 10, Woe))), 128))]),
+        }, [_("strong", null, q(B.name), 1), _("small", null, q(B.isBuiltIn ? "内置" : "自定义") + q(B.description ? ` · ${B.description}` : ""), 1)], 10, Koe))), 128))]),
         b(m) ? (k(), $("button", {
           key: 0,
           type: "button",
           class: "archive-load-more preset-source-more",
           onClick: M[1] || (M[1] = (B) => u.value += b(r))
         }, " 再显示 " + q(Math.min(b(m), b(r))) + " 个 ", 1)) : he("", !0)
-      ]), _("div", Koe, [
+      ]), _("div", Joe, [
         _("button", {
           type: "button",
           onClick: M[2] || (M[2] = (...B) => b(d) && b(d)(...B))
@@ -40991,22 +40991,22 @@ var ree = { class: "chat-mobile-topbar" }, see = { class: "chat-mobile-primary-r
           type: "button",
           disabled: !b(o),
           onClick: M[3] || (M[3] = (...B) => b(p) && b(p)(...B))
-        }, " 放弃 ", 8, Joe),
+        }, " 放弃 ", 8, zoe),
         _("button", {
           type: "button",
           disabled: !b(o),
           onClick: M[4] || (M[4] = (...B) => b(v) && b(v)(...B))
-        }, " 保存 ", 8, zoe)
+        }, " 保存 ", 8, Yoe)
       ])]),
-      b(l) ? (k(), $("div", Yoe, [_("span", null, q(b(l)), 1)])) : he("", !0),
-      _("div", Xoe, [_("label", null, [M[10] || (M[10] = _("span", null, "名称", -1)), _("input", {
+      b(l) ? (k(), $("div", Xoe, [_("span", null, q(b(l)), 1)])) : he("", !0),
+      _("div", Qoe, [_("label", null, [M[10] || (M[10] = _("span", null, "名称", -1)), _("input", {
         value: b(s).name,
         onInput: M[5] || (M[5] = (B) => b(E)({ name: B.target.value }))
-      }, null, 40, Qoe)]), _("label", null, [M[11] || (M[11] = _("span", null, "说明", -1)), _("input", {
+      }, null, 40, Zoe)]), _("label", null, [M[11] || (M[11] = _("span", null, "说明", -1)), _("input", {
         value: b(s).description || "",
         onInput: M[6] || (M[6] = (B) => b(E)({ description: B.target.value }))
-      }, null, 40, Zoe)])]),
-      _("div", joe, [_("aside", eie, [M[12] || (M[12] = _("div", { class: "assistant-preset-nav-head" }, [_("strong", null, "记忆档案"), _("span", null, "一档一项")], -1)), (k(!0), $(Ge, null, ot(b(i), (B) => (k(), $("button", {
+      }, null, 40, joe)])]),
+      _("div", eie, [_("aside", tie, [M[12] || (M[12] = _("div", { class: "assistant-preset-nav-head" }, [_("strong", null, "记忆档案"), _("span", null, "一档一项")], -1)), (k(!0), $(Ge, null, ot(b(i), (B) => (k(), $("button", {
         key: B.id,
         type: "button",
         class: Re(["assistant-preset-nav-row", { selected: b(S)?.id === B.id }]),
@@ -41015,22 +41015,22 @@ var ree = { class: "chat-mobile-topbar" }, see = { class: "chat-mobile-primary-r
         _("span", null, q(B.summary), 1),
         _("strong", null, q(B.label), 1),
         _("small", null, q(b(A)(B.content || "未填写职责。", 54)), 1)
-      ], 10, tie))), 128))]), _("section", nie, [_("div", rie, [_("div", null, [_("strong", null, q(b(S)?.label || "记忆档案"), 1), _("span", null, q(b(S)?.summary || "选择左侧一项后编辑。"), 1)])]), b(S) ? (k(), $("div", sie, [_("label", null, [M[13] || (M[13] = _("span", null, "职责说明", -1)), _("textarea", {
+      ], 10, nie))), 128))]), _("section", rie, [_("div", sie, [_("div", null, [_("strong", null, q(b(S)?.label || "记忆档案"), 1), _("span", null, q(b(S)?.summary || "选择左侧一项后编辑。"), 1)])]), b(S) ? (k(), $("div", oie, [_("label", null, [M[13] || (M[13] = _("span", null, "职责说明", -1)), _("textarea", {
         value: b(S).content,
         rows: "12",
         placeholder: "写这个记忆档案应该维护什么、保留什么、避免什么。",
         onInput: M[7] || (M[7] = (B) => b(x)(B.target.value))
-      }, null, 40, oie)])])) : (k(), $("button", iie, " 没有可编辑条目 "))])])
+      }, null, 40, iie)])])) : (k(), $("button", aie, " 没有可编辑条目 "))])])
     ], 512)), [[ca, b(n) === "assistantPreset"]]);
   }
-}), lie = aie, uie = {
-  key: 0,
-  class: "xb-layout xb-page settings-layout"
-}, cie = { class: "xb-main" }, die = /* @__PURE__ */ tn({
+}), uie = lie, cie = { class: "xb-main" }, die = /* @__PURE__ */ tn({
   __name: "TavernSettingsPage",
   setup(e) {
     const { activeSettingsWorkspace: t, activeView: n, homeThemeDark: r, postToHost: s, selectSettingsWorkspace: o, settingsNavItems: i } = gi();
-    return (a, l) => b(n) === "settings" ? (k(), $("section", uie, [
+    return (a, l) => b(n) === "settings" ? (k(), $("section", {
+      key: 0,
+      class: Re(["xb-layout xb-page settings-layout", `is-${b(t)}-workspace`])
+    }, [
       Rt(kd, {
         "include-home": "",
         dark: b(r),
@@ -41038,7 +41038,7 @@ var ree = { class: "chat-mobile-topbar" }, see = { class: "chat-mobile-primary-r
         onToggleTheme: l[1] || (l[1] = (u) => r.value = !b(r)),
         onExit: l[2] || (l[2] = (u) => b(s)("xb-tavern:close"))
       }, null, 8, ["dark"]),
-      Rt(hre, {
+      Rt(mre, {
         active: b(t),
         items: b(i),
         onSelect: b(o)
@@ -41048,13 +41048,13 @@ var ree = { class: "chat-mobile-topbar" }, see = { class: "chat-mobile-primary-r
         "onSelect"
       ]),
       _("section", cie, [
-        Rt(yre),
-        Rt(ise),
-        Rt($se),
-        Rt($oe),
-        Rt(lie)
+        Rt(_re),
+        Rt(ase),
+        Rt(Dse),
+        Rt(Doe),
+        Rt(uie)
       ])
-    ])) : he("", !0);
+    ], 2)) : he("", !0);
   }
 }), fie = die, hie = { class: "xb-os-stage" }, pie = "xb-tavern-app", mie = "xb-tavern-host", Px = 5e3, gie = 15e3, nh = 48, Dv = 48, Lv = 48, Ov = 80, Fv = 80, rh = 24, Bv = 60, Uv = 6, vie = 12, yie = 12, _ie = 36, kx = 48, qv = 24, Nx = 1e9, $x = "LittleWhiteBox_Tavern_theme", bie = 1e3 * 60 * 20, wie = "配图已生成", Sie = 600, Tie = /* @__PURE__ */ tn({
   __name: "App",
@@ -41236,16 +41236,19 @@ var ree = { class: "chat-mobile-topbar" }, see = { class: "chat-mobile-primary-r
       {
         key: "worldbooks",
         label: "世界书",
+        mobileLabel: "世界",
         badge: $a.value ? `${$a.value} 本全局` : ""
       },
       {
         key: "chatPreset",
         label: "聊天预设",
+        mobileLabel: "聊天",
         badge: Ks.value ? "未保存" : ""
       },
       {
         key: "assistantPreset",
         label: "助手预设",
+        mobileLabel: "助手",
         badge: bs.value ? "未保存" : ""
       },
       {
@@ -41255,7 +41258,8 @@ var ree = { class: "chat-mobile-topbar" }, see = { class: "chat-mobile-primary-r
       },
       {
         key: "api",
-        label: "API 配置"
+        label: "API 配置",
+        mobileLabel: "API"
       }
     ]), Oa = te(() => xe.map((h) => ({
       id: h.key,

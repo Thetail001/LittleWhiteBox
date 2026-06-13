@@ -221,3 +221,49 @@
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }
+
+@media (max-width: 560px) {
+    .worldbook-preview-surface {
+        height: 100%;
+        overflow: auto;
+        padding: 14px;
+    }
+
+    .worldbook-selected-head {
+        gap: 10px;
+    }
+
+    .worldbook-selected-head strong {
+        font-size: 18px;
+        line-height: 1.15;
+    }
+
+    .worldbook-selected-head span {
+        margin-top: 5px;
+        font-size: 12px;
+    }
+
+    .worldbook-link-badge {
+        width: fit-content;
+        min-height: 24px;
+        font-size: 11px;
+    }
+
+    .worldbook-metric-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        margin: 14px 0;
+    }
+
+    .worldbook-metric-grid span {
+        padding: 10px;
+    }
+
+    .worldbook-metric-grid strong {
+        font-size: 20px;
+    }
+
+    .worldbook-entry-preview {
+        border-radius: 12px;
+        padding: 12px;
+    }
+}

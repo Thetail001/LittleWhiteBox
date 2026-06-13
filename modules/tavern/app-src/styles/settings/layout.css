@@ -149,6 +149,10 @@
     letter-spacing: 0;
 }
 
+.settings-layout .guide-label-mobile {
+    display: none;
+}
+
 .settings-layout .guide-step span {
     color: var(--xb-text-dim);
     font-family: var(--xb-font-ui);
@@ -383,7 +387,7 @@
     }
 
     .settings-layout .guide-steps {
-        gap: 6px;
+        gap: 5px;
         padding: 0 106px 2px 0;
         scrollbar-width: none;
     }
@@ -394,17 +398,25 @@
 
     .settings-layout .guide-step {
         min-width: auto;
-        min-height: 34px;
+        min-height: 32px;
         display: inline-flex;
         align-items: center;
         flex: 0 0 auto;
         border-radius: 999px;
-        padding: 0 12px;
+        padding: 0 11px;
     }
 
     .settings-layout .guide-step strong {
-        font-size: 13px;
+        font-size: 12px;
         font-weight: 700;
+    }
+
+    .settings-layout .guide-label-full {
+        display: none;
+    }
+
+    .settings-layout .guide-label-mobile {
+        display: inline;
     }
 
     .settings-layout .guide-step span,

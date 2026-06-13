@@ -2,6 +2,7 @@
 export interface TavernSettingsNavItem {
   key: string;
   label: string;
+  mobileLabel?: string;
   badge?: string;
 }
 
@@ -28,7 +29,10 @@ const emit = defineEmits<{
           :class="{ active: active === item.key }"
           @click="emit('select', item.key)"
         >
-          <strong>{{ item.label }}</strong>
+          <strong>
+            <span class="guide-label-full">{{ item.label }}</span>
+            <span class="guide-label-mobile">{{ item.mobileLabel || item.label }}</span>
+          </strong>
           <em v-if="item.badge">{{ item.badge }}</em>
         </button>
       </div>

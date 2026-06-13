@@ -23,6 +23,7 @@ const {
   <section
     v-if="activeView === 'settings'"
     class="xb-layout xb-page settings-layout"
+    :class="`is-${activeSettingsWorkspace}-workspace`"
   >
     <TavernCornerActions
       include-home

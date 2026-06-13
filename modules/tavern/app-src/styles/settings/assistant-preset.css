@@ -202,3 +202,93 @@
 .worldbook-overview-grid .native-list-panel .assistant-preset-nav-head {
     min-height: 58px;
 }
+
+@media (max-width: 560px) {
+    .assistant-preset-studio {
+        flex: 1 1 auto;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    .preset-meta-strip {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 8px;
+    }
+
+    .assistant-preset-item-list {
+        flex: 0 0 auto;
+        max-height: none;
+        display: flex;
+        flex-direction: row;
+        gap: 6px;
+        border-right: 0;
+        border-bottom: 1px solid var(--xb-line);
+        overflow: auto hidden;
+        background: var(--xb-settings-subtle-bg);
+        padding: 8px 14px 10px;
+        scrollbar-width: none;
+    }
+
+    .settings-layout .assistant-preset-nav-head {
+        display: none;
+    }
+
+    .assistant-preset-item-list .assistant-preset-nav-row {
+        min-width: 172px;
+        flex: 0 0 auto;
+    }
+
+    .assistant-preset-item-list::-webkit-scrollbar {
+        display: none;
+    }
+
+    .assistant-preset-item-list .assistant-preset-nav-row {
+        border: 1px solid var(--xb-line);
+        border-radius: 10px;
+        padding: 8px 10px;
+    }
+
+    .assistant-preset-item-list .assistant-preset-nav-row strong {
+        font-size: 14px;
+    }
+
+    .assistant-preset-item-list .assistant-preset-nav-row small {
+        -webkit-line-clamp: 1;
+    }
+    .assistant-preset-detail-panel {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    .settings-layout .assistant-preset-line-head {
+        min-height: 46px;
+        padding: 0 14px;
+    }
+
+    .settings-layout .assistant-preset-line-head strong {
+        font-size: 18px;
+    }
+
+    .settings-layout .assistant-preset-line-head span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .assistant-preset-detail-fields {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: auto;
+        padding: 14px;
+    }
+
+    .assistant-preset-detail-fields textarea {
+        min-height: 48vh;
+        border-radius: 12px;
+        font-size: 14px;
+        line-height: 1.72;
+    }
+}

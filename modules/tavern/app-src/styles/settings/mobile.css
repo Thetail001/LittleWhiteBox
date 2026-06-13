@@ -1,0 +1,47 @@
+/* Final mobile settings overrides shared across setting workspaces. */
+
+@media (max-width: 560px) {
+    .settings-layout.is-chatPreset-workspace .preset-workspace .preset-studio,
+    .settings-layout.is-worldbooks-workspace .worldbook-overview-grid {
+        flex: 1 1 auto;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    .settings-layout.is-chatPreset-workspace .preset-workspace .prompt-sequence-panel {
+        flex: 0 0 auto;
+        max-height: 172px;
+        overflow: hidden;
+        border-right: 0;
+        border-bottom: 1px solid var(--xb-line);
+    }
+
+    .settings-layout.is-api-workspace .api-workspace > .panel-head {
+        min-height: 52px;
+        align-items: center;
+        padding: 10px 106px 10px 14px;
+    }
+
+    .settings-layout.is-api-workspace .api-workspace > .panel-head h2 {
+        font-size: 22px;
+        line-height: 1;
+    }
+
+    .settings-layout .step-panel > .panel-head .panel-pills,
+    .settings-layout .step-panel > .preset-page-head .panel-pills {
+        display: none;
+    }
+
+    .settings-layout.is-api-workspace .api-workspace > .panel-head .pill {
+        display: inline-flex;
+        min-height: 24px;
+        font-size: 11px;
+        padding: 0 9px;
+    }
+
+    .settings-layout.is-api-workspace .api-scroll-body {
+        padding: 14px 14px calc(26px + env(safe-area-inset-bottom, 0px));
+    }
+}

@@ -371,10 +371,251 @@
 }
 
 @media (max-width: 560px) {
+    .settings-layout.is-chatPreset-workspace .xb-main,
+    .settings-layout.is-assistantPreset-workspace .xb-main {
+        overflow: hidden;
+    }
+
+    .settings-layout.is-chatPreset-workspace .step-panel,
+    .settings-layout.is-assistantPreset-workspace .step-panel {
+        min-height: 0;
+        overflow: hidden;
+    }
 
     .settings-layout .step-panel > .panel-head,
     .settings-layout .step-panel > .preset-page-head {
-        padding-right: 118px;
+        min-height: 52px;
+        align-items: center;
+        padding: 10px 106px 10px 14px;
+    }
+
+    .settings-layout .panel-head h2,
+    .settings-layout .preset-page-head h2 {
+        font-size: 22px;
+        line-height: 1;
+    }
+
+    .settings-layout .preset-command-bar,
+    .preset-meta-strip {
+        gap: 8px;
+        border-bottom-color: rgba(255, 255, 255, 0.06);
+        padding: 8px 14px;
+    }
+
+    .settings-layout .preset-source-field {
+        display: grid;
+        gap: 8px;
+    }
+
+    .settings-layout .preset-source-search {
+        display: grid;
+        gap: 5px;
+    }
+
+    .settings-layout .preset-source-search input {
+        width: 100%;
+        min-height: 38px;
+    }
+
+    .settings-layout .preset-source-list {
+        position: static;
+        width: 100%;
+        max-height: 112px;
+        display: flex;
+        gap: 6px;
+        overflow: auto hidden;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        box-shadow: none;
+        backdrop-filter: none;
+        padding: 0;
+        scrollbar-width: none;
+    }
+
+    .settings-layout .preset-source-list::-webkit-scrollbar {
+        display: none;
+    }
+
+    .settings-layout .preset-source-field:hover .preset-source-list,
+    .settings-layout .preset-source-field:focus-within .preset-source-list {
+        display: flex;
+    }
+
+    .settings-layout .preset-source-row {
+        min-width: 150px;
+        min-height: 40px;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 2px;
+        border: 1px solid var(--xb-line);
+        border-radius: 10px;
+        padding: 7px 9px;
+    }
+
+    .settings-layout .preset-source-row small {
+        display: none;
+    }
+
+    .settings-layout .preset-source-list > .inline-empty-note,
+    .preset-workspace .prompt-manager-list > .inline-empty-note {
+        flex: 1 0 220px;
+        align-self: stretch;
+        display: grid;
+        place-items: center start;
+        min-height: 42px;
+        padding: 10px 12px;
+    }
+
+    .settings-layout .preset-actions {
+        flex-wrap: nowrap;
+        justify-content: flex-start;
+        overflow-x: auto;
+        padding-bottom: 1px;
+        scrollbar-width: none;
+    }
+
+    .settings-layout .preset-actions::-webkit-scrollbar {
+        display: none;
+    }
+
+    .settings-layout .preset-actions button {
+        flex: 0 0 auto;
+        min-height: 34px;
+        border-radius: 999px;
+        padding: 0 12px;
+    }
+
+    .settings-layout .preset-status-line {
+        margin: 8px 14px 0;
+        font-size: 12px;
+    }
+
+    .preset-workspace .preset-studio {
+        flex: 1 1 auto;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    .preset-workspace .prompt-sequence-panel {
+        flex: 0 0 auto;
+        min-height: 0;
+        max-height: 172px;
+        position: relative;
+        overflow: hidden;
+        border-bottom: 1px solid var(--xb-line);
+        background: var(--xb-settings-subtle-bg);
+    }
+
+    .preset-workspace .preset-filterbar {
+        display: grid;
+        gap: 6px;
+        padding: 8px 14px 0;
+    }
+
+    .preset-workspace .preset-filterbar .archive-search {
+        display: grid;
+        gap: 5px;
+    }
+
+    .preset-workspace .preset-filterbar input {
+        min-height: 36px;
+    }
+
+    .preset-workspace .preset-filterbar p {
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .preset-workspace .prompt-manager-list {
+        display: flex;
+        gap: 6px;
+        overflow: auto hidden;
+        padding: 8px 118px 10px 14px;
+        scrollbar-width: none;
+    }
+
+    .preset-workspace .prompt-manager-list::-webkit-scrollbar {
+        display: none;
+    }
+
+    .preset-workspace .prompt-manager-row {
+        flex: 0 0 184px;
+        min-height: 52px;
+        grid-template-columns: 24px minmax(0, 1fr);
+        gap: 7px;
+        border: 1px solid var(--xb-line);
+        border-radius: 10px;
+        padding: 7px 8px;
+    }
+
+    .preset-workspace .prompt-manager-row.selected {
+        border-color: rgba(var(--xb-accent-rgb), 0.45);
+    }
+
+    .preset-workspace .prompt-row-index {
+        width: 22px;
+        min-width: 22px;
+        height: 22px;
+        min-height: 22px;
+        border-radius: 7px;
+    }
+
+    .preset-workspace .prompt-row-main strong {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .preset-workspace .prompt-row-actions {
+        display: none;
+    }
+
+    .preset-workspace .prompt-sequence-panel > .archive-load-more {
+        position: absolute;
+        right: 14px;
+        bottom: 10px;
+        min-height: 36px;
+        border-style: dashed;
+        border-radius: 10px;
+        background: var(--xb-settings-float-bg);
+        box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
+        padding: 0 10px;
+        z-index: 2;
+    }
+
+    .preset-workspace .preset-preview-panel {
+        flex: 1 1 auto;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    .settings-layout .preset-preview-head {
+        min-height: 46px;
+        padding: 0 14px;
+    }
+
+    .settings-layout .preset-preview-head strong {
+        font-size: 18px;
+    }
+
+    .preset-workspace .prompt-detail-form {
+        flex: 1 1 auto;
+        min-height: 0;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 12px;
+        overflow: auto;
+        padding: 14px;
+    }
+
+    .preset-workspace .prompt-detail-form .preset-text-field textarea {
+        min-height: 42vh;
+        border-radius: 12px;
+        font-size: 14px;
+        line-height: 1.72;
     }
 }
 

@@ -6,8 +6,6 @@ const {
     activeSettingsWorkspace,
     apiSettingsRootRef,
     apiReady,
-    apiReadyDetail,
-    apiRuntimeLine,
 } = ui;
 
 function setApiSettingsRootRef(element: Element | null) {
@@ -34,13 +32,6 @@ function setApiSettingsRootRef(element: Element | null) {
     <div
       class="api-scroll-body"
     >
-      <div
-        class="what-to-check"
-        :class="{ warning: !apiReady }"
-      >
-        <strong>当前模型：</strong>
-        <span>{{ apiReady ? apiRuntimeLine : apiReadyDetail }}</span>
-      </div>
       <div
         :ref="setApiSettingsRootRef"
         class="tavern-api-settings"

@@ -385,10 +385,178 @@
 }
 
 @media (max-width: 560px) {
+    .settings-layout.is-regex-workspace .xb-main,
+    .settings-layout.is-worldbooks-workspace .xb-main {
+        overflow: hidden;
+    }
+
+    .settings-layout.is-regex-workspace .preset-command-bar {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .settings-layout.is-regex-workspace .preset-command-bar > label {
+        display: none;
+    }
+
+    .settings-layout.is-regex-workspace .step-panel,
+    .settings-layout.is-worldbooks-workspace .step-panel {
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    .regex-studio,
+    .worldbook-overview-grid {
+        flex: 1 1 auto;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    .regex-studio .native-list-panel,
+    .worldbook-overview-grid .native-list-panel {
+        flex: 0 0 auto;
+        max-height: 148px;
+        display: flex;
+        flex-direction: row;
+        gap: 6px;
+        overflow: auto hidden;
+        border-right: 0;
+        border-bottom: 1px solid var(--xb-line);
+        background: var(--xb-settings-subtle-bg);
+        padding: 8px 14px 10px;
+        scrollbar-width: none;
+    }
+
+    .regex-studio .native-list-panel::-webkit-scrollbar,
+    .worldbook-overview-grid .native-list-panel::-webkit-scrollbar {
+        display: none;
+    }
+
+    .regex-studio .native-search,
+    .worldbook-overview-grid .native-search {
+        flex: 0 0 176px;
+        min-width: 176px;
+        align-self: stretch;
+        border: 1px solid var(--xb-line);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.025);
+        padding: 8px;
+    }
+
+    .regex-studio .native-search input,
+    .worldbook-overview-grid .native-search input {
+        min-height: 34px;
+    }
+
+    .regex-studio .regex-group-block {
+        flex: 0 0 auto;
+        display: flex;
+        gap: 6px;
+        border-bottom: 0;
+        padding: 0;
+    }
+
+    .regex-studio .regex-group-block .assistant-preset-nav-head,
+    .worldbook-overview-grid .assistant-preset-nav-head {
+        display: none;
+    }
+
+    .regex-studio .native-list-row,
+    .worldbook-overview-grid .native-list-row {
+        flex: 0 0 178px;
+        min-height: 58px;
+        grid-template-columns: auto minmax(0, 1fr);
+        border: 1px solid var(--xb-line);
+        border-radius: 10px;
+        padding: 8px 10px;
+    }
+
+    .settings-layout .worldbook-overview-grid .native-list-row {
+        grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .worldbook-overview-grid .worldbook-source-lights {
+        display: none;
+    }
+
+    .regex-studio .native-list-row > span:first-child {
+        width: 24px;
+        min-width: 24px;
+        height: 24px;
+        font-size: 11px;
+    }
+
+    .regex-studio .native-add-row,
+    .worldbook-overview-grid .native-add-row {
+        flex: 0 0 auto;
+        align-self: center;
+        min-width: 112px;
+        border: 1px dashed var(--xb-line);
+        border-radius: 10px;
+        padding: 0 10px;
+    }
+
+    .regex-studio .native-list-panel > .inline-empty-note,
+    .worldbook-overview-grid .native-list-panel > .inline-empty-note {
+        flex: 1 0 220px;
+        align-self: stretch;
+        display: grid;
+        place-items: center start;
+        min-height: 58px;
+        padding: 10px 12px;
+    }
+
+    .regex-studio .native-detail-panel,
+    .worldbook-overview-detail {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    .regex-studio .preset-preview-head,
+    .worldbook-overview-detail .preset-preview-head {
+        min-height: 46px;
+        padding: 0 14px;
+    }
+
+    .regex-studio .preset-preview-head strong,
+    .worldbook-overview-detail .preset-preview-head strong {
+        font-size: 18px;
+    }
+
+    .regex-editor-grid {
+        gap: 10px;
+        overflow: auto;
+    }
+
+    .regex-editor-section {
+        border-radius: 12px;
+        padding: 12px;
+    }
+
+    .regex-section-title {
+        margin-bottom: 10px;
+        font-size: 16px;
+    }
+
+    .regex-studio .regex-main-field textarea {
+        min-height: 132px;
+    }
+
+    .regex-studio .regex-support-field textarea {
+        min-height: 78px;
+    }
+
+    .regex-studio .native-danger-row {
+        padding: 10px 14px calc(12px + env(safe-area-inset-bottom, 0px));
+    }
+}
+
+@media (max-width: 560px) {
 
     .preset-workspace .prompt-detail-form,
     .assistant-preset-detail-fields,
-    .worldbook-overview-detail,
     .regex-editor-grid {
         padding: 16px;
     }

@@ -642,16 +642,19 @@ const settingsNavItems = computed<TavernSettingsNavItem[]>(() => [
     {
         key: 'worldbooks',
         label: '世界书',
+        mobileLabel: '世界',
         badge: worldbookGlobalCount.value ? `${worldbookGlobalCount.value} 本全局` : '',
     },
     {
         key: 'chatPreset',
         label: '聊天预设',
+        mobileLabel: '聊天',
         badge: presetDirty.value ? '未保存' : '',
     },
     {
         key: 'assistantPreset',
         label: '助手预设',
+        mobileLabel: '助手',
         badge: assistantPresetDirty.value ? '未保存' : '',
     },
     {
@@ -662,6 +665,7 @@ const settingsNavItems = computed<TavernSettingsNavItem[]>(() => [
     {
         key: 'api',
         label: 'API 配置',
+        mobileLabel: 'API',
     },
 ]);
 const assistantPresetItems = computed<AssistantPresetItemRow[]>(() => {
