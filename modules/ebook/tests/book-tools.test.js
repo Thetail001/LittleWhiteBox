@@ -154,6 +154,20 @@ test('Importing ebook files creates a new shelf book without changing selected b
     assert.ok(books.some((book) => book.title === '导入书'));
 });
 
+test('Library book list reports drafted chapter counts without counting the starter placeholder', async () => {
+    await resetDb();
+    const book = await createBook('章节统计书');
+    assert.equal((await listBooks())[0]?.chapterCount, 0);
+
+    await upsertBookFile(book.id, 'book/chapters/001.md', '# 第 1 章\n\n正文。');
+    await upsertBookFile(book.id, 'book/chapters/002.md', '第二章正文。');
+    await upsertBookFile(book.id, 'book/notes/revision-plan.md', '不是正文。');
+
+    const [listed] = await listBooks();
+    assert.equal(listed.title, '章节统计书');
+    assert.equal(listed.chapterCount, 2);
+});
+
 test('Shared applyTextEdits replaces short and multiline text fragments', () => {
     const result = applyTextEdits('她低头看杯子。\n杯沿还有水痕。\n她笑了。', [
         { oldString: '低头看', newString: '慢慢低头看' },
@@ -2266,6 +2280,9 @@ test('Library shelf actions stay inside the shelf after the rendered books', () 
     assert.match(html, /xb-shelf-action-ring/);
     assert.match(headerHtml, /id="xb-close"[^>]*aria-label="退出电纸书"/);
     assert.match(headerHtml, /class="xb-exit-icon"/);
+    assert.match(html, /已创作 0 章/);
+    assert.match(html, />0章<\/em>/);
+    assert.doesNotMatch(html, /打开后选择创作或阅读/);
     assert.doesNotMatch(headerHtml, /xb-library-new-book|xb-library-delete-book|xb-delete-book-close/);
 });
 

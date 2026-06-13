@@ -1470,10 +1470,6 @@ onUpdated(() => {
           :patches="mapStatePatches"
         />
         <article class="tavern-current-state">
-          <header>
-            <strong>状态栏</strong>
-            <small v-if="currentStateFile">{{ formatMemoryFileMeta(currentStateFile) }}</small>
-          </header>
           <div
             v-if="currentStateContent"
             class="tavern-current-state-body xb-tavern-markdown"
@@ -1502,11 +1498,10 @@ onUpdated(() => {
             v-if="memoryFiles.length"
             class="memory-search tavern-memory-search"
           >
-            <span>检索档案</span>
             <input
               v-model="memoryFileSearchText"
               type="search"
-              placeholder="剧情、状态、楼层"
+              placeholder="检索档案"
             >
           </label>
           <div

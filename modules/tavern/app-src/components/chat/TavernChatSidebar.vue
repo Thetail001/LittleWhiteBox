@@ -6,7 +6,6 @@ const {
     activeMemoryFiles,
     CHAT_SIDEBAR_BATCH_SIZE,
     chatLayout,
-    chatSessionSearchText,
     chatSidebarSessionLimit,
     chatSidebarSessions,
     chatSidePanel,
@@ -122,17 +121,6 @@ const {
         <strong>会话目录</strong>
         <span>{{ filteredChatSidebarSessionCount }}</span>
       </div>
-      <label
-        v-if="sessions.length"
-        class="memory-search session-search"
-      >
-        <span>检索会话</span>
-        <input
-          v-model="chatSessionSearchText"
-          type="search"
-          placeholder="角色名、会话名、轮次"
-        >
-      </label>
       <div class="session-list chat-directory-list xb-files">
         <div
           v-for="session in chatSidebarSessions"
@@ -170,7 +158,7 @@ const {
           v-if="!chatSidebarSessions.length"
           class="muted compact"
         >
-          {{ chatSessionSearchText ? '没有匹配的会话。' : '当前角色还没有其他会话。' }}
+          当前角色还没有其他会话。
         </p>
       </div>
     </section>
@@ -187,11 +175,10 @@ const {
         v-if="memoryFiles.length"
         class="memory-search"
       >
-        <span>检索档案</span>
         <input
           v-model="memoryFileSearchText"
           type="search"
-          placeholder="剧情脉络、状态、楼层"
+          placeholder="检索档案"
         >
       </label>
       <div

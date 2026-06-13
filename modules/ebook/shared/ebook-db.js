@@ -46,6 +46,7 @@ function cloneBook(book = {}) {
         title: String(book.title || ''),
         createdAt: Number(book.createdAt) || 0,
         updatedAt: Number(book.updatedAt) || 0,
+        chapterCount: Math.max(0, Number(book.chapterCount) || 0),
     };
 }
 
@@ -61,7 +62,22 @@ function cloneFile(file = {}) {
 
 export async function listBooks() {
     const books = await booksTable.orderBy('updatedAt').reverse().toArray();
-    return books.map(cloneBook).filter((book) => book.id);
+    const normalizedBooks = books.map(cloneBook).filter((book) => book.id);
+    const chapterCounts = await Promise.all(normalizedBooks.map(async (book) => {
+        const files = await filesTable.where('bookId').equals(book.id).toArray();
+        return files.filter((file) => isDraftedChapterFile(file)).length;
+    }));
+    return normalizedBooks.map((book, index) => ({
+        ...book,
+        chapterCount: chapterCounts[index] || 0,
+    }));
+}
+
+function isDraftedChapterFile(file = {}) {
+    if (!/^book\/chapters\/.+\.md$/.test(String(file.path || ''))) return false;
+    const content = String(file.content || '').trim();
+    if (!content) return false;
+    return content !== '从这里开始写正文。';
 }
 
 export async function getSelectedBookId() {

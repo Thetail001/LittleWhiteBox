@@ -14,26 +14,48 @@
     height: 100%;
 }
 
+.home-corner-actions,
 .page-corner-actions {
-    top: 22px;
-    right: 24px;
-    z-index: 40;
+    top: 10px;
+    right: 18px;
+    z-index: 90;
+    gap: 8px;
 }
 
+.home-corner-actions .home-icon-button,
 .page-corner-actions .home-icon-button {
-    background: rgba(251, 250, 246, 0.72);
-    box-shadow: 0 8px 26px rgba(26, 26, 26, 0.08);
+    width: 30px;
+    min-width: 30px;
+    height: 30px;
+    min-height: 30px;
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+    color: var(--xb-ink-soft);
 }
 
+.xb-os-shell.theme-dark .home-corner-actions .home-icon-button,
 .xb-os-shell.theme-dark .page-corner-actions .home-icon-button {
-    border-color: rgba(240, 238, 232, 0.12);
-    background: rgba(12, 14, 18, 0.72);
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.30);
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+    color: var(--xb-ink-soft);
+}
+
+.home-corner-actions .home-icon-button:hover:not(:disabled),
+.home-corner-actions .home-icon-button:focus-visible,
+.page-corner-actions .home-icon-button:hover:not(:disabled),
+.page-corner-actions .home-icon-button:focus-visible {
+    outline: none;
+    border-color: var(--xb-rule);
+    background: var(--xb-stamp-soft);
+    color: var(--xb-stamp);
 }
 
 .page-corner-actions .page-home-button {
-    width: 40px;
-    min-width: 40px;
+    width: 30px;
+    min-width: 30px;
     color: var(--xb-ink-soft);
     padding: 0;
 }
@@ -43,22 +65,29 @@
     height: 18px;
 }
 
-.tavern-chat.xb-page .page-corner-actions {
-    right: 22px;
-}
-
 @media (max-width: 760px) {
+    .home-corner-actions,
     .page-corner-actions {
         top: 10px;
         right: 10px;
         gap: 6px;
     }
 
+    .home-corner-actions .home-icon-button,
     .page-corner-actions .home-icon-button {
         width: 34px;
         min-width: 34px;
         height: 34px;
         min-height: 34px;
+        border-color: rgba(92, 90, 86, 0.22);
+        background: rgba(255, 255, 255, 0.34);
+        backdrop-filter: blur(10px);
+    }
+
+    .xb-os-shell.theme-dark .home-corner-actions .home-icon-button,
+    .xb-os-shell.theme-dark .page-corner-actions .home-icon-button {
+        border-color: rgba(224, 218, 202, 0.14);
+        background: rgba(255, 255, 255, 0.045);
     }
 
     .page-corner-actions .page-home-button {

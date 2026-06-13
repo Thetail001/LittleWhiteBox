@@ -815,20 +815,33 @@ function renderBookCards(state = {}) {
         const dataAttr = deleteMode
             ? `data-delete-book-id="${escapeHtml(book.id)}"`
             : `data-book-id="${escapeHtml(book.id)}"`;
+        const chapterCount = getBookChapterCount(book, state);
         return `
             <button class="xb-library-book${active}${modeClass}" ${dataAttr} ${state.isBusy ? 'disabled' : ''}>
                 <span class="xb-book-spine"></span>
                 <span class="xb-library-book-main">
                     <strong>${escapeHtml(book.title || '未命名书稿')}</strong>
-                    <small>${deleteMode ? '点击删除这本书' : '打开后选择创作或阅读'}</small>
+                    <small>${deleteMode ? '点击删除这本书' : `已创作 ${chapterCount} 章`}</small>
                 </span>
                 <span class="xb-library-book-foot">
-                    <em>${deleteMode ? 'DELETE' : (active ? 'ACTIVE' : 'EBOOK')}</em>
+                    <em>${deleteMode ? 'DELETE' : `${chapterCount}章`}</em>
                     <small>${escapeHtml(formatBookDate(book.updatedAt))}</small>
                 </span>
             </button>
         `;
     }).join('');
+}
+
+function getBookChapterCount(book = {}, state = {}) {
+    const count = Number(book.chapterCount);
+    if (Number.isFinite(count) && count >= 0) return Math.floor(count);
+    if (book.id && book.id === state.book?.id) {
+        return getChapterFiles(state.files).filter((file) => {
+            const content = String(file.content || '').trim();
+            return content && content !== '从这里开始写正文。';
+        }).length;
+    }
+    return 0;
 }
 
 function renderLibraryShelfActions(state = {}, bookCount = 0) {

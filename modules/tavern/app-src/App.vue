@@ -388,7 +388,6 @@ const worldbookVisibleLimit = ref(WORLDBOOK_BATCH_SIZE);
 const worldbookPreviewVisibleLimit = ref(WORLDBOOK_PREVIEW_BATCH_SIZE);
 const memoryFileSearchText = ref('');
 const memoryFileGroupVisibleLimits = ref<Record<string, number>>({});
-const chatSessionSearchText = ref('');
 const chatSidebarSessionLimit = ref(CHAT_SIDEBAR_INITIAL_LIMIT);
 const brokenAvatarUrls = ref<Record<string, true>>({});
 const regexSearchText = ref('');
@@ -746,7 +745,6 @@ const managerAssistantController = ref<AbortController | null>(null);
 const tavernDrawController = ref<AbortController | null>(null);
 const markdownHtmlCache = new Map<string, string>();
 const characterOptionCache = new Map<string, { signature: string; option: TavernCharacterOption }>();
-const sessionSearchCorpusCache = new Map<string, { signature: string; corpus: string }>();
 const memoryFileSearchCorpusCache = new WeakMap<TavernMemoryIndexFileEntry, string>();
 const apiSettingsPanelState: Record<string, unknown> = {
     config: {},
@@ -936,27 +934,6 @@ function sessionDisplayTitle(session?: TavernSessionRecord | null) {
     return '';
 }
 
-function sessionSearchCorpus(session: TavernSessionRecord) {
-    const signature = [
-        session.id,
-        session.title,
-        session.characterName,
-        session.updatedAt,
-        normalizeTavernSessionState(session.state || {}).turn,
-    ].join('|');
-    const cached = sessionSearchCorpusCache.get(session.id);
-    if (cached?.signature === signature) {return cached.corpus;}
-    const corpus = normalizedSearchText(buildSearchCorpus([
-        sessionDisplayTitle(session),
-        session.title,
-        session.characterName,
-        session.id,
-        normalizeTavernSessionState(session.state || {}).turn,
-    ], 600));
-    sessionSearchCorpusCache.set(session.id, { signature, corpus });
-    return corpus;
-}
-
 const selectedSessionTitle = computed(() => (
     sessionDisplayTitle(selectedSession.value)
     || displayableTavernName(effectiveCharacter.value.name || '')
@@ -999,14 +976,9 @@ const hiddenManagerRunCount = computed(() => {
 const managerBusy = computed(() => managerRuns.value.some((run) => ['queued', 'running'].includes(run.status)));
 const filteredChatSidebarSessions = computed(() => {
     const currentCharacterId = String(selectedSession.value?.characterId || effectiveContext.value.character?.id || '').trim();
-    const sameCharacter = currentCharacterId
+    return currentCharacterId
         ? sessions.value.filter((session) => String(session.characterId || '').trim() === currentCharacterId)
         : sessions.value;
-    const query = normalizedSearchText(chatSessionSearchText.value);
-    const filtered = query
-        ? sameCharacter.filter((session) => sessionSearchCorpus(session).includes(query))
-        : sameCharacter;
-    return filtered;
 });
 const chatSidebarSessions = computed(() => {
     const filtered = filteredChatSidebarSessions.value;
@@ -1451,10 +1423,6 @@ watch(worldbookSearchText, () => {
 
 watch(memoryFileSearchText, () => {
     memoryFileGroupVisibleLimits.value = {};
-});
-
-watch(chatSessionSearchText, () => {
-    chatSidebarSessionLimit.value = CHAT_SIDEBAR_INITIAL_LIMIT;
 });
 
 watch(regexSearchText, () => {
@@ -2720,10 +2688,6 @@ async function enterSelectedCharacter() {
 
 async function refreshSessions() {
     sessions.value = await listTavernSessions();
-    const liveSessionIds = new Set(sessions.value.map((session) => session.id));
-    sessionSearchCorpusCache.forEach((_value, sessionId) => {
-        if (!liveSessionIds.has(sessionId)) {sessionSearchCorpusCache.delete(sessionId);}
-    });
     selectedSessionId.value = await getSelectedTavernSessionId();
     if (!selectedSessionId.value && sessions.value[0]) {
         selectedSessionId.value = sessions.value[0].id;
@@ -5267,7 +5231,6 @@ watch(() => selectedSessionId.value, () => {
     managerLastScrollTop = 0;
     memoryFileSearchText.value = '';
     memoryFileGroupVisibleLimits.value = {};
-    chatSessionSearchText.value = '';
     chatSidebarSessionLimit.value = CHAT_SIDEBAR_INITIAL_LIMIT;
     void nextTick(() => {
         scrollChatToBottom(true);
@@ -5405,7 +5368,6 @@ provide(TAVERN_APP_UI_CONTEXT, {
     chatPresetSourceVisibleLimit,
     chatScrollControlsActive,
     chatScrollRef,
-    chatSessionSearchText,
     chatSidebarSessionLimit,
     chatSidebarSessions,
     chatSidePanel,

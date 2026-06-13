@@ -155,7 +155,7 @@ export function injectEbookStyles(rootId = 'xb-ebook-root') {
             grid-row: 1;
             height: 176px;
             display: flex;
-            align-items: flex-end;
+            align-items: flex-start;
             justify-content: space-between;
             gap: 28px;
             padding: 42px 60px 34px;
@@ -213,6 +213,34 @@ export function injectEbookStyles(rootId = 'xb-ebook-root') {
             font-size: 13px;
             font-weight: 600;
         }
+        .xb-global-actions {
+            flex-wrap: nowrap;
+            gap: 8px;
+            padding-top: 2px;
+        }
+        .xb-global-actions .xb-glass-button {
+            width: 30px;
+            min-width: 30px;
+            height: 30px;
+            min-height: 30px;
+            padding: 0;
+            border-color: transparent;
+            background: transparent;
+            color: var(--xb-text-muted);
+            box-shadow: none;
+            backdrop-filter: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .xb-global-actions .xb-glass-button:hover:not(:disabled),
+        .xb-global-actions .xb-glass-button:focus-visible {
+            outline: none;
+            transform: none;
+            border-color: var(--xb-line);
+            background: rgba(255, 255, 255, 0.055);
+            color: var(--xb-text-main);
+        }
         .xb-exit-button {
             width: 40px;
             min-width: 40px;
@@ -252,6 +280,14 @@ export function injectEbookStyles(rootId = 'xb-ebook-root') {
             align-items: center;
             justify-content: center;
             line-height: 0;
+        }
+        .xb-global-actions #xb-close.xb-exit-button,
+        .xb-global-actions .xb-transfer-button {
+            width: 30px;
+            min-width: 30px;
+            height: 30px;
+            min-height: 30px;
+            padding: 0;
         }
         .xb-theme-glyph {
             display: block;
@@ -2738,6 +2774,18 @@ export function injectEbookStyles(rootId = 'xb-ebook-root') {
             background: rgba(255, 253, 248, 0.82);
             color: var(--xb-text-main);
         }
+        .theme-light .xb-global-actions .xb-glass-button {
+            border-color: transparent;
+            background: transparent;
+            color: var(--xb-text-muted);
+        }
+        .theme-light .xb-global-actions .xb-glass-button:hover:not(:disabled),
+        .theme-light .xb-global-actions .xb-glass-button:focus-visible {
+            border-color: var(--xb-line);
+            background: rgba(87, 70, 48, 0.055);
+            color: var(--xb-text-main);
+            box-shadow: none;
+        }
         .theme-light .xb-workspace-controller {
             border-color: var(--xb-line);
             background: rgba(255, 253, 248, 0.86);
@@ -3672,24 +3720,27 @@ export function injectEbookStyles(rootId = 'xb-ebook-root') {
                 width: auto;
                 display: flex;
                 grid-template-columns: none;
-                gap: 8px;
+                gap: 6px;
             }
             .xb-global-actions button {
-                width: auto;
-                min-width: 48px;
+                width: 34px;
+                min-width: 34px;
+                height: 34px;
+                min-height: 34px;
+                padding: 0;
             }
             .xb-global-actions #xb-close.xb-exit-button {
-                width: 36px;
-                min-width: 36px;
-                height: 36px;
-                min-height: 36px;
+                width: 34px;
+                min-width: 34px;
+                height: 34px;
+                min-height: 34px;
                 padding: 0;
             }
             .xb-global-actions .xb-transfer-button {
-                width: 36px;
-                min-width: 36px;
-                height: 36px;
-                min-height: 36px;
+                width: 34px;
+                min-width: 34px;
+                height: 34px;
+                min-height: 34px;
                 padding: 0;
             }
             .xb-library-grid {
