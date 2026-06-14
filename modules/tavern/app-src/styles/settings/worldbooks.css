@@ -283,7 +283,7 @@
 }
 
 .worldbook-entry-body {
-    max-height: 460px;
+    max-height: 560px;
     overflow: auto;
     display: grid;
     gap: 10px;
@@ -298,6 +298,10 @@
     font-size: 13px;
     line-height: 1.65;
     padding: 0;
+}
+
+.worldbook-entry-content {
+    white-space: pre-wrap;
 }
 
 .worldbook-entry-preview .worldbook-entry-keys {
@@ -375,7 +379,7 @@
     }
 
     .worldbook-entry-body {
-        max-height: 42dvh;
+        max-height: 52dvh;
         gap: 8px;
         padding: 1px 2px 10px 0;
     }

@@ -258,6 +258,7 @@ test('tavern worldbook preview keeps summary lean and expanded content ephemeral
     const helperSource = readRepoFile('modules/tavern/app-src/components/useTavernEphemeralDisclosureScope.ts');
     const worldbookSource = readRepoFile('modules/tavern/app-src/components/settings/TavernWorldbooksSettingsPanel.vue');
     const worldbookCss = readRepoFile('modules/tavern/app-src/styles/settings/worldbooks.css');
+    const worldbookHost = readRepoFile('modules/tavern/host/worldbooks.ts');
     const mobileCss = readRepoFile('modules/tavern/app-src/styles/settings/mobile.css');
 
     assert.match(helperSource, /export function useTavernEphemeralDisclosureScope/);
@@ -270,7 +271,9 @@ test('tavern worldbook preview keeps summary lean and expanded content ephemeral
         assert.doesNotMatch(summary, /entry\.(?:keys|secondaryKeys)/);
     }
     assert.match(worldbookSource, /v-if="worldbookDisclosure\.isOpen[\s\S]*class="worldbook-entry-body"/);
-    assert.match(worldbookCss, /\.worldbook-entry-body \{[\s\S]*max-height: 460px;[\s\S]*overflow: auto;/);
+    assert.match(worldbookCss, /\.worldbook-entry-body \{[\s\S]*max-height: 560px;[\s\S]*overflow: auto;/);
+    assert.match(worldbookCss, /\.worldbook-entry-content \{[\s\S]*white-space: pre-wrap;/);
+    assert.doesNotMatch(worldbookHost, /truncatePreview/);
     assert.match(mobileCss, /\.settings-layout\.is-worldbooks-workspace \.worldbook-entry-preview summary \{[\s\S]*min-height: 42px;/);
 });
 

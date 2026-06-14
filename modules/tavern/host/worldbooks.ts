@@ -93,11 +93,6 @@ function cloneJson<T>(value: T): T {
     }
 }
 
-function truncatePreview(text = '', limit = 260): string {
-    const normalized = normalizeText(text).replace(/\s+/g, ' ');
-    return normalized.length > limit ? `${normalized.slice(0, limit).trim()}...` : normalized;
-}
-
 function readWorldbookEntries(data: unknown): Record<string, unknown>[] {
     const entries = asRecord(data).entries;
     if (!entries || typeof entries !== 'object' || Array.isArray(entries)) {return [];}
@@ -442,7 +437,7 @@ export async function getTavernWorldbookPreview(input: unknown = {}): Promise<Ta
                 name: previewEntryName(entry, index),
                 keys,
                 secondaryKeys,
-                contentPreview: truncatePreview(content),
+                contentPreview: content,
                 enabled: entry.disable !== true,
                 constant: entry.constant === true,
                 order: Number.isFinite(Number(entry.order)) ? Number(entry.order) : 100,

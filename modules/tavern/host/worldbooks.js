@@ -39,10 +39,6 @@ function cloneJson(value) {
     return value;
   }
 }
-function truncatePreview(text = "", limit = 260) {
-  const normalized = normalizeText(text).replace(/\s+/g, " ");
-  return normalized.length > limit ? `${normalized.slice(0, limit).trim()}...` : normalized;
-}
 function readWorldbookEntries(data) {
   const entries = asRecord(data).entries;
   if (!entries || typeof entries !== "object" || Array.isArray(entries)) {
@@ -358,7 +354,7 @@ async function getTavernWorldbookPreview(input = {}) {
       name: previewEntryName(entry, index),
       keys,
       secondaryKeys,
-      contentPreview: truncatePreview(content),
+      contentPreview: content,
       enabled: entry.disable !== true,
       constant: entry.constant === true,
       order: Number.isFinite(Number(entry.order)) ? Number(entry.order) : 100

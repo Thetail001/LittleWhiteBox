@@ -68,6 +68,7 @@ let runtimeActive = false;
 let visibilityHandler = null;
 let pendingPingId = null;
 let fullscreenChangeHandler = null;
+let hostThemeObserver = null;
 let activeGenerationController = null;
 let activeGenerationId = 0;
 let agentBridgePromise = null;
@@ -178,6 +179,44 @@ function getAvatarUrls() {
         char = String(char).includes('/') ? char.replace(/^\/+/, '') : `characters/${char}`;
     }
     return { user: toAbsUrl(user), char: toAbsUrl(char) };
+}
+
+function getHostTheme() {
+    const sources = [
+        document.documentElement?.className || '',
+        document.body?.className || '',
+        document.documentElement?.dataset?.theme || '',
+        document.body?.dataset?.theme || '',
+    ].join(' ').toLowerCase();
+    if (/(?:^|\s)(?:theme-dark|dark-theme|dark|neo-dark)(?:\s|$)/.test(sources)) return 'dark';
+    if (/(?:^|\s)(?:theme-light|light-theme|light)(?:\s|$)/.test(sources)) return 'light';
+    const background = getComputedStyle(document.body).backgroundColor || '';
+    const match = background.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+    if (match) {
+        const r = Number(match[1]);
+        const g = Number(match[2]);
+        const b = Number(match[3]);
+        const luminance = (0.2126 * r) + (0.7152 * g) + (0.0722 * b);
+        return luminance < 128 ? 'dark' : 'light';
+    }
+    return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function postThemeToFrame() {
+    postToFrame({ type: 'THEME_UPDATE', theme: getHostTheme() });
+}
+
+function startHostThemeObserver() {
+    if (hostThemeObserver) return;
+    hostThemeObserver = new MutationObserver(postThemeToFrame);
+    const options = { attributes: true, attributeFilter: ['class', 'data-theme', 'style'] };
+    hostThemeObserver.observe(document.documentElement, options);
+    if (document.body) hostThemeObserver.observe(document.body, options);
+}
+
+function stopHostThemeObserver() {
+    hostThemeObserver?.disconnect();
+    hostThemeObserver = null;
 }
 
 async function loadSharedAgentConfig() {
@@ -362,6 +401,7 @@ async function sendInitData() {
         promptTemplates: settings.fourthWallPromptTemplates || {},
         agentConfig,
         hostRequestHeaders: getRequestHeaders?.() || {},
+        theme: getHostTheme(),
         avatars
     });
 }
@@ -1022,6 +1062,7 @@ function createOverlay() {
         }
     };
     document.addEventListener('fullscreenchange', fullscreenChangeHandler);
+    startHostThemeObserver();
 }
 
 function showOverlay() {
@@ -1068,6 +1109,7 @@ function hideOverlay() {
     }
 
     window.removeEventListener('message', handleFrameMessage);
+    stopHostThemeObserver();
     overlayCreated = false;
     frameReady = false;
     pendingFrameMessages = [];
@@ -1245,6 +1287,7 @@ function cleanupFourthWallRuntime() {
 
     $('#xiaobaix-fourth-wall-overlay').remove();
     window.removeEventListener('message', handleFrameMessage);
+    stopHostThemeObserver();
 }
 
 function activateFourthWall() {
