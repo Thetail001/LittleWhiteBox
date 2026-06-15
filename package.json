@@ -63,6 +63,7 @@
         "@google/genai": "^1.50.1",
         "codemirror": "^6.0.2",
         "gpt-tokenizer": "^3.4.0",
-        "openai": "^6.34.0"
+        "openai": "^6.34.0",
+        "showdown": "^2.1.0"
     }
 }

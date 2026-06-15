@@ -24,6 +24,8 @@ interface TavernAgentAdapterChatResult {
     providerPayload?: unknown;
 }
 
+declare module 'showdown';
+
 declare module '*.js' {
     const value: unknown;
     export default value;

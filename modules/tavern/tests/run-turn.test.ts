@@ -1098,6 +1098,7 @@ test('xb tavern action checks fail the turn when the model still gives no conclu
 test('xb tavern action checks remap dice-card offsets after aiOutput regex rewrites the final assistant text', async () => {
     await resetDb();
     const preset = createDefaultXbTavernPreset();
+    const liveSnapshots: Array<{ text: string; events: ReturnType<typeof getActionCheckEvents> }> = [];
     const result = await runXbTavernTurn({
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
@@ -1112,6 +1113,12 @@ test('xb tavern action checks remap dice-card offsets after aiOutput regex rewri
             }),
         },
         actionCheckRoll: () => 18,
+        onStreamProgress: (snapshot) => {
+            liveSnapshots.push({
+                text: String(snapshot.text || ''),
+                events: getActionCheckEvents(snapshot.liveActionCheckEvents),
+            });
+        },
         applyRegex: async (items) => ({
             items: items.map((item) => item.placement === 'aiOutput'
                 ? {
@@ -1152,6 +1159,13 @@ test('xb tavern action checks remap dice-card offsets after aiOutput regex rewri
     assert.equal(events.length, 1);
     assert.equal(
         (assistant?.content || '').slice(0, events[0]?.insertAfterChars || 0),
+        '她先深吸一口气，猛地跃向断桥彼端。 ',
+    );
+    const finalLiveSnapshot = liveSnapshots.find((snapshot) => snapshot.text.includes('她先深吸一口气'));
+    assert.ok(finalLiveSnapshot);
+    assert.equal(finalLiveSnapshot.events.length, 1);
+    assert.equal(
+        finalLiveSnapshot.text.slice(0, finalLiveSnapshot.events[0]?.insertAfterChars || 0),
         '她先深吸一口气，猛地跃向断桥彼端。 ',
     );
 });

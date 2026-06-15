@@ -121,8 +121,8 @@ textarea:disabled {
     border-radius: 10px;
     background: rgba(10, 12, 18, 0.36);
     color: var(--xb-text-body);
-    white-space: pre-wrap;
-    word-break: break-all;
+    white-space: pre;
+    word-break: normal;
     font: 12px/1.55 var(--xb-font-mono);
 }
 

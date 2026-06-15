@@ -77,8 +77,8 @@ export function useTavernMarkdownTools(options: TavernMarkdownToolsOptions) {
     }
 
     function renderChatMarkdown(text = '', renderOptions: TavernRoleplayMarkdownOptions = {}) {
-        // renderMarkdownToHtml sanitizes through DOMPurify when SillyTavern exposes it,
-        // matching the ebook/assistant Markdown pipeline before Vue inserts the HTML.
+        // renderMarkdownToHtml keeps executable HTML fenced into iframe previews and
+        // sanitizes ordinary Markdown before Vue inserts it into the chat DOM.
         const raw = renderOptions.roleplay
             ? preprocessTavernRoleplayMarkdown(text, renderOptions)
             : String(text || '');

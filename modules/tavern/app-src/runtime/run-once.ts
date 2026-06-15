@@ -57,9 +57,11 @@ import {
 import {
     createActionCheckEvent,
     createChanceEncounterEvent,
+    extractActionCheckRegexMarkers,
     getActionCheckEvents,
     getChanceEncounterEvent,
     hasChanceEncounterEvent,
+    injectActionCheckRegexMarkers,
     insertChanceEncounterPromptAfterCurrentUser,
     RANDOM_ENCOUNTER_COOLDOWN_TURNS,
     RANDOM_ENCOUNTER_PROBABILITY,
@@ -1444,72 +1446,6 @@ function safeJsonStringify(value: unknown): string {
     }
 }
 
-const ACTION_CHECK_REGEX_MARKER_BASE = 0xE000;
-
-function injectActionCheckRegexMarkers(
-    text: string,
-    events: TavernActionCheckRuntimeEvent[] = [],
-): {
-    text: string;
-    boundaries: Array<{ originalOffset: number; marker: string }>;
-} {
-    const uniqueOffsets = [...new Set(
-        events.map((event) => Math.max(0, Math.min(text.length, Number(event.insertAfterChars) || 0))),
-    )].sort((left, right) => left - right);
-    if (!uniqueOffsets.length || uniqueOffsets.length > (0xF8FF - ACTION_CHECK_REGEX_MARKER_BASE)) {
-        return { text, boundaries: [] };
-    }
-    let cursor = 0;
-    let marked = '';
-    const boundaries = uniqueOffsets.map((offset, index) => {
-        const marker = String.fromCharCode(ACTION_CHECK_REGEX_MARKER_BASE + index);
-        marked += text.slice(cursor, offset) + marker;
-        cursor = offset;
-        return { originalOffset: offset, marker };
-    });
-    marked += text.slice(cursor);
-    return { text: marked, boundaries };
-}
-
-function extractActionCheckRegexMarkers(
-    text: string,
-    events: TavernActionCheckRuntimeEvent[] = [],
-    boundaries: Array<{ originalOffset: number; marker: string }> = [],
-): {
-    text: string;
-    events: TavernActionCheckRuntimeEvent[];
-} {
-    if (!boundaries.length || !events.length) {
-        return { text, events };
-    }
-    const markerOffsets = new Map(boundaries.map((boundary) => [boundary.marker, boundary.originalOffset]));
-    const remappedOffsets = new Map<number, number>();
-    let cleaned = '';
-    for (let index = 0; index < text.length; index += 1) {
-        const char = text[index];
-        const originalOffset = markerOffsets.get(char);
-        if (originalOffset !== undefined) {
-            if (!remappedOffsets.has(originalOffset)) {
-                remappedOffsets.set(originalOffset, cleaned.length);
-            }
-            continue;
-        }
-        cleaned += char;
-    }
-    return {
-        text: cleaned,
-        events: events.map((event) => {
-            const originalOffset = Math.max(0, Math.min(text.length, Number(event.insertAfterChars) || 0));
-            return {
-                ...event,
-                insertAfterChars: remappedOffsets.has(originalOffset)
-                    ? remappedOffsets.get(originalOffset)!
-                    : Math.max(0, Math.min(cleaned.length, originalOffset)),
-            };
-        }),
-    };
-}
-
 async function runTavernActionCheckLoop(input: {
     agentConfig: Record<string, unknown>;
     messages: XbTavernMessage[];
@@ -1967,7 +1903,11 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
             regexMarkerPayload.boundaries,
         );
         if (normalizedOutput.text !== result.text || reasoningRegex.thoughts !== result.thoughts) {
-            input.onStreamProgress?.({ text: normalizedOutput.text, thoughts: reasoningRegex.thoughts });
+            input.onStreamProgress?.({
+                text: normalizedOutput.text,
+                thoughts: reasoningRegex.thoughts,
+                liveActionCheckEvents: normalizedOutput.events.map((event) => ({ ...event })),
+            });
         }
         const assistantRuntimeEvents = normalizedOutput.events;
         const assistantRequestSnapshot: TavernRequestSnapshot = {

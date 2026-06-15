@@ -43,8 +43,9 @@ const {
     currentUserMessage,
     deleteMessageTurn,
     displayMessageContent,
+    displayMessageRenderProjection,
     displayMessageThoughtBlocks,
-    displayRuntimeContent,
+    displayRuntimeRenderProjection,
     displayRuntimeThoughtBlocks,
     drawMessage,
     drawMessageStatusClass,
@@ -135,21 +136,25 @@ function buildAssistantRenderState(text: string, events: ReturnType<typeof getAc
 }
 
 function assistantMessageRenderState(message: TavernMessageRecord) {
-    const text = displayMessageContent(message);
     if (message.role !== 'assistant') {
+        const text = displayMessageContent(message);
         return {
             text,
             signature: roleplayMarkdownSignature(text),
             actionCheckGroups: '',
         };
     }
-    return buildAssistantRenderState(text, getActionCheckEvents(message.runtimeEvents));
+    const projection = displayMessageRenderProjection(message);
+    return buildAssistantRenderState(projection.text, projection.actionCheckEvents);
 }
 
-const liveAssistantRenderState = computed(() => buildAssistantRenderState(
-    displayRuntimeContent(runtimeText.value),
-    Array.isArray(runtimeActionCheckEvents.value) ? runtimeActionCheckEvents.value : [],
-));
+const liveAssistantRenderState = computed(() => {
+    const projection = displayRuntimeRenderProjection(
+        runtimeText.value,
+        Array.isArray(runtimeActionCheckEvents.value) ? runtimeActionCheckEvents.value : [],
+    );
+    return buildAssistantRenderState(projection.text, projection.actionCheckEvents);
+});
 const liveAssistantVisible = computed(() => hasRenderableLiveAssistantContent({
     text: runtimeText.value,
     thoughts: runtimeThoughts.value,

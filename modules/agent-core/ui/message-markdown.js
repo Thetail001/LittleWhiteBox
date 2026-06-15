@@ -1,5 +1,6 @@
+import showdown from 'showdown';
+
 let markdownConverter = null;
-let markdownConverterSource = null;
 let htmlBlockSerial = 0;
 const htmlBlockStore = new Map();
 
@@ -28,13 +29,6 @@ function formatHtmlBlockSize(code = '') {
         return `${scaled >= 10 ? Math.round(scaled) : scaled.toFixed(1)}k 字符`;
     }
     return `${chars} 字符`;
-}
-
-function getMarkdownLibraries() {
-    return {
-        showdown: globalThis.parent?.showdown || globalThis.showdown,
-        DOMPurify: globalThis.parent?.DOMPurify || globalThis.DOMPurify,
-    };
 }
 
 function isHtmlBlockLanguage(language = '') {
@@ -69,7 +63,14 @@ function escapeRawHtmlTags(text = '', options = {}) {
     return String(text || '').replace(/<\/?([a-z][\w:-]*)(?:\s[^<>]*)?>/gi, (match, tagName) => {
         const normalized = String(tagName || '').toLowerCase();
         if (allowSafeHtmlTags && SAFE_MARKDOWN_HTML_TAGS.has(normalized)) {
-            return match;
+            const closing = /^<\s*\//.test(match);
+            if (closing) {
+                return `</${normalized}>`;
+            }
+            if (normalized === 'details' && /\sopen(?:\s|=|>|\/)/i.test(match)) {
+                return '<details open>';
+            }
+            return `<${normalized}>`;
         }
         return match.replace(/</g, '&lt;').replace(/>/g, '&gt;');
     });
@@ -120,36 +121,63 @@ function injectHtmlBlockPlaceholders(html = '') {
     ));
 }
 
+function repairSafeMarkdownHtmlBlocks(html = '') {
+    return String(html || '')
+        .replace(/<p>\s*(<details\b[^>]*>\s*(?:<summary\b[^>]*>[\s\S]*?<\/summary>\s*)?)<\/p>/gi, '$1')
+        .replace(/<p>\s*(<summary\b[^>]*>[\s\S]*?<\/summary>)\s*<\/p>/gi, '$1')
+        .replace(/<p>\s*(<\/details>)\s*<\/p>/gi, '$1');
+}
+
+function decodeHtmlAttribute(value = '') {
+    return String(value || '')
+        .replace(/&#x([0-9a-f]+);?/gi, (_match, hex) => String.fromCodePoint(Number.parseInt(hex, 16) || 0))
+        .replace(/&#([0-9]+);?/g, (_match, number) => String.fromCodePoint(Number.parseInt(number, 10) || 0))
+        .replace(/&colon;?/gi, ':')
+        .replace(/&tab;?/gi, '\t')
+        .replace(/&newline;?/gi, '\n')
+        .replace(/&amp;?/gi, '&');
+}
+
+function isDangerousUrl(value = '') {
+    const normalized = decodeHtmlAttribute(value)
+        .trim()
+        .replace(/[\u0000-\u001F\u007F\s]+/g, '')
+        .toLowerCase();
+    return /^(?:javascript|vbscript|data):/.test(normalized);
+}
+
+function sanitizeMarkdownHtml(html = '') {
+    return String(html || '')
+        .replace(/<\/?(?:script|style|iframe|object|embed|link|meta|base|form|input|button|textarea|select|option)[^>]*>/gi, '')
+        .replace(/\s+on[a-z0-9_-]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+)/gi, '')
+        .replace(/\s+(href|src|xlink:href)\s*=\s*("[^"]*"|'[^']*'|[^\s"'=<>`]+)/gi, (match, name, quotedValue) => {
+            const value = String(quotedValue || '').replace(/^["']|["']$/g, '');
+            return isDangerousUrl(value) ? '' : ` ${name}=${quotedValue}`;
+        });
+}
+
 export function renderMarkdownToHtml(text) {
     const raw = String(text || '').trim();
     if (!raw) return '';
-    const { showdown, DOMPurify } = getMarkdownLibraries();
     const markdownText = preprocessMarkdownInput(raw, {
-        allowSafeHtmlTags: !!DOMPurify?.sanitize,
+        allowSafeHtmlTags: true,
     });
 
     try {
-        if (showdown?.Converter && DOMPurify?.sanitize) {
-            if (!markdownConverter || markdownConverterSource !== showdown) {
-                markdownConverterSource = showdown;
-                markdownConverter = new showdown.Converter({
-                    simpleLineBreaks: true,
-                    strikethrough: true,
-                    tables: true,
-                    tasklists: true,
-                    ghCodeBlocks: true,
-                    simplifiedAutoLink: true,
-                    openLinksInNewWindow: true,
-                    emoji: false,
-                    });
-                }
-            const html = markdownConverter.makeHtml(markdownText);
-            const sanitized = DOMPurify.sanitize(html, {
-                USE_PROFILES: { html: true },
-                FORBID_TAGS: ['style', 'script'],
+        if (!markdownConverter) {
+            markdownConverter = new showdown.Converter({
+                simpleLineBreaks: true,
+                strikethrough: true,
+                tables: true,
+                tasklists: true,
+                ghCodeBlocks: true,
+                simplifiedAutoLink: true,
+                openLinksInNewWindow: true,
+                emoji: false,
             });
-            return injectHtmlBlockPlaceholders(sanitized);
         }
+        const html = repairSafeMarkdownHtmlBlocks(markdownConverter.makeHtml(markdownText));
+        return injectHtmlBlockPlaceholders(sanitizeMarkdownHtml(html));
     } catch {
         // Fall through to escaped plain text below.
     }

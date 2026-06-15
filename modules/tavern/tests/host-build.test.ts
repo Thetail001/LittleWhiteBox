@@ -68,6 +68,14 @@ test('tavern chat typography follows host SillyTavern font metrics inside the if
     assert.match(memoryCss, /line-height: var\(--xb-host-prose-line-height, 23px\);/);
 });
 
+test('tavern markdown blockquotes do not render showdown formatting whitespace as blank lines', () => {
+    const markdownCss = readRepoFile('modules/tavern/app-src/styles/chat/markdown.css');
+
+    assert.match(markdownCss, /\.xb-tavern-markdown p,\r?\n\.xb-tavern-markdown li \{\r?\n\s+white-space: pre-wrap;/);
+    assert.doesNotMatch(markdownCss, /\.xb-tavern-markdown blockquote[^{]*\{[^}]*white-space:\s*pre-wrap/);
+    assert.match(markdownCss, /\.xb-tavern-markdown blockquote \{[\s\S]*?white-space: normal;[\s\S]*?\n\}/);
+});
+
 test('tavern worldbook settings page is a native overview instead of a custom editor', () => {
     const panelSource = readRepoFile('modules/tavern/app-src/components/settings/TavernWorldbooksSettingsPanel.vue');
     assert.match(panelSource, /打开酒馆编辑器/);

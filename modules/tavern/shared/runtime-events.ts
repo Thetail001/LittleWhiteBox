@@ -33,6 +33,7 @@ export const CHANCE_ENCOUNTER_LABEL = '[ 🎲 CHANCE ENCOUNTER TRIGGERED ]';
 export const RANDOM_ENCOUNTER_PROBABILITY = 0.1;
 export const RANDOM_ENCOUNTER_COOLDOWN_TURNS = 2;
 const ACTION_CHECK_RENDER_MARKER_BASE = 0xE200;
+const ACTION_CHECK_REGEX_MARKER_BASE = 0xE000;
 
 const CHANCE_ENCOUNTER_PROMPT = [
     '[Runtime Event: Chance Encounter Triggered]',
@@ -220,6 +221,73 @@ export function injectActionCheckRenderMarkers(
     return {
         text: marked,
         groups: markerGroups,
+    };
+}
+
+export function injectActionCheckRegexMarkers(
+    text: string,
+    events: TavernActionCheckRuntimeEvent[] = [],
+): {
+    text: string;
+    boundaries: Array<{ originalOffset: number; marker: string }>;
+} {
+    const sourceText = String(text || '');
+    const uniqueOffsets = [...new Set(
+        getActionCheckEvents(events).map((event) => Math.max(0, Math.min(sourceText.length, Number(event.insertAfterChars) || 0))),
+    )].sort((left, right) => left - right);
+    if (!uniqueOffsets.length || uniqueOffsets.length > (0xF8FF - ACTION_CHECK_REGEX_MARKER_BASE)) {
+        return { text: sourceText, boundaries: [] };
+    }
+    let cursor = 0;
+    let marked = '';
+    const boundaries = uniqueOffsets.map((offset, index) => {
+        const marker = String.fromCharCode(ACTION_CHECK_REGEX_MARKER_BASE + index);
+        marked += sourceText.slice(cursor, offset) + marker;
+        cursor = offset;
+        return { originalOffset: offset, marker };
+    });
+    marked += sourceText.slice(cursor);
+    return { text: marked, boundaries };
+}
+
+export function extractActionCheckRegexMarkers(
+    text: string,
+    events: TavernActionCheckRuntimeEvent[] = [],
+    boundaries: Array<{ originalOffset: number; marker: string }> = [],
+): {
+    text: string;
+    events: TavernActionCheckRuntimeEvent[];
+} {
+    const sourceText = String(text || '');
+    const sourceEvents = getActionCheckEvents(events);
+    if (!boundaries.length || !sourceEvents.length) {
+        return { text: sourceText, events: sourceEvents };
+    }
+    const markerOffsets = new Map(boundaries.map((boundary) => [boundary.marker, boundary.originalOffset]));
+    const remappedOffsets = new Map<number, number>();
+    let cleaned = '';
+    for (let index = 0; index < sourceText.length; index += 1) {
+        const char = sourceText[index];
+        const originalOffset = markerOffsets.get(char);
+        if (originalOffset !== undefined) {
+            if (!remappedOffsets.has(originalOffset)) {
+                remappedOffsets.set(originalOffset, cleaned.length);
+            }
+            continue;
+        }
+        cleaned += char;
+    }
+    return {
+        text: cleaned,
+        events: sourceEvents.map((event) => {
+            const originalOffset = Math.max(0, Number(event.insertAfterChars) || 0);
+            return {
+                ...event,
+                insertAfterChars: remappedOffsets.has(originalOffset)
+                    ? remappedOffsets.get(originalOffset)!
+                    : Math.max(0, Math.min(cleaned.length, originalOffset)),
+            };
+        }),
     };
 }
 

@@ -55,17 +55,18 @@
 .xb-tavern-markdown h2,
 .xb-tavern-markdown h3,
 .xb-tavern-markdown h4 {
-    margin: 0 0 0.82em;
+    margin-top: 0;
+    margin-bottom: 10px;
 }
 
 .xb-tavern-markdown p,
-.xb-tavern-markdown li,
-.xb-tavern-markdown blockquote {
+.xb-tavern-markdown li {
     white-space: pre-wrap;
 }
 
 .xb-os-shell.theme-dark .xb-tavern-markdown blockquote {
     border-left-color: rgba(184, 178, 166, 0.24);
+    background: rgba(255, 255, 255, 0.03);
     color: var(--xb-text-muted);
 }
 
@@ -93,19 +94,19 @@
 .xb-tavern-markdown h3,
 .xb-tavern-markdown h4 {
     color: var(--xb-text-main);
-    font-family: var(--xb-font-serif);
+    font-family: inherit;
     font-weight: 700;
     letter-spacing: 0;
-    line-height: 1.36;
+    line-height: inherit;
 }
 
-.xb-tavern-markdown h1 { font-size: 1.42rem; }
+.xb-tavern-markdown h1 { font-size: 1em; }
 
-.xb-tavern-markdown h2 { font-size: 1.28rem; }
+.xb-tavern-markdown h2 { font-size: 1em; }
 
-.xb-tavern-markdown h3 { font-size: 1.15rem; }
+.xb-tavern-markdown h3 { font-size: 1em; }
 
-.xb-tavern-markdown h4 { font-size: 1.04rem; }
+.xb-tavern-markdown h4 { font-size: 1em; }
 
 .xb-tavern-markdown strong {
     color: var(--xb-text-main);
@@ -115,15 +116,18 @@
 .xb-tavern-markdown em,
 .xb-tavern-markdown i {
     color: #756b5f;
-    font-family: "Crimson Pro", "Palatino Linotype", "Book Antiqua", "KaiTi", "STKaiti", "Noto Serif SC", serif;
     font-style: italic;
-    font-weight: 400;
 }
 
 .xb-tavern-markdown q,
 .xb-tavern-markdown .xb-rp-dialogue {
     color: #5a1d1d;
     font-style: normal;
+}
+
+.xb-tavern-markdown q:before,
+.xb-tavern-markdown q:after {
+    content: '';
 }
 
 .xb-tavern-markdown q em,
@@ -135,13 +139,31 @@
 
 .xb-tavern-markdown ul,
 .xb-tavern-markdown ol {
+    margin-top: 5px;
+    margin-bottom: 5px;
     padding-left: 1.45em;
 }
 
 .xb-tavern-markdown blockquote {
-    padding-left: 12px;
-    border-left: 2px solid rgba(143, 180, 189, 0.32);
+    margin: 0;
+    padding-left: 10px;
+    border-left: 3px solid rgba(143, 180, 189, 0.32);
+    background: rgba(26, 26, 26, 0.08);
     color: var(--xb-text-muted);
+    white-space: normal;
+}
+
+.xb-tavern-markdown blockquote > :first-child {
+    margin-top: 0;
+}
+
+.xb-tavern-markdown blockquote > :last-child {
+    margin-bottom: 0;
+}
+
+.xb-tavern-markdown blockquote blockquote {
+    margin-top: 0;
+    margin-bottom: 0;
 }
 
 .xb-tavern-markdown .xb-tavern-image {
@@ -187,19 +209,24 @@
 .xb-tavern-markdown pre {
     min-width: 0;
     max-width: 100%;
-    overflow-x: hidden;
-    overflow-y: visible;
+    overflow-x: auto;
+    overflow-y: hidden;
     border: 1px solid var(--xb-line);
     border-radius: 10px;
     background: rgba(10, 12, 18, 0.28);
     padding: 12px 14px;
-    white-space: pre-wrap;
-    word-break: break-all;
+    white-space: pre;
+    word-break: normal;
 }
 
 .xb-tavern-markdown pre code {
+    position: relative;
+    display: block;
+    overflow-x: auto;
     padding: 0;
     background: transparent;
+    white-space: inherit;
+    word-break: inherit;
 }
 
 .xb-tavern-markdown table {

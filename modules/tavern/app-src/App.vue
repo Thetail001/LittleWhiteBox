@@ -60,7 +60,12 @@ import {
     normalizeTavernSessionContract,
     type TavernSessionContract,
 } from '../shared/session-contract';
-import type { TavernActionCheckRuntimeEvent } from '../shared/runtime-events';
+import {
+    extractActionCheckRegexMarkers,
+    getActionCheckEvents,
+    injectActionCheckRegexMarkers,
+    type TavernActionCheckRuntimeEvent,
+} from '../shared/runtime-events';
 import type { TavernApplyRegexItem, TavernApplyRegexResult } from '../shared/regex';
 import type { TavernSubstituteParamsItem, TavernSubstituteParamsOptions, TavernSubstituteParamsResult } from '../shared/substitute-params';
 import {
@@ -147,7 +152,7 @@ const MEMORY_TURN_INITIAL_LIMIT = 36;
 const MEMORY_TURN_BATCH_SIZE = 48;
 const MEMORY_FILE_BATCH_SIZE = 24;
 const DISPLAY_REGEX_CACHE_LIMIT = 480;
-const RUNTIME_DISPLAY_REGEX_DEBOUNCE_MS = 200;
+const RUNTIME_DISPLAY_REGEX_THROTTLE_MS = 200;
 
 const context = ref<XbTavernContext>({});
 const diagnostics = ref<TavernDiagnostics>({});
@@ -267,6 +272,12 @@ interface DisplayRegexTextRequest {
     text: string;
     placement: TavernApplyRegexItem['placement'];
     options: TavernApplyRegexItem['options'];
+    actionCheckEvents?: TavernActionCheckRuntimeEvent[];
+    actionCheckBoundaries?: Array<{ originalOffset: number; marker: string }>;
+}
+interface DisplayRegexProjection {
+    text: string;
+    actionCheckEvents: TavernActionCheckRuntimeEvent[];
 }
 interface PendingRuntimeDisplayRegexRequest {
     timer: number;
@@ -385,6 +396,7 @@ let sessionContextSyncSequence = 0;
 const pendingDisplayRegexKeys = new Set<string>();
 const pendingRuntimeDisplayRegexRequests = new Map<string, PendingRuntimeDisplayRegexRequest>();
 const latestRuntimeDisplayRegexKeys = new Map<string, string>();
+const runtimeDisplayRegexStableProjection = new Map<string, DisplayRegexProjection>();
 let displayRegexCacheGeneration = 0;
 const effectiveContext = computed<XbTavernContext>(() => ({
     ...context.value,
@@ -1192,6 +1204,7 @@ function clearRuntimeDisplayRegexRequests() {
     pendingRuntimeDisplayRegexRequests.forEach((request) => window.clearTimeout(request.timer));
     pendingRuntimeDisplayRegexRequests.clear();
     latestRuntimeDisplayRegexKeys.clear();
+    runtimeDisplayRegexStableProjection.clear();
 }
 
 function clearDisplayRegexCache() {
@@ -1216,6 +1229,23 @@ function rememberDisplayRegexText(key: string, text: string) {
             updateChatScrollButtons();
         });
     }
+}
+
+function toDisplayRegexProjection(text: string, input: Pick<DisplayRegexTextRequest, 'actionCheckEvents' | 'actionCheckBoundaries'>): DisplayRegexProjection {
+    const normalized = extractActionCheckRegexMarkers(
+        text,
+        input.actionCheckEvents || [],
+        input.actionCheckBoundaries || [],
+    );
+    return {
+        text: normalized.text,
+        actionCheckEvents: normalized.events,
+    };
+}
+
+function rememberRuntimeDisplayRegexProjection(slot: string, key: string, text: string, input: DisplayRegexTextRequest) {
+    rememberDisplayRegexText(key, text);
+    runtimeDisplayRegexStableProjection.set(slot, toDisplayRegexProjection(text, input));
 }
 
 function messageRegexPlacement(message: TavernMessageRecord): TavernApplyRegexItem['placement'] | null {
@@ -1249,6 +1279,7 @@ function displayRegexCacheKey(
         index?: number;
         label?: string;
         characterOverride?: string;
+        actionCheckSignature?: string;
     },
 ) {
     return [
@@ -1261,6 +1292,7 @@ function displayRegexCacheKey(
         input.placement,
         String(input.depth),
         input.characterOverride || '',
+        input.actionCheckSignature || '',
         markdownSignature(String(input.label || '')),
         markdownSignature(input.text),
     ].join('\u0001');
@@ -1275,6 +1307,7 @@ function runtimeDisplayRegexCacheKey(
         index?: number;
         label?: string;
         characterOverride?: string;
+        actionCheckSignature?: string;
     },
 ) {
     const latestOrder = [...sessionMessages.value].sort((left, right) => left.order - right.order).at(-1)?.order ?? -1;
@@ -1288,9 +1321,28 @@ function runtimeDisplayRegexCacheKey(
         input.placement,
         String(input.depth),
         input.characterOverride || '',
+        input.actionCheckSignature || '',
         markdownSignature(String(input.label || '')),
         markdownSignature(input.text),
     ].join('\u0001');
+}
+
+function actionCheckEventsCacheSignature(events: TavernActionCheckRuntimeEvent[] = []): string {
+    return getActionCheckEvents(events)
+        .map((event, index) => [
+            index,
+            event.toolCallId || '',
+            event.createdAt || '',
+            event.stat,
+            event.action,
+            event.roll,
+            event.difficulty,
+            event.insertAfterChars,
+            event.success ? 1 : 0,
+            event.summary || '',
+            event.stakes || '',
+        ].join(':'))
+        .join('|');
 }
 
 async function resolveDisplayRegexText(input: DisplayRegexTextRequest) {
@@ -1327,9 +1379,12 @@ async function resolveRuntimeDisplayRegexText(slot: string, input: DisplayRegexT
         }]);
         if (generation !== displayRegexCacheGeneration || latestRuntimeDisplayRegexKeys.get(slot) !== input.key) {return;}
         const item = result.items.find((candidate) => candidate.id === input.key) || result.items[0];
-        rememberDisplayRegexText(input.key, item?.text ?? input.text);
+        rememberRuntimeDisplayRegexProjection(slot, input.key, item?.text ?? input.text, input);
     } catch (error) {
         console.warn('[小白酒馆] 生成中显示正则应用失败', error);
+        if (generation === displayRegexCacheGeneration && latestRuntimeDisplayRegexKeys.get(slot) === input.key) {
+            rememberRuntimeDisplayRegexProjection(slot, input.key, input.text, input);
+        }
     } finally {
         pendingDisplayRegexKeys.delete(input.key);
     }
@@ -1339,14 +1394,16 @@ function scheduleRuntimeDisplayRegexText(slot: string, input: DisplayRegexTextRe
     latestRuntimeDisplayRegexKeys.set(slot, input.key);
     const current = pendingRuntimeDisplayRegexRequests.get(slot);
     if (current) {
-        window.clearTimeout(current.timer);
+        current.key = input.key;
+        current.input = input;
+        return;
     }
     const timer = window.setTimeout(() => {
         const pending = pendingRuntimeDisplayRegexRequests.get(slot);
-        if (!pending || pending.key !== input.key) {return;}
+        if (!pending) {return;}
         pendingRuntimeDisplayRegexRequests.delete(slot);
         void resolveRuntimeDisplayRegexText(slot, pending.input);
-    }, RUNTIME_DISPLAY_REGEX_DEBOUNCE_MS);
+    }, RUNTIME_DISPLAY_REGEX_THROTTLE_MS);
     pendingRuntimeDisplayRegexRequests.set(slot, {
         timer,
         key: input.key,
@@ -1383,6 +1440,50 @@ function displayMessageContent(message: TavernMessageRecord): string {
     return text;
 }
 
+function displayMessageRenderProjection(message: TavernMessageRecord): DisplayRegexProjection {
+    const text = String(message.content || '');
+    if (!text) {return { text: '', actionCheckEvents: [] };}
+    const actionCheckEvents = message.role === 'assistant' ? getActionCheckEvents(message.runtimeEvents) : [];
+    if (!actionCheckEvents.length) {
+        return { text: displayMessageContent(message), actionCheckEvents: [] };
+    }
+    if (!isNormalRoleplayDisplayMessage(message)) {
+        return { text, actionCheckEvents };
+    }
+    const placement = messageRegexPlacement(message);
+    if (!placement) {
+        return { text, actionCheckEvents };
+    }
+    const markerPayload = injectActionCheckRegexMarkers(text, actionCheckEvents);
+    const depth = messageDisplayDepth(message);
+    const characterOverride = messageCharacterOverride(message);
+    const key = displayRegexCacheKey('message', message, {
+        placement,
+        text: markerPayload.text,
+        depth,
+        characterOverride,
+        actionCheckSignature: actionCheckEventsCacheSignature(actionCheckEvents),
+    });
+    const request: DisplayRegexTextRequest = {
+        key,
+        text: markerPayload.text,
+        placement,
+        options: {
+            isMarkdown: true,
+            depth,
+            characterOverride,
+        },
+        actionCheckEvents,
+        actionCheckBoundaries: markerPayload.boundaries,
+    };
+    const cached = displayRegexCache.value[key];
+    if (cached !== undefined) {
+        return toDisplayRegexProjection(cached, request);
+    }
+    void resolveDisplayRegexText(request);
+    return toDisplayRegexProjection(markerPayload.text, request);
+}
+
 function displayMessageThoughtBlocks(message: TavernMessageRecord): Array<{ label?: string; text?: string }> {
     const depth = messageDisplayDepth(message);
     return thoughtBlocks(message).map((thought, index) => {
@@ -1412,31 +1513,48 @@ function displayMessageThoughtBlocks(message: TavernMessageRecord): Array<{ labe
     }).filter((thought) => String(thought.text || '').trim());
 }
 
-function displayRuntimeContent(textInput = ''): string {
+function displayRuntimeRenderProjection(
+    textInput = '',
+    events: TavernActionCheckRuntimeEvent[] = [],
+): DisplayRegexProjection {
     const text = String(textInput || '');
-    if (!text) {return '';}
+    const actionCheckEvents = getActionCheckEvents(events);
+    if (!text && !actionCheckEvents.length) {return { text: '', actionCheckEvents: [] };}
+    if (!text) {return { text: '', actionCheckEvents };}
+    const markerPayload = injectActionCheckRegexMarkers(text, actionCheckEvents);
     const depth = 0;
     const characterOverride = String(roleLabel('assistant') || '').trim();
     const key = runtimeDisplayRegexCacheKey('message', {
         placement: 'aiOutput',
-        text,
+        text: markerPayload.text,
         depth,
         characterOverride,
+        actionCheckSignature: actionCheckEventsCacheSignature(actionCheckEvents),
     });
-    const cached = displayRegexCache.value[key];
-    if (cached !== undefined) {return cached;}
     const request: DisplayRegexTextRequest = {
         key,
-        text,
+        text: markerPayload.text,
         placement: 'aiOutput',
         options: {
             isMarkdown: true,
             depth,
             characterOverride,
         },
+        actionCheckEvents,
+        actionCheckBoundaries: markerPayload.boundaries,
     };
+    const cached = displayRegexCache.value[key];
+    if (cached !== undefined) {
+        const projection = toDisplayRegexProjection(cached, request);
+        runtimeDisplayRegexStableProjection.set('runtime:message', projection);
+        return projection;
+    }
     scheduleRuntimeDisplayRegexText('runtime:message', request);
-    return text;
+    return runtimeDisplayRegexStableProjection.get('runtime:message') ?? { text: '', actionCheckEvents: [] };
+}
+
+function displayRuntimeContent(textInput = ''): string {
+    return displayRuntimeRenderProjection(textInput).text;
 }
 
 function displayRuntimeThoughtBlocks(thoughts: Array<{ label?: string; text?: string }> = []): Array<{ label?: string; text?: string }> {
@@ -1453,6 +1571,7 @@ function displayRuntimeThoughtBlocks(thoughts: Array<{ label?: string; text?: st
         });
         const cached = displayRegexCache.value[key];
         if (cached !== undefined) {
+            runtimeDisplayRegexStableProjection.set(`runtime:reasoning:${index}`, { text: cached, actionCheckEvents: [] });
             return { ...thought, text: cached };
         }
         const request: DisplayRegexTextRequest = {
@@ -1464,8 +1583,12 @@ function displayRuntimeThoughtBlocks(thoughts: Array<{ label?: string; text?: st
                 depth,
             },
         };
-        scheduleRuntimeDisplayRegexText(`runtime:reasoning:${index}`, request);
-        return thought;
+        const slot = `runtime:reasoning:${index}`;
+        scheduleRuntimeDisplayRegexText(slot, request);
+        return {
+            ...thought,
+            text: runtimeDisplayRegexStableProjection.get(slot)?.text ?? '',
+        };
     }).filter((thought) => String(thought.text || '').trim());
 }
 
@@ -3601,8 +3724,10 @@ provide(TAVERN_APP_UI_CONTEXT, {
         currentUserMessage,
         deleteMessageTurn,
         displayMessageContent,
+        displayMessageRenderProjection,
         displayMessageThoughtBlocks,
         displayRuntimeContent,
+        displayRuntimeRenderProjection,
         displayRuntimeThoughtBlocks,
         displayCharacterName,
         drawMessage,
