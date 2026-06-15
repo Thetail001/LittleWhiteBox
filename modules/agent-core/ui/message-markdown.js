@@ -55,7 +55,7 @@ function storeHtmlBlock(code = '', language = 'html') {
         code: String(code || ''),
         language: String(language || 'html').trim() || 'html',
     });
-    return `@@XB_HTML_BLOCK_${id}@@`;
+    return `@@XBHTMLBLOCK:${id}@@`;
 }
 
 function escapeRawHtmlTags(text = '') {
@@ -104,8 +104,8 @@ function preprocessMarkdownInput(raw = '') {
 }
 
 function injectHtmlBlockPlaceholders(html = '') {
-    return String(html || '').replace(/@@XB_HTML_BLOCK_([a-z0-9-]+)@@/g, (_match, id) => (
-        `<span class="xb-markdown-html-placeholder" data-xb-html-block-id="${id}"></span>`
+    return String(html || '').replace(/@@XBHTMLBLOCK:([a-z0-9-]+)@@|@@XB_HTML_BLOCK_([a-z0-9-]+)@@/g, (_match, id, legacyId) => (
+        `<span class="xb-markdown-html-placeholder" data-xb-html-block-id="${id || legacyId}"></span>`
     ));
 }
 

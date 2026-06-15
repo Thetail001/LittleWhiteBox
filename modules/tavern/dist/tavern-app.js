@@ -3006,7 +3006,7 @@ function ux(e = "", t = "html") {
   return Xg.set(n, {
     code: String(e || ""),
     language: String(t || "html").trim() || "html"
-  }), `@@XB_HTML_BLOCK_${n}@@`;
+  }), `@@XBHTMLBLOCK:${n}@@`;
 }
 function IO(e = "") {
   return String(e || "").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -3029,7 +3029,7 @@ function MO(e = "") {
   return r += MS(t.slice(s)), r;
 }
 function RS(e = "") {
-  return String(e || "").replace(/@@XB_HTML_BLOCK_([a-z0-9-]+)@@/g, (t, n) => `<span class="xb-markdown-html-placeholder" data-xb-html-block-id="${n}"></span>`);
+  return String(e || "").replace(/@@XBHTMLBLOCK:([a-z0-9-]+)@@|@@XB_HTML_BLOCK_([a-z0-9-]+)@@/g, (t, n, r) => `<span class="xb-markdown-html-placeholder" data-xb-html-block-id="${n || r}"></span>`);
 }
 function RO(e) {
   const t = String(e || "").trim();

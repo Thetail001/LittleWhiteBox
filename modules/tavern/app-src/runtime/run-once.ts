@@ -107,16 +107,6 @@ function stripTavernImageMarkers(text = ''): string {
     return String(text || '').replace(TAVERN_IMAGE_MARKER_REGEX, '').trim();
 }
 
-function lastUserMessage(messages: TavernMessageRecord[] = []): TavernMessageRecord | null {
-    for (let index = messages.length - 1; index >= 0; index -= 1) {
-        const message = messages[index];
-        if (message?.role === 'user' && !message.error) {
-            return message;
-        }
-    }
-    return null;
-}
-
 function isRandomEncounterCooldownActive(messages: TavernMessageRecord[] = []): boolean {
     if (RANDOM_ENCOUNTER_COOLDOWN_TURNS <= 0) {return false;}
     const recentUsers = messages

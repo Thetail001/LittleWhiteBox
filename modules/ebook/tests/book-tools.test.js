@@ -6111,6 +6111,39 @@ test('Shared markdown renderer folds fenced HTML into a lightweight placeholder'
     }
 });
 
+test('Shared markdown renderer keeps HTML placeholders inert through Markdown emphasis parsing', () => {
+    const previousShowdown = globalThis.showdown;
+    const previousDOMPurify = globalThis.DOMPurify;
+    globalThis.showdown = {
+        Converter: class {
+            makeHtml(text) {
+                const emphasized = String(text).replace(/_([^_]+)_/g, '<em>$1</em>');
+                return `<p>${emphasized}</p>`;
+            }
+        },
+    };
+    globalThis.DOMPurify = {
+        sanitize(html) {
+            return html;
+        },
+    };
+
+    try {
+        const html = renderMarkdownToHtml([
+            '```html',
+            '<main><h1>Heavy UI</h1><section>...</section></main>',
+            '```',
+        ].join('\n'));
+        assert.match(html, /xb-markdown-html-placeholder/);
+        assert.doesNotMatch(html, /@@XBHTMLBLOCK/);
+        assert.doesNotMatch(html, /@@XB_HTML_BLOCK_/);
+        assert.doesNotMatch(html, /<main>/);
+    } finally {
+        globalThis.showdown = previousShowdown;
+        globalThis.DOMPurify = previousDOMPurify;
+    }
+});
+
 test('Shared HTML preview sandbox allows scripts while staying isolated from the host', () => {
     assert.equal(HTML_PREVIEW_SANDBOX, 'allow-scripts');
 });
