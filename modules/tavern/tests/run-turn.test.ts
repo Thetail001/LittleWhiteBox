@@ -39,6 +39,7 @@ import {
 import {
     buildContextHistory,
     buildTavernRequestSnapshot,
+    resolveTavernContextWindow,
     runTavernOnce,
     runXbTavernTurn,
     simulateXbTavernRequest,
@@ -67,6 +68,16 @@ function tokenizeForMemoryTests(text: string): string[] {
         }
     });
     return tokens;
+}
+
+function makeContextWindowMessage(order: number, role: string, content = `message-${order}`) {
+    return {
+        sessionId: 'window-test',
+        order,
+        role,
+        content,
+        createdAt: order + 1,
+    };
 }
 
 setXbTavernMemoryTokenizerForTest({
@@ -3136,6 +3147,156 @@ test('xb tavern context history filters saved error messages for preview and run
         { role: 'user', content: 'Hello.' },
         { role: 'assistant', content: 'Recovered.' },
     ]);
+});
+
+test('xb tavern context window keeps a stable 20 message API window without deleting history', () => {
+    const firstTwenty = Array.from({ length: 20 }, (_, index) => makeContextWindowMessage(
+        index,
+        index % 2 ? 'assistant' : 'user',
+    ));
+    const compressed = resolveTavernContextWindow({
+        messages: firstTwenty,
+        contextWindowStartOrder: 0,
+        currentUserMessage: 'message-20',
+    });
+    assert.equal(compressed.contextWindowStartOrder, 11);
+    assert.deepEqual(compressed.historyMessages.map((message) => message.order), [11, 12, 13, 14, 15, 16, 17, 18, 19]);
+    assert.equal(compressed.windowHistoryCount, 9);
+    assert.equal(compressed.currentUserCount, 1);
+
+    const stable = resolveTavernContextWindow({
+        messages: Array.from({ length: 30 }, (_, index) => makeContextWindowMessage(index, index % 2 ? 'assistant' : 'user')),
+        contextWindowStartOrder: 11,
+        currentUserMessage: 'message-30',
+    });
+    assert.equal(stable.contextWindowStartOrder, 11);
+
+    const nextCompressed = resolveTavernContextWindow({
+        messages: Array.from({ length: 31 }, (_, index) => makeContextWindowMessage(index, index % 2 ? 'assistant' : 'user')),
+        contextWindowStartOrder: 11,
+        currentUserMessage: 'message-31',
+    });
+    assert.equal(nextCompressed.contextWindowStartOrder, 22);
+    assert.deepEqual(nextCompressed.historyMessages.map((message) => message.order), [22, 23, 24, 25, 26, 27, 28, 29, 30]);
+});
+
+test('xb tavern context window recovers from tail deletion using the remaining full history', () => {
+    const deletedTail = resolveTavernContextWindow({
+        messages: Array.from({ length: 25 }, (_, index) => makeContextWindowMessage(index, index % 2 ? 'assistant' : 'user')),
+        contextWindowStartOrder: 22,
+    });
+    assert.equal(deletedTail.contextWindowStartOrder, 15);
+    assert.deepEqual(deletedTail.historyMessages.map((message) => message.order), [15, 16, 17, 18, 19, 20, 21, 22, 23, 24]);
+
+    const tinyHistory = resolveTavernContextWindow({
+        messages: Array.from({ length: 4 }, (_, index) => makeContextWindowMessage(index, index % 2 ? 'assistant' : 'user')),
+        contextWindowStartOrder: 22,
+    });
+    assert.equal(tinyHistory.contextWindowStartOrder, 0);
+    assert.deepEqual(tinyHistory.historyMessages.map((message) => message.order), [0, 1, 2, 3]);
+});
+
+test('xb tavern run turn trims only API history and keeps stored messages intact', async () => {
+    await resetDb();
+    const preset = createDefaultXbTavernPreset();
+    const session = await createTavernSession({
+        title: 'Windowed',
+        characterId: 'char-1',
+        characterName: 'Aster',
+        contextSnapshot: {
+            character: { id: 'char-1', name: 'Aster', description: 'Pilot.' },
+            user: { name: 'Player' },
+        },
+        presetId: preset.id,
+        presetName: preset.name,
+    });
+    for (let index = 0; index < 20; index += 1) {
+        await appendTavernMessage(session.id, {
+            role: index % 2 ? 'assistant' : 'user',
+            content: `stored-${index}`,
+        });
+    }
+
+    let sentRaw = '';
+    await runXbTavernTurn({
+        sessionId: session.id,
+        agentConfig: { provider: 'fake-provider', model: 'fake-model' },
+        contextSnapshot: {
+            character: { id: 'char-1', name: 'Aster', description: 'Pilot.' },
+            user: { name: 'Player' },
+        },
+        preset,
+        currentUserMessage: 'fresh-user',
+        executeRunOnce: async (options: TavernRunOnceOptions) => {
+            sentRaw = JSON.stringify(options.messages);
+            return {
+                text: 'fresh-assistant',
+                requestSnapshot: buildTavernRequestSnapshot(options.agentConfig, options.messages),
+            };
+        },
+    });
+
+    assert.doesNotMatch(sentRaw, /stored-0/);
+    assert.doesNotMatch(sentRaw, /stored-10/);
+    assert.match(sentRaw, /stored-11/);
+    assert.match(sentRaw, /stored-19/);
+    assert.match(sentRaw, /fresh-user/);
+    const stored = await listTavernMessages(session.id);
+    assert.equal(stored.length, 22);
+    assert.equal(stored[0]?.content, 'stored-0');
+    assert.equal(stored[20]?.content, 'fresh-user');
+    assert.equal(stored[21]?.content, 'fresh-assistant');
+    const updated = await getTavernSession(session.id);
+    assert.equal(updated?.state?.contextWindowStartOrder, 11);
+});
+
+test('xb tavern simulated request uses the same trimmed API history without saving messages', async () => {
+    await resetDb();
+    const preset = createDefaultXbTavernPreset();
+    const session = await createTavernSession({
+        title: 'Windowed simulate',
+        characterId: 'char-1',
+        characterName: 'Aster',
+        contextSnapshot: {
+            character: { id: 'char-1', name: 'Aster', description: 'Pilot.' },
+            user: { name: 'Player' },
+        },
+        presetId: preset.id,
+        presetName: preset.name,
+    });
+    for (let index = 0; index < 20; index += 1) {
+        await appendTavernMessage(session.id, {
+            role: index % 2 ? 'assistant' : 'user',
+            content: `simulate-stored-${index}`,
+        });
+    }
+
+    const result = await simulateXbTavernRequest({
+        sessionId: session.id,
+        agentConfig: {
+            currentPresetName: '酒馆 OpenAI',
+            presets: {
+                '酒馆 OpenAI': {
+                    provider: 'sillytavern-openai-compatible',
+                    modelConfigs: {
+                        'sillytavern-openai-compatible': {
+                            model: 'gpt-test',
+                        },
+                    },
+                },
+            },
+        },
+        contextSnapshot: session.contextSnapshot || {},
+        preset,
+        currentUserMessage: 'simulate-fresh-user',
+    });
+
+    assert.doesNotMatch(result.requestSnapshot.rawRequestJson, /simulate-stored-0/);
+    assert.doesNotMatch(result.requestSnapshot.rawRequestJson, /simulate-stored-10/);
+    assert.match(result.requestSnapshot.rawRequestJson, /simulate-stored-11/);
+    assert.match(result.requestSnapshot.rawRequestJson, /simulate-stored-19/);
+    assert.match(result.requestSnapshot.rawRequestJson, /simulate-fresh-user/);
+    assert.equal((await listTavernMessages(session.id)).length, 20);
 });
 
 test('xb tavern run turn prefers the latest live context for an existing session', async () => {

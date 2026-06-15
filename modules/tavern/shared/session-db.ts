@@ -54,6 +54,7 @@ export interface TavernSessionRecord {
 
 export interface TavernSessionState {
     turn?: number;
+    contextWindowStartOrder?: number;
     contract?: TavernSessionContract;
     worldEntryStates?: Record<string, XbTavernWorldEntryState>;
     nativeWorldInfoTimedState?: XbTavernNativeWorldInfoTimedState;
@@ -551,6 +552,7 @@ export function normalizeTavernSessionState(value: unknown): TavernSessionState 
     return {
         ...source,
         turn: Math.max(0, Number(source.turn) || 0),
+        contextWindowStartOrder: Math.max(0, Math.floor(Number(source.contextWindowStartOrder) || 0)),
         contract: normalizeTavernSessionContract(source.contract),
         worldEntryStates: normalizeWorldEntryStates(source.worldEntryStates),
         nativeWorldInfoTimedState: normalizeNativeWorldInfoTimedState(source.nativeWorldInfoTimedState),

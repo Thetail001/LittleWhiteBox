@@ -66,6 +66,7 @@ import type { TavernSubstituteParamsItem, TavernSubstituteParamsOptions, TavernS
 import {
     buildContextHistory,
     deriveTavernSessionStateFromMessagesAsync,
+    resolveTavernContextWindow,
     runXbTavernTurn,
     simulateXbTavernRequest,
 } from './runtime/run-once';
@@ -1582,6 +1583,10 @@ async function rebuildSelectedSessionRuntimeState(messages: TavernMessageRecord[
     await replaceTavernSessionState(selectedSessionId.value, {
         ...state,
         contract: currentSessionState.contract,
+        contextWindowStartOrder: resolveTavernContextWindow({
+            messages,
+            contextWindowStartOrder: currentSessionState.contextWindowStartOrder,
+        }).contextWindowStartOrder,
     });
     await refreshSessions();
 }

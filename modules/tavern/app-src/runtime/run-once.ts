@@ -102,9 +102,77 @@ import {
 
 const TAVERN_IMAGE_MARKER_REGEX = /\[tavern-image:[a-z0-9\-_]+\]/gi;
 const MAX_ACTION_CHECK_ROUNDS = 8;
+export const TAVERN_CONTEXT_WINDOW_MAX = 20;
+export const TAVERN_CONTEXT_WINDOW_RETAIN = 10;
+export const TAVERN_CONTEXT_WINDOW_MIN_SAFE = 5;
 
 function stripTavernImageMarkers(text = ''): string {
     return String(text || '').replace(TAVERN_IMAGE_MARKER_REGEX, '').trim();
+}
+
+function isUsableContextWindowMessage(message: TavernMessageRecord): boolean {
+    return !message.error && !!stripTavernImageMarkers(message.content);
+}
+
+function hasUsableCurrentUserMessage(text = ''): boolean {
+    return !!stripTavernImageMarkers(text);
+}
+
+export interface TavernContextWindowResolution {
+    contextWindowStartOrder: number;
+    historyMessages: TavernMessageRecord[];
+    usableHistoryCount: number;
+    windowHistoryCount: number;
+    currentUserCount: number;
+}
+
+export function resolveTavernContextWindow(input: {
+    messages?: TavernMessageRecord[];
+    contextWindowStartOrder?: unknown;
+    currentUserMessage?: string;
+} = {}): TavernContextWindowResolution {
+    const sorted = [...(input.messages || [])].sort((left, right) => left.order - right.order);
+    const usableMessages = sorted.filter(isUsableContextWindowMessage);
+    const currentUserCount = hasUsableCurrentUserMessage(input.currentUserMessage || '') ? 1 : 0;
+    let startOrder = Math.max(0, Math.floor(Number(input.contextWindowStartOrder) || 0));
+
+    if (!usableMessages.length || usableMessages.length < TAVERN_CONTEXT_WINDOW_MIN_SAFE) {
+        startOrder = 0;
+    } else if (startOrder > 0) {
+        let windowUsableMessages = usableMessages.filter((message) => message.order >= startOrder);
+        const exactStartExists = usableMessages.some((message) => message.order === startOrder);
+        if (!exactStartExists && windowUsableMessages.length) {
+            startOrder = windowUsableMessages[0].order;
+            windowUsableMessages = usableMessages.filter((message) => message.order >= startOrder);
+        }
+        if (windowUsableMessages.length < TAVERN_CONTEXT_WINDOW_MIN_SAFE) {
+            startOrder = usableMessages[Math.max(0, usableMessages.length - TAVERN_CONTEXT_WINDOW_RETAIN)]?.order || 0;
+        }
+    }
+
+    let windowUsableMessages = startOrder > 0
+        ? usableMessages.filter((message) => message.order >= startOrder)
+        : usableMessages;
+    if (windowUsableMessages.length + currentUserCount > TAVERN_CONTEXT_WINDOW_MAX) {
+        const retainHistoryCount = Math.max(0, TAVERN_CONTEXT_WINDOW_RETAIN - currentUserCount);
+        startOrder = retainHistoryCount > 0
+            ? windowUsableMessages.slice(-retainHistoryCount)[0]?.order || 0
+            : 0;
+        windowUsableMessages = startOrder > 0
+            ? usableMessages.filter((message) => message.order >= startOrder)
+            : usableMessages;
+    }
+
+    const historyMessages = startOrder > 0
+        ? sorted.filter((message) => message.order >= startOrder)
+        : sorted;
+    return {
+        contextWindowStartOrder: startOrder,
+        historyMessages,
+        usableHistoryCount: usableMessages.length,
+        windowHistoryCount: windowUsableMessages.length,
+        currentUserCount,
+    };
 }
 
 function isRandomEncounterCooldownActive(messages: TavernMessageRecord[] = []): boolean {
@@ -1222,13 +1290,20 @@ export async function simulateXbTavernRequest(input: XbTavernSimulateRequestInpu
         text: inputRegex.text,
         options: substituteOptions,
     }));
+    const contextWindow = session
+        ? resolveTavernContextWindow({
+            messages: sessionMessages,
+            contextWindowStartOrder: sessionState.contextWindowStartOrder,
+            currentUserMessage,
+        })
+        : null;
     const contextForBuildRaw: XbTavernContext = {
         ...liveContext,
         worldSettings: {
             ...(liveContext.worldSettings || {}),
             trigger: String(input.generationTrigger || 'normal'),
         },
-        history: session ? buildContextHistory(sessionMessages) : (input.contextSnapshot.history || []),
+        history: session ? buildContextHistory(contextWindow?.historyMessages || []) : (input.contextSnapshot.history || []),
     };
     const nativeContext = await runTavernStage('simulate_native_worldbook_runtime', () => injectNativeWorldInfoRuntime({
         getNativeWorldInfoRuntime: input.getNativeWorldInfoRuntime,
@@ -1615,17 +1690,23 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
         ? sessionMessages.filter((message) => message.order < reusedUserMessage.order)
         : sessionMessages;
     const persistedSessionState = normalizeTavernSessionState(baseSession.state || input.runtimeState || {});
+    const rebuiltSessionState = reusedUserMessage
+        ? await deriveTavernSessionStateFromMessagesAsync({
+            messages: historyMessages,
+            contextSnapshot: liveContext,
+            chatPreset: input.chatPreset,
+            historyMode: input.historyMode || 'raw',
+            diagnostics: input.diagnostics,
+            applySubstituteParams: input.applySubstituteParams,
+            getNativeWorldInfoRuntime: input.getNativeWorldInfoRuntime,
+        })
+        : null;
     const sessionState = reusedUserMessage
         ? normalizeRuntimeSessionStateWithContract(
-            await deriveTavernSessionStateFromMessagesAsync({
-                messages: historyMessages,
-                contextSnapshot: liveContext,
-                chatPreset: input.chatPreset,
-                historyMode: input.historyMode || 'raw',
-                diagnostics: input.diagnostics,
-                applySubstituteParams: input.applySubstituteParams,
-                getNativeWorldInfoRuntime: input.getNativeWorldInfoRuntime,
-            }),
+            {
+                ...rebuiltSessionState,
+                contextWindowStartOrder: persistedSessionState.contextWindowStartOrder,
+            },
             persistedSessionState.contract,
         )
         : persistedSessionState;
@@ -1653,6 +1734,11 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
             text: inputRegex.text,
             options: substituteOptions,
         }));
+    const contextWindow = resolveTavernContextWindow({
+        messages: historyMessages,
+        contextWindowStartOrder: sessionState.contextWindowStartOrder,
+        currentUserMessage,
+    });
     const chanceEncounterEvent = resolveRandomEncounterForTurn({
         runtime: sessionContractRuntime,
         sessionMessages,
@@ -1668,7 +1754,7 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
             ...(liveContext.worldSettings || {}),
             trigger: generationTrigger,
         },
-        history: buildContextHistory(historyMessages),
+        history: buildContextHistory(contextWindow.historyMessages),
     };
     const nativeContext = await runTavernStage('turn_native_worldbook_runtime', () => injectNativeWorldInfoRuntime({
         getNativeWorldInfoRuntime: input.getNativeWorldInfoRuntime,
@@ -1890,6 +1976,7 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
         const nextTurn = Number(sessionState.turn || 0) + 1;
         await persistRunSessionState(session.id, {
             turn: nextTurn,
+            contextWindowStartOrder: contextWindow.contextWindowStartOrder,
             worldEntryStates: contextForBuild.nativeWorldInfo
                 ? (shouldReplaceSessionState ? sessionState.worldEntryStates || {} : sessionState.worldEntryStates || {})
                 : (shouldReplaceSessionState
@@ -1990,6 +2077,7 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
             const nextTurn = Number(sessionState.turn || 0) + 1;
             await persistRunSessionState(session.id, {
                 turn: nextTurn,
+                contextWindowStartOrder: contextWindow.contextWindowStartOrder,
                 worldEntryStates: contextForBuild.nativeWorldInfo
                     ? (shouldReplaceSessionState ? sessionState.worldEntryStates || {} : sessionState.worldEntryStates || {})
                     : (shouldReplaceSessionState
@@ -2040,6 +2128,7 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
         await notifyRunCallback(() => input.onAssistantMessageSaved?.(session.id, errorMessage));
         await persistRunSessionState(session.id, {
             turn: Number(sessionState.turn || 0),
+            contextWindowStartOrder: contextWindow.contextWindowStartOrder,
             worldEntryStates: shouldReplaceSessionState ? sessionState.worldEntryStates || {} : {},
             nativeWorldInfoTimedState: normalizeNativeWorldInfoTimedState(sessionState.nativeWorldInfoTimedState),
             lastBuildSnapshot: buildSnapshot,
