@@ -14,6 +14,7 @@ import {
     loadWorldInfo,
     METADATA_KEY,
     openWorldInfoEditor,
+    saveWorldInfo,
     selected_world_info,
     updateWorldInfoList,
     world_names,
@@ -61,6 +62,30 @@ interface TavernWorldbookPreviewResult {
     entries: TavernWorldbookPreviewEntry[];
 }
 
+interface TavernWorldbookEntrySlot {
+    key: string;
+    index: number;
+    entry: Record<string, unknown>;
+}
+
+interface TavernWorldbookEntryDraft {
+    worldbookName: string;
+    uid: string;
+    comment: string;
+    name: string;
+    title: string;
+    key: string[];
+    keysecondary: string[];
+    secondary_keys: string[];
+    content: string;
+    disable: boolean;
+    enabled: boolean;
+    constant: boolean;
+    order: number;
+    entryHash: string;
+    revision: string;
+}
+
 interface TavernWorldbookRuntimeInput {
     context?: XbTavernContext;
     currentUserMessage?: string;
@@ -75,6 +100,28 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function normalizeText(value: unknown = ''): string {
     return String(value || '').trim();
+}
+
+function normalizeIdText(value: unknown = ''): string {
+    return value === null || value === undefined ? '' : String(value).trim();
+}
+
+function asEditableText(value: unknown = ''): string {
+    return String(value ?? '');
+}
+
+function setValueByPath(target: Record<string, unknown>, path: string, value: unknown): void {
+    const parts = path.split('.').map((part) => part.trim()).filter(Boolean);
+    if (!parts.length) {return;}
+    let cursor = target;
+    parts.slice(0, -1).forEach((part) => {
+        const current = cursor[part];
+        if (!current || typeof current !== 'object' || Array.isArray(current)) {
+            cursor[part] = {};
+        }
+        cursor = cursor[part] as Record<string, unknown>;
+    });
+    cursor[parts[parts.length - 1]] = cloneJson(value);
 }
 
 function normalizeStringList(value: unknown): string[] {
@@ -99,6 +146,127 @@ function readWorldbookEntries(data: unknown): Record<string, unknown>[] {
     return Object.values(entries as Record<string, unknown>)
         .map((entry) => asRecord(entry))
         .filter((entry) => Object.keys(entry).length > 0);
+}
+
+function readWorldbookEntrySlots(data: unknown): TavernWorldbookEntrySlot[] {
+    const entries = asRecord(data).entries;
+    if (!entries || typeof entries !== 'object' || Array.isArray(entries)) {return [];}
+    return Object.entries(entries as Record<string, unknown>)
+        .map(([key, entry], index) => ({
+            key,
+            index,
+            entry: asRecord(entry),
+        }))
+        .filter((slot) => Object.keys(slot.entry).length > 0);
+}
+
+function stableStringify(value: unknown): string {
+    if (value === undefined) {
+        return 'undefined';
+    }
+    if (value === null || typeof value !== 'object') {
+        return JSON.stringify(value) ?? String(value);
+    }
+    if (Array.isArray(value)) {
+        return `[${value.map((item) => stableStringify(item)).join(',')}]`;
+    }
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+        .sort()
+        .map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`)
+        .join(',')}}`;
+}
+
+function hashString(value: string): string {
+    let hash = 2166136261;
+    for (let index = 0; index < value.length; index += 1) {
+        hash ^= value.charCodeAt(index);
+        hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(36);
+}
+
+function buildWorldbookEntryHash(entry: Record<string, unknown>): string {
+    return hashString(stableStringify(entry));
+}
+
+function findWorldbookEntrySlot(data: unknown, uid: string): TavernWorldbookEntrySlot | null {
+    const targetUid = normalizeIdText(uid);
+    if (!targetUid) {return null;}
+    return readWorldbookEntrySlots(data).find((slot) => (
+        normalizeIdText(slot.entry.uid ?? slot.entry.id ?? slot.index) === targetUid
+        || normalizeIdText(slot.key) === targetUid
+    )) || null;
+}
+
+function buildWorldbookEntryDraft(name: string, slot: TavernWorldbookEntrySlot): TavernWorldbookEntryDraft {
+    const entry = slot.entry;
+    const entryHash = buildWorldbookEntryHash(entry);
+    const keysecondary = normalizeStringList(entry.keysecondary);
+    return {
+        worldbookName: name,
+        uid: normalizeIdText(entry.uid ?? entry.id ?? slot.index),
+        comment: asEditableText(entry.comment),
+        name: asEditableText(entry.name),
+        title: asEditableText(entry.title),
+        key: normalizeStringList(entry.key),
+        keysecondary,
+        secondary_keys: normalizeStringList(entry.secondary_keys),
+        content: asEditableText(entry.content),
+        disable: entry.disable === true,
+        enabled: entry.disable !== true,
+        constant: entry.constant === true,
+        order: Number.isFinite(Number(entry.order)) ? Number(entry.order) : 100,
+        entryHash,
+        revision: entryHash,
+    };
+}
+
+function patchWorldbookEntry(entry: Record<string, unknown>, draft: Record<string, unknown>): void {
+    if ('comment' in draft) {entry.comment = asEditableText(draft.comment);}
+    if ('name' in draft) {entry.name = asEditableText(draft.name);}
+    if ('title' in draft) {entry.title = asEditableText(draft.title);}
+    if ('key' in draft || 'keys' in draft) {
+        entry.key = normalizeStringList(draft.key ?? draft.keys);
+    }
+    if ('keysecondary' in draft || 'secondaryKeys' in draft) {
+        entry.keysecondary = normalizeStringList(draft.keysecondary ?? draft.secondaryKeys);
+    }
+    if ('secondary_keys' in entry && ('secondary_keys' in draft || 'secondaryKeys' in draft)) {
+        entry.secondary_keys = normalizeStringList(draft.keysecondary ?? draft.secondary_keys ?? draft.secondaryKeys);
+    }
+    if ('content' in draft) {entry.content = asEditableText(draft.content);}
+    if ('disable' in draft) {entry.disable = draft.disable === true;}
+    if ('enabled' in draft && !('disable' in draft)) {entry.disable = draft.enabled === false;}
+    if ('constant' in draft) {entry.constant = draft.constant === true;}
+    if ('order' in draft) {
+        const order = Number(draft.order);
+        if (Number.isFinite(order)) {entry.order = order;}
+    }
+}
+
+function syncWorldbookOriginalDataEntry(
+    data: Record<string, unknown>,
+    uid: string,
+    entry: Record<string, unknown>,
+): void {
+    const originalData = asRecord(data.originalData);
+    const originalEntries = Array.isArray(originalData.entries) ? originalData.entries : [];
+    if (!originalEntries.length) {return;}
+    const originalEntry = originalEntries
+        .map((item) => asRecord(item))
+        .find((item) => normalizeIdText(item.uid) === uid || normalizeIdText(item.id) === uid);
+    if (!originalEntry) {return;}
+    const mappings: Array<[string, unknown]> = [
+        ['comment', entry.comment],
+        ['content', entry.content],
+        ['keys', normalizeStringList(entry.key)],
+        ['secondary_keys', normalizeStringList(entry.keysecondary)],
+        ['insertion_order', Number.isFinite(Number(entry.order)) ? Number(entry.order) : 100],
+        ['constant', entry.constant === true],
+        ['enabled', entry.disable !== true],
+    ];
+    mappings.forEach(([path, value]) => setValueByPath(originalEntry, path, value));
 }
 
 function previewEntryName(entry: Record<string, unknown>, index: number): string {
@@ -445,7 +613,7 @@ export async function getTavernWorldbookPreview(input: unknown = {}): Promise<Ta
             const secondaryKeys = normalizeStringList(entry.keysecondary || entry.secondary_keys);
             const content = normalizeText(entry.content);
             return {
-                uid: normalizeText(entry.uid ?? entry.id ?? index),
+                uid: normalizeIdText(entry.uid ?? entry.id ?? index),
                 name: previewEntryName(entry, index),
                 keys,
                 secondaryKeys,
@@ -471,6 +639,63 @@ export async function getTavernWorldbookPreview(input: unknown = {}): Promise<Ta
         totalChars: entries.reduce((sum, entry) => sum + normalizeText(entry.content).length, 0),
         entries: previewEntries,
     };
+}
+
+export async function getTavernWorldbookEntry(input: unknown = {}): Promise<TavernWorldbookEntryDraft> {
+    const payload = asRecord(input);
+    const name = normalizeText(payload.name || payload.worldbookName);
+    const uid = normalizeIdText(payload.uid);
+    if (!name) {
+        throw new Error('缺少世界书名称。');
+    }
+    if (!uid) {
+        throw new Error('缺少世界书条目 UID。');
+    }
+    const names = await ensureWorldbookNames();
+    if (!names.includes(name)) {
+        throw new Error(`找不到世界书：${name}`);
+    }
+    const data = await loadWorldInfo(name);
+    const slot = findWorldbookEntrySlot(data, uid);
+    if (!slot) {
+        throw new Error(`找不到世界书条目：${uid}`);
+    }
+    return buildWorldbookEntryDraft(name, slot);
+}
+
+export async function saveTavernWorldbookEntry(input: unknown = {}): Promise<TavernWorldbookEntryDraft> {
+    const payload = asRecord(input);
+    const name = normalizeText(payload.name || payload.worldbookName);
+    const uid = normalizeIdText(payload.uid);
+    const entryHash = normalizeText(payload.entryHash || payload.revision);
+    const draft = asRecord(payload.draft || payload.entry || payload);
+    if (!name) {
+        throw new Error('缺少世界书名称。');
+    }
+    if (!uid) {
+        throw new Error('缺少世界书条目 UID。');
+    }
+    if (!entryHash) {
+        throw new Error('缺少世界书条目版本，请重新读取后再保存。');
+    }
+    const names = await ensureWorldbookNames();
+    if (!names.includes(name)) {
+        throw new Error(`找不到世界书：${name}`);
+    }
+    const data = await loadWorldInfo(name);
+    const slot = findWorldbookEntrySlot(data, uid);
+    if (!slot) {
+        throw new Error(`找不到世界书条目：${uid}`);
+    }
+    const currentHash = buildWorldbookEntryHash(slot.entry);
+    if (currentHash !== entryHash) {
+        throw new Error('这个世界书条目已经在酒馆里被修改，请重新读取后再保存。');
+    }
+    patchWorldbookEntry(slot.entry, draft);
+    syncWorldbookOriginalDataEntry(asRecord(data), uid, slot.entry);
+    await saveWorldInfo(name, data, true);
+    await updateWorldInfoList();
+    return buildWorldbookEntryDraft(name, slot);
 }
 
 export async function getTavernWorldbookRuntime(input: unknown = {}): Promise<XbTavernNativeWorldInfoRuntime> {

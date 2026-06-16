@@ -86,6 +86,24 @@ export interface TavernWorldbookPreviewRow {
     entries: TavernWorldbookPreviewEntryRow[];
 }
 
+export interface TavernWorldbookEntryDraft {
+    worldbookName: string;
+    uid: string;
+    comment: string;
+    name: string;
+    title: string;
+    key: string[];
+    keysecondary: string[];
+    secondary_keys: string[];
+    content: string;
+    disable: boolean;
+    enabled: boolean;
+    constant: boolean;
+    order: number;
+    entryHash: string;
+    revision: string;
+}
+
 export interface TavernRegexScriptDraft {
     scriptName?: string;
     findRegex?: string;
@@ -378,6 +396,7 @@ export interface TavernSettingsContext {
     assistantPresetStatus: Ref<string>;
     assistantPresetVisibleLimit: Ref<number>;
     canEditPromptOrder: TavernReadable<boolean>;
+    cancelWorldbookEntryEdit: TavernCommand;
     chatPresetOptions: TavernReadable<TavernChatPresetOptionRow[]>;
     chatPresetSourceSearchText: Ref<string>;
     chatPresetSourceVisibleLimit: Ref<number>;
@@ -398,6 +417,7 @@ export interface TavernSettingsContext {
     hiddenWorldbookPreviewEntryCount: TavernReadable<number>;
     homeThemeDark: Ref<boolean>;
     importAssistantPreset: TavernCommand<[payload: unknown], Promise<boolean>>;
+    isEditingWorldbookEntry: TavernCommand<[entry: TavernWorldbookPreviewEntryRow], boolean>;
     linesFromList: TavernCommand<[value: unknown], string>;
     listFromLines: TavernCommand<[value?: string], string[]>;
     movePromptRow: TavernCommand<[identifier: string, direction: -1 | 1]>;
@@ -428,6 +448,7 @@ export interface TavernSettingsContext {
     saveCurrentAssistantPreset: TavernCommand<[], Promise<void>>;
     saveCurrentPreset: TavernCommand<[], Promise<void>>;
     saveCurrentRegexScript: TavernCommand<[], Promise<void>>;
+    saveWorldbookEntryDraft: TavernCommand<[], Promise<void>>;
     selectAssistantPreset: TavernCommand<[presetId: string], Promise<void>>;
     selectAssistantPresetItem: TavernCommand<[itemId: string]>;
     selectChatPresetFromHost: TavernCommand<[name?: string], Promise<void>>;
@@ -445,6 +466,7 @@ export interface TavernSettingsContext {
     settingsNavItems: TavernReadable<TavernSettingsNavItem[]>;
     shortText: TavernCommand<[value?: string, limit?: number], string>;
     showMoreWorldbookPreviewEntries: TavernCommand;
+    startWorldbookEntryEdit: TavernCommand<[entry: TavernWorldbookPreviewEntryRow], Promise<void>>;
     syncWorldbooksFromHost: TavernCommand<[options?: { keepSelection?: boolean }], Promise<void>>;
     togglePromptRow: TavernCommand<[identifier: string, enabled: boolean]>;
     toggleRegexPlacement: TavernCommand<[value: number, checked: boolean]>;
@@ -452,6 +474,7 @@ export interface TavernSettingsContext {
     updatePromptByIdentifier: TavernCommand<[identifier: string, patch: object]>;
     updateRegexPatch: TavernCommand<[patch: Partial<TavernRegexScriptDraft>]>;
     updateSelectedAssistantPresetItem: TavernCommand<[value?: string]>;
+    updateWorldbookEntryDraftPatch: TavernCommand<[patch: Partial<TavernWorldbookEntryDraft>]>;
     visibleAssistantPresetRecords: TavernReadable<TavernAssistantPresetRecord[]>;
     visibleChatPresetOptions: TavernReadable<TavernChatPresetOptionRow[]>;
     visiblePromptEditorRows: TavernReadable<TavernPromptEditorRow[]>;
@@ -459,6 +482,11 @@ export interface TavernSettingsContext {
     WORLDBOOK_BATCH_SIZE: number;
     WORLDBOOK_PREVIEW_BATCH_SIZE: number;
     worldbookGlobalCount: TavernReadable<number>;
+    worldbookEntryDirty: TavernReadable<boolean>;
+    worldbookEntryDraft: Ref<TavernWorldbookEntryDraft | null>;
+    worldbookEntryEditingKey: Ref<string>;
+    worldbookEntrySaving: TavernReadable<boolean>;
+    worldbookEntryStatus: Ref<string>;
     worldbookOptions: TavernReadable<TavernWorldbookOptionRow[]>;
     worldbookPreview: Ref<TavernWorldbookPreviewRow | null>;
     worldbookPreviewStatus: Ref<string>;

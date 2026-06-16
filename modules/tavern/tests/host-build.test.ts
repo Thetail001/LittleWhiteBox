@@ -76,14 +76,17 @@ test('tavern markdown blockquotes do not render showdown formatting whitespace a
     assert.match(markdownCss, /\.xb-tavern-markdown blockquote \{[\s\S]*?white-space: normal;[\s\S]*?\n\}/);
 });
 
-test('tavern worldbook settings page is a native overview instead of a custom editor', () => {
+test('tavern worldbook settings page edits existing named entries without whole-book endpoints', () => {
     const panelSource = readRepoFile('modules/tavern/app-src/components/settings/TavernWorldbooksSettingsPanel.vue');
     assert.match(panelSource, /打开酒馆编辑器/);
     assert.match(panelSource, /worldbook-entry-preview-list/);
     assert.match(panelSource, /showMoreWorldbookPreviewEntries/);
+    assert.match(panelSource, /startWorldbookEntryEdit/);
+    assert.match(panelSource, /saveWorldbookEntryDraft/);
     assert.match(panelSource, /worldbookPreview\.entryCount/);
+    assert.doesNotMatch(panelSource, /secondary_keys: listFromLines/);
     assert.doesNotMatch(panelSource, /酒馆世界书/);
-    assert.doesNotMatch(panelSource, /xb-tavern:save-worldbook/);
+    assert.doesNotMatch(panelSource, /xb-tavern:save-worldbook['"]/);
     assert.doesNotMatch(panelSource, /xb-tavern:create-worldbook-entry/);
     assert.doesNotMatch(panelSource, /xb-tavern:save-worldbook-settings/);
     assert.doesNotMatch(panelSource, /xb-tavern:set-worldbook-active/);
@@ -165,6 +168,10 @@ test('tavern worldbook sync uses native source overview with current context', (
         /requestHost\('xb-tavern:list-worldbook-sources', \{\s*payload: \{\s*context: options\.effectiveContext\.value,/,
     );
     assert.match(settingsControllerSource, /requestHost\('xb-tavern:get-worldbook-preview'/);
+    assert.match(settingsControllerSource, /requestHost\('xb-tavern:get-worldbook-entry'/);
+    assert.match(settingsControllerSource, /requestHost\('xb-tavern:save-worldbook-entry'/);
+    assert.match(settingsControllerSource, /worldbookEntryLoadRequestSerial/);
+    assert.match(settingsControllerSource, /worldbookEntryLoadRequestKey !== requestToken/);
     assert.match(settingsControllerSource, /limit: worldbookPreviewVisibleLimit\.value/);
     assert.match(settingsControllerSource, /function showMoreWorldbookPreviewEntries/);
     assert.match(settingsControllerSource, /async function openSelectedWorldbookEditor/);
@@ -176,13 +183,21 @@ test('tavern worldbook sync uses native source overview with current context', (
     assert.match(appSource, /syncSessionCharacterContext\(\{ sessionId: targetSessionId, force: true \}\)/);
 });
 
-test('tavern worldbook host bridge exposes native runtime result instead of edit endpoints', () => {
+test('tavern worldbook host bridge exposes named entry edit endpoints and native runtime result', () => {
     const hostSource = readRepoFile('modules/tavern/host/worldbooks.ts');
     const tavernSource = readRepoFile('modules/tavern/tavern.ts');
     assert.match(hostSource, /export async function listTavernWorldbookSources/);
     assert.match(hostSource, /export async function getTavernWorldbookPreview/);
     assert.match(hostSource, /await loadWorldInfo\(name\)/);
     assert.match(hostSource, /Number\(payload\.limit\)/);
+    assert.match(hostSource, /export async function getTavernWorldbookEntry/);
+    assert.match(hostSource, /export async function saveTavernWorldbookEntry/);
+    assert.match(hostSource, /function normalizeIdText/);
+    assert.match(hostSource, /function syncWorldbookOriginalDataEntry/);
+    assert.match(hostSource, /'secondary_keys' in entry && \('secondary_keys' in draft \|\| 'secondaryKeys' in draft\)/);
+    assert.match(hostSource, /entry\.secondary_keys = normalizeStringList\(draft\.keysecondary \?\? draft\.secondary_keys \?\? draft\.secondaryKeys\)/);
+    assert.match(hostSource, /await saveWorldInfo\(name, data, true\)/);
+    assert.doesNotMatch(hostSource, /createWorldInfoEntry/);
     assert.match(hostSource, /export async function getTavernWorldbookRuntime/);
     assert.match(hostSource, /export function openTavernWorldbookEditor/);
     assert.match(hostSource, /sessionMeta\.worldbookSources/);
@@ -199,6 +214,8 @@ test('tavern worldbook host bridge exposes native runtime result instead of edit
     assert.match(hostSource, /outlets:/);
     assert.match(tavernSource, /case 'xb-tavern:list-worldbook-sources':/);
     assert.match(tavernSource, /case 'xb-tavern:get-worldbook-preview':/);
+    assert.match(tavernSource, /case 'xb-tavern:get-worldbook-entry':/);
+    assert.match(tavernSource, /case 'xb-tavern:save-worldbook-entry':/);
     assert.match(tavernSource, /case 'xb-tavern:get-worldbook-runtime':/);
     assert.match(tavernSource, /case 'xb-tavern:open-worldbook-editor':/);
     assert.doesNotMatch(tavernSource, /case 'xb-tavern:list-worldbooks':/);

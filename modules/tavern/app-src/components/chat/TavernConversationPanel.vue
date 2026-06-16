@@ -9,7 +9,7 @@ import {
     hasRenderableLiveAssistantMarkdown,
 } from './live-assistant-state';
 import {
-    getActionCheckEvents,
+    type getActionCheckEvents,
     injectActionCheckRenderMarkers,
 } from '../../../shared/runtime-events';
 import type { TavernMessageRecord } from '../../../shared/session-db';

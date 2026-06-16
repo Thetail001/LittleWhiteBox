@@ -20,10 +20,12 @@ import { applyTavernSubstituteParams } from "./host/substitute-params.js";
 import { runTavernSlashCommand } from "./host/slash-commands.js";
 import { buildTavernContext } from "./host/sillytavern-context.js";
 import {
+  getTavernWorldbookEntry,
   getTavernWorldbookPreview,
   getTavernWorldbookRuntime,
   listTavernWorldbookSources,
-  openTavernWorldbookEditor
+  openTavernWorldbookEditor,
+  saveTavernWorldbookEntry
 } from "./host/worldbooks.js";
 const SOURCE_HOST = "xb-tavern-host";
 const SOURCE_APP = "xb-tavern-app";
@@ -359,6 +361,10 @@ async function handleWorldbookRequest(type, payload = {}) {
       result = await listTavernWorldbookSources(payload.payload);
     } else if (type === "xb-tavern:get-worldbook-preview") {
       result = await getTavernWorldbookPreview(payload.payload);
+    } else if (type === "xb-tavern:get-worldbook-entry") {
+      result = await getTavernWorldbookEntry(payload.payload);
+    } else if (type === "xb-tavern:save-worldbook-entry") {
+      result = await saveTavernWorldbookEntry(payload.payload);
     } else if (type === "xb-tavern:get-worldbook-runtime") {
       result = await getTavernWorldbookRuntime(payload.payload);
     } else if (type === "xb-tavern:open-worldbook-editor") {
@@ -528,6 +534,8 @@ function handleFrameMessage(event) {
       break;
     case "xb-tavern:list-worldbook-sources":
     case "xb-tavern:get-worldbook-preview":
+    case "xb-tavern:get-worldbook-entry":
+    case "xb-tavern:save-worldbook-entry":
     case "xb-tavern:get-worldbook-runtime":
     case "xb-tavern:open-worldbook-editor":
       void handleWorldbookRequest(data.type, data.payload || {});

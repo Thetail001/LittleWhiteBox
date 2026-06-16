@@ -6,12 +6,23 @@ import { useTavernEphemeralDisclosureScope } from '../useTavernEphemeralDisclosu
 const settings = useTavernSettingsContext();
 const {
     activeSettingsWorkspace,
+    cancelWorldbookEntryEdit,
     hiddenWorldbookPreviewEntryCount,
+    isEditingWorldbookEntry,
+    linesFromList,
+    listFromLines,
     openSelectedWorldbookEditor,
+    saveWorldbookEntryDraft,
     selectedWorldbook,
     selectedWorldbookName,
     showMoreWorldbookPreviewEntries,
+    startWorldbookEntryEdit,
+    updateWorldbookEntryDraftPatch,
     WORLDBOOK_PREVIEW_BATCH_SIZE,
+    worldbookEntryDirty,
+    worldbookEntryDraft,
+    worldbookEntrySaving,
+    worldbookEntryStatus,
     worldbookGlobalCount,
     worldbookOptions,
     worldbookPreview,
@@ -36,8 +47,13 @@ const worldbookSelectOptions = computed(() => {
 
 const worldbookDisclosure = useTavernEphemeralDisclosureScope();
 
-function worldbookEntryDisclosureId(entry: { uid?: string; name: string; order?: number }) {
-    return `worldbook:${selectedWorldbookName.value}:${entry.uid || entry.order || entry.name}`;
+function worldbookEntryDisclosureId(entry: { uid?: string | number; name: string; order?: number }) {
+    const entryId = entry.uid !== undefined && entry.uid !== null && String(entry.uid).trim()
+        ? String(entry.uid).trim()
+        : entry.order !== undefined && entry.order !== null && String(entry.order).trim()
+            ? String(entry.order).trim()
+            : entry.name;
+    return `worldbook:${selectedWorldbookName.value}:${entryId}`;
 }
 
 watch(
@@ -161,7 +177,7 @@ watch(
             >
               <details
                 v-for="entry in worldbookPreview.entries"
-                :key="entry.uid || entry.name"
+                :key="worldbookEntryDisclosureId(entry)"
                 class="worldbook-entry-preview"
                 :class="{ disabled: !entry.enabled }"
                 :open="worldbookDisclosure.isOpen(worldbookEntryDisclosureId(entry))"
@@ -177,18 +193,133 @@ watch(
                   v-if="worldbookDisclosure.isOpen(worldbookEntryDisclosureId(entry))"
                   class="worldbook-entry-body"
                 >
-                  <p
-                    v-if="entry.keys.length || entry.secondaryKeys.length"
-                    class="worldbook-entry-keys"
-                  >
-                    {{ [...entry.keys, ...entry.secondaryKeys].join(' / ') }}
-                  </p>
-                  <p
-                    v-if="entry.contentPreview"
-                    class="worldbook-entry-content"
-                  >
-                    {{ entry.contentPreview }}
-                  </p>
+                  <template v-if="isEditingWorldbookEntry(entry) && worldbookEntryDraft">
+                    <form
+                      class="worldbook-entry-editor"
+                      @submit.prevent="saveWorldbookEntryDraft"
+                    >
+                      <div class="worldbook-entry-editor-head">
+                        <span v-if="worldbookEntryStatus">{{ worldbookEntryStatus }}</span>
+                        <span v-else>编辑条目</span>
+                        <button
+                          type="button"
+                          class="worldbook-row-open"
+                          :disabled="worldbookEntrySaving"
+                          @click="cancelWorldbookEntryEdit"
+                        >
+                          取消
+                        </button>
+                      </div>
+                      <div class="worldbook-entry-editor-grid">
+                        <label>
+                          <span>备注</span>
+                          <input
+                            :value="worldbookEntryDraft.comment"
+                            type="text"
+                            @input="updateWorldbookEntryDraftPatch({ comment: ($event.target as HTMLInputElement).value })"
+                          >
+                        </label>
+                        <label>
+                          <span>名称</span>
+                          <input
+                            :value="worldbookEntryDraft.name"
+                            type="text"
+                            @input="updateWorldbookEntryDraftPatch({ name: ($event.target as HTMLInputElement).value })"
+                          >
+                        </label>
+                        <label>
+                          <span>标题</span>
+                          <input
+                            :value="worldbookEntryDraft.title"
+                            type="text"
+                            @input="updateWorldbookEntryDraftPatch({ title: ($event.target as HTMLInputElement).value })"
+                          >
+                        </label>
+                        <label>
+                          <span>排序</span>
+                          <input
+                            :value="worldbookEntryDraft.order"
+                            type="number"
+                            step="1"
+                            @input="updateWorldbookEntryDraftPatch({ order: Number(($event.target as HTMLInputElement).value) })"
+                          >
+                        </label>
+                      </div>
+                      <label class="worldbook-entry-editor-lines">
+                        <span>关键词</span>
+                        <textarea
+                          :value="linesFromList(worldbookEntryDraft.key)"
+                          rows="3"
+                          @input="updateWorldbookEntryDraftPatch({ key: listFromLines(($event.target as HTMLTextAreaElement).value) })"
+                        />
+                      </label>
+                      <label class="worldbook-entry-editor-lines">
+                        <span>次级关键词</span>
+                        <textarea
+                          :value="linesFromList(worldbookEntryDraft.keysecondary.length ? worldbookEntryDraft.keysecondary : worldbookEntryDraft.secondary_keys)"
+                          rows="3"
+                          @input="updateWorldbookEntryDraftPatch({ keysecondary: listFromLines(($event.target as HTMLTextAreaElement).value) })"
+                        />
+                      </label>
+                      <label class="worldbook-entry-editor-lines">
+                        <span>内容</span>
+                        <textarea
+                          :value="worldbookEntryDraft.content"
+                          rows="9"
+                          @input="updateWorldbookEntryDraftPatch({ content: ($event.target as HTMLTextAreaElement).value })"
+                        />
+                      </label>
+                      <div class="worldbook-entry-editor-toggles">
+                        <label>
+                          <input
+                            type="checkbox"
+                            :checked="!worldbookEntryDraft.disable"
+                            @change="updateWorldbookEntryDraftPatch({ disable: !($event.target as HTMLInputElement).checked, enabled: ($event.target as HTMLInputElement).checked })"
+                          >
+                          <span>启用</span>
+                        </label>
+                        <label>
+                          <input
+                            type="checkbox"
+                            :checked="worldbookEntryDraft.constant"
+                            @change="updateWorldbookEntryDraftPatch({ constant: ($event.target as HTMLInputElement).checked })"
+                          >
+                          <span>常驻</span>
+                        </label>
+                        <button
+                          type="submit"
+                          class="primary-action"
+                          :disabled="!worldbookEntryDirty || worldbookEntrySaving"
+                        >
+                          保存
+                        </button>
+                      </div>
+                    </form>
+                  </template>
+                  <template v-else>
+                    <div class="worldbook-entry-actions">
+                      <button
+                        type="button"
+                        class="worldbook-row-open"
+                        @click="startWorldbookEntryEdit(entry)"
+                      >
+                        编辑
+                      </button>
+                      <span v-if="worldbookEntryStatus && isEditingWorldbookEntry(entry)">{{ worldbookEntryStatus }}</span>
+                    </div>
+                    <p
+                      v-if="entry.keys.length || entry.secondaryKeys.length"
+                      class="worldbook-entry-keys"
+                    >
+                      {{ [...entry.keys, ...entry.secondaryKeys].join(' / ') }}
+                    </p>
+                    <p
+                      v-if="entry.contentPreview"
+                      class="worldbook-entry-content"
+                    >
+                      {{ entry.contentPreview }}
+                    </p>
+                  </template>
                 </div>
               </details>
               <button

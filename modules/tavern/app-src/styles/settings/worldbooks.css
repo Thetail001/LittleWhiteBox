@@ -311,6 +311,104 @@
     line-height: 1.45;
 }
 
+.worldbook-entry-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+.worldbook-entry-actions span,
+.worldbook-entry-editor-head span {
+    min-width: 0;
+    color: var(--xb-text-muted);
+    font-size: 12px;
+    overflow-wrap: anywhere;
+}
+
+.worldbook-entry-editor {
+    display: grid;
+    gap: 12px;
+    padding: 4px 0 4px;
+}
+
+.worldbook-entry-editor-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-width: 0;
+}
+
+.worldbook-entry-editor-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.worldbook-entry-editor label,
+.worldbook-entry-editor-lines {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+    color: var(--xb-text-muted);
+    font-size: 12px;
+}
+
+.worldbook-entry-editor input[type="text"],
+.worldbook-entry-editor input[type="number"],
+.worldbook-entry-editor textarea {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    border: 1px solid var(--xb-line);
+    border-radius: 8px;
+    background: var(--xb-settings-control-bg);
+    color: var(--xb-text-main);
+    font-family: var(--xb-font-ui);
+    font-size: 13px;
+    line-height: 1.45;
+    padding: 9px 10px;
+}
+
+.worldbook-entry-editor textarea {
+    resize: vertical;
+    min-height: 76px;
+}
+
+.worldbook-entry-editor-lines:last-of-type textarea {
+    min-height: 180px;
+    font-family: var(--xb-font-ui);
+}
+
+.worldbook-entry-editor input:focus,
+.worldbook-entry-editor textarea:focus {
+    outline: none;
+    border-color: rgba(var(--xb-accent-rgb), 0.46);
+    box-shadow: 0 0 0 3px rgba(var(--xb-accent-rgb), 0.08);
+}
+
+.worldbook-entry-editor-toggles {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    min-width: 0;
+    flex-wrap: wrap;
+}
+
+.worldbook-entry-editor-toggles label {
+    display: inline-flex;
+    grid-template-columns: none;
+    align-items: center;
+    gap: 7px;
+    min-height: 30px;
+}
+
+.worldbook-entry-editor-toggles input {
+    accent-color: var(--xb-cyan);
+}
+
 .worldbook-preview-more {
     justify-self: center;
     margin-top: 2px;
@@ -324,6 +422,10 @@
     }
 
     .worldbook-metric-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .worldbook-entry-editor-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }
@@ -382,5 +484,13 @@
         max-height: 52dvh;
         gap: 8px;
         padding: 1px 2px 10px 0;
+    }
+
+    .worldbook-entry-editor-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .worldbook-entry-editor-toggles {
+        justify-content: flex-start;
     }
 }

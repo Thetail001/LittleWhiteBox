@@ -31,7 +31,9 @@ import type {
     TavernRegexGroupRow,
     TavernRegexScriptDraft,
     TavernRegexScriptRow,
+    TavernWorldbookEntryDraft,
     TavernWorldbookOptionRow,
+    TavernWorldbookPreviewEntryRow,
     TavernWorldbookPreviewRow,
 } from '../tavern-app-context';
 
@@ -82,6 +84,24 @@ interface WorldbookPreviewEntryRow {
     enabled: boolean;
     constant: boolean;
     order: number;
+}
+
+interface WorldbookEntryDraftRow {
+    worldbookName: string;
+    uid: string;
+    comment: string;
+    name: string;
+    title: string;
+    key: string[];
+    keysecondary: string[];
+    secondary_keys: string[];
+    content: string;
+    disable: boolean;
+    enabled: boolean;
+    constant: boolean;
+    order: number;
+    entryHash: string;
+    revision: string;
 }
 
 const CHAT_PRESET_SOURCE_BATCH_SIZE = 48;
@@ -167,6 +187,34 @@ function normalizeWorldbookPreview(value: unknown): TavernWorldbookPreviewRow {
     };
 }
 
+function normalizeWorldbookEntryDraft(value: unknown): TavernWorldbookEntryDraft {
+    const record = promptRecord(value);
+    const keysecondary = Array.isArray(record.keysecondary)
+        ? record.keysecondary.map((item) => String(item || '').trim()).filter(Boolean)
+        : [];
+    const secondaryKeys = Array.isArray(record.secondary_keys)
+        ? record.secondary_keys.map((item) => String(item || '').trim()).filter(Boolean)
+        : keysecondary;
+    const disable = record.disable === true || record.enabled === false;
+    return {
+        worldbookName: String(record.worldbookName || record.name || '').trim(),
+        uid: record.uid === null || record.uid === undefined ? '' : String(record.uid).trim(),
+        comment: String(record.comment ?? ''),
+        name: String(record.name ?? ''),
+        title: String(record.title ?? ''),
+        key: Array.isArray(record.key) ? record.key.map((item) => String(item || '').trim()).filter(Boolean) : [],
+        keysecondary,
+        secondary_keys: secondaryKeys,
+        content: String(record.content ?? ''),
+        disable,
+        enabled: !disable,
+        constant: record.constant === true,
+        order: Number.isFinite(Number(record.order)) ? Number(record.order) : 100,
+        entryHash: String(record.entryHash || ''),
+        revision: String(record.revision || record.entryHash || ''),
+    } as WorldbookEntryDraftRow;
+}
+
 function normalizeRegexDraft(input: unknown = {}): TavernRegexScriptDraft {
     const source = promptRecord(input);
     return {
@@ -219,6 +267,10 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
     const worldbookStatus = ref('');
     const worldbookPreview = ref<TavernWorldbookPreviewRow | null>(null);
     const worldbookPreviewStatus = ref('');
+    const worldbookEntryDraft = ref<TavernWorldbookEntryDraft | null>(null);
+    const savedWorldbookEntryDraftJson = ref('');
+    const worldbookEntryEditingKey = ref('');
+    const worldbookEntryStatus = ref('');
     const chatPresetSourceSearchText = ref('');
     const chatPresetSourceVisibleLimit = ref(CHAT_PRESET_SOURCE_BATCH_SIZE);
     const assistantPresetSearchText = ref('');
@@ -235,6 +287,8 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
     const regexDraft = ref<TavernRegexScriptDraft>({});
     const activeRegexScriptJson = ref(snapshotNativeDraft(regexDraft.value));
     const regexStatus = ref('');
+    let worldbookEntryLoadRequestSerial = 0;
+    let worldbookEntryLoadRequestKey = '';
 
     const apiSettingsPanelState: Record<string, unknown> = {
         config: {},
@@ -328,6 +382,11 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
         if (!preview || preview.name !== selectedWorldbookName.value) {return 0;}
         return Math.max(0, preview.entryCount - preview.entries.length);
     });
+    const worldbookEntryDirty = computed(() => {
+        if (!worldbookEntryDraft.value) {return false;}
+        return snapshotNativeDraft(worldbookEntryDraft.value) !== savedWorldbookEntryDraftJson.value;
+    });
+    const worldbookEntrySaving = computed(() => worldbookEntryStatus.value === '正在保存');
     const regexGroups = computed<TavernRegexGroupRow[]>(() => {
         const groups = Array.isArray(regexList.value.groups) ? regexList.value.groups : [];
         return groups.map((group) => {
@@ -549,6 +608,18 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
     function worldbookSourceSummary(item: TavernWorldbookOptionRow): string {
         return item.globalActive ? '全局世界书' : '';
     }
+    function worldbookEntryEditKey(entry: Pick<TavernWorldbookPreviewEntryRow, 'uid' | 'name' | 'order'> | TavernWorldbookEntryDraft | null): string {
+        if (!entry) {return '';}
+        const entryId = entry.uid !== undefined && entry.uid !== null && String(entry.uid).trim()
+            ? String(entry.uid).trim()
+            : entry.order !== undefined && entry.order !== null && String(entry.order).trim()
+                ? String(entry.order).trim()
+                : String(entry.name || '').trim();
+        return `${String(selectedWorldbookName.value || '').trim()}:${entryId}`;
+    }
+    function isEditingWorldbookEntry(entry: TavernWorldbookPreviewEntryRow): boolean {
+        return !!worldbookEntryEditingKey.value && worldbookEntryEditingKey.value === worldbookEntryEditKey(entry);
+    }
     function promptRowIndex(identifier: string) {
         return promptEditorRowIndexById.value.get(identifier) ?? -1;
     }
@@ -623,6 +694,12 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
     }
     function confirmDiscardDraft(label: string, action = '继续？') {
         return window.confirm(`当前${label}有未保存修改，${action}会放弃这些草稿。继续？`);
+    }
+    function applyWorldbookEntryDraft(draft: unknown) {
+        const normalized = normalizeWorldbookEntryDraft(draft);
+        worldbookEntryDraft.value = normalized;
+        savedWorldbookEntryDraftJson.value = snapshotNativeDraft(normalized);
+        worldbookEntryEditingKey.value = worldbookEntryEditKey(normalized);
     }
     async function refreshPresets() {
         if (assistantPresetDirty.value && !confirmDiscardDraft('助手预设', '刷新')) {
@@ -757,6 +834,73 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
         if (!selectedWorldbookName.value) {return;}
         worldbookPreviewVisibleLimit.value += WORLDBOOK_PREVIEW_BATCH_SIZE;
         void loadSelectedWorldbookPreview(selectedWorldbookName.value);
+    }
+    async function startWorldbookEntryEdit(entry: TavernWorldbookPreviewEntryRow) {
+        const targetName = String(selectedWorldbookName.value || '').trim();
+        const uid = entry?.uid === undefined || entry.uid === null ? '' : String(entry.uid).trim();
+        if (!targetName || !uid) {return;}
+        const requestKey = worldbookEntryEditKey(entry);
+        if (worldbookEntryDirty.value && worldbookEntryEditingKey.value !== requestKey && !confirmDiscardDraft('世界书条目', '切换')) {
+            return;
+        }
+        worldbookEntryEditingKey.value = requestKey;
+        worldbookEntryLoadRequestSerial += 1;
+        const requestToken = `${requestKey}:${worldbookEntryLoadRequestSerial}`;
+        worldbookEntryLoadRequestKey = requestToken;
+        worldbookEntryStatus.value = '正在读取条目';
+        try {
+            const result = await options.requestHost('xb-tavern:get-worldbook-entry', {
+                payload: { name: targetName, uid },
+            });
+            if (String(selectedWorldbookName.value || '').trim() !== targetName) {return;}
+            if (worldbookEntryEditingKey.value !== requestKey || worldbookEntryLoadRequestKey !== requestToken) {return;}
+            applyWorldbookEntryDraft(result.result || result);
+            worldbookEntryStatus.value = '';
+        } catch (error) {
+            if (worldbookEntryEditingKey.value !== requestKey || worldbookEntryLoadRequestKey !== requestToken) {return;}
+            worldbookEntryStatus.value = error instanceof Error ? error.message : String(error || '条目读取失败');
+        }
+    }
+    function cancelWorldbookEntryEdit() {
+        worldbookEntryDraft.value = null;
+        savedWorldbookEntryDraftJson.value = '';
+        worldbookEntryEditingKey.value = '';
+        worldbookEntryLoadRequestKey = '';
+        worldbookEntryStatus.value = '';
+    }
+    function updateWorldbookEntryDraftPatch(patch: Partial<TavernWorldbookEntryDraft>) {
+        if (!worldbookEntryDraft.value) {return;}
+        const next = normalizeWorldbookEntryDraft({
+            ...worldbookEntryDraft.value,
+            ...patch,
+        });
+        worldbookEntryDraft.value = next;
+        if (worldbookEntryStatus.value && worldbookEntryStatus.value !== '正在保存') {
+            worldbookEntryStatus.value = '';
+        }
+    }
+    async function saveWorldbookEntryDraft() {
+        const draft = worldbookEntryDraft.value;
+        const targetName = String(selectedWorldbookName.value || draft?.worldbookName || '').trim();
+        if (!draft || !targetName || !draft.uid) {return;}
+        if (!worldbookEntryDirty.value) {return;}
+        worldbookEntryStatus.value = '正在保存';
+        try {
+            const result = await options.requestHost('xb-tavern:save-worldbook-entry', {
+                payload: {
+                    name: targetName,
+                    uid: draft.uid,
+                    entryHash: draft.entryHash,
+                    draft,
+                },
+            });
+            applyWorldbookEntryDraft(result.result || result);
+            worldbookEntryStatus.value = '已保存';
+            await loadSelectedWorldbookPreview(targetName);
+            options.postToHost('xb-tavern:refresh-context', {});
+        } catch (error) {
+            worldbookEntryStatus.value = error instanceof Error ? error.message : String(error || '保存失败');
+        }
     }
     async function openSelectedWorldbookEditor(name = selectedWorldbookName.value) {
         const targetName = String(name || '').trim();
@@ -1340,6 +1484,7 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
     });
     watch(selectedWorldbookName, (name) => {
         if (options.activeView.value !== 'settings' || options.activeSettingsWorkspace.value !== 'worldbooks') {return;}
+        cancelWorldbookEntryEdit();
         worldbookPreviewVisibleLimit.value = WORLDBOOK_PREVIEW_BATCH_SIZE;
         void loadSelectedWorldbookPreview(name);
     });
@@ -1363,6 +1508,7 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
         assistantPresetStatus,
         assistantPresetVisibleLimit,
         canEditPromptOrder,
+        cancelWorldbookEntryEdit,
         chatPresetOptions,
         chatPresetSourceSearchText,
         chatPresetSourceVisibleLimit,
@@ -1384,6 +1530,7 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
         hiddenWorldbookPreviewEntryCount,
         homeThemeDark: options.homeThemeDark,
         importAssistantPreset,
+        isEditingWorldbookEntry,
         linesFromList,
         listFromLines,
         movePromptRow,
@@ -1414,6 +1561,7 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
         saveCurrentAssistantPreset,
         saveCurrentPreset,
         saveCurrentRegexScript,
+        saveWorldbookEntryDraft,
         selectAssistantPreset,
         selectAssistantPresetItem,
         selectChatPresetFromHost,
@@ -1430,6 +1578,7 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
         settingsNavItems,
         shortText: options.shortText,
         showMoreWorldbookPreviewEntries,
+        startWorldbookEntryEdit,
         syncWorldbooksFromHost,
         togglePromptRow,
         toggleRegexPlacement,
@@ -1437,6 +1586,7 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
         updatePromptByIdentifier,
         updateRegexPatch,
         updateSelectedAssistantPresetItem,
+        updateWorldbookEntryDraftPatch,
         visibleAssistantPresetRecords,
         visibleChatPresetOptions,
         visiblePromptEditorRows,
@@ -1444,6 +1594,11 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
         WORLDBOOK_BATCH_SIZE,
         WORLDBOOK_PREVIEW_BATCH_SIZE,
         worldbookGlobalCount,
+        worldbookEntryDirty,
+        worldbookEntryDraft,
+        worldbookEntryEditingKey,
+        worldbookEntrySaving,
+        worldbookEntryStatus,
         worldbookOptions,
         worldbookPreview,
         worldbookPreviewStatus,

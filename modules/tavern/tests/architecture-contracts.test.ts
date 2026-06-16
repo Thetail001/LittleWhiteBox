@@ -52,17 +52,27 @@ test('tavern source keeps cross-frame messages behind clone-safe wrappers', () =
     assert.match(hostSource, /function postToFrame[\s\S]*const message = cloneFramePayload\(\{ type, payload \}\);[\s\S]*postToIframe/);
 });
 
-test('tavern worldbook bridge stays on the native runtime boundary', () => {
+test('tavern worldbook bridge edits named entries through native save boundary', () => {
     const badSplits = sourceMatches(/split\(\s*\/\\r\?\\n\|,\//);
     assert.deepEqual(badSplits, []);
     const hostSource = readRepoFile('modules/tavern/host/worldbooks.ts');
     assert.match(hostSource, /export async function listTavernWorldbookSources/);
     assert.match(hostSource, /export async function getTavernWorldbookPreview/);
     assert.match(hostSource, /await loadWorldInfo\(name\)/);
+    assert.match(hostSource, /export async function getTavernWorldbookEntry/);
+    assert.match(hostSource, /export async function saveTavernWorldbookEntry/);
+    assert.match(hostSource, /function normalizeIdText/);
+    assert.match(hostSource, /uid: normalizeIdText\(entry\.uid \?\? entry\.id \?\? slot\.index\)/);
+    assert.match(hostSource, /buildWorldbookEntryHash/);
+    assert.match(hostSource, /patchWorldbookEntry/);
+    assert.match(hostSource, /function syncWorldbookOriginalDataEntry/);
+    assert.match(hostSource, /syncWorldbookOriginalDataEntry\(asRecord\(data\), uid, slot\.entry\);[\s\S]*await saveWorldInfo\(name, data, true\)/);
+    assert.match(hostSource, /if \('secondary_keys' in entry && \('secondary_keys' in draft \|\| 'secondaryKeys' in draft\)\)/);
+    assert.match(hostSource, /entry\.secondary_keys = normalizeStringList\(draft\.keysecondary \?\? draft\.secondary_keys \?\? draft\.secondaryKeys\)/);
+    assert.match(hostSource, /await saveWorldInfo\(name, data, true\)/);
     assert.match(hostSource, /export async function getTavernWorldbookRuntime/);
     assert.match(hostSource, /await checkWorldInfo\(chatLines, maxContext, false, globalScanData\)/);
     assert.match(hostSource, /openWorldInfoEditor/);
-    assert.doesNotMatch(hostSource, /saveWorldInfo/);
     assert.doesNotMatch(hostSource, /createWorldInfoEntry/);
     assert.doesNotMatch(hostSource, /updateWorldInfoSettings/);
 });

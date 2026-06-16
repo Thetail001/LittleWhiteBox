@@ -15,6 +15,7 @@ import {
   loadWorldInfo,
   METADATA_KEY,
   openWorldInfoEditor,
+  saveWorldInfo,
   selected_world_info,
   updateWorldInfoList,
   world_names
@@ -24,6 +25,27 @@ function asRecord(value) {
 }
 function normalizeText(value = "") {
   return String(value || "").trim();
+}
+function normalizeIdText(value = "") {
+  return value === null || value === void 0 ? "" : String(value).trim();
+}
+function asEditableText(value = "") {
+  return String(value ?? "");
+}
+function setValueByPath(target, path, value) {
+  const parts = path.split(".").map((part) => part.trim()).filter(Boolean);
+  if (!parts.length) {
+    return;
+  }
+  let cursor = target;
+  parts.slice(0, -1).forEach((part) => {
+    const current = cursor[part];
+    if (!current || typeof current !== "object" || Array.isArray(current)) {
+      cursor[part] = {};
+    }
+    cursor = cursor[part];
+  });
+  cursor[parts[parts.length - 1]] = cloneJson(value);
 }
 function normalizeStringList(value) {
   if (Array.isArray(value)) {
@@ -45,6 +67,129 @@ function readWorldbookEntries(data) {
     return [];
   }
   return Object.values(entries).map((entry) => asRecord(entry)).filter((entry) => Object.keys(entry).length > 0);
+}
+function readWorldbookEntrySlots(data) {
+  const entries = asRecord(data).entries;
+  if (!entries || typeof entries !== "object" || Array.isArray(entries)) {
+    return [];
+  }
+  return Object.entries(entries).map(([key, entry], index) => ({
+    key,
+    index,
+    entry: asRecord(entry)
+  })).filter((slot) => Object.keys(slot.entry).length > 0);
+}
+function stableStringify(value) {
+  if (value === void 0) {
+    return "undefined";
+  }
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value) ?? String(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+  }
+  const record = value;
+  return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`).join(",")}}`;
+}
+function hashString(value) {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+function buildWorldbookEntryHash(entry) {
+  return hashString(stableStringify(entry));
+}
+function findWorldbookEntrySlot(data, uid) {
+  const targetUid = normalizeIdText(uid);
+  if (!targetUid) {
+    return null;
+  }
+  return readWorldbookEntrySlots(data).find((slot) => normalizeIdText(slot.entry.uid ?? slot.entry.id ?? slot.index) === targetUid || normalizeIdText(slot.key) === targetUid) || null;
+}
+function buildWorldbookEntryDraft(name, slot) {
+  const entry = slot.entry;
+  const entryHash = buildWorldbookEntryHash(entry);
+  const keysecondary = normalizeStringList(entry.keysecondary);
+  return {
+    worldbookName: name,
+    uid: normalizeIdText(entry.uid ?? entry.id ?? slot.index),
+    comment: asEditableText(entry.comment),
+    name: asEditableText(entry.name),
+    title: asEditableText(entry.title),
+    key: normalizeStringList(entry.key),
+    keysecondary,
+    secondary_keys: normalizeStringList(entry.secondary_keys),
+    content: asEditableText(entry.content),
+    disable: entry.disable === true,
+    enabled: entry.disable !== true,
+    constant: entry.constant === true,
+    order: Number.isFinite(Number(entry.order)) ? Number(entry.order) : 100,
+    entryHash,
+    revision: entryHash
+  };
+}
+function patchWorldbookEntry(entry, draft) {
+  if ("comment" in draft) {
+    entry.comment = asEditableText(draft.comment);
+  }
+  if ("name" in draft) {
+    entry.name = asEditableText(draft.name);
+  }
+  if ("title" in draft) {
+    entry.title = asEditableText(draft.title);
+  }
+  if ("key" in draft || "keys" in draft) {
+    entry.key = normalizeStringList(draft.key ?? draft.keys);
+  }
+  if ("keysecondary" in draft || "secondaryKeys" in draft) {
+    entry.keysecondary = normalizeStringList(draft.keysecondary ?? draft.secondaryKeys);
+  }
+  if ("secondary_keys" in entry && ("secondary_keys" in draft || "secondaryKeys" in draft)) {
+    entry.secondary_keys = normalizeStringList(draft.keysecondary ?? draft.secondary_keys ?? draft.secondaryKeys);
+  }
+  if ("content" in draft) {
+    entry.content = asEditableText(draft.content);
+  }
+  if ("disable" in draft) {
+    entry.disable = draft.disable === true;
+  }
+  if ("enabled" in draft && !("disable" in draft)) {
+    entry.disable = draft.enabled === false;
+  }
+  if ("constant" in draft) {
+    entry.constant = draft.constant === true;
+  }
+  if ("order" in draft) {
+    const order = Number(draft.order);
+    if (Number.isFinite(order)) {
+      entry.order = order;
+    }
+  }
+}
+function syncWorldbookOriginalDataEntry(data, uid, entry) {
+  const originalData = asRecord(data.originalData);
+  const originalEntries = Array.isArray(originalData.entries) ? originalData.entries : [];
+  if (!originalEntries.length) {
+    return;
+  }
+  const originalEntry = originalEntries.map((item) => asRecord(item)).find((item) => normalizeIdText(item.uid) === uid || normalizeIdText(item.id) === uid);
+  if (!originalEntry) {
+    return;
+  }
+  const mappings = [
+    ["comment", entry.comment],
+    ["content", entry.content],
+    ["keys", normalizeStringList(entry.key)],
+    ["secondary_keys", normalizeStringList(entry.keysecondary)],
+    ["insertion_order", Number.isFinite(Number(entry.order)) ? Number(entry.order) : 100],
+    ["constant", entry.constant === true],
+    ["enabled", entry.disable !== true]
+  ];
+  mappings.forEach(([path, value]) => setValueByPath(originalEntry, path, value));
 }
 function previewEntryName(entry, index) {
   return normalizeText(entry.comment) || normalizeText(entry.name) || normalizeText(entry.title) || `\u6761\u76EE ${index + 1}`;
@@ -358,7 +503,7 @@ async function getTavernWorldbookPreview(input = {}) {
     const secondaryKeys = normalizeStringList(entry.keysecondary || entry.secondary_keys);
     const content = normalizeText(entry.content);
     return {
-      uid: normalizeText(entry.uid ?? entry.id ?? index),
+      uid: normalizeIdText(entry.uid ?? entry.id ?? index),
       name: previewEntryName(entry, index),
       keys,
       secondaryKeys,
@@ -378,6 +523,61 @@ async function getTavernWorldbookPreview(input = {}) {
     totalChars: entries.reduce((sum, entry) => sum + normalizeText(entry.content).length, 0),
     entries: previewEntries
   };
+}
+async function getTavernWorldbookEntry(input = {}) {
+  const payload = asRecord(input);
+  const name = normalizeText(payload.name || payload.worldbookName);
+  const uid = normalizeIdText(payload.uid);
+  if (!name) {
+    throw new Error("\u7F3A\u5C11\u4E16\u754C\u4E66\u540D\u79F0\u3002");
+  }
+  if (!uid) {
+    throw new Error("\u7F3A\u5C11\u4E16\u754C\u4E66\u6761\u76EE UID\u3002");
+  }
+  const names = await ensureWorldbookNames();
+  if (!names.includes(name)) {
+    throw new Error(`\u627E\u4E0D\u5230\u4E16\u754C\u4E66\uFF1A${name}`);
+  }
+  const data = await loadWorldInfo(name);
+  const slot = findWorldbookEntrySlot(data, uid);
+  if (!slot) {
+    throw new Error(`\u627E\u4E0D\u5230\u4E16\u754C\u4E66\u6761\u76EE\uFF1A${uid}`);
+  }
+  return buildWorldbookEntryDraft(name, slot);
+}
+async function saveTavernWorldbookEntry(input = {}) {
+  const payload = asRecord(input);
+  const name = normalizeText(payload.name || payload.worldbookName);
+  const uid = normalizeIdText(payload.uid);
+  const entryHash = normalizeText(payload.entryHash || payload.revision);
+  const draft = asRecord(payload.draft || payload.entry || payload);
+  if (!name) {
+    throw new Error("\u7F3A\u5C11\u4E16\u754C\u4E66\u540D\u79F0\u3002");
+  }
+  if (!uid) {
+    throw new Error("\u7F3A\u5C11\u4E16\u754C\u4E66\u6761\u76EE UID\u3002");
+  }
+  if (!entryHash) {
+    throw new Error("\u7F3A\u5C11\u4E16\u754C\u4E66\u6761\u76EE\u7248\u672C\uFF0C\u8BF7\u91CD\u65B0\u8BFB\u53D6\u540E\u518D\u4FDD\u5B58\u3002");
+  }
+  const names = await ensureWorldbookNames();
+  if (!names.includes(name)) {
+    throw new Error(`\u627E\u4E0D\u5230\u4E16\u754C\u4E66\uFF1A${name}`);
+  }
+  const data = await loadWorldInfo(name);
+  const slot = findWorldbookEntrySlot(data, uid);
+  if (!slot) {
+    throw new Error(`\u627E\u4E0D\u5230\u4E16\u754C\u4E66\u6761\u76EE\uFF1A${uid}`);
+  }
+  const currentHash = buildWorldbookEntryHash(slot.entry);
+  if (currentHash !== entryHash) {
+    throw new Error("\u8FD9\u4E2A\u4E16\u754C\u4E66\u6761\u76EE\u5DF2\u7ECF\u5728\u9152\u9986\u91CC\u88AB\u4FEE\u6539\uFF0C\u8BF7\u91CD\u65B0\u8BFB\u53D6\u540E\u518D\u4FDD\u5B58\u3002");
+  }
+  patchWorldbookEntry(slot.entry, draft);
+  syncWorldbookOriginalDataEntry(asRecord(data), uid, slot.entry);
+  await saveWorldInfo(name, data, true);
+  await updateWorldInfoList();
+  return buildWorldbookEntryDraft(name, slot);
 }
 async function getTavernWorldbookRuntime(input = {}) {
   const payload = asRecord(input);
@@ -437,8 +637,10 @@ function openTavernWorldbookEditor(input = {}) {
   };
 }
 export {
+  getTavernWorldbookEntry,
   getTavernWorldbookPreview,
   getTavernWorldbookRuntime,
   listTavernWorldbookSources,
-  openTavernWorldbookEditor
+  openTavernWorldbookEditor,
+  saveTavernWorldbookEntry
 };
