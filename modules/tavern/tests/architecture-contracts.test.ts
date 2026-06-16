@@ -110,7 +110,8 @@ test('tavern desktop worldbook editor keeps dense readable rows', () => {
     assert.match(worldbookSource, />跟随全局<[\s\S]*>启用概率<[\s\S]*>忽略预算<[\s\S]*>生成触发</);
     assert.match(worldbookCss, /\.worldbook-entry-core-grid \{[\s\S]*grid-template-columns:[\s\S]*minmax\(180px, 240px\)[\s\S]*repeat\(3, minmax\(78px, 0\.42fr\)\);/);
     assert.match(worldbookCss, /\.worldbook-entry-key-grid \{[\s\S]*grid-template-columns: minmax\(0, 1fr\) minmax\(132px, 170px\) minmax\(0, 1fr\);/);
-    assert.match(worldbookCss, /\.worldbook-entry-filter-controls \{[\s\S]*align-self: end;/);
+    assert.match(worldbookCss, /\.worldbook-entry-filter-controls \{[\s\S]*display: contents;/);
+    assert.match(worldbookCss, /\.worldbook-entry-logic-field \{[\s\S]*align-self: end;[\s\S]*width: 100%;/);
     assert.match(worldbookCss, /\.worldbook-entry-editor \{[\s\S]*--worldbook-entry-control-height: 38px;/);
     assert.match(worldbookCss, /\.worldbook-entry-editor input\[type="text"\],[\s\S]*\.worldbook-entry-editor input\[type="number"\],[\s\S]*\.worldbook-entry-editor select \{[\s\S]*height: var\(--worldbook-entry-control-height\);[\s\S]*min-height: var\(--worldbook-entry-control-height\);/);
     assert.match(worldbookSource, /class="worldbook-entry-editor-lines worldbook-entry-keywords-field"[\s\S]*<input[\s\S]*type="text"[\s\S]*listFromCommaText\(\(\$event\.target as HTMLInputElement\)\.value\)/);

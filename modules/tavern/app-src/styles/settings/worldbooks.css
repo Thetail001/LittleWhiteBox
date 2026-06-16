@@ -520,11 +520,11 @@
 }
 
 .worldbook-entry-filter-controls {
-    display: grid;
-    align-self: end;
+    display: contents;
 }
 
 .worldbook-entry-logic-field {
+    align-self: end;
     width: 100%;
 }
 
@@ -849,10 +849,6 @@
     .worldbook-entry-key-grid,
     .worldbook-entry-advanced-grid {
         grid-template-columns: minmax(0, 1fr);
-        gap: 8px;
-    }
-
-    .worldbook-entry-filter-controls {
         gap: 8px;
     }
 
