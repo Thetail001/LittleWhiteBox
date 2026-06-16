@@ -40454,33 +40454,14 @@ var $7 = ["title", "aria-label"], D7 = {
   setup(e, { emit: t }) {
     const n = t;
     return (r, s) => (B(), q("div", { class: Fe(["home-corner-actions", { "page-corner-actions": e.includeHome || e.compact }]) }, [
-      e.includeWorldbooks ? (B(), q("button", {
-        key: 0,
-        type: "button",
-        class: "home-icon-button page-worldbooks-button",
-        title: "世界书",
-        "aria-label": "世界书",
-        onClick: s[0] || (s[0] = (o) => n("worldbooks"))
-      }, [...s[7] || (s[7] = [g("svg", {
-        class: "xb-worldbooks-icon",
-        viewBox: "0 0 24 24",
-        fill: "none",
-        stroke: "currentColor",
-        "stroke-linecap": "round",
-        "stroke-linejoin": "round",
-        "aria-hidden": "true"
-      }, [g("path", {
-        "stroke-width": "1.6",
-        d: "M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18ZM3.8 9h16.4M3.8 15h16.4M12 3c2 2.2 3 5.2 3 9s-1 6.8-3 9M12 3c-2 2.2-3 5.2-3 9s1 6.8 3 9"
-      })], -1)])])) : we("", !0),
       e.includeChatPreset ? (B(), q("button", {
-        key: 1,
+        key: 0,
         type: "button",
         class: "home-icon-button page-chat-preset-button",
         title: "聊天预设",
         "aria-label": "聊天预设",
-        onClick: s[1] || (s[1] = (o) => n("chatPreset"))
-      }, [...s[8] || (s[8] = [g("svg", {
+        onClick: s[0] || (s[0] = (o) => n("chatPreset"))
+      }, [...s[7] || (s[7] = [g("svg", {
         class: "xb-chat-preset-icon",
         viewBox: "0 0 24 24",
         fill: "none",
@@ -40493,13 +40474,13 @@ var $7 = ["title", "aria-label"], D7 = {
         d: "M5 5h14v10H9l-4 4V5ZM8 9h8M8 12h5"
       })], -1)])])) : we("", !0),
       e.includeApi ? (B(), q("button", {
-        key: 2,
+        key: 1,
         type: "button",
         class: "home-icon-button page-api-button",
         title: "API 配置",
         "aria-label": "API 配置",
-        onClick: s[2] || (s[2] = (o) => n("api"))
-      }, [...s[9] || (s[9] = [g("svg", {
+        onClick: s[1] || (s[1] = (o) => n("api"))
+      }, [...s[8] || (s[8] = [g("svg", {
         class: "xb-api-icon",
         viewBox: "0 0 24 24",
         fill: "none",
@@ -40510,6 +40491,25 @@ var $7 = ["title", "aria-label"], D7 = {
       }, [g("path", {
         "stroke-width": "1.6",
         d: "M9 7V3M15 7V3M7 11h10M8 7h8v5a4 4 0 0 1-8 0V7ZM12 16v5"
+      })], -1)])])) : we("", !0),
+      e.includeWorldbooks ? (B(), q("button", {
+        key: 2,
+        type: "button",
+        class: "home-icon-button page-worldbooks-button",
+        title: "世界书",
+        "aria-label": "世界书",
+        onClick: s[2] || (s[2] = (o) => n("worldbooks"))
+      }, [...s[9] || (s[9] = [g("svg", {
+        class: "xb-worldbooks-icon",
+        viewBox: "0 0 24 24",
+        fill: "none",
+        stroke: "currentColor",
+        "stroke-linecap": "round",
+        "stroke-linejoin": "round",
+        "aria-hidden": "true"
+      }, [g("path", {
+        "stroke-width": "1.6",
+        d: "M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18ZM3.8 9h16.4M3.8 15h16.4M12 3c2 2.2 3 5.2 3 9s-1 6.8-3 9M12 3c-2 2.2-3 5.2-3 9s1 6.8 3 9"
       })], -1)])])) : we("", !0),
       e.includeHome && !e.homeLast ? (B(), q("button", {
         key: 3,
@@ -42606,7 +42606,7 @@ var pte = {
     const u = ue(() => {
       const ee = t.document?.data;
       return !ee || typeof ee != "object" || Array.isArray(ee) ? null : l(ee);
-    }), d = ue(() => t.patches.at(-1) || null), h = /* @__PURE__ */ ae(!0), p = ue(() => {
+    }), d = ue(() => t.patches.at(-1) || null), h = /* @__PURE__ */ ae(!1), p = ue(() => {
       const ee = [...t.patches].sort((ie, qe) => Number(ie.revision || 0) - Number(qe.revision || 0));
       let ye = a();
       return ee.map((ie, qe) => {
@@ -42634,9 +42634,9 @@ var pte = {
     })).filter((ee) => ee.id)), m = ue(() => (Array.isArray(T.value?.removedElements) ? T.value?.removedElements : []).filter((ee) => !!ee && typeof ee == "object" && !Array.isArray(ee) && typeof ee.id == "string")), b = ue(() => hte(C.value)), y = ue(() => b.value.join(" ")), E = ue(() => String(C.value?.meta?.theme || "parchment")), I = ue(() => String(r.value === "timeline" ? C.value?.meta?.name || t.document?.title || "地图" : t.document?.title || C.value?.meta?.name || "地图")), x = ue(() => String(t.document?.digest || "")), P = ue(() => _.value && r.value === "timeline" ? `revision ${_.value.revision}` : t.document ? `revision ${t.document.revision}` : "no map"), D = ue(() => T.value?.summary || (T.value ? `revision ${T.value.revision}` : "等待空间变化")), G = ue(() => r.value === "full" ? "完整重绘" : r.value === "timeline" ? `回合 ${L.value}` : "地图更新"), Y = ue(() => x.value.split(`
 `).map((ee) => ee.trim()).filter(Boolean).slice(0, 4)), K = ue(() => C.value?.elements.length || 0), Q = ue(() => t.patches.length), L = ue(() => _.value ? `${_.value.index + 1} / ${p.value.length}` : "0 / 0"), J = ue(() => vH(C.value)), re = ue(() => !!T.value);
     gt(() => t.document?.revision, () => {
-      r.value = "patch", se(), s.value = Math.max(0, p.value.length - 1), n.value += 1, h.value = !0;
+      r.value = "patch", se(), s.value = Math.max(0, p.value.length - 1), n.value += 1, h.value = !1;
     }), gt(() => t.patches.length, () => {
-      s.value >= p.value.length && (s.value = Math.max(0, p.value.length - 1)), r.value === "timeline" && !w.value && (r.value = "patch", se()), t.patches.length && (h.value = !0);
+      s.value >= p.value.length && (s.value = Math.max(0, p.value.length - 1)), r.value === "timeline" && !w.value && (r.value = "patch", se()), h.value = !1;
     }), hl(() => {
       se();
     });
@@ -43987,28 +43987,10 @@ var pte = {
         g("button", {
           type: "button",
           class: "chat-mobile-icon-button chat-mobile-utility-button",
-          title: "世界书",
-          "aria-label": "世界书",
-          onClick: ne[7] || (ne[7] = (Te) => He("worldbooks"))
-        }, [...ne[17] || (ne[17] = [g("svg", {
-          class: "chat-mobile-svg",
-          viewBox: "0 0 24 24",
-          fill: "none",
-          stroke: "currentColor",
-          "stroke-linecap": "round",
-          "stroke-linejoin": "round",
-          "aria-hidden": "true"
-        }, [g("path", {
-          "stroke-width": "1.6",
-          d: "M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18ZM3.8 9h16.4M3.8 15h16.4M12 3c2 2.2 3 5.2 3 9s-1 6.8-3 9M12 3c-2 2.2-3 5.2-3 9s1 6.8 3 9"
-        })], -1)])]),
-        g("button", {
-          type: "button",
-          class: "chat-mobile-icon-button chat-mobile-utility-button",
           title: "聊天预设",
           "aria-label": "聊天预设",
-          onClick: ne[8] || (ne[8] = (Te) => He("chatPreset"))
-        }, [...ne[18] || (ne[18] = [g("svg", {
+          onClick: ne[7] || (ne[7] = (Te) => He("chatPreset"))
+        }, [...ne[17] || (ne[17] = [g("svg", {
           class: "chat-mobile-svg",
           viewBox: "0 0 24 24",
           fill: "none",
@@ -44025,8 +44007,8 @@ var pte = {
           class: "chat-mobile-icon-button chat-mobile-utility-button",
           title: "API 配置",
           "aria-label": "API 配置",
-          onClick: ne[9] || (ne[9] = (Te) => He("api"))
-        }, [...ne[19] || (ne[19] = [g("svg", {
+          onClick: ne[8] || (ne[8] = (Te) => He("api"))
+        }, [...ne[18] || (ne[18] = [g("svg", {
           class: "chat-mobile-svg",
           viewBox: "0 0 24 24",
           fill: "none",
@@ -44037,6 +44019,24 @@ var pte = {
         }, [g("path", {
           "stroke-width": "1.6",
           d: "M9 7V3M15 7V3M7 11h10M8 7h8v5a4 4 0 0 1-8 0V7ZM12 16v5"
+        })], -1)])]),
+        g("button", {
+          type: "button",
+          class: "chat-mobile-icon-button chat-mobile-utility-button",
+          title: "世界书",
+          "aria-label": "世界书",
+          onClick: ne[9] || (ne[9] = (Te) => He("worldbooks"))
+        }, [...ne[19] || (ne[19] = [g("svg", {
+          class: "chat-mobile-svg",
+          viewBox: "0 0 24 24",
+          fill: "none",
+          stroke: "currentColor",
+          "stroke-linecap": "round",
+          "stroke-linejoin": "round",
+          "aria-hidden": "true"
+        }, [g("path", {
+          "stroke-width": "1.6",
+          d: "M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18ZM3.8 9h16.4M3.8 15h16.4M12 3c2 2.2 3 5.2 3 9s-1 6.8-3 9M12 3c-2 2.2-3 5.2-3 9s1 6.8 3 9"
         })], -1)])]),
         g("button", {
           type: "button",

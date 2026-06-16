@@ -292,9 +292,9 @@ test('tavern chat exposes local settings modals without leaving the session', ()
     assert.match(cornerSource, /includeChatPreset\?: boolean/);
     assert.match(cornerSource, /includeWorldbooks\?: boolean/);
     assert.match(cornerSource, /homeLast\?: boolean/);
-    assert.match(cornerSource, /v-if="includeWorldbooks"[\s\S]*class="home-icon-button page-worldbooks-button"[\s\S]*v-if="includeChatPreset"[\s\S]*class="home-icon-button page-chat-preset-button"[\s\S]*v-if="includeApi"[\s\S]*class="home-icon-button page-api-button"[\s\S]*class="home-icon-button home-theme-button"[\s\S]*v-if="includeHome && homeLast"[\s\S]*class="home-icon-button page-home-button"/);
+    assert.match(cornerSource, /v-if="includeChatPreset"[\s\S]*class="home-icon-button page-chat-preset-button"[\s\S]*v-if="includeApi"[\s\S]*class="home-icon-button page-api-button"[\s\S]*v-if="includeWorldbooks"[\s\S]*class="home-icon-button page-worldbooks-button"[\s\S]*class="home-icon-button home-theme-button"[\s\S]*v-if="includeHome && homeLast"[\s\S]*class="home-icon-button page-home-button"/);
     assert.match(chatPageSource, /<TavernCornerActions[\s\S]*include-api[\s\S]*include-chat-preset[\s\S]*include-home[\s\S]*include-worldbooks[\s\S]*home-last[\s\S]*@api="openQuickSettingsModal\('api'\)"[\s\S]*@chat-preset="openQuickSettingsModal\('chatPreset'\)"[\s\S]*@worldbooks="openQuickSettingsModal\('worldbooks'\)"/);
-    assert.match(chatPageSource, /class="chat-mobile-action-group"[\s\S]*title="世界书"[\s\S]*title="聊天预设"[\s\S]*title="API 配置"[\s\S]*title="首页"/);
+    assert.match(chatPageSource, /class="chat-mobile-action-group"[\s\S]*title="聊天预设"[\s\S]*title="API 配置"[\s\S]*title="世界书"[\s\S]*title="首页"/);
     assert.match(chatPageSource, /const quickSettingsOpen = ref<'api' \| 'chatPreset' \| 'worldbooks' \| null>\(null\)/);
     assert.match(chatPageSource, /function openQuickSettingsModal\(workspace: 'api' \| 'chatPreset' \| 'worldbooks'\)[\s\S]*activeSettingsWorkspace\.value = workspace;[\s\S]*syncChatPresetFromHost\(\)[\s\S]*syncWorldbooksFromHost\(\{ keepSelection: true \}\)[\s\S]*syncGlobalWorldbooksFromHost\(\)/);
     assert.match(chatPageSource, /class="chat-quick-settings-overlay"[\s\S]*@click\.self="closeQuickSettingsModal"[\s\S]*class="tavern-api-settings chat-quick-api-root"[\s\S]*class="settings-layout chat-quick-settings-layout"[\s\S]*<TavernChatPresetSettingsPanel \/>[\s\S]*<TavernWorldbooksSettingsPanel \/>/);
@@ -309,6 +309,14 @@ test('tavern chat exposes local settings modals without leaving the session', ()
     assert.match(chatQuickSettingsCss, /\.settings-layout\.chat-quick-settings-layout\.is-chatPreset-workspace \.prompt-edit-button \{[\s\S]*display: grid;/);
     assert.doesNotMatch(settingsControllerSource, /activeView\.value !== 'settings' \|\| options\.activeSettingsWorkspace\.value !== 'worldbooks'/);
     assert.match(settingsControllerSource, /watch\(selectedWorldbookName, \(name\) => \{[\s\S]*activeSettingsWorkspace\.value !== 'worldbooks'[\s\S]*loadSelectedWorldbookPreview\(name\)/);
+});
+
+test('tavern map update badge stays collapsed until requested', () => {
+    const mapPanelSource = readRepoFile('modules/tavern/app-src/components/TavernMapPanel.vue');
+
+    assert.match(mapPanelSource, /const mapBadgeExpanded = ref\(false\)/);
+    assert.doesNotMatch(mapPanelSource, /mapBadgeExpanded\.value = true/);
+    assert.match(mapPanelSource, /function toggleMapBadge\(\) \{[\s\S]*mapBadgeExpanded\.value = !mapBadgeExpanded\.value/);
 });
 
 test('tavern UI context is grouped by page responsibility instead of one flat bag', () => {
@@ -346,6 +354,7 @@ test('tavern UI context is grouped by page responsibility instead of one flat ba
 test('tavern settings controller owns settings page state and host sync', () => {
     const appSource = readRepoFile('modules/tavern/app-src/App.vue');
     const settingsControllerSource = readRepoFile('modules/tavern/app-src/components/settings/useTavernSettingsController.ts');
+    const baseCss = readRepoFile('modules/tavern/app-src/styles/settings/base.css');
 
     assert.match(settingsControllerSource, /export function useTavernSettingsController/);
     for (const forbidden of [
@@ -362,6 +371,8 @@ test('tavern settings controller owns settings page state and host sync', () => 
     assert.match(appSource, /applyHostChatPreset\(payload\)/);
     assert.doesNotMatch(appSource, /chatPresetList\.value/);
     assert.doesNotMatch(appSource, /apiSettingsPanelState/);
+    assert.match(baseCss, /\.base-settings-section \{[\s\S]*border-bottom: 2px solid var\(--xb-line-strong\);/);
+    assert.match(baseCss, /\.base-setting-row input \{[\s\S]*text-align: center;/);
 });
 
 test('tavern-only settings normalization stays out of agent core', () => {

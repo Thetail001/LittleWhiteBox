@@ -26,29 +26,6 @@ const emit = defineEmits<{
     :class="{ 'page-corner-actions': includeHome || compact }"
   >
     <button
-      v-if="includeWorldbooks"
-      type="button"
-      class="home-icon-button page-worldbooks-button"
-      title="世界书"
-      aria-label="世界书"
-      @click="emit('worldbooks')"
-    >
-      <svg
-        class="xb-worldbooks-icon"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        aria-hidden="true"
-      >
-        <path
-          stroke-width="1.6"
-          d="M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18ZM3.8 9h16.4M3.8 15h16.4M12 3c2 2.2 3 5.2 3 9s-1 6.8-3 9M12 3c-2 2.2-3 5.2-3 9s1 6.8 3 9"
-        />
-      </svg>
-    </button>
-    <button
       v-if="includeChatPreset"
       type="button"
       class="home-icon-button page-chat-preset-button"
@@ -91,6 +68,29 @@ const emit = defineEmits<{
         <path
           stroke-width="1.6"
           d="M9 7V3M15 7V3M7 11h10M8 7h8v5a4 4 0 0 1-8 0V7ZM12 16v5"
+        />
+      </svg>
+    </button>
+    <button
+      v-if="includeWorldbooks"
+      type="button"
+      class="home-icon-button page-worldbooks-button"
+      title="世界书"
+      aria-label="世界书"
+      @click="emit('worldbooks')"
+    >
+      <svg
+        class="xb-worldbooks-icon"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path
+          stroke-width="1.6"
+          d="M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18ZM3.8 9h16.4M3.8 15h16.4M12 3c2 2.2 3 5.2 3 9s-1 6.8-3 9M12 3c-2 2.2-3 5.2-3 9s1 6.8 3 9"
         />
       </svg>
     </button>

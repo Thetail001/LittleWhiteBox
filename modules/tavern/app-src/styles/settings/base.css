@@ -14,7 +14,7 @@
 
 .base-settings-section {
     width: min(760px, 100%);
-    border-bottom: 1px solid var(--xb-line);
+    border-bottom: 2px solid var(--xb-line-strong);
     padding: 22px 0;
 }
 
@@ -135,7 +135,7 @@
     box-sizing: border-box;
     width: 96px;
     min-height: 38px;
-    text-align: right;
+    text-align: center;
 }
 
 .base-context-block {

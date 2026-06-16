@@ -86,7 +86,7 @@ const mapDocument = computed<TavernMapDocument | null>(() => {
 });
 
 const latestPatch = computed(() => props.patches.at(-1) || null);
-const mapBadgeExpanded = ref(true);
+const mapBadgeExpanded = ref(false);
 const timelineFrames = computed<MapReplayFrame[]>(() => {
     const sorted = [...props.patches].sort((left, right) => Number(left.revision || 0) - Number(right.revision || 0));
     let document = defaultDisplayMap();
@@ -165,7 +165,7 @@ watch(() => props.document?.revision, () => {
     clearTimelineTimer();
     timelineIndex.value = Math.max(0, timelineFrames.value.length - 1);
     replayKey.value += 1;
-    mapBadgeExpanded.value = true;
+    mapBadgeExpanded.value = false;
 });
 
 watch(() => props.patches.length, () => {
@@ -176,9 +176,7 @@ watch(() => props.patches.length, () => {
         replayMode.value = 'patch';
         clearTimelineTimer();
     }
-    if (props.patches.length) {
-        mapBadgeExpanded.value = true;
-    }
+    mapBadgeExpanded.value = false;
 });
 
 onBeforeUnmount(() => {
