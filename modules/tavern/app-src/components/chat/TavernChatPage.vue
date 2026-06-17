@@ -504,7 +504,6 @@ onUpdated(() => {
       v-if="quickSettingsOpen"
       class="chat-quick-settings-overlay"
       role="presentation"
-      @click.self="closeQuickSettingsModal"
     >
       <section
         class="chat-quick-settings-dialog"

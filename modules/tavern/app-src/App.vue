@@ -77,6 +77,7 @@ import {
     resolveTavernContextWindow,
     runXbTavernTurn,
     simulateXbTavernRequest,
+    type TavernBuildNativeChatPromptRuntime,
 } from './runtime/run-once';
 import {
     buildManagerChatDisplayItems,
@@ -446,7 +447,6 @@ const effectiveContext = computed<XbTavernContext>(() => ({
 }));
 const {
     activeAssistantPreset,
-    activeChatPreset,
     applyHostChatPreset,
     handleApiConfigSaved,
     loadTavernUsers,
@@ -455,6 +455,7 @@ const {
     refreshPresets,
     refreshRegexFromHost,
     renderApiSettingsPanel,
+    runtimeChatPreset,
     selectSettingsWorkspace,
     settingsContext,
     syncApiSettingsConfigFromAgentConfig,
@@ -1677,6 +1678,13 @@ async function getNativeWorldbookRuntime(input: {
     return (response.result || response) as XbTavernNativeWorldInfoRuntime;
 }
 
+const buildNativeChatPrompt: TavernBuildNativeChatPromptRuntime = async (input) => {
+    const response = await requestHost('xb-tavern:build-native-chat-prompt', {
+        payload: input,
+    });
+    return (response.result || response) as Awaited<ReturnType<TavernBuildNativeChatPromptRuntime>>;
+};
+
 async function getHostContext(input: {
     characterId?: string;
     includeHistory?: boolean;
@@ -1700,6 +1708,19 @@ function currentContextCharacterReady() {
     return !!displayableTavernName(context.value.character?.name || '') && !!currentContextCharacterId();
 }
 
+function hasAuthorNoteSnapshot(value: unknown): boolean {
+    return !!value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value as Record<string, unknown>).length > 0;
+}
+
+function preserveSessionAuthorNote(nextContext: XbTavernContext = {}, session?: TavernSessionRecord | null): XbTavernContext {
+    const authorNote = session?.contextSnapshot?.authorNote;
+    if (!hasAuthorNoteSnapshot(authorNote)) {return nextContext;}
+    return {
+        ...nextContext,
+        authorNote: { ...(authorNote as Record<string, unknown>) },
+    };
+}
+
 async function syncSessionCharacterContext(options: { sessionId?: string; force?: boolean } = {}): Promise<XbTavernContext> {
     const targetSessionId = String(options.sessionId || selectedSessionId.value || '').trim();
     const session = sessions.value.find((item) => item.id === targetSessionId) || (targetSessionId === selectedSessionId.value ? selectedSession.value : null);
@@ -1720,8 +1741,11 @@ async function syncSessionCharacterContext(options: { sessionId?: string; force?
     if (targetSessionId !== String(selectedSessionId.value || '').trim()) {
         return context.value;
     }
-    applyHostPayload(payload);
-    const nextContext = payload.context as XbTavernContext || context.value;
+    const nextContext = preserveSessionAuthorNote(payload.context as XbTavernContext || context.value, session);
+    applyHostPayload({
+        ...payload,
+        context: nextContext,
+    });
     const updatedSession = await updateTavernSessionSnapshot(targetSessionId, {
         contextSnapshot: nextContext,
         characterId: String(nextContext.character?.id || session.characterId || ''),
@@ -2160,7 +2184,7 @@ async function rebuildSelectedSessionRuntimeState(messages: TavernMessageRecord[
     const state = await deriveTavernSessionStateFromMessagesAsync({
         messages,
         contextSnapshot: runtimeContext,
-        chatPreset: activeChatPreset.value,
+        chatPreset: runtimeChatPreset.value,
         historyMode: historyMode.value,
         diagnostics: diagnostics.value,
         applySubstituteParams: applyTavernSubstituteParams,
@@ -2216,10 +2240,10 @@ async function appendFirstMessageIfPresent(sessionId: string, snapshotContext: X
         name: String(snapshotContext.character?.name || ''),
         content: firstMessage,
         contextSnapshot: snapshotContext,
-        chatPresetId: String(activeChatPreset.value.id || ''),
-        chatPresetName: String(activeChatPreset.value.name || ''),
-        presetId: String(activeChatPreset.value.id || ''),
-        presetName: String(activeChatPreset.value.name || ''),
+        chatPresetId: String(runtimeChatPreset.value.id || ''),
+        chatPresetName: String(runtimeChatPreset.value.name || ''),
+        presetId: String(runtimeChatPreset.value.id || ''),
+        presetName: String(runtimeChatPreset.value.name || ''),
     });
 }
 
@@ -2227,7 +2251,7 @@ async function createSessionFromContext(options: { includeFirstMessage?: boolean
     const snapshotContext = options.contextSnapshot || context.value;
     const snapshotBrain = buildXbTavernBrain({
         context: snapshotContext,
-        chatPreset: activeChatPreset.value,
+        chatPreset: runtimeChatPreset.value,
         currentUserMessage: '',
         historyMode: historyMode.value,
         turn: 0,
@@ -2240,10 +2264,10 @@ async function createSessionFromContext(options: { includeFirstMessage?: boolean
         characterName: String(snapshotContext.character?.name || '未选择角色'),
         contextSnapshot: snapshotContext,
         buildSnapshot: snapshotBrain.buildSnapshot,
-        chatPresetId: String(activeChatPreset.value.id || ''),
-        chatPresetName: String(activeChatPreset.value.name || ''),
-        presetId: String(activeChatPreset.value.id || ''),
-        presetName: String(activeChatPreset.value.name || ''),
+        chatPresetId: String(runtimeChatPreset.value.id || ''),
+        chatPresetName: String(runtimeChatPreset.value.name || ''),
+        presetId: String(runtimeChatPreset.value.id || ''),
+        presetName: String(runtimeChatPreset.value.name || ''),
         state: {
             turn: 0,
             worldEntryStates: {},
@@ -2400,7 +2424,7 @@ async function simulateApiRequest() {
             sessionId: requestSessionId,
             agentConfig: agentConfig.value,
             contextSnapshot: runtimeContext,
-            chatPreset: activeChatPreset.value,
+            chatPreset: runtimeChatPreset.value,
             currentUserMessage: messageText,
             runtimeState: normalizeTavernSessionState(selectedSession.value?.state || {}),
             diagnostics: diagnostics.value,
@@ -2408,6 +2432,7 @@ async function simulateApiRequest() {
             applyRegex: applyTavernRegex,
             applySubstituteParams: applyTavernSubstituteParams,
             getNativeWorldInfoRuntime: getNativeWorldbookRuntime,
+            buildNativeChatPrompt,
         });
         if (requestSequence !== simulateRequestSequence || requestSessionId !== selectedSessionId.value) {return;}
         simulateRequestJson.value = result.requestSnapshot.rawRequestJson || result.requestSnapshot.rawMessagesJson || '';
@@ -3666,7 +3691,7 @@ async function runOnce(options: { messageText?: string; reuseUserMessageOrder?: 
             sessionId: selectedSessionId.value,
             agentConfig: agentConfig.value,
             contextSnapshot: runtimeContext,
-            chatPreset: activeChatPreset.value,
+            chatPreset: runtimeChatPreset.value,
             assistantPreset: activeAssistantPreset.value,
             currentUserMessage: messageText,
             runtimeState: normalizeTavernSessionState(selectedSession.value?.state || {}),
@@ -3679,6 +3704,7 @@ async function runOnce(options: { messageText?: string; reuseUserMessageOrder?: 
             applyRegex: applyTavernRegex,
             applySubstituteParams: applyTavernSubstituteParams,
             getNativeWorldInfoRuntime: getNativeWorldbookRuntime,
+            buildNativeChatPrompt,
             onStreamProgress: (snapshot) => {
                 if (typeof snapshot.text === 'string') {runtimeText.value = snapshot.text;}
                 if (Array.isArray(snapshot.thoughts)) {runtimeThoughts.value = thoughtBlocks(snapshot.thoughts);}

@@ -19,6 +19,7 @@ import { applyTavernSubstituteParams } from './host/substitute-params.js';
 import { runTavernSlashCommand } from './host/slash-commands.js';
 import { buildTavernContext } from './host/sillytavern-context.js';
 import { saveTavernDisplaySettings } from './host/display-settings.js';
+import { buildTavernNativeChatPrompt } from './host/native-prompt.js';
 import { listTavernUsers, switchTavernUser } from './host/users.js';
 import {
     activateTavernCharacterWorldbook,
@@ -427,6 +428,19 @@ async function handleWorldbookRequest(type: string, payload: Record<string, unkn
     }
 }
 
+async function handleNativePromptRequest(payload: Record<string, unknown> = {}): Promise<void> {
+    const requestId = String(payload.requestId || '');
+    try {
+        const result = await buildTavernNativeChatPrompt(payload.payload);
+        replyHostResult(requestId, {
+            ok: true,
+            result: result as unknown as Record<string, unknown>,
+        });
+    } catch (error) {
+        replyHostResult(requestId, hostErrorPayload(error, 'native_prompt_failed'));
+    }
+}
+
 async function handleRegexRequest(type: string, payload: Record<string, unknown> = {}): Promise<void> {
     const requestId = String(payload.requestId || '');
     try {
@@ -624,6 +638,9 @@ function handleFrameMessage(event: MessageEvent): void {
         case 'xb-tavern:set-global-worldbooks':
         case 'xb-tavern:get-worldbook-runtime':
             void handleWorldbookRequest(data.type, data.payload || {});
+            break;
+        case 'xb-tavern:build-native-chat-prompt':
+            void handleNativePromptRequest(data.payload || {});
             break;
         case 'xb-tavern:list-regex-scripts':
         case 'xb-tavern:save-regex-script':

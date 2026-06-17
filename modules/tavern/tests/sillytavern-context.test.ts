@@ -11,7 +11,7 @@ import {
     normalizeWorldbookData,
 } from '../shared/sillytavern-context';
 
-test('sillytavern context adapter extracts character, persona, chat and worldbooks', () => {
+test('sillytavern context adapter extracts the active LittleWhiteBox character and supported worldbooks', () => {
     const source = {
         characterId: 0,
         name1: 'Mira',
@@ -46,10 +46,8 @@ test('sillytavern context adapter extracts character, persona, chat and worldboo
     assert.deepEqual(context.character?.alternateGreetings, ['Alt one.', 'Alt two.']);
     assert.equal(context.user?.name, 'Mira');
     assert.equal(context.history?.length, 2);
-    assert.deepEqual(collectSillyTavernWorldbookNames(source), ['ChatWorld', 'PersonaWorld', 'AsterWorld', 'ExtraWorld', 'GlobalWorld']);
+    assert.deepEqual(collectSillyTavernWorldbookNames(source), ['AsterWorld', 'ExtraWorld', 'GlobalWorld']);
     assert.deepEqual(collectSillyTavernWorldbookSources(source).map((item) => `${item.sourceType}:${item.name}`), [
-        'chat:ChatWorld',
-        'persona:PersonaWorld',
         'character:AsterWorld',
         'character:ExtraWorld',
         'global:GlobalWorld',
@@ -96,6 +94,31 @@ test('sillytavern context adapter switches character snapshots by id', () => {
     assert.equal(context.character?.description, 'Archivist.');
     assert.deepEqual(collectSillyTavernWorldbookNames(source), ['NiaWorld']);
     assert.equal(context.worldEntries?.[0].sourceWorldBook, 'NiaWorld');
+});
+
+test('sillytavern context adapter only uses character-bound and global worldbooks', () => {
+    const source = {
+        characterId: 0,
+        characters: [{
+            name: 'Aster',
+            avatar: 'aster.png',
+            data: { description: 'Pilot.', extensions: { world: 'AsterWorld' } },
+        }],
+        worldNames: ['CurrentNativeChatWorld'],
+        chatMetadataWorld: 'ChatMetadataWorld',
+        personaDescriptionLorebook: 'PersonaWorld',
+        charLore: [
+            { name: 'aster.png', extraBooks: ['AsterExtraWorld'] },
+            { name: 'nia.png', extraBooks: ['NiaExtraWorld'] },
+        ],
+        selected_world_info: ['GlobalWorld'],
+    };
+
+    assert.deepEqual(collectSillyTavernWorldbookSources(source).map((item) => `${item.sourceType}:${item.name}`), [
+        'character:AsterWorld',
+        'character:AsterExtraWorld',
+        'global:GlobalWorld',
+    ]);
 });
 
 test('sillytavern context adapter ignores character-card lore until it is imported', () => {

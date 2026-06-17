@@ -74,6 +74,8 @@ test('tavern worldbook bridge edits named entries through native save boundary',
     assert.match(hostSource, /export async function getTavernWorldbookRuntime/);
     assert.match(hostSource, /let tavernWorldbookStateQueue: Promise<void> = Promise\.resolve\(\);/);
     assert.match(hostSource, /function runTavernWorldbookStateExclusive/);
+    assert.match(hostSource, /function isLittleWhiteBoxRuntimeWorldbookSource[\s\S]*sourceType === 'character' \|\| sourceType === 'global'/);
+    assert.match(hostSource, /dedupeSources\(\[\.{3}metaSources, \.{3}legacyMetaSources, \.{3}bookSources\]\)[\s\S]*\.filter\(isLittleWhiteBoxRuntimeWorldbookSource\)/);
     assert.match(hostSource, /return runTavernWorldbookStateExclusive\(async \(\) => \{[\s\S]*await checkWorldInfo\(chatLines, maxContext, false, globalScanData\)[\s\S]*restoreRuntimeState\(snapshot\);/);
     assert.match(hostSource, /export async function saveTavernWorldbookEntry[\s\S]*return runTavernWorldbookStateExclusive\(async \(\) => \{/);
     assert.match(hostSource, /export async function getTavernGlobalWorldbooks[\s\S]*return runTavernWorldbookStateExclusive\(\(\) => readGlobalWorldbooksState\(\)\);/);
@@ -235,6 +237,14 @@ test('tavern request log is sourced from runtime request snapshots', () => {
     const runtimeSource = readRepoFile('modules/tavern/app-src/runtime/run-once.ts');
     assert.match(appSource, /lastRequestSnapshot\.value\?\.rawRequestJson \|\| lastRequestSnapshot\.value\?\.rawMessagesJson/);
     assert.match(appSource, /simulateRequestJson\.value = result\.requestSnapshot\.rawRequestJson \|\| result\.requestSnapshot\.rawMessagesJson/);
+    assert.match(appSource, /simulateXbTavernRequest\(\{[\s\S]*chatPreset: runtimeChatPreset\.value/);
+    assert.match(appSource, /runXbTavernTurn\(\{[\s\S]*chatPreset: runtimeChatPreset\.value/);
+    assert.doesNotMatch(appSource, /simulateXbTavernRequest\(\{[\s\S]*chatPreset: activeChatPreset\.value/);
+    assert.doesNotMatch(appSource, /runXbTavernTurn\(\{[\s\S]*chatPreset: activeChatPreset\.value/);
+    assert.match(appSource, /runXbTavernTurn\(\{[\s\S]*buildNativeChatPrompt,/);
+    assert.match(runtimeSource, /async function applyNativeChatPromptBuild/);
+    assert.match(runtimeSource, /stage: 'simulate_native_prompt_build'/);
+    assert.match(runtimeSource, /stage: 'turn_native_prompt_build'/);
     assert.match(runtimeSource, /rawRequestJson: JSON\.stringify\(requestForJson, null, 2\)/);
     assert.match(runtimeSource, /requestSnapshot = \(await inspectTavernRequest\(/);
 });
@@ -302,7 +312,9 @@ test('tavern chat exposes local settings modals without leaving the session', ()
     assert.match(chatPageSource, /class="chat-mobile-action-group"[\s\S]*title="聊天预设"[\s\S]*title="API 配置"[\s\S]*title="世界书"[\s\S]*title="首页"/);
     assert.match(chatPageSource, /const quickSettingsOpen = ref<'api' \| 'chatPreset' \| 'worldbooks' \| null>\(null\)/);
     assert.match(chatPageSource, /function openQuickSettingsModal\(workspace: 'api' \| 'chatPreset' \| 'worldbooks'\)[\s\S]*activeSettingsWorkspace\.value = workspace;[\s\S]*syncChatPresetFromHost\(\)[\s\S]*syncWorldbooksFromHost\(\{ keepSelection: true \}\)[\s\S]*syncGlobalWorldbooksFromHost\(\)/);
-    assert.match(chatPageSource, /class="chat-quick-settings-overlay"[\s\S]*@click\.self="closeQuickSettingsModal"[\s\S]*class="tavern-api-settings chat-quick-api-root"[\s\S]*class="settings-layout chat-quick-settings-layout"[\s\S]*<TavernChatPresetSettingsPanel \/>[\s\S]*<TavernWorldbooksSettingsPanel \/>/);
+    assert.match(chatPageSource, /class="chat-quick-settings-overlay"[\s\S]*class="tavern-api-settings chat-quick-api-root"[\s\S]*class="settings-layout chat-quick-settings-layout"[\s\S]*<TavernChatPresetSettingsPanel \/>[\s\S]*<TavernWorldbooksSettingsPanel \/>/);
+    assert.doesNotMatch(chatPageSource, /class="chat-quick-settings-overlay"[\s\S]*@click\.self="closeQuickSettingsModal"/);
+    assert.match(chatPageSource, /class="chat-quick-settings-close"[\s\S]*@click="closeQuickSettingsModal"/);
     assert.match(chatPageSource, /function setChatApiSettingsRootRef[\s\S]*apiSettingsRootRef\.value = element instanceof HTMLElement \? element : null;/);
     assert.match(settingsControllerSource, /\(\) => apiSettingsRootRef\.value,[\s\S]*if \(apiSettingsRootRef\.value\) \{[\s\S]*nextTick\(renderApiSettingsPanel\)/);
     assert.match(chatLayoutCss, /\.chat-quick-settings-overlay \{[\s\S]*position: absolute;[\s\S]*backdrop-filter: blur\(16px\);/);
@@ -421,8 +433,13 @@ test('tavern user host bridge stays separate from context assembly', () => {
     assert.doesNotMatch(contextSource, /getUserAvatars|setUserAvatar|listTavernUsers|switchTavernUser/);
     assert.match(usersSource, /getUserAvatars/);
     assert.match(usersSource, /setUserAvatar/);
+    assert.match(usersSource, /typeof rawDescription === 'string'/);
     assert.match(usersSource, /export async function listTavernUsers/);
     assert.match(usersSource, /export async function switchTavernUser/);
+    assert.match(contextSource, /import \{ user_avatar \} from/);
+    assert.match(contextSource, /function readPersonaDescription/);
+    assert.match(contextSource, /const personaId = normalizeText\(user_avatar\);/);
+    assert.match(contextSource, /persona: readPersonaDescription\(personaId\) \|\| normalizeText\(ctx\.userPersona \|\| ctx\.persona\)/);
     assert.match(tavernSource, /from '\.\/host\/users\.js'/);
 });
 

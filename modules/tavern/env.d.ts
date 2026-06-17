@@ -43,6 +43,26 @@ declare module '*.js' {
     export const eventSource: {
         emit?: (eventName: string, ...args: unknown[]) => unknown;
     };
+    export function prepareOpenAIMessages(input: Record<string, unknown>, dryRun?: boolean): Promise<[unknown[] | null, unknown]>;
+    export function parseExampleIntoIndividual(messageExampleString: string, appendNamesForGroup?: boolean): unknown[];
+    export function parseMesExamples(examplesStr: string, isInstruct?: boolean): string[];
+    export function baseChatReplace(value: unknown, name1Override?: string | null, name2Override?: string | null): string;
+    export function getMaxPromptTokens(overrideResponseLength?: number | null): number;
+    export const depth_prompt_depth_default: number;
+    export const depth_prompt_role_default: string;
+    export const extension_settings: Record<string, Record<string, unknown>>;
+    export const extension_prompts: Record<string, Record<string, unknown>>;
+    export const extension_prompt_types: Record<string, number>;
+    export const extension_prompt_roles: Record<string, number>;
+    export function setExtensionPrompt(
+        key: string,
+        value: string,
+        position: number,
+        depth: number,
+        scan?: boolean,
+        role?: number,
+        filter?: unknown,
+    ): void;
     export function getPresetManager(apiId?: string): {
         getSelectedPresetName?: () => string;
         getAllPresets?: () => string[];
@@ -53,8 +73,10 @@ declare module '*.js' {
         selectPreset?: (value: unknown) => void;
     } | null;
     export const promptManager: {
+        activeCharacter?: unknown;
         serviceSettings?: Record<string, unknown>;
         getPromptCollection?: (generationType?: string) => { collection?: unknown[] };
+        getPromptOrderForCharacter?: (character?: Record<string, unknown>) => unknown[];
         saveServiceSettings?: () => Promise<void> | void;
         render?: (force?: boolean) => void;
     } | null;
@@ -62,6 +84,7 @@ declare module '*.js' {
     export const instruct_presets: Array<Record<string, unknown>>;
     export const system_prompts: Array<Record<string, unknown>>;
     export const power_user: Record<string, unknown>;
+    export const persona_description_positions: Record<string, number>;
     export const user_avatar: string;
     export const chat_metadata: Record<string, unknown>;
     export const characters: Array<Record<string, unknown>>;
@@ -172,4 +195,7 @@ declare module '*.js' {
         bindSettingsPanelEvents(root: ParentNode): void;
     };
     export function buildAgentSettingsPanelMarkup(options?: Record<string, unknown>): string;
+    export const NOTE_MODULE_NAME: string;
+    export const metadata_keys: Record<string, string>;
+    export function setFloatingPrompt(): void;
 }

@@ -214,6 +214,19 @@ test('tavern worldbook sync uses native source overview with current context', (
     assert.doesNotMatch(settingsControllerSource, /async function openSelectedWorldbookEditor/);
     assert.doesNotMatch(settingsControllerSource, /requestHost\('xb-tavern:open-worldbook-editor'/);
     assert.match(contextSource, /const worldbookSources = collectWorldbookSources\(ctx, options\);/);
+    assert.doesNotMatch(contextSource, /METADATA_KEY/);
+    assert.doesNotMatch(contextSource, /chat_metadata\?\.\[METADATA_KEY\]/);
+    assert.doesNotMatch(contextSource, /isCurrentCharacterSelection/);
+    assert.doesNotMatch(contextSource, /persona_description_lorebook/);
+    assert.doesNotMatch(contextSource, /sourceType: 'chat'/);
+    assert.doesNotMatch(contextSource, /sourceType: 'persona'/);
+    assert.match(contextSource, /const characterLoreIdSet = new Set\(characterLoreIds\);[\s\S]*characterLoreIdSet\.has\(normalizeText\(entry\?\.name\)\)/);
+    assert.doesNotMatch(contextSource, /!avatar \|\| normalizeText\(entry\?\.name\) === avatar/);
+    assert.match(contextSource, /historySource: 'littlewhitebox-session'/);
+    assert.match(contextSource, /function normalizeAuthorNote/);
+    assert.match(contextSource, /authorNote: normalizeAuthorNote\(ctx, options\)/);
+    assert.match(appSource, /function preserveSessionAuthorNote/);
+    assert.match(appSource, /const nextContext = preserveSessionAuthorNote\(payload\.context as XbTavernContext \|\| context\.value, session\);/);
     assert.match(contextSource, /worldbookSources,/);
     assert.match(contextSource, /worldbookSourcesSynced: true/);
     assert.match(appSource, /syncSessionCharacterContext\(\{ sessionId: targetSessionId, force: true \}\)/);
@@ -270,6 +283,8 @@ test('tavern worldbook host bridge exposes named entry edit endpoints and native
     assert.match(hostSource, /sessionMeta\.worldbookNames/);
     assert.doesNotMatch(hostSource, /function isNativeRuntimeSource/);
     assert.doesNotMatch(hostSource, /sourceType\) !== 'embedded'/);
+    assert.match(hostSource, /function isLittleWhiteBoxRuntimeWorldbookSource[\s\S]*sourceType === 'character' \|\| sourceType === 'global'/);
+    assert.match(hostSource, /dedupeSources\(\[\.{3}metaSources, \.{3}legacyMetaSources, \.{3}bookSources\]\)[\s\S]*\.filter\(isLittleWhiteBoxRuntimeWorldbookSource\)/);
     assert.match(hostSource, /runTavernWorldbookStateExclusive\(async \(\) => \{[\s\S]*await checkWorldInfo\(chatLines, maxContext, false, globalScanData\)/);
     assert.match(hostSource, /tavernWorldbookStateQueue = new Promise<void>/);
     assert.match(hostSource, /worldInfoBefore:/);
@@ -297,6 +312,40 @@ test('tavern worldbook host bridge exposes named entry edit endpoints and native
     assert.doesNotMatch(tavernSource, /case 'xb-tavern:get-worldbook':/);
     assert.doesNotMatch(tavernSource, /case 'xb-tavern:save-worldbook':/);
     assert.doesNotMatch(tavernSource, /chat-worldbook/);
+});
+
+test('tavern native prompt builder injects LittleWhiteBox state without host chat fallbacks', () => {
+    const nativeSource = readRepoFile('modules/tavern/host/native-prompt.ts');
+    assert.match(nativeSource, /function getUserPersonaPrompt[\s\S]*normalizeText\(context\.user\?\.persona \|\| context\.user\?\.description\)/);
+    assert.doesNotMatch(nativeSource, /substituteParams\('\{\{persona\}\}'\)/);
+    assert.match(nativeSource, /power_user\.persona_description = persona;/);
+    assert.match(nativeSource, /power_user\.persona_description_position = persona_description_positions\.IN_PROMPT;/);
+    assert.match(nativeSource, /function capturePromptManager/);
+    assert.match(nativeSource, /prompts: cloneJson\(serviceSettings\.prompts\)/);
+    assert.match(nativeSource, /function applyPromptManagerActiveCharacter/);
+    assert.match(nativeSource, /function applyChatPresetPromptManager/);
+    assert.match(nativeSource, /serviceSettings\.prompts = cloneJson\(prompts\);/);
+    assert.match(nativeSource, /replacePromptOrderForCharacter\(promptOrder, characterId, activeOrder\)/);
+    assert.match(nativeSource, /applyChatPresetPromptManager\(input\.chatPreset, context\);[\s\S]*applyPromptManagerActiveCharacter\(context\);/);
+    assert.match(nativeSource, /DEFAULT_PROMPT_ORDER/);
+    assert.match(nativeSource, /activeCharacter = character;/);
+    assert.match(nativeSource, /restorePromptManager\(promptManagerSnapshot\);[\s\S]*restorePersonaPrompt\(personaSnapshot\);[\s\S]*restoreExtensionPrompts\(snapshot\);/);
+    assert.match(nativeSource, /function readCharacterDepthPrompt[\s\S]*depthPrompt\.prompt[\s\S]*depth_prompt_depth_default[\s\S]*depth_prompt_role_default/);
+    assert.match(nativeSource, /const legacyDepthPrompt = asRecord\(data\.depth_prompt\);/);
+    assert.match(nativeSource, /\|\| legacyDepthPrompt\.prompt[\s\S]*\|\| \(typeof data\.depth_prompt === 'string' \? data\.depth_prompt : ''\)/);
+    assert.match(nativeSource, /function addCharacterDepthPrompt[\s\S]*const prompt = readCharacterDepthPrompt\(context\)/);
+    assert.match(nativeSource, /addInChatPrompt\(\s*'xb_tavern_character_depth_prompt'/);
+    assert.match(nativeSource, /function resolveAuthorNoteState/);
+    assert.match(nativeSource, /const note = asRecord\(context\.authorNote\)/);
+    assert.match(nativeSource, /countUserMessages\(context, currentUserMessage\)/);
+    assert.match(nativeSource, /state\.shouldAddPrompt[\s\S]*\[\.\.\.before, state\.prompt, \.\.\.after\]/);
+    assert.match(nativeSource, /setExtensionPrompt\(\s*NOTE_MODULE_NAME/);
+    assert.doesNotMatch(nativeSource, /setFloatingPrompt/);
+    assert.doesNotMatch(nativeSource, /chat_metadata/);
+    assert.doesNotMatch(nativeSource, /extension_settings/);
+    assert.doesNotMatch(nativeSource, /xb:tavern:nativePromptDebug/);
+    assert.doesNotMatch(nativeSource, /__xbTavernLastNativePromptDebug/);
+    assert.doesNotMatch(nativeSource, /promptContains/);
 });
 
 test('tavern slash command bridge executes through native SillyTavern STscript', () => {

@@ -80,6 +80,19 @@ export interface XbTavernUser {
     description?: string;
 }
 
+export interface XbTavernAuthorNote {
+    prompt?: string;
+    interval?: number;
+    position?: number;
+    depth?: number;
+    role?: number;
+    scan?: boolean;
+    characterName?: string;
+    characterPrompt?: string;
+    characterUse?: boolean;
+    characterPosition?: number;
+}
+
 export interface XbTavernHistoryMessage {
     role?: XbTavernRole | 'model' | 'sys' | number;
     content?: string;
@@ -205,6 +218,7 @@ export interface XbTavernNativeWorldInfoRuntime {
 export interface XbTavernContext {
     character?: XbTavernCharacter;
     user?: XbTavernUser;
+    authorNote?: XbTavernAuthorNote;
     history?: XbTavernHistoryMessage[];
     worldBooks?: XbTavernWorldBook[];
     worldEntries?: XbTavernWorldEntry[];

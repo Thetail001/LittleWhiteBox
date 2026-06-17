@@ -8,6 +8,7 @@ import {
   select_selected_character,
   setCharacterId,
   setCharacterName,
+  getMaxPromptTokens,
   this_chid,
   unshallowCharacter
 } from "../../../../../../../script.js";
@@ -492,6 +493,10 @@ function dedupeSources(sources = []) {
   });
   return result;
 }
+function isLittleWhiteBoxRuntimeWorldbookSource(source) {
+  const sourceType = normalizeText(source?.sourceType);
+  return sourceType === "character" || sourceType === "global";
+}
 function collectRuntimeSources(context = {}) {
   const sessionMeta = asRecord(context.sessionMeta);
   const metaSources = Array.isArray(sessionMeta.worldbookSources) ? sessionMeta.worldbookSources.map((source, index) => {
@@ -512,7 +517,7 @@ function collectRuntimeSources(context = {}) {
     sourceType: normalizeText(book.worldSourceType),
     sourceIndex: Number.isFinite(Number(book.worldSourceIndex)) ? Number(book.worldSourceIndex) : index
   })) : [];
-  return dedupeSources([...metaSources, ...legacyMetaSources, ...bookSources]);
+  return dedupeSources([...metaSources, ...legacyMetaSources, ...bookSources]).filter(isLittleWhiteBoxRuntimeWorldbookSource);
 }
 function buildHistoryScanLines(context = {}, currentUserMessage = "", includeNames = false) {
   const userName = normalizeText(context.user?.name) || "User";
@@ -1113,7 +1118,10 @@ async function getTavernWorldbookRuntime(input = {}) {
   const includeNames = context.worldSettings?.includeNames === true || getWorldInfoSettings().world_info_include_names === true;
   const chatLines = buildHistoryScanLines(context, payload.currentUserMessage, includeNames);
   const globalScanData = buildGlobalScanData(payload);
-  const maxContext = Math.max(1, Number(payload.maxContext) || Number(asRecord(getContext?.() || {}).maxContext) || 4096);
+  const maxContext = Math.max(
+    1,
+    Number(payload.maxContext) || Number(getMaxPromptTokens?.()) || Number(asRecord(getContext?.() || {}).maxContext) || 4096
+  );
   const sources = collectRuntimeSources(context);
   return runTavernWorldbookStateExclusive(async () => {
     const snapshot = captureRuntimeState();
@@ -1135,7 +1143,7 @@ async function getTavernWorldbookRuntime(input = {}) {
         worldInfoBefore: normalizeText(activated.worldInfoBefore),
         worldInfoAfter: normalizeText(activated.worldInfoAfter),
         worldInfoExamples: Array.isArray(activated.EMEntries) ? activated.EMEntries.map((entry) => ({
-          position: normalizeText(asRecord(entry).position),
+          position: normalizeIdText(asRecord(entry).position),
           content: normalizeText(asRecord(entry).content)
         })).filter((entry) => entry.content) : [],
         worldInfoDepth: Array.isArray(activated.WIDepthEntries) ? activated.WIDepthEntries.map((entry) => ({

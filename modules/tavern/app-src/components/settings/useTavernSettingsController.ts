@@ -463,6 +463,7 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
     const snapshotPreset = (value = preset.value) => JSON.stringify(value || {});
     const snapshotAssistantPreset = (value = assistantPreset.value) => JSON.stringify(value || {});
     const presetDirty = computed(() => snapshotPreset(preset.value) !== savedPresetJson.value);
+    const runtimeChatPreset = computed(() => normalizeTavernChatPromptPresetBundle(preset.value));
     const assistantPresetDirty = computed(() => snapshotAssistantPreset(assistantPreset.value) !== savedAssistantPresetJson.value);
     const resolvedProviderConfig = computed(() => resolveXbTavernProviderConfig(options.agentConfig.value));
     const apiReady = computed(() => resolvedProviderConfig.value.readiness.ok);
@@ -1946,6 +1947,7 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
         refreshPresets,
         refreshRegexFromHost,
         renderApiSettingsPanel,
+        runtimeChatPreset,
         selectSettingsWorkspace,
         settingsContext,
         syncApiSettingsConfigFromAgentConfig,

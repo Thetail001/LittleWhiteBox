@@ -26,13 +26,14 @@ function normalizeTavernUserOption(value, activeId = "") {
   }
   const personaNames = asRecord(power_user?.personas);
   const personaDescriptions = asRecord(power_user?.persona_descriptions);
-  const details = asRecord(personaDescriptions[avatarId]);
+  const rawDescription = personaDescriptions[avatarId];
+  const details = asRecord(rawDescription);
   const name = normalizeText(personaNames[avatarId]) || avatarId;
   return {
     id: avatarId,
     name,
     avatarUrl: normalizePersonaAvatar(avatarId),
-    description: normalizeText(details.description || details.title),
+    description: typeof rawDescription === "string" ? normalizeText(rawDescription) : normalizeText(details.description || details.title),
     active: avatarId === activeId
   };
 }

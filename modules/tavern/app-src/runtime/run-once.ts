@@ -6,11 +6,13 @@ import {
     resolveResultToolCalls,
 } from '../../../agent-core/runtime/protocol.js';
 import {
+    createXbTavernBuildSnapshot,
     type XbTavernBuildSnapshot,
     type XbTavernContext,
     type XbTavernMemoryContext,
     type XbTavernMessage,
     type XbTavernMessageBuildResult,
+    type XbTavernMessageLayer,
     type XbTavernNativeWorldInfoRuntime,
     type XbTavernNativeWorldInfoTimedState,
     type ActivatedWorldEntry,
@@ -240,6 +242,68 @@ function buildChanceEncounterDepthEntries(event: TavernChanceEncounterRuntimeEve
     }];
 }
 
+function buildMemoryPromptContent(memoryContext: XbTavernMemoryContext = {}): string {
+    const memoryFiles = Array.isArray(memoryContext.memoryFiles) ? memoryContext.memoryFiles : [];
+    const structuredStates = Array.isArray(memoryContext.structuredStates) ? memoryContext.structuredStates : [];
+    const sections: string[] = [];
+    const fileLines = memoryFiles
+        .map((file) => String(file.content || '').trim())
+        .filter(Boolean);
+    if (fileLines.length) {
+        sections.push(`## 记忆\n${fileLines.join('\n\n')}`);
+    }
+    const stateLines = structuredStates
+        .map((state) => String(state.digest || '').trim())
+        .filter(Boolean);
+    if (stateLines.length) {
+        sections.push(`## 状态摘要\n${stateLines.join('\n\n')}`);
+    }
+    return sections.join('\n\n');
+}
+
+function joinPromptMessages(messages: XbTavernMessage[] = []): string {
+    return messages
+        .map((message) => String(message.content || '').trim())
+        .filter(Boolean)
+        .join('\n\n');
+}
+
+function buildSyntheticMessageLayers(messages: XbTavernMessage[] = [], source = 'sillytavern-native'): XbTavernMessageLayer[] {
+    return messages.map((message, index) => {
+        const chars = String(message.content || '').length;
+        return {
+            index,
+            role: message.role,
+            layer: source,
+            label: `${source} ${index + 1}`,
+            chars,
+            tokenEstimate: Math.max(1, Math.ceil(chars / 4)),
+        };
+    });
+}
+
+function replaceBuildResultForPromptSource(
+    result: XbTavernMessageBuildResult,
+    messages: XbTavernMessage[] = [],
+    source = 'sillytavern-native',
+): XbTavernMessageBuildResult {
+    const nextMessages = messages
+        .map((message) => ({
+            ...message,
+            content: String(message.content || ''),
+        }))
+        .filter((message) => message.content);
+    return {
+        ...result,
+        messages: nextMessages,
+        messageLayers: buildSyntheticMessageLayers(nextMessages, source),
+        meta: {
+            ...result.meta,
+            rawMessagesJson: JSON.stringify(nextMessages, null, 2),
+        },
+    };
+}
+
 function summarizeActionCheckResult(result: TavernActionCheckToolResult): string {
     const errorText = 'error' in result ? result.error : '';
     return String(result.summary || errorText || '').trim();
@@ -326,6 +390,20 @@ export type TavernGetNativeWorldInfoRuntime = (input: {
     maxContext?: number;
 }) => Promise<XbTavernNativeWorldInfoRuntime>;
 
+export type TavernBuildNativeChatPromptRuntime = (input: {
+    context: XbTavernContext;
+    chatPreset?: TavernChatPromptPresetBundle;
+    currentUserMessage: string;
+    generationType?: string;
+    memoryPrompt?: string;
+    chancePrompt?: string;
+    actionCheckPrompt?: string;
+}) => Promise<{
+    messages?: XbTavernMessage[];
+    source?: string;
+    promptMessageCount?: number;
+}>;
+
 export interface XbTavernRunTurnInput {
     sessionId?: string;
     agentConfig: Record<string, unknown>;
@@ -351,6 +429,7 @@ export interface XbTavernRunTurnInput {
     applyRegex?: TavernApplyRegex;
     applySubstituteParams?: TavernApplySubstituteParams;
     getNativeWorldInfoRuntime?: TavernGetNativeWorldInfoRuntime;
+    buildNativeChatPrompt?: TavernBuildNativeChatPromptRuntime;
     randomEncounterRoll?: () => number;
     rerollRuntimeEvents?: boolean;
     actionCheckRoll?: () => number;
@@ -388,6 +467,7 @@ export interface XbTavernSimulateRequestInput {
     applyRegex?: TavernApplyRegex;
     applySubstituteParams?: TavernApplySubstituteParams;
     getNativeWorldInfoRuntime?: TavernGetNativeWorldInfoRuntime;
+    buildNativeChatPrompt?: TavernBuildNativeChatPromptRuntime;
 }
 
 export interface XbTavernSimulateRequestResult {
@@ -396,6 +476,54 @@ export interface XbTavernSimulateRequestResult {
     requestSnapshot: TavernRequestSnapshot;
     provider: string;
     model: string;
+}
+
+async function applyNativeChatPromptBuild(input: {
+    stage: string;
+    buildNativeChatPrompt?: TavernBuildNativeChatPromptRuntime;
+    contextForBuild: XbTavernContext;
+    chatPreset: TavernChatPromptPresetBundle;
+    baseBuildResult: XbTavernMessageBuildResult;
+    baseBuildSnapshot: XbTavernBuildSnapshot;
+    currentUserMessage: string;
+    generationType: string;
+    memoryContext?: XbTavernMemoryContext;
+    chancePrompt?: string;
+    runtimeProtocolMessages?: XbTavernMessage[];
+    diagnostics?: TavernDiagnostics;
+}): Promise<{ buildResult: XbTavernMessageBuildResult; buildSnapshot: XbTavernBuildSnapshot }> {
+    if (!input.buildNativeChatPrompt) {
+        return {
+            buildResult: input.baseBuildResult,
+            buildSnapshot: input.baseBuildSnapshot,
+        };
+    }
+    const nativePrompt = await runTavernStage(input.stage, () => input.buildNativeChatPrompt?.({
+        context: input.contextForBuild,
+        chatPreset: input.chatPreset,
+        currentUserMessage: input.currentUserMessage,
+        generationType: input.generationType,
+        memoryPrompt: buildMemoryPromptContent(input.memoryContext),
+        chancePrompt: input.chancePrompt || '',
+        actionCheckPrompt: joinPromptMessages(input.runtimeProtocolMessages || []),
+    }));
+    const nativeMessages = Array.isArray(nativePrompt?.messages) ? nativePrompt.messages : [];
+    if (!nativeMessages.length) {
+        return {
+            buildResult: input.baseBuildResult,
+            buildSnapshot: input.baseBuildSnapshot,
+        };
+    }
+    const buildResult = replaceBuildResultForPromptSource(input.baseBuildResult, nativeMessages, 'sillytavern-native');
+    const buildSnapshot = createXbTavernBuildSnapshot(input.contextForBuild, input.chatPreset, buildResult, {
+        ...(input.diagnostics && typeof input.diagnostics === 'object' ? input.diagnostics : {}),
+        promptSource: nativePrompt?.source || 'sillytavern-prepareOpenAIMessages',
+        promptMessageCount: nativePrompt?.promptMessageCount ?? nativeMessages.length,
+    });
+    return {
+        buildResult,
+        buildSnapshot,
+    };
 }
 
 function isAbortLikeError(error: unknown, signal?: AbortSignal): boolean {
@@ -1362,6 +1490,7 @@ export async function simulateXbTavernRequest(input: XbTavernSimulateRequestInpu
         }))
         : undefined;
     const filteredMemoryContext = filterMemoryContextByRuntime(memoryContext, sessionContractRuntime);
+    const runtimeProtocolMessages = buildRuntimeProtocolMessages(sessionContractRuntime);
     const brain = await runTavernStage('simulate_brain_build', () => buildXbTavernBrainAsync({
         context: contextForBuild,
         chatPreset,
@@ -1370,7 +1499,7 @@ export async function simulateXbTavernRequest(input: XbTavernSimulateRequestInpu
         turn: sessionState.turn,
         entryStates: sessionState.worldEntryStates,
         memoryContext: filteredMemoryContext,
-        runtimeProtocolMessages: buildRuntimeProtocolMessages(sessionContractRuntime),
+        runtimeProtocolMessages,
         diagnostics: input.diagnostics || {},
         regexApplications,
         transformConversationMessages: async (messages) => {
@@ -1417,9 +1546,22 @@ export async function simulateXbTavernRequest(input: XbTavernSimulateRequestInpu
             });
         },
     }));
+    const { buildResult, buildSnapshot } = await applyNativeChatPromptBuild({
+        stage: 'simulate_native_prompt_build',
+        buildNativeChatPrompt: input.buildNativeChatPrompt,
+        contextForBuild,
+        chatPreset,
+        baseBuildResult: brain.buildResult,
+        baseBuildSnapshot: brain.buildSnapshot,
+        currentUserMessage,
+        generationType: String(input.generationTrigger || 'normal'),
+        memoryContext: filteredMemoryContext,
+        runtimeProtocolMessages,
+        diagnostics: input.diagnostics,
+    });
     const inspected = await runTavernStage('simulate_request_inspection', () => inspectTavernRequest({
         agentConfig: input.agentConfig,
-        messages: brain.buildResult.messages,
+        messages: buildResult.messages,
         chatPreset,
         tools: actionCheckCapabilities.tools,
         toolChoice: actionCheckCapabilities.toolChoice,
@@ -1430,8 +1572,8 @@ export async function simulateXbTavernRequest(input: XbTavernSimulateRequestInpu
     const provider = inspected.requestSnapshot.provider;
     const model = inspected.requestSnapshot.model;
     return {
-        buildResult: brain.buildResult,
-        buildSnapshot: brain.buildSnapshot,
+        buildResult,
+        buildSnapshot,
         requestSnapshot: inspected.requestSnapshot,
         provider,
         model,
@@ -1746,6 +1888,7 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
         }))
         : undefined;
     const filteredMemoryContext = filterMemoryContextByRuntime(memoryContext, sessionContractRuntime);
+    const runtimeProtocolMessages = buildRuntimeProtocolMessages(sessionContractRuntime);
     const brain = await runTavernStage('turn_brain_build', () => buildXbTavernBrainAsync({
         context: contextForBuild,
         chatPreset,
@@ -1755,7 +1898,7 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
         entryStates: sessionState.worldEntryStates,
         memoryContext: filteredMemoryContext,
         runtimeDepthEntries: buildChanceEncounterDepthEntries(chanceEncounterEvent),
-        runtimeProtocolMessages: buildRuntimeProtocolMessages(sessionContractRuntime),
+        runtimeProtocolMessages,
         diagnostics: input.diagnostics || {},
         regexApplications,
         transformConversationMessages: async (messages) => {
@@ -1802,7 +1945,20 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
             });
         },
     }));
-    const { buildResult, buildSnapshot } = brain;
+    const { buildResult, buildSnapshot } = await applyNativeChatPromptBuild({
+        stage: 'turn_native_prompt_build',
+        buildNativeChatPrompt: input.buildNativeChatPrompt,
+        contextForBuild,
+        chatPreset,
+        baseBuildResult: brain.buildResult,
+        baseBuildSnapshot: brain.buildSnapshot,
+        currentUserMessage,
+        generationType: generationTrigger,
+        memoryContext: filteredMemoryContext,
+        chancePrompt: chanceEncounterEvent ? buildChanceEncounterPromptMessage().content : '',
+        runtimeProtocolMessages,
+        diagnostics: input.diagnostics,
+    });
     const session = await updateTavernSessionSnapshot(baseSession.id, {
         contextSnapshot: liveContext,
         buildSnapshot,

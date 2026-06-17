@@ -17,14 +17,9 @@ export interface SillyTavernContextSource {
     name2?: string;
     userPersona?: string;
     persona?: string;
-    worldNames?: string[];
     selectedWorldInfo?: string[] | string;
     selected_world_info?: string[] | string;
     globalWorldNames?: string[];
-    chatWorldName?: string;
-    chatMetadataWorld?: string;
-    personaWorldName?: string;
-    personaDescriptionLorebook?: string;
     globalSelect?: string[] | string;
     charLore?: Array<{ name?: string; extraBooks?: string[] }>;
     sessionMeta?: Record<string, unknown>;
@@ -40,7 +35,7 @@ export interface BuildXbTavernContextOptions {
 
 export interface SillyTavernWorldbookSource {
     name: string;
-    sourceType: 'chat' | 'persona' | 'character' | 'global';
+    sourceType: 'character' | 'global';
     sourceIndex: number;
 }
 
@@ -205,19 +200,6 @@ export function collectSillyTavernWorldbookSources(source: SillyTavernContextSou
     addUnique(globalNames, source.globalWorldNames);
     addUnique(globalNames, source.globalSelect);
     const globalSet = new Set(globalNames);
-    const chatNames: string[] = [];
-    addUnique(chatNames, source.chatWorldName);
-    addUnique(chatNames, source.chatMetadataWorld);
-    addUnique(chatNames, source.worldNames);
-    chatNames
-        .filter((name) => !globalSet.has(name))
-        .forEach((name) => addUniqueSource(sources, seen, { name, sourceType: 'chat' }));
-    const personaNames: string[] = [];
-    addUnique(personaNames, source.personaWorldName);
-    addUnique(personaNames, source.personaDescriptionLorebook);
-    personaNames
-        .filter((name) => !globalSet.has(name) && !chatNames.includes(name))
-        .forEach((name) => addUniqueSource(sources, seen, { name, sourceType: 'persona' }));
     const characterNames: string[] = [];
     addUnique(characterNames, options.worldbookNames);
     addUnique(characterNames, extensions.world);
@@ -226,16 +208,19 @@ export function collectSillyTavernWorldbookSources(source: SillyTavernContextSou
         addUnique(characterNames, characterBook.name);
     }
 
-    const avatar = normalizeText(character.avatar);
+    const characterLoreIds: string[] = [];
+    addUnique(characterLoreIds, character.avatar);
+    addUnique(characterLoreIds, data.avatar);
+    const characterLoreIdSet = new Set(characterLoreIds);
     asArray(source.charLore).forEach((entry) => {
         const record = asRecord(entry);
-        if (!avatar || normalizeText(record.name) === avatar) {
+        if (characterLoreIdSet.has(normalizeText(record.name))) {
             addUnique(characterNames, record.extraBooks);
         }
     });
 
     characterNames
-        .filter((name) => !globalSet.has(name) && !chatNames.includes(name) && !personaNames.includes(name))
+        .filter((name) => !globalSet.has(name))
         .forEach((name) => addUniqueSource(sources, seen, { name, sourceType: 'character' }));
     globalNames.forEach((name) => addUniqueSource(sources, seen, { name, sourceType: 'global' }));
     return sources;

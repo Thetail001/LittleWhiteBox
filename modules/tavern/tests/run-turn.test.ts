@@ -226,6 +226,66 @@ test('xb tavern run turn injects chance encounter as D1 before action-check prot
     assert.ok(afterHistoryIndex > protocolIndex);
 });
 
+test('xb tavern run turn sends the same ST-native prompt shape used by simulation', async () => {
+    await resetDb();
+    const preset = createDefaultXbTavernPreset();
+    const session = await createTavernSession({
+        title: 'Native prompt real send',
+        characterId: 'char-native',
+        characterName: 'Aster',
+        contextSnapshot: {
+            character: { id: 'char-native', name: 'Aster', description: 'Pilot.' },
+        },
+        state: {
+            contract: mergeTavernSessionContract(undefined, {
+                memoryArchiving: true,
+                actionChecks: true,
+                randomEncounters: true,
+            }),
+        },
+    });
+    await writeTavernMemoryFile(session.id, 'memory/session.md', '# Session\nNATIVE_MEMORY_NOTE', { source: 'user' });
+    let nativeInput: { chatPreset?: unknown; memoryPrompt?: string; chancePrompt?: string; actionCheckPrompt?: string } | null = null;
+    let sentMessages: Array<{ role?: string; content?: string }> = [];
+
+    const result = await runXbTavernTurn({
+        sessionId: session.id,
+        agentConfig: { provider: 'fake-provider', model: 'fake-model' },
+        contextSnapshot: session.contextSnapshot || {},
+        preset,
+        currentUserMessage: 'Recall NATIVE_MEMORY_NOTE and enter the clearing.',
+        randomEncounterRoll: () => 0.05,
+        buildNativeChatPrompt: async (input) => {
+            nativeInput = input;
+            return {
+                source: 'test-native-builder',
+                promptMessageCount: 1,
+                messages: [{ role: 'system', content: 'NATIVE_MESSAGE' }],
+            };
+        },
+        executeRunOnce: async (options: TavernRunOnceOptions) => {
+            sentMessages = options.messages.map((message) => ({
+                role: message.role,
+                content: message.content,
+            }));
+            return {
+                text: 'Native answer.',
+                provider: 'fake-provider',
+                model: 'fake-model',
+                requestSnapshot: buildTavernRequestSnapshot(options.agentConfig, options.messages),
+            };
+        },
+    });
+
+    assert.deepEqual(sentMessages, [{ role: 'system', content: 'NATIVE_MESSAGE' }]);
+    assert.equal(result.buildResult.messages[0]?.content, 'NATIVE_MESSAGE');
+    assert.equal((nativeInput?.chatPreset as { name?: string } | undefined)?.name, preset.name);
+    assert.match(nativeInput?.memoryPrompt || '', /NATIVE_MEMORY_NOTE/);
+    assert.match(nativeInput?.chancePrompt || '', /Chance Encounter Triggered/);
+    assert.match(nativeInput?.actionCheckPrompt || '', /Runtime Protocol: Action Checks/);
+    assert.equal(getChanceEncounterEvent(result.userMessage.runtimeEvents)?.label, CHANCE_ENCOUNTER_LABEL);
+});
+
 test('xb tavern rerun reuses an existing chance encounter without rerolling', async () => {
     await resetDb();
     const preset = createDefaultXbTavernPreset();

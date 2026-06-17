@@ -1,10 +1,12 @@
 /* eslint-disable -- generated from TypeScript source; run npm run build:tavern */
-import { getContext } from "../../../../../../extensions.js";
+import { extension_settings, getContext } from "../../../../../../extensions.js";
+import { metadata_keys } from "../../../../../../authors-note.js";
+import { power_user } from "../../../../../../power-user.js";
+import { user_avatar } from "../../../../../../personas.js";
 import { getTagKeyForEntity, tag_map } from "../../../../../../tags.js";
 import { getCharaFilename } from "../../../../../../utils.js";
-import { getWorldInfoSettings, METADATA_KEY, selected_world_info, world_info } from "../../../../../../world-info.js";
-import { power_user } from "../../../../../../power-user.js";
-import { chat_metadata, characters as sillyTavernCharacters, getOneCharacter, getRequestHeaders, getThumbnailUrl, unshallowCharacter } from "../../../../../../../script.js";
+import { getWorldInfoSettings, selected_world_info, world_info } from "../../../../../../world-info.js";
+import { characters as sillyTavernCharacters, chat_metadata, getOneCharacter, getRequestHeaders, getThumbnailUrl, unshallowCharacter } from "../../../../../../../script.js";
 function normalizeText(value = "") {
   return String(value || "").trim();
 }
@@ -93,6 +95,25 @@ function normalizeUserAvatar() {
     return `/thumbnail?type=persona&file=${encodeURIComponent(String(avatar))}`;
   }
   return toAbsoluteAvatarUrl(avatar);
+}
+function readPersonaName(avatarId = "") {
+  const id = normalizeText(avatarId);
+  if (!id) {
+    return "";
+  }
+  return normalizeText(asRecord(power_user?.personas)[id]);
+}
+function readPersonaDescription(avatarId = "") {
+  const id = normalizeText(avatarId);
+  if (!id) {
+    return "";
+  }
+  const raw = asRecord(power_user?.persona_descriptions)[id];
+  if (typeof raw === "string") {
+    return normalizeText(raw);
+  }
+  const details = asRecord(raw);
+  return normalizeText(details.description || details.title);
 }
 function asArray(value) {
   return Array.isArray(value) ? value : [];
@@ -273,27 +294,43 @@ function normalizeCharacter(ctx = getContext?.() || {}, options = {}) {
   };
 }
 function normalizeUser(ctx = getContext?.() || {}) {
+  const personaId = normalizeText(user_avatar);
   return {
-    name: normalizeText(ctx.name1) || "User",
+    id: personaId,
+    name: readPersonaName(personaId) || normalizeText(ctx.name1) || "User",
     avatar: normalizeUserAvatar(),
-    persona: normalizeText(ctx.userPersona || ctx.persona)
+    persona: readPersonaDescription(personaId) || normalizeText(ctx.userPersona || ctx.persona)
   };
 }
-function normalizeHistory(ctx = getContext?.() || {}) {
-  return asArray(ctx.chat).map((message) => ({
-    role: message?.is_user ? "user" : "assistant",
-    name: normalizeText(message?.name),
-    content: normalizeText(message?.mes || message?.message || message?.content),
-    is_user: !!message?.is_user
-  })).filter((message) => message.content);
-}
-function isCurrentCharacterSelection(ctx, options = {}) {
-  if (options.characterId === void 0 || options.characterId === null || options.characterId === "") {
-    return true;
+function readCharacterAvatarName(ctx = getContext?.() || {}, options = {}) {
+  const character = getCurrentCharacter(ctx, options) || {};
+  const data = asRecord(character.data) || character;
+  const raw = normalizeText(data.avatar || character.avatar);
+  if (raw && !/^(data:|blob:|https?:)/i.test(raw)) {
+    return raw.replace(/\\/g, "/").split("/").filter(Boolean).pop() || raw;
   }
-  const currentId = normalizeText(resolveCharacterId(ctx, {}));
-  const selectedId = normalizeText(resolveCharacterId(ctx, options));
-  return !!selectedId && selectedId === currentId;
+  try {
+    return normalizeText(getCharaFilename(resolveCharacterId(ctx, options)));
+  } catch {
+    return "";
+  }
+}
+function normalizeAuthorNote(ctx = getContext?.() || {}, options = {}) {
+  const noteSettings = asRecord(extension_settings?.note);
+  const characterName = readCharacterAvatarName(ctx, options);
+  const charaNote = Array.isArray(noteSettings.chara) ? noteSettings.chara.map(asRecord).find((entry) => normalizeText(entry.name) === characterName) : null;
+  return {
+    prompt: normalizeText(chat_metadata?.[metadata_keys.prompt] ?? noteSettings.default),
+    interval: Number(chat_metadata?.[metadata_keys.interval] ?? noteSettings.defaultInterval ?? 0),
+    position: Number(chat_metadata?.[metadata_keys.position] ?? noteSettings.defaultPosition ?? 1),
+    depth: Number(chat_metadata?.[metadata_keys.depth] ?? noteSettings.defaultDepth ?? 4),
+    role: Number(chat_metadata?.[metadata_keys.role] ?? noteSettings.defaultRole ?? 0),
+    scan: noteSettings.allowWIScan === true,
+    characterName,
+    characterPrompt: normalizeText(charaNote?.prompt),
+    characterUse: charaNote?.useChara === true,
+    characterPosition: Number(charaNote?.position ?? 0)
+  };
 }
 function collectWorldbookSources(ctx = getContext?.() || {}, options = {}) {
   const character = getCurrentCharacter(ctx, options) || {};
@@ -307,31 +344,26 @@ function collectWorldbookSources(ctx = getContext?.() || {}, options = {}) {
   addUnique(globalNames, selected_world_info);
   addUnique(globalNames, worldInfo.globalSelect);
   const globalSet = new Set(globalNames);
-  const chatName = normalizeText(chat_metadata?.[METADATA_KEY]);
-  const personaName = normalizeText(power_user?.persona_description_lorebook);
-  if (!globalSet.has(chatName)) {
-    addUniqueSource(sources, seen, { name: chatName, sourceType: "chat" });
-  }
-  if (!globalSet.has(personaName) && personaName !== chatName) {
-    addUniqueSource(sources, seen, { name: personaName, sourceType: "persona" });
-  }
   const characterNames = [];
   addUnique(characterNames, dataExtensions.world);
   addUnique(characterNames, character.world);
   if (!readEntryList(characterBook.entries).length) {
     addUnique(characterNames, characterBook.name);
   }
-  let avatar = normalizeText(character.avatar);
+  const characterLoreIds = [];
+  addUnique(characterLoreIds, character.avatar);
+  addUnique(characterLoreIds, data.avatar);
   try {
-    avatar = normalizeText(getCharaFilename(resolveCharacterId(ctx, options))) || avatar;
+    addUnique(characterLoreIds, getCharaFilename(resolveCharacterId(ctx, options)));
   } catch {
   }
+  const characterLoreIdSet = new Set(characterLoreIds);
   asArray(worldInfo.charLore).forEach((entry) => {
-    if (!avatar || normalizeText(entry?.name) === avatar) {
+    if (characterLoreIdSet.has(normalizeText(entry?.name))) {
       addUnique(characterNames, entry?.extraBooks);
     }
   });
-  characterNames.filter((name) => !globalSet.has(name) && name !== chatName && name !== personaName).forEach((name) => addUniqueSource(sources, seen, { name, sourceType: "character" }));
+  characterNames.filter((name) => !globalSet.has(name)).forEach((name) => addUniqueSource(sources, seen, { name, sourceType: "character" }));
   globalNames.forEach((name) => addUniqueSource(sources, seen, { name, sourceType: "global" }));
   return sources;
 }
@@ -367,6 +399,7 @@ function listCharacters(ctx = getContext?.() || {}) {
     const data = asRecord(character?.data) || character || {};
     const extensions = asRecord(data.extensions);
     const depthPrompt = asRecord(extensions.depth_prompt);
+    const legacyDepthPrompt = asRecord(data.depth_prompt);
     return {
       id: String(index),
       name: normalizeText(character?.name || data.name || `Character ${index + 1}`),
@@ -379,7 +412,9 @@ function listCharacters(ctx = getContext?.() || {}) {
       alternateGreetings: asArray(data.alternate_greetings || character.alternate_greetings).map(normalizeText).filter(Boolean),
       mesExample: normalizeText(data.mes_example || character.mes_example),
       creatorNotes: normalizeText(data.creator_notes || character.creator_notes),
-      characterDepthPrompt: normalizeText(depthPrompt.prompt || data.character_depth_prompt || data.depth_prompt)
+      characterDepthPrompt: normalizeText(
+        depthPrompt.prompt || data.character_depth_prompt || legacyDepthPrompt.prompt || (typeof data.depth_prompt === "string" ? data.depth_prompt : "")
+      )
     };
   }).filter((character) => character.name && !isSystemCharacterName(character.name));
 }
@@ -412,7 +447,6 @@ async function fetchWorldbook(source) {
 async function buildTavernContext(options = {}) {
   const ctx = getContext?.() || {};
   await hydrateSelectedCharacter(ctx, options);
-  const useCurrentHistory = options.includeHistory !== false && isCurrentCharacterSelection(ctx, options);
   const includeWorldbooks = options.includeWorldbooks !== false;
   const worldbookSources = collectWorldbookSources(ctx, options);
   const worldbookNames = worldbookSources.map((source) => source.name);
@@ -435,7 +469,8 @@ async function buildTavernContext(options = {}) {
   const context = {
     character: normalizeCharacter(ctx, options),
     user: normalizeUser(ctx),
-    history: useCurrentHistory ? normalizeHistory(ctx) : [],
+    authorNote: normalizeAuthorNote(ctx, options),
+    history: [],
     worldSettings: buildWorldSettings(ctx),
     worldBooks,
     worldEntries: worldBooks.flatMap((book) => Array.isArray(book.entries) ? book.entries : []),
@@ -444,9 +479,9 @@ async function buildTavernContext(options = {}) {
       worldbookSources,
       worldbookSourcesSynced: true,
       worldbooksIncluded: includeWorldbooks,
-      chatLength: useCurrentHistory && Array.isArray(ctx.chat) ? ctx.chat.length : 0,
-      historySource: useCurrentHistory ? "sillytavern-current-chat" : "empty-different-character",
-      source: "sillytavern-current"
+      chatLength: 0,
+      historySource: "littlewhitebox-session",
+      source: "sillytavern-character-card"
     }
   };
   const character = asRecord(context.character);
@@ -454,7 +489,7 @@ async function buildTavernContext(options = {}) {
     context,
     diagnostics: {
       ok: !!character.name,
-      message: character.name ? `\u5DF2\u540C\u6B65\u89D2\u8272\u3001${useCurrentHistory ? "\u5F53\u524D\u804A\u5929" : "\u7A7A\u767D\u4F1A\u8BDD"}\u548C ${worldBooks.length} \u672C\u4E16\u754C\u4E66` : "\u5F53\u524D\u6CA1\u6709\u9009\u4E2D\u89D2\u8272\uFF0C\u9875\u9762\u4F1A\u5148\u663E\u793A\u7A7A\u72B6\u6001",
+      message: character.name ? `\u5DF2\u540C\u6B65\u5C0F\u767D\u4F1A\u8BDD\u89D2\u8272\u548C ${worldBooks.length} \u672C\u4E16\u754C\u4E66` : "\u5F53\u524D\u6CA1\u6709\u9009\u4E2D\u89D2\u8272\uFF0C\u9875\u9762\u4F1A\u5148\u663E\u793A\u7A7A\u72B6\u6001",
       worldbookErrors: worldBooks.filter((book) => book.error).map((book) => ({
         name: normalizeText(book.name),
         error: normalizeText(book.error)

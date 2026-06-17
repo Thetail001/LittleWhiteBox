@@ -6,6 +6,7 @@ await build({
         'modules/tavern/host/agent-config.ts',
         'modules/tavern/host/chat-presets.ts',
         'modules/tavern/host/regex.ts',
+        'modules/tavern/host/native-prompt.ts',
         'modules/tavern/host/sillytavern-context.ts',
         'modules/tavern/host/slash-commands.ts',
         'modules/tavern/host/substitute-params.ts',

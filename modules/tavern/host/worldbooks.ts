@@ -7,6 +7,7 @@ import {
     select_selected_character,
     setCharacterId,
     setCharacterName,
+    getMaxPromptTokens,
     this_chid,
     unshallowCharacter,
 } from '../../../../../../../script.js';
@@ -588,6 +589,11 @@ function dedupeSources(sources: XbTavernNativeWorldInfoSource[] = []): XbTavernN
     return result;
 }
 
+function isLittleWhiteBoxRuntimeWorldbookSource(source?: XbTavernNativeWorldInfoSource): boolean {
+    const sourceType = normalizeText(source?.sourceType);
+    return sourceType === 'character' || sourceType === 'global';
+}
+
 function collectRuntimeSources(context: XbTavernContext = {}): XbTavernNativeWorldInfoSource[] {
     const sessionMeta = asRecord(context.sessionMeta);
     const metaSources = Array.isArray(sessionMeta.worldbookSources)
@@ -614,7 +620,8 @@ function collectRuntimeSources(context: XbTavernContext = {}): XbTavernNativeWor
             sourceIndex: Number.isFinite(Number(book.worldSourceIndex)) ? Number(book.worldSourceIndex) : index,
         }))
         : [];
-    return dedupeSources([...metaSources, ...legacyMetaSources, ...bookSources]);
+    return dedupeSources([...metaSources, ...legacyMetaSources, ...bookSources])
+        .filter(isLittleWhiteBoxRuntimeWorldbookSource);
 }
 
 function buildHistoryScanLines(context: XbTavernContext = {}, currentUserMessage = '', includeNames = false): string[] {
@@ -1290,7 +1297,13 @@ export async function getTavernWorldbookRuntime(input: unknown = {}): Promise<Xb
     const includeNames = context.worldSettings?.includeNames === true || getWorldInfoSettings().world_info_include_names === true;
     const chatLines = buildHistoryScanLines(context, payload.currentUserMessage, includeNames);
     const globalScanData = buildGlobalScanData(payload);
-    const maxContext = Math.max(1, Number(payload.maxContext) || Number(asRecord(getContext?.() || {}).maxContext) || 4096);
+    const maxContext = Math.max(
+        1,
+        Number(payload.maxContext)
+            || Number(getMaxPromptTokens?.())
+            || Number(asRecord(getContext?.() || {}).maxContext)
+            || 4096,
+    );
     const sources = collectRuntimeSources(context);
     return runTavernWorldbookStateExclusive(async () => {
         const snapshot = captureRuntimeState();
@@ -1313,7 +1326,7 @@ export async function getTavernWorldbookRuntime(input: unknown = {}): Promise<Xb
                 worldInfoAfter: normalizeText(activated.worldInfoAfter),
                 worldInfoExamples: Array.isArray(activated.EMEntries)
                     ? activated.EMEntries.map((entry: unknown) => ({
-                        position: normalizeText(asRecord(entry).position),
+                        position: normalizeIdText(asRecord(entry).position),
                         content: normalizeText(asRecord(entry).content),
                     })).filter((entry: { position?: string; content?: string }) => entry.content)
                     : [],
