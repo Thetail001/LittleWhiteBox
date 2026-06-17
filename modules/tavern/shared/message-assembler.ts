@@ -291,8 +291,19 @@ export interface XbTavernRuntimeState {
     worldScanText?: string;
     worldSettings?: XbTavernWorldSettings;
     memoryContext?: XbTavernMemoryContext;
+    runtimeDepthEntries?: XbTavernRuntimeDepthEntry[];
+    runtimeProtocolMessages?: XbTavernMessage[];
     turn?: number;
     entryStates?: Record<string, XbTavernWorldEntryState>;
+}
+
+export interface XbTavernRuntimeDepthEntry {
+    content?: string;
+    depth?: number;
+    role?: XbTavernRole;
+    order?: number;
+    label?: string;
+    layer?: string;
 }
 
 export interface XbTavernMemoryContext {
@@ -1601,6 +1612,53 @@ function buildMemoryBlock(memoryContext: XbTavernMemoryContext = {}): string {
     return sections.length ? `<session_memory>\n${sections.join('\n\n')}\n</session_memory>` : '';
 }
 
+function buildMemoryDepthEntries(memoryContext: XbTavernMemoryContext = {}): ActivatedWorldEntry[] {
+    const content = buildMemoryBlock(memoryContext);
+    if (!content) {return [];}
+    return [{
+        uid: 'session-memory',
+        activationKey: 'memory:session',
+        content,
+        contentChars: content.length,
+        key: [],
+        keysecondary: [],
+        decorators: [],
+        position: XBTavernWorldPosition.atDepth,
+        role: 'system',
+        order: -1_000_000,
+        depth: 1,
+        activationReason: 'memory',
+        sourceWorldBook: '',
+        title: 'session memory',
+        comment: 'session memory',
+    }];
+}
+
+function buildRuntimeDepthEntries(entries: XbTavernRuntimeDepthEntry[] = []): ActivatedWorldEntry[] {
+    return entries.map((entry, index) => {
+        const content = normalizeText(entry.content);
+        if (!content) {return null;}
+        const label = normalizeText(entry.label) || `runtime depth ${index + 1}`;
+        return {
+            uid: `runtime-depth:${index}`,
+            activationKey: `runtime-depth:${index}:${label}`,
+            content,
+            contentChars: content.length,
+            key: [],
+            keysecondary: [],
+            decorators: [],
+            position: XBTavernWorldPosition.atDepth,
+            role: normalizeRole(entry.role, 'system'),
+            order: Number.isFinite(Number(entry.order)) ? Number(entry.order) : 1_000_000_000 + index,
+            depth: Number.isFinite(Number(entry.depth)) ? Math.max(0, Number(entry.depth)) : 1,
+            activationReason: normalizeText(entry.layer) || 'runtime',
+            sourceWorldBook: '',
+            title: label,
+            comment: label,
+        } as ActivatedWorldEntry;
+    }).filter((entry): entry is ActivatedWorldEntry => !!entry);
+}
+
 function normalizeChatPromptSections(chatPreset: TavernChatPromptPresetBundle = {}): NormalizedPresetSection[] {
     const source = Array.isArray(chatPreset.sections) ? chatPreset.sections : [];
     const sections = source.map((section) => ({
@@ -1645,18 +1703,16 @@ function buildPromptManagerOrderedUnits(options: {
     character: XbTavernCharacter;
     user: XbTavernUser;
     worldBuckets: XbTavernWorldBuckets;
-    historyUnits: XbTavernMessageUnit[];
-    currentUserUnits: XbTavernMessageUnit[];
-    memoryContext: XbTavernMemoryContext;
+    conversationUnits: XbTavernMessageUnit[];
+    runtimeProtocolUnits: XbTavernMessageUnit[];
 }): XbTavernMessageUnit[] {
     const {
         presetSections,
         character,
         user,
         worldBuckets,
-        historyUnits,
-        currentUserUnits,
-        memoryContext,
+        conversationUnits,
+        runtimeProtocolUnits,
     } = options;
     const data = character.data || {};
     const usedMarkers = new Set<string>();
@@ -1695,9 +1751,8 @@ function buildPromptManagerOrderedUnits(options: {
                     pushMarker(marker, [
                         makeMessageUnit('system', renderEntryBlock('world_info_examples_top', worldBuckets.examplesTop), 'world-examples', 'world info examples top'),
                         makeMessageUnit('system', renderEntryBlock('world_info_author_note_top', worldBuckets.authorNoteTop), 'world-author-note', 'world info author note top'),
-                        ...historyUnits,
-                        makeMessageUnit('system', buildMemoryBlock(memoryContext), 'memory', 'session memory'),
-                        ...currentUserUnits,
+                        ...conversationUnits,
+                        ...runtimeProtocolUnits,
                     ]);
                     return;
                 default:
@@ -1725,9 +1780,8 @@ function buildPromptManagerOrderedUnits(options: {
         units.push(
             makeMessageUnit('system', renderEntryBlock('world_info_examples_top', worldBuckets.examplesTop), 'world-examples', 'world info examples top'),
             makeMessageUnit('system', renderEntryBlock('world_info_author_note_top', worldBuckets.authorNoteTop), 'world-author-note', 'world info author note top'),
-            ...historyUnits,
-            makeMessageUnit('system', buildMemoryBlock(memoryContext), 'memory', 'session memory'),
-            ...currentUserUnits,
+            ...conversationUnits,
+            ...runtimeProtocolUnits,
         );
     }
     units.push(
@@ -1735,6 +1789,22 @@ function buildPromptManagerOrderedUnits(options: {
         makeMessageUnit('system', renderEntryBlock('world_info_examples_bottom', worldBuckets.examplesBottom), 'world-examples', 'world info examples bottom'),
     );
     return units;
+}
+
+function buildConversationMessageUnit(message: XbTavernMessage, index: number): XbTavernMessageUnit {
+    const depthMatch = message.content.match(/<world_info_depth depth="(\d+)">/);
+    if (depthMatch) {
+        return {
+            message,
+            layer: 'world-depth',
+            label: `world info depth ${depthMatch[1]}`,
+        };
+    }
+    return {
+        message,
+        layer: message.role === 'user' ? 'current-user/history' : 'history',
+        label: `history ${index + 1}`,
+    };
 }
 
 function normalizeHistoryMessage(message: XbTavernHistoryMessage = {}): XbTavernMessage | null {
@@ -1944,6 +2014,8 @@ interface PreparedXbTavernMessageBuild {
     localStateWorldEntries: ActivatedWorldEntry[];
     budgetDebug: ReturnType<typeof buildWorldBudgetDebug>;
     promptConversationMessages?: XbTavernMessage[];
+    runtimeDepthEntries: XbTavernRuntimeDepthEntry[];
+    runtimeProtocolMessages: XbTavernMessage[];
 }
 
 function prepareXbTavernMessageBuild(
@@ -1957,6 +2029,8 @@ function prepareXbTavernMessageBuild(
     const currentUserMessage = runtimeState.currentUserMessage || '';
     const historyMode = runtimeState.historyMode || 'raw';
     const memoryContext = runtimeState.memoryContext || {};
+    const runtimeDepthEntries = Array.isArray(runtimeState.runtimeDepthEntries) ? runtimeState.runtimeDepthEntries : [];
+    const runtimeProtocolMessages = Array.isArray(runtimeState.runtimeProtocolMessages) ? runtimeState.runtimeProtocolMessages : [];
     const presetSections = normalizeChatPromptSections(chatPreset);
     const runtimeWorldSettings = runtimeState.worldSettings || {};
     const explicitScanText = typeof runtimeState.worldScanText === 'string';
@@ -1992,6 +2066,8 @@ function prepareXbTavernMessageBuild(
             historyMode,
             squashRole: runtimeState.squashRole,
             memoryContext,
+            runtimeDepthEntries,
+            runtimeProtocolMessages,
             presetSections,
             scanText,
             worldSettings,
@@ -2015,6 +2091,8 @@ function prepareXbTavernMessageBuild(
         historyMode,
         squashRole: runtimeState.squashRole,
         memoryContext,
+        runtimeDepthEntries,
+        runtimeProtocolMessages,
         presetSections,
         scanText,
         worldSettings,
@@ -2053,6 +2131,8 @@ function buildXbTavernMessagesFromPrepared(
         historyMode,
         squashRole,
         memoryContext,
+        runtimeDepthEntries,
+        runtimeProtocolMessages,
         presetSections,
         scanText,
         worldSettings,
@@ -2065,10 +2145,15 @@ function buildXbTavernMessagesFromPrepared(
     void currentUserMessage;
     void squashRole;
 
+    const depthEntries = [
+        ...buildMemoryDepthEntries(memoryContext),
+        ...worldBuckets.atDepth,
+        ...buildRuntimeDepthEntries(runtimeDepthEntries),
+    ];
     const conversationMessages = insertDepthMessages(
         (prepared.promptConversationMessages || buildPromptConversationMessages(prepared, chatPreset))
             .map(appendPromptReasoningToMessage),
-        buildDepthMessages(worldBuckets.atDepth),
+        buildDepthMessages(depthEntries),
     );
 
     const topSections = presetSectionUnits(pickSections(presetSections, 'top'), 'top');
@@ -2078,30 +2163,26 @@ function buildXbTavernMessagesFromPrepared(
     const afterHistorySections = presetSectionUnits(pickSections(presetSections, 'afterHistory'), 'after history');
     const assistantPrefillSections = presetSectionUnits(pickSections(presetSections, 'assistantPrefill'), 'assistant prefill', 'assistant-prefill');
     const hasPromptManagerOrder = presetSections.some((section) => section.source === 'promptManager');
-    const conversationUnits = conversationMessages.map((message, index) => ({
-        message,
-        layer: message.role === 'user' ? 'current-user/history' : 'history',
-        label: `history ${index + 1}`,
-    }));
-    let currentUserUnitIndex = -1;
+    const conversationUnits = conversationMessages.map((message, index) => buildConversationMessageUnit(message, index));
     for (let index = conversationUnits.length - 1; index >= 0; index -= 1) {
         if (conversationUnits[index]?.message?.role === 'user') {
-            currentUserUnitIndex = index;
             conversationUnits[index].label = 'current user message';
             break;
         }
     }
-    const historyUnits = currentUserUnitIndex >= 0 ? conversationUnits.slice(0, currentUserUnitIndex) : conversationUnits;
-    const currentUserUnits = currentUserUnitIndex >= 0 ? conversationUnits.slice(currentUserUnitIndex) : [];
+    const runtimeProtocolUnits = runtimeProtocolMessages.map((message, index) => ({
+        message,
+        layer: 'runtime-protocol',
+        label: `runtime protocol ${index + 1}`,
+    }));
     const orderedPromptUnits = hasPromptManagerOrder
         ? buildPromptManagerOrderedUnits({
             presetSections,
             character,
             user,
             worldBuckets,
-            historyUnits,
-            currentUserUnits,
-            memoryContext,
+            conversationUnits,
+            runtimeProtocolUnits,
         })
         : null;
     const compacted = compactMessageUnits(orderedPromptUnits || [
@@ -2114,9 +2195,8 @@ function buildXbTavernMessagesFromPrepared(
         makeMessageUnit('system', renderEntryBlock('world_info_examples_top', worldBuckets.examplesTop), 'world-examples', 'world info examples top'),
         makeMessageUnit('system', renderEntryBlock('world_info_author_note_top', worldBuckets.authorNoteTop), 'world-author-note', 'world info author note top'),
         ...beforeHistorySections,
-        ...historyUnits,
-        makeMessageUnit('system', buildMemoryBlock(memoryContext), 'memory', 'session memory'),
-        ...currentUserUnits,
+        ...conversationUnits,
+        ...runtimeProtocolUnits,
         ...afterHistorySections,
         makeMessageUnit('system', renderEntryBlock('world_info_author_note_bottom', worldBuckets.authorNoteBottom), 'world-author-note', 'world info author note bottom'),
         makeMessageUnit('system', renderEntryBlock('world_info_examples_bottom', worldBuckets.examplesBottom), 'world-examples', 'world info examples bottom'),

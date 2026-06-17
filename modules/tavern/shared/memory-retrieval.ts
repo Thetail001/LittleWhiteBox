@@ -56,6 +56,7 @@ let tokenizerStatus: MemoryTokenizerStatus = 'idle';
 let tokenizerError = '';
 const MEMORY_QUERY_CONTEXT_MESSAGE_COUNT = 2;
 const MEMORY_RECALL_MIN_SCORE = 3.2;
+const MEMORY_TOKENIZER_ASIAN_SEGMENT_CHARS = 512;
 
 export function getXbTavernMemoryTokenizerStatus(): { status: MemoryTokenizerStatus; error: string } {
     return {
@@ -232,6 +233,10 @@ function tokenizeByScript(text: string): string[] {
             currentType = type;
         }
         if (type !== 'other') {current += char;}
+        if (currentType === 'asian' && current.length >= MEMORY_TOKENIZER_ASIAN_SEGMENT_CHARS) {
+            flush();
+            currentType = null;
+        }
     }
     flush();
     return tokens;

@@ -297,20 +297,3 @@ export function buildChanceEncounterPromptMessage(): XbTavernMessage {
         content: CHANCE_ENCOUNTER_PROMPT,
     };
 }
-
-export function insertChanceEncounterPromptAfterCurrentUser(
-    messages: XbTavernMessage[] = [],
-    event: TavernChanceEncounterRuntimeEvent | null | undefined,
-): XbTavernMessage[] {
-    if (!event) {return [...messages];}
-    const inserted = [...messages];
-    const promptMessage = buildChanceEncounterPromptMessage();
-    for (let index = inserted.length - 1; index >= 0; index -= 1) {
-        if (inserted[index]?.role === 'user') {
-            inserted.splice(index + 1, 0, promptMessage);
-            return inserted;
-        }
-    }
-    inserted.push(promptMessage);
-    return inserted;
-}

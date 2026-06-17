@@ -112,23 +112,6 @@ export function buildActionCheckProtocolMessage(): XbTavernMessage {
     };
 }
 
-export function insertActionCheckPromptAfterCurrentUser(
-    messages: XbTavernMessage[] = [],
-    enabled = false,
-): XbTavernMessage[] {
-    if (!enabled) {return [...messages];}
-    const inserted = [...messages];
-    const promptMessage = buildActionCheckProtocolMessage();
-    for (let index = inserted.length - 1; index >= 0; index -= 1) {
-        if (inserted[index]?.role === 'user') {
-            inserted.splice(index + 1, 0, promptMessage);
-            return inserted;
-        }
-    }
-    inserted.push(promptMessage);
-    return inserted;
-}
-
 export function executeTavernActionCheck(
     input: Record<string, unknown> = {},
     options: { rollDie?: () => number } = {},

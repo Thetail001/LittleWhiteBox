@@ -84,6 +84,17 @@ test('xb tavern assembler honors SillyTavern prompt manager marker order', () =>
         ],
     }, {
         currentUserMessage: 'Current user line.',
+        runtimeProtocolMessages: [{
+            role: 'system',
+            content: 'Runtime protocol block.',
+        }],
+        memoryContext: {
+            memoryFiles: [{
+                path: 'memory/session.md',
+                title: 'Session',
+                content: 'Prompt manager memory note.',
+            }],
+        },
     });
 
     const contents = result.messages.map((message) => message.content);
@@ -92,10 +103,13 @@ test('xb tavern assembler honors SillyTavern prompt manager marker order', () =>
         if (content.includes('Pilot description.')) {return 'description';}
         if (content.includes('Gate lore.')) {return 'world';}
         if (content.includes('Old assistant line.')) {return 'history';}
+        if (content.includes('Prompt manager memory note.')) {return 'memory';}
         if (content.includes('Current user line.')) {return 'current';}
+        if (content.includes('Runtime protocol block.')) {return 'runtime-protocol';}
         if (content.includes('After marker prompt.')) {return 'jailbreak';}
         return 'other';
-    }), ['main', 'description', 'world', 'history', 'current', 'jailbreak']);
+    }), ['main', 'description', 'world', 'history', 'memory', 'current', 'runtime-protocol', 'jailbreak']);
+    assert.match(contents.find((content) => content.includes('Prompt manager memory note.')) || '', /<world_info_depth depth="1">[\s\S]*<session_memory>/);
     assert.doesNotMatch(contents.join('\n'), /<character_card>/);
     assert.equal(result.messageLayers.find((layer) => layer.label === 'Char Description')?.sourceId, 'prompt-manager:charDescription');
 });
@@ -1333,6 +1347,56 @@ test('xb tavern assembler maps world positions into stable message locations', (
     assert.equal(contents.includes('<world_info_examples_bottom>\nExample message lore.\n</world_info_examples_bottom>'), true);
     assert.equal(contents.includes('Look at the vault.'), true);
     assert.equal(contents.includes('<world_info_depth depth="0">\nDepth lore.\n</world_info_depth>'), true);
+});
+
+test('xb tavern assembler treats memory as D1 system depth injection inside chat history', () => {
+    const result = buildXbTavernMessages({
+        character: { name: 'Aster', description: 'Pilot.' },
+        history: [{ role: 'assistant', content: 'Old reply.' }],
+        worldEntries: [{
+            uid: 'd1',
+            content: 'World D1 lore.',
+            constant: true,
+            position: XBTavernWorldPosition.atDepth,
+            depth: 1,
+            role: 'system',
+            order: 10,
+        }],
+    }, {
+        sections: [
+            { placement: 'afterHistory', role: 'system', content: 'After history rule.' },
+        ],
+    }, {
+        currentUserMessage: 'Current turn.',
+        runtimeProtocolMessages: [{
+            role: 'system',
+            content: 'Runtime protocol block.',
+        }],
+        memoryContext: {
+            memoryFiles: [{
+                path: 'memory/session.md',
+                title: 'Session',
+                content: 'Memory D1 note.',
+            }],
+        },
+    });
+
+    const contents = result.messages.map((message) => message.content);
+    const oldIndex = contents.indexOf('Old reply.');
+    const depthIndex = contents.findIndex((content) => content.includes('<world_info_depth depth="1">'));
+    const currentIndex = contents.indexOf('Current turn.');
+    const protocolIndex = contents.indexOf('Runtime protocol block.');
+    const afterIndex = contents.indexOf('After history rule.');
+    assert.ok(oldIndex >= 0);
+    assert.ok(depthIndex > oldIndex);
+    assert.ok(currentIndex > depthIndex);
+    assert.ok(protocolIndex > currentIndex);
+    assert.ok(afterIndex > protocolIndex);
+    assert.equal(result.messages[depthIndex]?.role, 'system');
+    assert.match(contents[depthIndex] || '', /<world_info_depth depth="1">[\s\S]*<session_memory>[\s\S]*Memory D1 note\.[\s\S]*World D1 lore\.[\s\S]*<\/world_info_depth>/);
+    assert.equal(result.messageLayers.find((layer) => layer.index === depthIndex)?.layer, 'world-depth');
+    assert.equal(result.messageLayers.find((layer) => layer.index === depthIndex)?.label, 'world info depth 1');
+    assert.equal(result.messageLayers.find((layer) => layer.index === protocolIndex)?.layer, 'runtime-protocol');
 });
 
 test('xb tavern world prompt blocks follow SillyTavern insertion order', () => {

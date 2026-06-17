@@ -91,7 +91,7 @@ test('xb tavern brain uses world settings from SillyTavern context', () => {
     assert.equal(brain.runtimeState.worldSettings?.turn, 2);
 });
 
-test('xb tavern brain injects memory between history and current user message', () => {
+test('xb tavern brain injects memory as D1 system before current user message', () => {
     const preset = createDefaultXbTavernPreset();
     const brain = buildXbTavernBrain({
         context: {
@@ -109,7 +109,7 @@ test('xb tavern brain injects memory between history and current user message', 
         },
     });
 
-    const memoryLayer = brain.buildResult.messageLayers.find((layer) => layer.layer === 'memory');
+    const memoryLayer = brain.buildResult.messageLayers.find((layer) => layer.layer === 'world-depth' && layer.label === 'world info depth 1');
     const currentUserLayer = brain.buildResult.messageLayers.find((layer) => layer.label === 'current user message');
     const historyLayer = brain.buildResult.messageLayers.find((layer) => layer.label === 'history 1');
     assert.ok(memoryLayer);
@@ -117,6 +117,7 @@ test('xb tavern brain injects memory between history and current user message', 
     assert.ok(historyLayer);
     assert.ok(memoryLayer.index > historyLayer.index);
     assert.ok(memoryLayer.index < currentUserLayer.index);
-    assert.match(brain.buildResult.messages[memoryLayer.index]?.content || '', /<session_memory>/);
+    assert.equal(brain.buildResult.messages[memoryLayer.index]?.role, 'system');
+    assert.match(brain.buildResult.messages[memoryLayer.index]?.content || '', /<world_info_depth depth="1">[\s\S]*<session_memory>/);
     assert.match(brain.rawMessagesJson, /信任正在增加/);
 });

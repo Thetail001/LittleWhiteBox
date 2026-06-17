@@ -8,7 +8,9 @@ import {
     type XbTavernBuildSnapshot,
     type XbTavernContext,
     type XbTavernMemoryContext,
+    type XbTavernMessage,
     type XbTavernMessageBuildResult,
+    type XbTavernRuntimeDepthEntry,
     type TavernChatPromptPresetBundle,
     type XbTavernRuntimeState,
     type XbTavernWorldEntryState,
@@ -31,6 +33,8 @@ export interface XbTavernBrainBuildInput {
     turn?: number;
     entryStates?: Record<string, XbTavernWorldEntryState>;
     memoryContext?: XbTavernMemoryContext;
+    runtimeDepthEntries?: XbTavernRuntimeDepthEntry[];
+    runtimeProtocolMessages?: XbTavernMessage[];
     diagnostics?: unknown;
 }
 
@@ -72,6 +76,8 @@ export function createXbTavernRuntimeState(input: XbTavernBrainBuildInput): XbTa
             entryStates: input.entryStates,
         }),
         memoryContext: input.memoryContext,
+        runtimeDepthEntries: input.runtimeDepthEntries,
+        runtimeProtocolMessages: input.runtimeProtocolMessages,
     };
 }
 

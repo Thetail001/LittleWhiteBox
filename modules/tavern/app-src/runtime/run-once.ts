@@ -48,13 +48,14 @@ import { rebuildTavernMemoryDerivedIndex } from '../../shared/memory-files';
 import { buildXbTavernBrain, buildXbTavernBrainAsync } from '../../shared/brain';
 import {
     ACTION_CHECK_TOOL_NAME,
+    buildActionCheckProtocolMessage,
     buildDeniedActionCheckToolResult,
     executeTavernActionCheck,
     getActionCheckToolDefinitions,
-    insertActionCheckPromptAfterCurrentUser,
     type TavernActionCheckToolResult,
 } from '../../shared/action-checks';
 import {
+    buildChanceEncounterPromptMessage,
     createActionCheckEvent,
     createChanceEncounterEvent,
     extractActionCheckRegexMarkers,
@@ -62,7 +63,6 @@ import {
     getChanceEncounterEvent,
     hasChanceEncounterEvent,
     injectActionCheckRegexMarkers,
-    insertChanceEncounterPromptAfterCurrentUser,
     RANDOM_ENCOUNTER_COOLDOWN_TURNS,
     RANDOM_ENCOUNTER_PROBABILITY,
     type TavernActionCheckRuntimeEvent,
@@ -222,6 +222,22 @@ function buildActionCheckCapabilities(runtime: TavernSessionContractRuntime): {
         tools: getActionCheckToolDefinitions(),
         toolChoice: 'auto' as const,
     };
+}
+
+function buildRuntimeProtocolMessages(runtime: TavernSessionContractRuntime): XbTavernMessage[] {
+    return runtime.includeActionChecks ? [buildActionCheckProtocolMessage()] : [];
+}
+
+function buildChanceEncounterDepthEntries(event: TavernChanceEncounterRuntimeEvent | null | undefined): XbTavernRuntimeState['runtimeDepthEntries'] {
+    if (!event) {return [];}
+    return [{
+        content: buildChanceEncounterPromptMessage().content,
+        depth: 1,
+        role: 'system',
+        order: 1_000_000_000,
+        label: 'chance encounter',
+        layer: 'runtime-event',
+    }];
 }
 
 function summarizeActionCheckResult(result: TavernActionCheckToolResult): string {
@@ -1354,16 +1370,13 @@ export async function simulateXbTavernRequest(input: XbTavernSimulateRequestInpu
         turn: sessionState.turn,
         entryStates: sessionState.worldEntryStates,
         memoryContext: filteredMemoryContext,
+        runtimeProtocolMessages: buildRuntimeProtocolMessages(sessionContractRuntime),
         diagnostics: input.diagnostics || {},
         regexApplications,
         transformConversationMessages: async (messages) => {
-            const actionCheckMessages = insertActionCheckPromptAfterCurrentUser(
-                messages,
-                sessionContractRuntime.includeActionChecks,
-            );
             const substitutedMessages = await applyPromptSubstitutionToMessages({
                 applySubstituteParams: input.applySubstituteParams,
-                messages: actionCheckMessages,
+                messages,
                 options: substituteOptions,
             });
             const applied = await applyPromptRegexToConversationMessages({
@@ -1741,17 +1754,14 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
         turn: sessionState.turn,
         entryStates: sessionState.worldEntryStates,
         memoryContext: filteredMemoryContext,
+        runtimeDepthEntries: buildChanceEncounterDepthEntries(chanceEncounterEvent),
+        runtimeProtocolMessages: buildRuntimeProtocolMessages(sessionContractRuntime),
         diagnostics: input.diagnostics || {},
         regexApplications,
         transformConversationMessages: async (messages) => {
-            const actionCheckMessages = insertActionCheckPromptAfterCurrentUser(
-                messages,
-                sessionContractRuntime.includeActionChecks,
-            );
-            const encounterMessages = insertChanceEncounterPromptAfterCurrentUser(actionCheckMessages, chanceEncounterEvent);
             const substitutedMessages = await applyPromptSubstitutionToMessages({
                 applySubstituteParams: input.applySubstituteParams,
-                messages: encounterMessages,
+                messages,
                 options: substituteOptions,
             });
             const applied = await applyPromptRegexToConversationMessages({

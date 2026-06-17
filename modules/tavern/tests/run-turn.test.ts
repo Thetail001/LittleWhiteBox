@@ -168,7 +168,7 @@ test('xb tavern run turn skips random encounters when contract disables them', a
     assert.doesNotMatch(rawMessages, /Chance Encounter Triggered/);
 });
 
-test('xb tavern run turn persists a triggered encounter and injects its prompt after the current user', async () => {
+test('xb tavern run turn injects chance encounter as D1 before action-check protocol and afterHistory', async () => {
     await resetDb();
     const presetBase = createDefaultXbTavernPreset();
     const preset = {
@@ -194,6 +194,7 @@ test('xb tavern run turn persists a triggered encounter and injects its prompt a
         currentUserMessage: 'Step into the clearing.',
         runtimeState: {
             contract: mergeTavernSessionContract(undefined, {
+                actionChecks: true,
                 randomEncounters: true,
             }),
         },
@@ -214,10 +215,14 @@ test('xb tavern run turn persists a triggered encounter and injects its prompt a
     assert.equal(getChanceEncounterEvent(userMessage?.runtimeEvents)?.label, CHANCE_ENCOUNTER_LABEL);
     const userIndex = requestMessages.findIndex((message) => message.role === 'user' && message.content.includes('Step into the clearing.'));
     const eventIndex = requestMessages.findIndex((message) => message.role === 'system' && message.content.includes('Chance Encounter Triggered'));
+    const protocolIndex = requestMessages.findIndex((message) => message.role === 'system' && message.content.includes('Runtime Protocol: Action Checks'));
     const afterHistoryIndex = requestMessages.findIndex((message) => message.content.includes('AFTER_HISTORY_SENTINEL'));
     assert.ok(userIndex >= 0);
-    assert.ok(eventIndex > userIndex);
-    assert.ok(afterHistoryIndex > eventIndex);
+    assert.ok(eventIndex >= 0);
+    assert.ok(eventIndex < userIndex);
+    assert.match(requestMessages[eventIndex]?.content || '', /<world_info_depth depth="1">[\s\S]*Chance Encounter Triggered/);
+    assert.ok(protocolIndex > userIndex);
+    assert.ok(afterHistoryIndex > protocolIndex);
 });
 
 test('xb tavern rerun reuses an existing chance encounter without rerolling', async () => {
@@ -2113,6 +2118,45 @@ test('xb tavern memory recall skips unrelated notes and keeps matched files only
     });
 
     assert.deepEqual(memory.memoryFiles?.map((file) => file.path), ['memory/state.md', 'memory/turns/20260601-0000.md']);
+});
+
+test('xb tavern memory recall keeps jieba calls on bounded Asian text segments', () => {
+    let maxJiebaInputLength = 0;
+    setXbTavernMemoryTokenizerForTest({
+        jiebaCut: (text) => {
+            maxJiebaInputLength = Math.max(maxJiebaInputLength, String(text || '').length);
+            if (String(text || '').length > 512) {throw new Error('unreachable');}
+            return tokenizeForMemoryTests(text);
+        },
+        tinySegmenter: {
+            segment: (text) => tokenizeForMemoryTests(text),
+        },
+    });
+    try {
+        const longContinuousText = `银钥匙${'线索'.repeat(400)}`;
+        const memory = selectXbTavernMemoryContext({
+            memoryFiles: [{
+                sessionId: 'session',
+                path: 'memory/state.md',
+                content: `# 长段线索\n\n${longContinuousText}`,
+                status: 'active' as const,
+                source: 'manager',
+                createdAt: 1,
+                updatedAt: 1,
+            }],
+            queryText: '银钥匙在哪里？',
+        });
+
+        assert.deepEqual(memory.memoryFiles?.map((file) => file.path), ['memory/state.md']);
+        assert.ok(maxJiebaInputLength <= 512);
+    } finally {
+        setXbTavernMemoryTokenizerForTest({
+            jiebaCut: (text) => tokenizeForMemoryTests(text),
+            tinySegmenter: {
+                segment: (text) => tokenizeForMemoryTests(text),
+            },
+        });
+    }
 });
 
 test('xb tavern memory recall does not silently fall back when tokenizer is unavailable', () => {
