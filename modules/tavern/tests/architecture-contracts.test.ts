@@ -52,6 +52,27 @@ test('tavern source keeps cross-frame messages behind clone-safe wrappers', () =
     assert.match(hostSource, /function postToFrame[\s\S]*const message = cloneFramePayload\(\{ type, payload \}\);[\s\S]*postToIframe/);
 });
 
+test('tavern startup posts frame-ready before heavy app tasks and prewarms host config', () => {
+    const appSource = readRepoFile('modules/tavern/app-src/App.vue');
+    const hostSource = readRepoFile('modules/tavern/tavern.ts');
+    const mountedIndex = appSource.indexOf('onMounted(async () => {');
+    const readyIndex = appSource.indexOf("postToHost('xb-tavern:frame-ready');", mountedIndex);
+    assert.notEqual(mountedIndex, -1);
+    assert.notEqual(readyIndex, -1);
+    const beforeReady = appSource.slice(mountedIndex, readyIndex);
+    assert.doesNotMatch(beforeReady, /refreshPresets\(\)|refreshSessions\(\)|warmupMemoryTokenizer\(\)|preloadXbTavernMemoryTokenizer\(\)/);
+    assert.match(appSource, /await nextTick\(\);\s*postToHost\('xb-tavern:frame-ready'\);\s*void runPostReadyStartupTasks\(\);\s*scheduleMemoryTokenizerWarmup\(\);/);
+    assert.match(appSource, /async function runPostReadyStartupTasks\(\) \{[\s\S]*Promise\.allSettled\(\[\s*refreshPresets\(\),\s*refreshSessions\(\),\s*\]\)/);
+    assert.match(appSource, /function scheduleMemoryTokenizerWarmup\(\) \{[\s\S]*queueStartupIdleTask/);
+    assert.match(appSource, /watch\(\[\s*activeView,\s*chatFocus,\s*chatWorkspacePanel,[\s\S]*promoteMemoryTokenizerWarmup\(\)/);
+    assert.match(appSource, /async function runOnce[\s\S]*await promoteMemoryTokenizerWarmup\(\);[\s\S]*const controller = new AbortController/);
+    assert.match(hostSource, /let initialConfigPromise: Promise<Record<string, unknown>> \| null = null;/);
+    assert.match(hostSource, /function prepareInitialConfig\(\): void \{[\s\S]*initialConfigPromise = promise;/);
+    assert.match(hostSource, /async function sendInitialConfigToFrame\(\): Promise<void> \{[\s\S]*const promise = initialConfigPromise \|\| buildFrameConfigPayload\(\);[\s\S]*postToFrame\('xb-tavern:config', await promise\);/);
+    assert.match(hostSource, /async function openTavern\(\): Promise<void> \{[\s\S]*prepareInitialConfig\(\);[\s\S]*await createOverlay\(\);/);
+    assert.match(hostSource, /case 'xb-tavern:frame-ready':[\s\S]*void sendInitialConfigToFrame\(\)\.then\(flushPendingMessages\);/);
+});
+
 test('tavern worldbook bridge edits named entries through native save boundary', () => {
     const badSplits = sourceMatches(/split\(\s*\/\\r\?\\n\|,\//);
     assert.deepEqual(badSplits, []);

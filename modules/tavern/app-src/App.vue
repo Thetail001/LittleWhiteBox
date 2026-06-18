@@ -430,6 +430,8 @@ let managerCompactionOverlayHideTimer: number | null = null;
 let composeErrorHideTimer: number | null = null;
 let managerRecordsPollTimer: number | null = null;
 let managerRecordsPollRunning = false;
+let memoryTokenizerWarmupPromise: Promise<void> | null = null;
+let memoryTokenizerIdleCancel: (() => void) | null = null;
 let sessionContextSyncSequence = 0;
 const pendingDisplayRegexKeys = new Set<string>();
 const pendingRuntimeDisplayRegexRequests = new Map<string, PendingRuntimeDisplayRegexRequest>();
@@ -1015,6 +1017,16 @@ watch(selectedCharacterGreetingOptions, (options) => {
 
 watch(memoryFileSearchText, () => {
     memoryFileGroupVisibleLimits.value = {};
+});
+
+watch([
+    activeView,
+    chatFocus,
+    chatWorkspacePanel,
+], ([view, focus, workspace]) => {
+    if (view === 'chat' && (focus === 'manager' || workspace === 'memory')) {
+        void promoteMemoryTokenizerWarmup();
+    }
 });
 
 watch([
@@ -3647,6 +3659,7 @@ async function handleManagerSubmit() {
     const managerSessionId = selectedSessionId.value;
     managerInputDraft.value = '';
     void nextTick(() => resetTextareaHeight(managerComposeTextareaRef.value));
+    await promoteMemoryTokenizerWarmup();
     await sendManagerQuestion(managerSessionId, text);
 }
 
@@ -3672,6 +3685,47 @@ async function warmupMemoryTokenizer() {
     }
 }
 
+function queueStartupIdleTask(task: () => void) {
+    const idleWindow = window as Window & {
+        requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
+        cancelIdleCallback?: (handle: number) => void;
+    };
+    if (idleWindow.requestIdleCallback && idleWindow.cancelIdleCallback) {
+        const handle = idleWindow.requestIdleCallback(task, { timeout: 6000 });
+        return () => idleWindow.cancelIdleCallback?.(handle);
+    }
+    const handle = window.setTimeout(task, 1600);
+    return () => window.clearTimeout(handle);
+}
+
+function startMemoryTokenizerWarmup() {
+    const status = getXbTavernMemoryTokenizerStatus();
+    memoryTokenizerStatus.value = status;
+    if (status.status === 'ready') {return Promise.resolve();}
+    if (memoryTokenizerWarmupPromise) {return memoryTokenizerWarmupPromise;}
+    memoryTokenizerWarmupPromise = warmupMemoryTokenizer().finally(() => {
+        memoryTokenizerWarmupPromise = null;
+    });
+    return memoryTokenizerWarmupPromise;
+}
+
+function scheduleMemoryTokenizerWarmup() {
+    if (memoryTokenizerIdleCancel || memoryTokenizerWarmupPromise) {return;}
+    if (getXbTavernMemoryTokenizerStatus().status === 'ready') {return;}
+    memoryTokenizerIdleCancel = queueStartupIdleTask(() => {
+        memoryTokenizerIdleCancel = null;
+        void startMemoryTokenizerWarmup();
+    });
+}
+
+function promoteMemoryTokenizerWarmup() {
+    if (memoryTokenizerIdleCancel) {
+        memoryTokenizerIdleCancel();
+        memoryTokenizerIdleCancel = null;
+    }
+    return startMemoryTokenizerWarmup();
+}
+
 async function runOnce(options: { messageText?: string; reuseUserMessageOrder?: number; rerollRuntimeEvents?: boolean } = {}) {
     if (isRunning.value) {
         cancelActiveRun();
@@ -3695,6 +3749,7 @@ async function runOnce(options: { messageText?: string; reuseUserMessageOrder?: 
     if (!messageText) {
         return;
     }
+    await promoteMemoryTokenizerWarmup();
     const controller = new AbortController();
     activeRunController.value = controller;
     isRunning.value = true;
@@ -4122,19 +4177,15 @@ provide(TAVERN_APP_UI_CONTEXT, {
     settings: settingsContext,
 });
 
-onMounted(async () => {
-    // onHostMessage validates origin and message source before accepting payloads.
-    // eslint-disable-next-line no-restricted-syntax
-    window.addEventListener('message', onHostMessage);
-    managerRecordsPollTimer = window.setInterval(() => {
-        void pollLiveManagerRecords();
-    }, 2000);
-    if (activeView.value === 'settings' && activeSettingsWorkspace.value === 'api') {
-        void nextTick(renderApiSettingsPanel);
+async function runPostReadyStartupTasks() {
+    const startupResults = await Promise.allSettled([
+        refreshPresets(),
+        refreshSessions(),
+    ]);
+    const firstError = startupResults.find((result) => result.status === 'rejected');
+    if (firstError?.status === 'rejected') {
+        statusText.value = describeError(firstError.reason);
     }
-    void warmupMemoryTokenizer();
-    await refreshPresets();
-    await refreshSessions();
     syncApiSettingsConfigFromAgentConfig();
     if (activeView.value === 'settings' && activeSettingsWorkspace.value === 'api') {
         await nextTick(renderApiSettingsPanel);
@@ -4151,13 +4202,29 @@ onMounted(async () => {
     if (activeView.value === 'settings' && activeSettingsWorkspace.value === 'base') {
         void loadTavernUsers();
     }
-    postToHost('xb-tavern:frame-ready');
     if (selectedSessionId.value) {
         void syncSessionCharacterContext({ sessionId: selectedSessionId.value, force: true });
     }
     if (activeView.value === 'chat' && chatFocus.value === 'chat') {
         scrollChatToBottom(true);
     }
+}
+
+onMounted(async () => {
+    // onHostMessage validates origin and message source before accepting payloads.
+    // eslint-disable-next-line no-restricted-syntax
+    window.addEventListener('message', onHostMessage);
+    managerRecordsPollTimer = window.setInterval(() => {
+        void pollLiveManagerRecords();
+    }, 2000);
+    if (activeView.value === 'settings' && activeSettingsWorkspace.value === 'api') {
+        void nextTick(renderApiSettingsPanel);
+    }
+    syncApiSettingsConfigFromAgentConfig();
+    await nextTick();
+    postToHost('xb-tavern:frame-ready');
+    void runPostReadyStartupTasks();
+    scheduleMemoryTokenizerWarmup();
 });
 
 onUnmounted(() => {
@@ -4182,6 +4249,10 @@ onUnmounted(() => {
     if (managerRecordsPollTimer) {
         window.clearInterval(managerRecordsPollTimer);
         managerRecordsPollTimer = null;
+    }
+    if (memoryTokenizerIdleCancel) {
+        memoryTokenizerIdleCancel();
+        memoryTokenizerIdleCancel = null;
     }
     clearDisplayRegexCache();
     clearManagerCompactionOverlayHideTimer();

@@ -45,6 +45,7 @@ const BUILD_INFO_PATH = `${extensionFolderPath}/modules/tavern/dist/tavern-build
 let tavernCacheKey = "";
 let frameReady = false;
 let pendingMessages = [];
+let initialConfigPromise = null;
 let messageHandlerInstalled = false;
 let overlayResizeHandler = null;
 const pendingDrawRequests = /* @__PURE__ */ new Map();
@@ -169,9 +170,26 @@ function flushPendingMessages() {
   pendingMessages.forEach((message) => postToIframe(iframe, message, SOURCE_HOST));
   pendingMessages = [];
 }
-async function sendConfigToFrame(options = {}) {
+async function buildFrameConfigPayload(options = {}) {
   const contextPayload = await buildTavernContext(options);
-  postToFrame("xb-tavern:config", await buildTavernFrameConfig(contextPayload));
+  return await buildTavernFrameConfig(contextPayload);
+}
+function prepareInitialConfig() {
+  const promise = buildFrameConfigPayload();
+  initialConfigPromise = promise;
+  void promise.catch(() => {
+    if (initialConfigPromise === promise) {
+      initialConfigPromise = null;
+    }
+  });
+}
+async function sendInitialConfigToFrame() {
+  const promise = initialConfigPromise || buildFrameConfigPayload();
+  initialConfigPromise = null;
+  postToFrame("xb-tavern:config", await promise);
+}
+async function sendConfigToFrame(options = {}) {
+  postToFrame("xb-tavern:config", await buildFrameConfigPayload(options));
 }
 async function refreshContext(options = {}) {
   postToFrame("xb-tavern:context", await buildTavernContext(options));
@@ -545,6 +563,7 @@ async function openTavern() {
   }
   frameReady = false;
   pendingMessages = [];
+  prepareInitialConfig();
   installMessageHandler();
   await createOverlay();
 }
@@ -556,6 +575,7 @@ function closeTavern() {
   }
   frameReady = false;
   pendingMessages = [];
+  initialConfigPromise = null;
 }
 function handleFrameMessage(event) {
   const iframe = getIframe();
@@ -566,7 +586,7 @@ function handleFrameMessage(event) {
   switch (data.type) {
     case "xb-tavern:frame-ready":
       frameReady = true;
-      void sendConfigToFrame().then(flushPendingMessages);
+      void sendInitialConfigToFrame().then(flushPendingMessages);
       break;
     case "xb-tavern:close":
       closeTavern();

@@ -109,7 +109,7 @@ test('tavern chat typography follows host SillyTavern font metrics inside the if
     assert.match(markdownSource, /copyButton\.classList\.toggle\('is-copied', copied\);/);
     assert.match(messagesCss, /\.chat-bubble \{[\s\S]*--xb-chat-bubble-x: clamp\(5px, 0\.9vw, 10px\);[\s\S]*padding: 38px var\(--xb-chat-bubble-x\) var\(--xb-chat-bubble-x\);/);
     assert.match(messagesCss, /\.chat-bubble>\.xb-tavern-markdown \{\r?\n\s+margin: 0;\r?\n\s+padding-bottom: 0;/);
-    assert.match(messagesCss, /@media \(max-width: 760px\) \{[\s\S]*\.chat-bubble \{[\s\S]*--xb-chat-bubble-x: 5px;[\s\S]*padding-top: 36px;/);
+    assert.match(messagesCss, /@media \(max-width: 760px\) \{[\s\S]*\.chat-bubble \{[\s\S]*--xb-chat-bubble-x: 7px;[\s\S]*padding-top: 36px;/);
     assert.match(messagesCss, /\.chat-bubble>\.message-actions \{[\s\S]*position: absolute;[\s\S]*top: -1px;[\s\S]*right: -1px;[\s\S]*border-radius: 0 10px 0 8px;[\s\S]*opacity: 0;/);
     assert.match(messagesCss, /\.chat-bubble>\.message-actions button \{[\s\S]*width: 30px;[\s\S]*min-width: 30px;[\s\S]*height: 30px;[\s\S]*min-height: 30px;[\s\S]*padding: 0;/);
     assert.match(messagesCss, /@media \(max-width: 760px\) \{[\s\S]*\.chat-bubble>\.message-actions \{[\s\S]*opacity: 0;[\s\S]*pointer-events: none;[\s\S]*\.chat-bubble\.is-action-tray-open>\.message-actions[\s\S]*opacity: 1;[\s\S]*pointer-events: auto;/);

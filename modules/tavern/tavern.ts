@@ -70,6 +70,7 @@ const BUILD_INFO_PATH = `${extensionFolderPath}/modules/tavern/dist/tavern-build
 let tavernCacheKey = '';
 let frameReady = false;
 let pendingMessages: PendingFrameMessage[] = [];
+let initialConfigPromise: Promise<Record<string, unknown>> | null = null;
 let messageHandlerInstalled = false;
 let overlayResizeHandler: (() => void) | null = null;
 const pendingDrawRequests = new Map<string, AbortController>();
@@ -192,9 +193,29 @@ function flushPendingMessages(): void {
     pendingMessages = [];
 }
 
-async function sendConfigToFrame(options: Record<string, unknown> = {}): Promise<void> {
+async function buildFrameConfigPayload(options: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
     const contextPayload = await buildTavernContext(options);
-    postToFrame('xb-tavern:config', await buildTavernFrameConfig(contextPayload as unknown as Record<string, unknown>));
+    return await buildTavernFrameConfig(contextPayload as unknown as Record<string, unknown>);
+}
+
+function prepareInitialConfig(): void {
+    const promise = buildFrameConfigPayload();
+    initialConfigPromise = promise;
+    void promise.catch(() => {
+        if (initialConfigPromise === promise) {
+            initialConfigPromise = null;
+        }
+    });
+}
+
+async function sendInitialConfigToFrame(): Promise<void> {
+    const promise = initialConfigPromise || buildFrameConfigPayload();
+    initialConfigPromise = null;
+    postToFrame('xb-tavern:config', await promise);
+}
+
+async function sendConfigToFrame(options: Record<string, unknown> = {}): Promise<void> {
+    postToFrame('xb-tavern:config', await buildFrameConfigPayload(options));
 }
 
 async function refreshContext(options: Record<string, unknown> = {}): Promise<void> {
@@ -593,6 +614,7 @@ async function openTavern(): Promise<void> {
     }
     frameReady = false;
     pendingMessages = [];
+    prepareInitialConfig();
     installMessageHandler();
     await createOverlay();
 }
@@ -603,6 +625,7 @@ function closeTavern(): void {
     if (overlay) {overlay.remove();}
     frameReady = false;
     pendingMessages = [];
+    initialConfigPromise = null;
 }
 
 function handleFrameMessage(event: MessageEvent): void {
@@ -612,7 +635,7 @@ function handleFrameMessage(event: MessageEvent): void {
     switch (data.type) {
         case 'xb-tavern:frame-ready':
             frameReady = true;
-            void sendConfigToFrame().then(flushPendingMessages);
+            void sendInitialConfigToFrame().then(flushPendingMessages);
             break;
         case 'xb-tavern:close':
             closeTavern();
