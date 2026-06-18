@@ -11795,10 +11795,7 @@ function Uk(e = {}) {
             <div class="xb-assistant-config-page" data-config-page-panel="delegate" ${E ? "" : "hidden"}>
                 <p class="xb-assistant-config-note">${ba(a)}</p>
                 <div class="xb-assistant-preset-row">
-                    <label class="xb-assistant-preset-field">
-                        <span>已存预设</span>
-                        <select id="xb-assistant-delegate-preset-select"></select>
-                    </label>
+                    <select id="xb-assistant-delegate-preset-select" class="xb-assistant-preset-field" aria-label="已存预设"></select>
                     <div class="xb-assistant-preset-tools is-single" aria-label="分身 API 预设操作">
                         <button id="xb-assistant-delegate-save" type="button" class="xb-assistant-icon-button ${p.className}" title="${p.title}" aria-label="${p.title}" ${b}>${Ro(m)}</button>
                     </div>
@@ -11876,10 +11873,7 @@ function Uk(e = {}) {
             ${k}
             <div class="xb-assistant-config-page" data-config-page-panel="main" ${w ? "" : "hidden"}>
             <div class="xb-assistant-preset-row">
-                <label class="xb-assistant-preset-field">
-                    <span>已存预设</span>
-                    <select id="xb-assistant-preset-select"></select>
-                </label>
+                <select id="xb-assistant-preset-select" class="xb-assistant-preset-field" aria-label="已存预设"></select>
                 <input id="xb-assistant-preset-name" type="hidden" />
                 <div class="xb-assistant-preset-tools" aria-label="API 预设操作">
                     <button id="xb-assistant-new-preset" type="button" class="xb-assistant-icon-button" title="新增预设" aria-label="新增预设" ${u ? "disabled" : ""}>${Ro("add")}</button>
@@ -36598,31 +36592,33 @@ function vU(e = "xb-ebook-root") {
         .xb-ebook-settings-body .xb-assistant-preset-row {
             display: grid;
             grid-template-columns: minmax(0, 1fr) auto;
-            grid-template-rows: auto 40px;
             align-items: center;
             gap: 8px;
         }
-        .xb-ebook-settings-body .xb-assistant-preset-field { display: contents; min-width: 0; }
-        .xb-ebook-settings-body .xb-assistant-preset-field > span:first-child { grid-column: 1; grid-row: 1; }
-        .xb-ebook-settings-body .xb-assistant-preset-field > select { grid-column: 1; grid-row: 2; }
+        .xb-ebook-settings-body .xb-assistant-preset-field {
+            grid-column: 1;
+            min-width: 0;
+            width: 100%;
+            min-height: 40px;
+            height: 40px;
+        }
         .xb-ebook-settings-body .xb-assistant-preset-tools {
             display: grid;
             grid-column: 2;
-            grid-row: 2;
-            grid-template-columns: repeat(4, 34px);
-            align-self: center;
+            grid-template-columns: repeat(4, 40px);
+            align-self: stretch;
             gap: 6px;
         }
         .xb-ebook-settings-body .xb-assistant-preset-tools.is-single {
-            grid-template-columns: 34px;
+            grid-template-columns: 40px;
         }
         .xb-ebook-settings-body .xb-assistant-icon-button {
             display: grid;
             place-items: center;
-            width: 34px;
-            min-width: 34px;
-            height: 34px;
-            min-height: 34px;
+            width: 40px;
+            min-width: 40px;
+            height: 40px;
+            min-height: 40px;
             border: 1px solid rgba(255, 255, 255, 0.10);
             border-radius: 10px;
             background: rgba(0, 0, 0, 0.26);

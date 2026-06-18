@@ -92,10 +92,7 @@ export function buildAgentSettingsPanelMarkup(options = {}) {
             <div class="xb-assistant-config-page" data-config-page-panel="delegate" ${delegateActive ? '' : 'hidden'}>
                 <p class="xb-assistant-config-note">${escapeHtml(delegatePresetHint)}</p>
                 <div class="xb-assistant-preset-row">
-                    <label class="xb-assistant-preset-field">
-                        <span>已存预设</span>
-                        <select id="xb-assistant-delegate-preset-select"></select>
-                    </label>
+                    <select id="xb-assistant-delegate-preset-select" class="xb-assistant-preset-field" aria-label="已存预设"></select>
                     <div class="xb-assistant-preset-tools is-single" aria-label="分身 API 预设操作">
                         <button id="xb-assistant-delegate-save" type="button" class="xb-assistant-icon-button ${saveButton.className}" title="${saveButton.title}" aria-label="${saveButton.title}" ${saveDisabled}>${buildPresetActionIcon(saveIcon)}</button>
                     </div>
@@ -174,10 +171,7 @@ export function buildAgentSettingsPanelMarkup(options = {}) {
             ${tabsMarkup}
             <div class="xb-assistant-config-page" data-config-page-panel="main" ${mainActive ? '' : 'hidden'}>
             <div class="xb-assistant-preset-row">
-                <label class="xb-assistant-preset-field">
-                    <span>已存预设</span>
-                    <select id="xb-assistant-preset-select"></select>
-                </label>
+                <select id="xb-assistant-preset-select" class="xb-assistant-preset-field" aria-label="已存预设"></select>
                 <input id="xb-assistant-preset-name" type="hidden" />
                 <div class="xb-assistant-preset-tools" aria-label="API 预设操作">
                     <button id="xb-assistant-new-preset" type="button" class="xb-assistant-icon-button" title="新增预设" aria-label="新增预设" ${isBusy ? 'disabled' : ''}>${buildPresetActionIcon('add')}</button>

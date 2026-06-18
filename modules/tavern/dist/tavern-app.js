@@ -46252,10 +46252,7 @@ function dle(e = {}) {
             <div class="xb-assistant-config-page" data-config-page-panel="delegate" ${P ? "" : "hidden"}>
                 <p class="xb-assistant-config-note">${Ah(l)}</p>
                 <div class="xb-assistant-preset-row">
-                    <label class="xb-assistant-preset-field">
-                        <span>已存预设</span>
-                        <select id="xb-assistant-delegate-preset-select"></select>
-                    </label>
+                    <select id="xb-assistant-delegate-preset-select" class="xb-assistant-preset-field" aria-label="已存预设"></select>
                     <div class="xb-assistant-preset-tools is-single" aria-label="分身 API 预设操作">
                         <button id="xb-assistant-delegate-save" type="button" class="xb-assistant-icon-button ${h.className}" title="${h.title}" aria-label="${h.title}" ${_}>${Lu(p)}</button>
                     </div>
@@ -46333,10 +46330,7 @@ function dle(e = {}) {
             ${N}
             <div class="xb-assistant-config-page" data-config-page-panel="main" ${x ? "" : "hidden"}>
             <div class="xb-assistant-preset-row">
-                <label class="xb-assistant-preset-field">
-                    <span>已存预设</span>
-                    <select id="xb-assistant-preset-select"></select>
-                </label>
+                <select id="xb-assistant-preset-select" class="xb-assistant-preset-field" aria-label="已存预设"></select>
                 <input id="xb-assistant-preset-name" type="hidden" />
                 <div class="xb-assistant-preset-tools" aria-label="API 预设操作">
                     <button id="xb-assistant-new-preset" type="button" class="xb-assistant-icon-button" title="新增预设" aria-label="新增预设" ${u ? "disabled" : ""}>${Lu("add")}</button>

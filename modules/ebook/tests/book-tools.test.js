@@ -5920,12 +5920,13 @@ test('Ebook settings open as an in-app shared config panel instead of jumping to
     assert.match(html, /id="xb-agent-settings-title">API配置<\/h2>/);
     assert.match(html, /主助手 API/);
     assert.match(html, /分身 API/);
-    assert.match(html, /id="xb-assistant-preset-select"/);
+    assert.match(html, /id="xb-assistant-preset-select" class="xb-assistant-preset-field" aria-label="已存预设"/);
     assert.match(html, /id="xb-assistant-new-preset"/);
     assert.match(html, /id="xb-assistant-rename-preset"/);
     assert.match(html, /id="xb-assistant-save"[\s\S]*<svg/);
     assert.match(html, /id="xb-assistant-delete-preset"[\s\S]*<svg/);
     assert.match(html, /id="xb-assistant-delegate-save"[\s\S]*<svg/);
+    assert.doesNotMatch(html, /<span>已存预设<\/span>/);
     assert.doesNotMatch(html, />(?:➕|✏|💾|🗑)/u);
     assert.match(html, /id="xb-assistant-provider"/);
     assert.match(html, /id="xb-assistant-temperature"/);

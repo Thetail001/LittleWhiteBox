@@ -2110,31 +2110,33 @@ export function injectEbookStyles(rootId = 'xb-ebook-root') {
         .xb-ebook-settings-body .xb-assistant-preset-row {
             display: grid;
             grid-template-columns: minmax(0, 1fr) auto;
-            grid-template-rows: auto 40px;
             align-items: center;
             gap: 8px;
         }
-        .xb-ebook-settings-body .xb-assistant-preset-field { display: contents; min-width: 0; }
-        .xb-ebook-settings-body .xb-assistant-preset-field > span:first-child { grid-column: 1; grid-row: 1; }
-        .xb-ebook-settings-body .xb-assistant-preset-field > select { grid-column: 1; grid-row: 2; }
+        .xb-ebook-settings-body .xb-assistant-preset-field {
+            grid-column: 1;
+            min-width: 0;
+            width: 100%;
+            min-height: 40px;
+            height: 40px;
+        }
         .xb-ebook-settings-body .xb-assistant-preset-tools {
             display: grid;
             grid-column: 2;
-            grid-row: 2;
-            grid-template-columns: repeat(4, 34px);
-            align-self: center;
+            grid-template-columns: repeat(4, 40px);
+            align-self: stretch;
             gap: 6px;
         }
         .xb-ebook-settings-body .xb-assistant-preset-tools.is-single {
-            grid-template-columns: 34px;
+            grid-template-columns: 40px;
         }
         .xb-ebook-settings-body .xb-assistant-icon-button {
             display: grid;
             place-items: center;
-            width: 34px;
-            min-width: 34px;
-            height: 34px;
-            min-height: 34px;
+            width: 40px;
+            min-width: 40px;
+            height: 40px;
+            min-height: 40px;
             border: 1px solid rgba(255, 255, 255, 0.10);
             border-radius: 10px;
             background: rgba(0, 0, 0, 0.26);

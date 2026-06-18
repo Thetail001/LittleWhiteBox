@@ -319,8 +319,9 @@ test('agent API settings keep preset actions compact and model controls before t
     assert.match(markupSource, /saving: '<path class="xb-assistant-save-spinner"/);
     assert.match(markupSource, /success: '<path d="M20 6 9 17l-5-5"/);
     assert.match(markupSource, /error: '<path d="M18 6 6 18"/);
-    assert.match(markupSource, /class="xb-assistant-preset-row"[\s\S]*id="xb-assistant-preset-select"[\s\S]*id="xb-assistant-new-preset"[\s\S]*buildPresetActionIcon\('add'\)[\s\S]*id="xb-assistant-rename-preset"[\s\S]*buildPresetActionIcon\('rename'\)[\s\S]*id="xb-assistant-save"[\s\S]*buildPresetActionIcon\(saveIcon\)[\s\S]*id="xb-assistant-delete-preset"[\s\S]*buildPresetActionIcon\('delete'\)/);
+    assert.match(markupSource, /class="xb-assistant-preset-row"[\s\S]*<select id="xb-assistant-preset-select" class="xb-assistant-preset-field" aria-label="已存预设"><\/select>[\s\S]*id="xb-assistant-new-preset"[\s\S]*buildPresetActionIcon\('add'\)[\s\S]*id="xb-assistant-rename-preset"[\s\S]*buildPresetActionIcon\('rename'\)[\s\S]*id="xb-assistant-save"[\s\S]*buildPresetActionIcon\(saveIcon\)[\s\S]*id="xb-assistant-delete-preset"[\s\S]*buildPresetActionIcon\('delete'\)/);
     assert.match(markupSource, /id="xb-assistant-delegate-preset-select"[\s\S]*id="xb-assistant-delegate-save"[\s\S]*buildPresetActionIcon\(saveIcon\)/);
+    assert.doesNotMatch(markupSource, /<span>已存预设<\/span>/);
     assert.doesNotMatch(markupSource, />(?:➕|✏|💾|🗑)/u);
     assert.match(markupSource, /id="xb-assistant-model"[\s\S]*id="xb-assistant-model-pulled"[\s\S]*id="xb-assistant-temperature"/);
     assert.match(markupSource, /id="xb-assistant-delegate-model"[\s\S]*id="xb-assistant-delegate-model-pulled"[\s\S]*id="xb-assistant-delegate-temperature"/);
@@ -331,11 +332,11 @@ test('agent API settings keep preset actions compact and model controls before t
     assert.match(panelSource, /#xb-assistant-new-preset/);
     assert.match(panelSource, /#xb-assistant-rename-preset/);
     assert.match(panelSource, /#xb-assistant-delegate-save/);
-    assert.match(apiCss, /\.tavern-api-settings \.xb-assistant-preset-row \{[\s\S]*grid-template-columns: minmax\(0, 1fr\) auto;/);
+    assert.match(apiCss, /\.tavern-api-settings \.xb-assistant-preset-row \{[^}]*grid-template-columns: minmax\(0, 1fr\) auto;/);
     assert.match(apiCss, /xb-tavern-api-save-spin/);
-    assert.match(apiCss, /\.tavern-api-settings \.xb-assistant-preset-row \{[\s\S]*grid-template-rows: auto 40px;/);
-    assert.match(apiCss, /\.tavern-api-settings \.xb-assistant-preset-tools \{[\s\S]*grid-row: 2;[\s\S]*grid-template-columns: repeat\(4, 34px\);/);
-    assert.match(apiCss, /\.tavern-api-settings \.xb-assistant-preset-tools\.is-single \{[\s\S]*grid-template-columns: 34px;/);
+    assert.doesNotMatch(apiCss, /\.tavern-api-settings \.xb-assistant-preset-row \{[^}]*grid-template-rows:/);
+    assert.match(apiCss, /\.tavern-api-settings \.xb-assistant-preset-tools \{[^}]*grid-template-columns: repeat\(4, 40px\);/);
+    assert.match(apiCss, /\.tavern-api-settings \.xb-assistant-icon-button \{[^}]*height: 40px;/);
     assert.match(apiCss, /\.tavern-api-settings \.xb-assistant-icon-button svg \{[\s\S]*stroke: currentColor;/);
 });
 
