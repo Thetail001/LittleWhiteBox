@@ -48,7 +48,6 @@ const {
     stateMemoryFile,
 } = memory;
 const {
-    activateMapDocument,
     activeMapDocId,
     mapStateDocuments,
     mapStateDocument,
@@ -122,7 +121,6 @@ function selectMobileMemoryFile(path: string) {
         :active-doc-id="activeMapDocId"
         :document="mapStateDocument"
         :patches="mapStatePatches"
-        @activate-document="activateMapDocument"
       />
       <article class="tavern-current-state">
         <div
@@ -239,4 +237,3 @@ function selectMobileMemoryFile(path: string) {
     </section>
   </aside>
 </template>
-

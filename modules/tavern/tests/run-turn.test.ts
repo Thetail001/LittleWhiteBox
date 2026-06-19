@@ -10,6 +10,7 @@ import db, {
     getTavernSession,
     listTavernManagerRuns,
     listTavernMessages,
+    updateTavernSessionState,
     updateTavernMessage,
 } from '../shared/session-db';
 import {
@@ -2859,6 +2860,68 @@ test('xb tavern simulated request injects only the active map digest without ful
     assert.equal(result.buildSnapshot.structuredStates?.[0]?.docId, 'office');
     assert.equal(result.buildSnapshot.structuredStates?.[0]?.revision, 1);
     assert.ok(Number(result.buildSnapshot.structuredStates?.[0]?.digestChars) > 0);
+});
+
+test('xb tavern simulated request falls back to main map digest when active map id is orphaned', async () => {
+    await resetDb();
+    const preset = createDefaultXbTavernPreset();
+    const session = await createTavernSession({
+        title: 'Map digest fallback',
+        characterId: 'char-map-fallback',
+        characterName: 'Mapper',
+        contextSnapshot: {
+            character: { id: 'char-map-fallback', name: 'Mapper', description: 'A cartographer.' },
+        },
+        presetId: preset.id,
+        presetName: preset.name,
+    });
+    await executeTavernStateTool(session.id, 'StatePatch', {
+        docId: 'main',
+        ops: [{
+            op: 'meta',
+            set: { name: 'Main Square', theme: 'parchment', viewBox: [0, 0, 500, 400], status: 'active' },
+        }, {
+            op: 'add',
+            element: { id: 'square', at: [40, 40], rect: [90, 90], cat: 'terrain', text: 'Square' },
+        }],
+    });
+    await executeTavernStateTool(session.id, 'StatePatch', {
+        docId: 'office',
+        activate: true,
+        ops: [{
+            op: 'meta',
+            set: { name: 'Office', theme: 'parchment', viewBox: [0, 0, 500, 400], status: 'active' },
+        }, {
+            op: 'add',
+            element: { id: 'office-desk', at: [80, 80], rect: [120, 60], cat: 'furniture', text: 'Desk' },
+        }],
+    });
+    await updateTavernSessionState(session.id, { activeMapDocId: 'missing-map' });
+
+    const result = await simulateXbTavernRequest({
+        sessionId: session.id,
+        agentConfig: {
+            currentPresetName: '酒馆 OpenAI',
+            presets: {
+                '酒馆 OpenAI': {
+                    provider: 'sillytavern-openai-compatible',
+                    modelConfigs: {
+                        'sillytavern-openai-compatible': {
+                            model: 'gpt-test',
+                        },
+                    },
+                },
+            },
+        },
+        contextSnapshot: session.contextSnapshot || {},
+        preset,
+        currentUserMessage: '我回到广场。',
+    });
+
+    assert.match(result.buildSnapshot.rawMessagesJson, /Main Square/);
+    assert.match(result.buildSnapshot.rawMessagesJson, /Square/);
+    assert.doesNotMatch(result.buildSnapshot.rawMessagesJson, /Office/);
+    assert.equal(result.buildSnapshot.structuredStates?.[0]?.docId, 'main');
 });
 
 test('xb tavern simulated request injects only memory files when cartography is disabled', async () => {

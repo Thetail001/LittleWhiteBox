@@ -57,7 +57,7 @@ import {
     type TavernStructuredStatePatchRecord,
     type TavernSessionRecord,
 } from '../shared/session-db';
-import { executeTavernStateTool, getTavernMapStateForSession, type TavernMapStateDocumentItem } from '../shared/structured-state';
+import { getTavernMapStateForSession, type TavernMapStateDocumentItem } from '../shared/structured-state';
 import {
     normalizeTavernSessionContract,
     type TavernSessionContract,
@@ -2263,17 +2263,6 @@ async function refreshManagerRecords(sessionId = selectedSessionId.value) {
     }
 }
 
-async function activateMapDocument(docId = '') {
-    const id = String(docId || '').trim();
-    if (!selectedSessionId.value || !id || id === activeMapDocId.value) {return;}
-    await executeTavernStateTool(selectedSessionId.value, 'StatePatch', {
-        docId: id,
-        activate: true,
-        ops: [],
-    }, { caller: 'chat' });
-    await refreshManagerRecords(selectedSessionId.value);
-}
-
 async function pollLiveManagerRecords() {
     managerStatusClock.value = Date.now();
     if (managerRecordsPollRunning) {return;}
@@ -4237,7 +4226,6 @@ provide(TAVERN_APP_UI_CONTEXT, {
     },
     workspace: {
         activeMemoryFiles,
-        activateMapDocument,
         activeMapDocId,
         chatWorkspacePanel,
         mapStateDocuments,

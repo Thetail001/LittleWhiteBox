@@ -52,9 +52,6 @@ const props = withDefaults(defineProps<{
     activeDocId: 'main',
     compact: false,
 });
-const emit = defineEmits<{
-    (event: 'activate-document', docId: string): void;
-}>();
 
 const replayKey = ref(0);
 const replayMode = ref<MapReplayMode>('patch');
@@ -202,8 +199,6 @@ const totalPatchCount = computed(() => selectedDocPatches.value.length);
 const mapDocuments = computed(() => Array.isArray(props.documents) && props.documents.length
     ? props.documents
     : props.document ? [{ ...props.document, active: true }] : []);
-const selectedIsActive = computed(() => String(selectedDocumentRecord.value?.docId || '') === String(props.activeDocId || 'main'));
-const canActivateSelectedDocument = computed(() => !!selectedDocumentRecord.value?.docId && !selectedIsActive.value);
 const timelineLabel = computed(() => activeTimelineFrame.value ? `${activeTimelineFrame.value.index + 1} / ${timelineFrames.value.length}` : '0 / 0');
 const hasRenderableMap = computed(() => isRenderableMapDocument(activeMapDocument.value));
 const showMapBadge = computed(() => !!activePatch.value);
@@ -635,12 +630,6 @@ function handleSelectedDocChange(event: Event) {
     resetMapPan();
 }
 
-function activateSelectedDocument() {
-    const docId = String(selectedDocumentRecord.value?.docId || '').trim();
-    if (!docId || selectedIsActive.value) {return;}
-    emit('activate-document', docId);
-}
-
 function handleMapPointerDown(event: PointerEvent) {
     const svg = event.currentTarget instanceof SVGSVGElement ? event.currentTarget : mapSvgRef.value;
     if (!svg || event.button !== 0) {return;}
@@ -717,14 +706,6 @@ function handleMapPointerEnd(event: PointerEvent) {
         <button
           type="button"
           class="tavern-editor-mode-button"
-          :disabled="!canActivateSelectedDocument"
-          @click="activateSelectedDocument"
-        >
-          设为当前
-        </button>
-        <button
-          type="button"
-          class="tavern-editor-mode-button"
           :class="{ active: replayMode === 'patch' }"
           :disabled="!latestPatch"
           @click="replayLatestPatch"
@@ -775,14 +756,6 @@ function handleMapPointerEnd(event: PointerEvent) {
             {{ mapDocumentItem.active ? '当前 · ' : '' }}{{ mapDocumentItem.title || mapDocumentItem.docId }}
           </option>
         </select>
-        <button
-          type="button"
-          class="tavern-map-active-button"
-          :disabled="!canActivateSelectedDocument"
-          @click="activateSelectedDocument"
-        >
-          设为当前
-        </button>
       </div>
       <svg
         ref="mapSvgRef"
@@ -1006,14 +979,6 @@ function handleMapPointerEnd(event: PointerEvent) {
             {{ mapDocumentItem.active ? '当前 · ' : '' }}{{ mapDocumentItem.title || mapDocumentItem.docId }}
           </option>
         </select>
-        <button
-          type="button"
-          class="tavern-map-active-button"
-          :disabled="!canActivateSelectedDocument"
-          @click="activateSelectedDocument"
-        >
-          设为当前
-        </button>
       </div>
       <strong>地图待初始化</strong>
       <span>当前会话已备好种子地图；剧情出现明确空间变化后，后台会激活并维护它。</span>

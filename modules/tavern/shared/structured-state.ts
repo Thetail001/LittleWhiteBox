@@ -213,6 +213,33 @@ async function setActiveMapDocId(sessionId = '', docId = DEFAULT_DOC_ID): Promis
     return activeMapDocId;
 }
 
+async function resolveTavernActiveMapDocument(
+    sessionId = '',
+    options: { includeStale?: boolean } = {},
+): Promise<{
+    requestedDocId: string;
+    activeDocId: string;
+    record: TavernStructuredStateDocumentRecord | null;
+    documents: TavernStructuredStateDocumentRecord[];
+}> {
+    await ensureSeedStructuredStateDocument(sessionId, { touchSession: false });
+    const requestedDocId = await getActiveMapDocId(sessionId);
+    const documents = await listTavernStructuredStateDocuments(sessionId, {
+        docType: MAP_DOC_TYPE,
+        includeStale: options.includeStale === true,
+    });
+    const record = documents.find((document) => document.docId === requestedDocId)
+        || documents.find((document) => document.docId === DEFAULT_DOC_ID)
+        || documents[0]
+        || null;
+    return {
+        requestedDocId,
+        activeDocId: record?.docId || requestedDocId,
+        record,
+        documents,
+    };
+}
+
 function cloneJson<T>(value: T): T {
     return JSON.parse(JSON.stringify(value)) as T;
 }
@@ -1435,14 +1462,17 @@ export async function executeTavernStateTool(
         const docType = normalizeDocType(args.docType || MAP_DOC_TYPE);
         const explicitDocId = normalizeText(args.docId, 80);
         const docId = normalizeDocId(explicitDocId || (
-            toolName === TAVERN_STATE_TOOL_NAMES.READ || toolName === TAVERN_STATE_TOOL_NAMES.PATCH
-                ? await getActiveMapDocId(id)
+            docType === MAP_DOC_TYPE && (toolName === TAVERN_STATE_TOOL_NAMES.READ || toolName === TAVERN_STATE_TOOL_NAMES.PATCH)
+                ? (await resolveTavernActiveMapDocument(id)).activeDocId
                 : DEFAULT_DOC_ID
         ));
 
         if (toolName === TAVERN_STATE_TOOL_NAMES.LIST) {
-            const documents = await listTavernStructuredStateDocuments(id, { docType, includeStale: true });
-            const activeMapDocId = await getActiveMapDocId(id);
+            const activeMapState = docType === MAP_DOC_TYPE
+                ? await resolveTavernActiveMapDocument(id, { includeStale: true })
+                : null;
+            const documents = activeMapState?.documents || await listTavernStructuredStateDocuments(id, { docType, includeStale: true });
+            const activeMapDocId = activeMapState?.activeDocId || DEFAULT_DOC_ID;
             const sorted = [...documents].sort((left, right) => {
                 const leftActive = left.docType === MAP_DOC_TYPE && left.docId === activeMapDocId;
                 const rightActive = right.docType === MAP_DOC_TYPE && right.docId === activeMapDocId;
@@ -1765,9 +1795,9 @@ export async function getTavernMapStateForSession(sessionId = ''): Promise<{
     activeDocument: TavernStructuredStateDocumentRecord | null;
     activePatches: TavernStructuredStatePatchRecord[];
 }> {
-    await ensureSeedStructuredStateDocument(sessionId, { touchSession: false });
-    const activeDocId = await getActiveMapDocId(sessionId);
-    const rows = await listTavernStructuredStateDocuments(sessionId, { docType: MAP_DOC_TYPE, includeStale: false });
+    const resolved = await resolveTavernActiveMapDocument(sessionId);
+    const activeDocId = resolved.activeDocId;
+    const rows = resolved.documents;
     const documents = rows
         .map((record) => {
             const normalized = normalizeMapDocumentFromRecord(record);
@@ -1789,7 +1819,7 @@ export async function getTavernMapStateForSession(sessionId = ''): Promise<{
             return (Number(right.updatedAt) || 0) - (Number(left.updatedAt) || 0)
                 || (Number(right.revision) || 0) - (Number(left.revision) || 0);
         });
-    const record = rows.find((row) => row.docId === activeDocId) || rows.find((row) => row.docId === DEFAULT_DOC_ID) || null;
+    const record = resolved.record;
     const normalizedDocument = record ? normalizeMapDocumentFromRecord(record) : null;
     const activePatches = record
         ? await listTavernStructuredStatePatches({ sessionId, docType: MAP_DOC_TYPE, docId: record.docId, limit: 80 })
@@ -1811,20 +1841,15 @@ export async function getTavernMapStateForSession(sessionId = ''): Promise<{
 }
 
 export async function listTavernStructuredStateDigests(sessionId = '') {
-    const activeDocId = await getActiveMapDocId(sessionId);
-    const documents = await listTavernStructuredStateDocuments(sessionId, { docType: MAP_DOC_TYPE, includeStale: false });
-    return documents
-        .filter((document) => document.docType === MAP_DOC_TYPE && document.docId === activeDocId)
-        .map((document) => ({
-            record: document,
-            normalized: normalizeMapDocumentFromRecord(document),
-        }))
-        .filter(({ normalized }) => normalized.meta.status === 'active' && !isUninitializedMapData(normalized))
-        .map(({ record, normalized }) => ({
-            docType: record.docType,
-            docId: record.docId,
-            title: mapTitle(normalized),
-            revision: record.revision,
-            digest: createMapDigest(normalized, record.revision),
-        }));
+    const { record } = await resolveTavernActiveMapDocument(sessionId);
+    if (!record) {return [];}
+    const normalized = normalizeMapDocumentFromRecord(record);
+    if (normalized.meta.status !== 'active' || isUninitializedMapData(normalized)) {return [];}
+    return [{
+        docType: record.docType,
+        docId: record.docId,
+        title: mapTitle(normalized),
+        revision: record.revision,
+        digest: createMapDigest(normalized, record.revision),
+    }];
 }

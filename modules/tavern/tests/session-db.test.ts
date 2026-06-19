@@ -74,7 +74,12 @@ import {
     DEFAULT_TAVERN_ASSISTANT_PRESET_VERSION,
     normalizeTavernAssistantPreset,
 } from '../shared/assistant-presets';
-import { executeTavernStateTool, getTavernMapStateForSession, getTavernStateToolDefinitions } from '../shared/structured-state';
+import {
+    executeTavernStateTool,
+    getTavernMapStateForSession,
+    getTavernStateToolDefinitions,
+    listTavernStructuredStateDigests,
+} from '../shared/structured-state';
 import { retrieveXbTavernMemoryContext } from '../shared/memory-retrieval';
 import * as looseToolArgumentsModule from '../../agent-core/runtime/loose-tool-arguments.js';
 
@@ -1595,6 +1600,45 @@ test('StatePatch supports explicit active map switching without replacing other 
     assert.equal(state.activeDocId, 'office');
     assert.equal(state.activeDocument?.docId, 'office');
     assert.deepEqual((await listTavernStructuredStatePatches({ sessionId: session.id, docId: 'office' })).map((patch) => patch.revision), [1]);
+});
+
+test('map active resolution falls back to main consistently across workspace, tools, and digests', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Map fallback' });
+    const mainPatch = await executeTavernStateTool(session.id, 'StatePatch', {
+        docId: 'main',
+        ops: [
+            { op: 'meta', set: { name: '主地图', status: 'active' } },
+            { op: 'add', element: { id: 'plaza', at: [30, 30], rect: [40, 40], cat: 'terrain', text: '广场' } },
+        ],
+    });
+    assert.equal(mainPatch.ok, true);
+
+    await updateTavernSessionState(session.id, { activeMapDocId: 'missing-map' });
+
+    const state = await getTavernMapStateForSession(session.id);
+    assert.equal(state.activeDocId, 'main');
+    assert.equal(state.activeDocument?.docId, 'main');
+    assert.deepEqual(state.documents.map((document) => [document.docId, document.active]), [
+        ['main', true],
+    ]);
+
+    const listed = await executeTavernStateTool(session.id, 'StateList', {});
+    assert.equal(listed.ok, true);
+    assert.equal(listed.docId, 'main');
+    assert.deepEqual((listed.documents || []).map((document) => [document.docId, document.active]), [
+        ['main', true],
+    ]);
+
+    const activeSummary = await executeTavernStateTool(session.id, 'StateRead', { mode: 'summary' });
+    assert.equal(activeSummary.ok, true);
+    assert.equal(activeSummary.docId, 'main');
+
+    const digests = await listTavernStructuredStateDigests(session.id);
+    assert.deepEqual(digests.map((digest) => digest.docId), ['main']);
+    assert.match(digests[0]?.digest || '', /主地图|广场/);
 });
 
 test('StatePatch dedupes actors by actorKey across map documents', async () => {

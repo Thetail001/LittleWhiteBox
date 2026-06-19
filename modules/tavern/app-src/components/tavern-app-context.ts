@@ -412,7 +412,6 @@ export interface TavernMemoryContext {
 
 export interface TavernWorkspaceContext {
     activeMemoryFiles: TavernReadable<TavernMemoryIndexFileEntry[]>;
-    activateMapDocument: TavernCommand<[docId?: string], Promise<void>>;
     activeMapDocId: Ref<string>;
     chatWorkspacePanel: Ref<string>;
     mapStateDocuments: Ref<TavernMapStateDocumentItem[]>;

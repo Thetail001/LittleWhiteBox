@@ -434,6 +434,8 @@ test('tavern chat exposes local settings modals without leaving the session', ()
 });
 
 test('tavern map update badge stays collapsed until requested', () => {
+    const appSource = readRepoFile('modules/tavern/app-src/App.vue');
+    const contextSource = readRepoFile('modules/tavern/app-src/components/tavern-app-context.ts');
     const mapPanelSource = readRepoFile('modules/tavern/app-src/components/TavernMapPanel.vue');
     const mapCss = readRepoFile('modules/tavern/app-src/styles/chat/map.css');
 
@@ -443,8 +445,12 @@ test('tavern map update badge stays collapsed until requested', () => {
     assert.match(mapPanelSource, /const mapPanOffset = ref<\[number, number\]>\(\[0, 0\]\)/);
     assert.match(mapPanelSource, /function handleMapPointerDown\(event: PointerEvent\)/);
     assert.match(mapPanelSource, /@pointerdown="handleMapPointerDown"[\s\S]*@pointermove="handleMapPointerMove"[\s\S]*@pointerup="handleMapPointerEnd"[\s\S]*@pointercancel="handleMapPointerEnd"/);
+    assert.doesNotMatch(mapPanelSource, /tavern-map-active-button|设为当前|activate-document/);
+    assert.doesNotMatch(appSource, /activateMapDocument/);
+    assert.doesNotMatch(contextSource, /activateMapDocument/);
     assert.match(mapCss, /\.tavern-chat\.xb-page \.tavern-map-canvas svg \{[\s\S]*cursor: grab;[\s\S]*touch-action: none;[\s\S]*user-select: none;/);
     assert.match(mapCss, /\.tavern-chat\.xb-page \.tavern-map-canvas\.is-panning svg \{[\s\S]*cursor: grabbing;/);
+    assert.doesNotMatch(mapCss, /tavern-map-active-button/);
 });
 
 test('tavern UI context is grouped by page responsibility instead of one flat bag', () => {
