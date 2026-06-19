@@ -479,26 +479,35 @@
     }
 
     .compose-menu-popover {
-        position: fixed;
-        right: 10px;
-        bottom: calc(10px + env(safe-area-inset-bottom, 0px));
-        left: 10px;
+        position: absolute;
+        right: auto;
+        bottom: calc(100% + 8px);
+        left: 0;
         z-index: 97;
-        width: auto;
-        max-height: calc(100vh - 20px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
-        max-height: calc(100dvh - 20px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+        width: min(280px, calc(100vw - 20px));
+        max-height: calc(100vh - 82px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+        max-height: calc(100dvh - 82px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
         overflow: auto;
         border-radius: 16px;
         padding: 8px;
     }
 
     .compose-menu-popover.is-author-note {
-        width: auto;
-        max-height: calc(100vh - 20px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
-        max-height: calc(100dvh - 20px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+        width: min(360px, calc(100vw - 20px));
+        height: min(560px, calc(100vh - 82px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)));
+        height: min(560px, calc(100dvh - 82px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)));
+        overflow: hidden;
+    }
+
+    .compose-menu-popover.is-author-note .compose-author-note-panel {
+        height: 100%;
+        min-height: 0;
+        overflow: auto;
+        overscroll-behavior: contain;
     }
 
     .compose-author-note-field textarea {
+        resize: none;
         max-height: min(190px, 34vh);
     }
 

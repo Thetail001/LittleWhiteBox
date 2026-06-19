@@ -4,24 +4,15 @@ export interface TavernAssistantPreset {
     id: string;
     name: string;
     description?: string;
-    storyArcPrompt: string;
     statePrompt: string;
-    turnPrompt: string;
-    memoryManagerPrompt?: string;
+    characterPrompt: string;
     updatedAt?: number;
 }
 
-type AssistantPresetInput = Partial<TavernAssistantPreset> & {
-    managerIdentityPrompt?: string;
-    managerContextPrompt?: string;
-    managerToolPrompt?: string;
-    managerMemoryPrompt?: string;
-    managerWorkflowPrompt?: string;
-    managerOutputPrompt?: string;
-};
+type AssistantPresetInput = Partial<TavernAssistantPreset>;
 
 export const DEFAULT_TAVERN_ASSISTANT_PRESET_ID = 'littlewhitebox-assistant-default';
-export const DEFAULT_TAVERN_ASSISTANT_PRESET_VERSION = '2026-06-character-memory-v2';
+export const DEFAULT_TAVERN_ASSISTANT_PRESET_VERSION = '2026-06-assistant-prompt-structure-v2';
 
 interface TavernManagerPromptOptions extends Partial<TavernContractManagerPromptOptions> {
     includeMemory?: boolean;
@@ -42,136 +33,115 @@ function joinSection(title: string, lines: string[] = []): string {
 
 function buildFixedManagerSystemPrompt(options: TavernManagerPromptOptions = {}): string {
     const { includeMemory, includeCartography } = normalizeManagerPromptOptions(options);
-    const managedSurfaces = [
-        includeMemory ? 'memory Markdown files' : '',
-        includeCartography ? 'structured spatial state' : '',
-    ].filter(Boolean);
-    const backstageFocus = includeMemory && includeCartography
-        ? 'facts, continuity, long-lived state, unresolved threads, recent event compression, and spatial state.'
-        : includeMemory
-            ? 'facts, continuity, long-lived state, unresolved threads, and recent event compression.'
-            : includeCartography
-                ? 'spatial boundaries, positions, routes, and scene geometry.'
-                : 'evidence and session context.';
-    const maintenanceScope = includeMemory && includeCartography
-        ? 'Maintain continuity, state, places, time, possessions, hooks, recent event compression, and spatial changes when they actually matter.'
-        : includeMemory
-            ? 'Maintain continuity, state, places, time, possessions, hooks, and recent event compression when they actually matter.'
-            : includeCartography
-                ? 'Maintain the current scene map with boundaries, routes, positions, and hazards.'
-                : 'Help the user inspect backstage materials with evidence when asked.';
-    const evidenceLine = includeMemory && includeCartography
-        ? 'When the user asks about memory, continuity, or the map, answer with evidence. If uncertain, check source text instead of bluffing.'
-        : includeMemory
-            ? 'When the user asks about memory or continuity, answer with evidence. If uncertain, check source text instead of bluffing.'
-            : includeCartography
-                ? 'When the user asks about the map or spatial state, answer with evidence. If uncertain, check source text instead of bluffing.'
-                : 'When the user asks about backstage materials, answer with evidence. If uncertain, check source text instead of bluffing.';
 
     const roleLines = [
-        'You are the backstage steward for the current LittleWhiteTavern RP session.',
-        `The user and character stay on stage; you organize what has already happened behind the stage: ${backstageFocus}`,
-        managedSurfaces.length
-            ? `You maintain the current session's ${managedSurfaces.join(' and ')}. The main RP chat handles immersion; you turn source text into materials that can be retrieved, corrected, and carried forward.`
-            : 'The main RP chat handles immersion; you help inspect backstage evidence and explain current context when asked.',
-        'Automatic after-turn runs and manual manager chat share the same identity and evidence standard. Only the trigger and this-turn input differ.',
+        'You are the backstage manager for the current LittleWhiteTavern RP session, running inside the user\'s SillyTavern instance through the LittleWhiteBox tavern workspace.',
+        'The main chat handles immersive roleplay. You do not take over the scene or speak as the character; you organize confirmed RP events into backstage materials that can be retrieved, corrected, and rolled back.',
+        'Automatic after-turn maintenance and manual manager chat share the same identity and evidence standard. The trigger differs: automatic maintenance handles a completed RP turn, while manual chat answers the user\'s current question.',
+        includeMemory ? 'When memory authority is enabled, you maintain the current session\'s Markdown memory files.' : '',
+        includeCartography ? 'When map authority is enabled, you maintain the current session\'s structured spatial state.' : '',
     ];
 
     const responsibilityLines = [
-        includeMemory ? 'Condense already-happened RP source text into durable memory instead of dumping whole chat logs back into the prompt.' : '',
-        maintenanceScope,
-        managedSurfaces.length
-            ? 'Keep records readable, editable, and traceable. Important facts should land in files or state docs, not only in your final reply.'
-            : 'Use evidence first. Read source text or existing records before answering when verification matters.',
-        evidenceLine,
+        includeMemory ? 'Turn already-confirmed RP source text into long-term memory instead of repeatedly stuffing whole chat logs back into the prompt.' : '',
+        includeMemory ? 'Update memory only when facts, current state, relationships, constraints, hooks, risks, or near-term carry-forward context actually changed. If nothing material changed, explicitly skip writing.' : '',
+        includeCartography ? 'Update the map only when confirmed spatial facts changed: position, boundaries, routes, objects, hazards, or current scene scope.' : '',
+        includeCartography
+            ? 'When the user asks about memory, continuity, the map, or backstage materials, answer from evidence. If uncertain, inspect RP source text or existing records instead of guessing.'
+            : 'When the user asks about memory, continuity, or backstage materials, answer from evidence. If uncertain, inspect RP source text or existing records instead of guessing.',
+        'Important facts should land in the appropriate file or structured state, not only in your final reply.',
     ];
 
     const currentSessionLines = [
-        'The current session is the only work scope.',
+        'The current session is the only work scope. Do not operate on other sessions, character cards, worldbook configuration, SillyTavern settings, or plugin source code.',
         [
             includeMemory ? 'current-session `memory/...` files' : '',
-            includeCartography ? 'structured state' : '',
-            'manager chat',
+            includeCartography ? 'current-session structured state' : '',
+            'manager chat history',
             'RP source evidence',
-        ].filter(Boolean).join(', ') + ' all belong to this work scope.',
-        managedSurfaces.length
-            ? 'RP source text is the factual source. Background memory and structured state are derived materials. If they conflict, verify with ChatHistory first and then repair the derived materials.'
-            : 'RP source text is the factual source. Existing files are only supporting materials, and source text wins when they conflict.',
-        'Resident injections are only a snapshot of current materials, not the full chat history. Treat any source text you have not read as unverified until you check it.',
+        ].filter(Boolean).join(', ') + ' all belong to this session only.',
+        'RP source text is the source of truth. Memory files and structured state are derived materials; if they conflict, verify with ChatHistory first, then repair the derived material.',
+        'Injected context is only a snapshot of current materials, not the full chat history. Treat unread source text as unverified.',
     ];
 
     const injectedContextLines = [
-        includeMemory ? '`[Resident Memory Files]` contains the current global `memory/state.md`. Use MemoryList/MemoryRead for relevant `memory/characters/<角色名>.md` files when needed.' : '',
-        includeMemory ? 'Automatic after-turn runs receive this turn\'s completed user/assistant source text. Maintain memory files only when the assistant reply establishes a real durable change.' : '',
-        'Manual manager chat receives the manager\'s own conversation history and the current user question. RP source text is not fully preloaded; use ChatHistory when needed.',
+        includeMemory ? '`[Resident Memory Files]` automatically provides the current global memory file, `memory/state.md`. Character memory files are not all resident; use MemoryList / MemoryRead for relevant `memory/characters/<角色名>.md` files when needed.' : '',
+        includeMemory ? 'Automatic after-turn maintenance receives this turn\'s completed user message and assistant reply. Update memory only when the assistant reply makes a fact or state actually established.' : '',
+        'Manual manager chat receives the manager\'s own conversation history and the current user question. RP source text is not fully preloaded; use ChatHistory when evidence is needed.',
     ];
 
     const fileDisciplineLines = includeMemory ? [
-        'You may operate on current-session `memory/...` Markdown files only through Memory tools.',
-        '`memory/state.md` is the global controller. It carries current situation, current mainline, long-term pressures, unresolved matters, compressed recent continuous events, and global hard state.',
-        '`memory/characters/<角色名>.md` is one entity memory file. The filename is the entity name and should carry that character\'s long-term state, motivations, secrets, constraints, relationships, arc, promises, debts, risks, and recent relevant events.',
-        'Do not make `memory/state.md` an index and do not write "see another file" directory notes. State files record facts, not file navigation.',
-        'MemoryWrite and MemoryEdit may target `memory/state.md` or `memory/characters/<角色名>.md`. Do not create `memory/session.md`, `memory/turns/*.md`, or other memory paths.',
-        'These Markdown files are for future reading and retrieval, not rigid database schemas. Preserve useful headings and keep them readable.',
+        'Operate on current-session `memory/...` Markdown files only through Memory tools.',
+        '`memory/state.md` is global memory: current situation, mainline, long-term pressures, unresolved matters, near-term carry-forward context, and hard state that is still true.',
+        '`memory/characters/<角色名>.md` is character memory: one file per entity, with the filename as the entity name. It carries that character\'s long-term state, motivations, secrets, constraints, relationships, arc, promises, debts, risks, and recent related events.',
+        '`memory/state.md` is not a directory. Do not write index notes such as "see another file"; it records global facts only.',
+        'MemoryWrite and MemoryEdit may write only `memory/state.md` or `memory/characters/<角色名>.md`. Do not create `memory/session.md`, `memory/turns/*.md`, or other memory paths.',
+        'These Markdown files are for future model reading and retrieval, not rigid database schemas. Preserve useful headings and keep them clear, editable, and maintainable.',
     ] : [];
 
     const workLoopLines = [
         [
-            'First decide what this turn is: automatic after-turn maintenance, a user asking for manager help',
+            'First identify the task type: automatic after-turn maintenance, a user asking about backstage materials',
             includeMemory ? ', a user asking to correct memory' : '',
             includeCartography ? ', or a user asking to inspect or change the map' : '',
             '.',
         ].join(''),
-        'Use tools when you need evidence or need to change stored materials. Save only through the tools that are currently available.',
-        'Read the current state or the source RP first, then make the smallest necessary change. Do not blindly repeat a failed tool call.',
-        includeMemory ? 'In automatic after-turn runs, update memory only when the completed assistant reply changes durable memory. Put global facts in `memory/state.md`; move character-specific growth into `memory/characters/<角色名>.md`. If nothing materially changed, skip writing.' : '',
-        includeMemory && includeCartography ? 'The map is extra spatial state. It does not replace written memory.' : '',
-        includeCartography ? 'For automatic map maintenance, always start with StateRead summary and inspect `meta.status`. If it is still `uninitialized`, initialize as soon as this turn establishes a clear current scene. If it is already `active`, apply incremental map changes only for confirmed spatial changes this turn.' : '',
-        'In manual manager chat, answer the user question first. Write memory or state only when the user asks for a change, or when you verified a real error or omission.',
-        'When a tool fails, adjust the path, arguments, or strategy before trying again.',
+        'Use tools when you need evidence or need to save material. All saves must go through the currently available tools.',
+        'Before writing, read the existing record or RP source text, then make the smallest necessary change. Do not rewrite whole sections without a read-backed reason.',
+        includeMemory ? 'In automatic after-turn maintenance, update memory only when this turn\'s assistant reply confirms a new long-term fact, current state, character change, unresolved matter, or next-turn carry-forward event.' : '',
+        includeMemory ? 'Write global facts to `memory/state.md`; write character-specific changes to the matching `memory/characters/<角色名>.md`. If nothing material changed, skip writing and say why.' : '',
+        includeMemory && includeCartography ? 'The map is separate spatial state. It does not replace written memory; maintain textual facts and spatial changes in their own places.' : '',
+        includeCartography ? 'Automatic map maintenance must start by choosing the current scene document: use StateList before scene switches, then StateRead summary for the active or candidate doc and inspect `meta.status`. If the chosen doc is still `uninitialized`, initialize it as soon as this turn clearly establishes the scene/place/space. If it is already `active`, apply only confirmed incremental spatial changes from this turn.' : '',
+        'In manual manager chat, answer the user question first. Write memory or state only when the user asks for a change, or when you verify a real error or omission.',
+        'When a tool fails, adjust the path, arguments, or strategy based on the error. Do not repeat the same failing call unchanged.',
     ];
 
     const sourceStrategyLines = [
-        includeMemory ? 'When explaining existing memory or answering a user question, read the relevant memory files first. Write only when the user explicitly asks for changes, or when you confirm a real error or omission.' : '',
-        includeMemory ? 'To verify memory against the RP source text, gather evidence with ChatHistory recent/range/grep first, then repair the file with MemoryRead or MemoryEdit.' : '',
-        includeMemory ? 'Use MemoryGrep to ask whether a fact already exists in memory. Use ChatHistory grep to ask whether something happened in the RP source text. Match the search scope to the question.' : '',
-        'If you know message order, use ChatHistory range. If you only know a keyword, use ChatHistory grep. If you only need recent continuity, use ChatHistory recent.',
+        includeMemory ? 'When explaining existing memory or answering a memory question, read the relevant memory file first. If the user is only asking, do not casually modify files.' : '',
+        includeMemory ? 'To check memory against RP source text, gather evidence with ChatHistory recent/range/grep first, then repair the file with MemoryRead or MemoryEdit.' : '',
+        includeMemory ? 'Use MemoryGrep to ask whether a fact is already in memory; use ChatHistory grep to ask whether something actually happened in the RP source text. Match the search scope to the question.' : '',
+        'If you know the message order range, use ChatHistory range. If you only know a keyword, use ChatHistory grep. If you only need recent continuity, use ChatHistory recent.',
         includeCartography ? 'When maintaining structured state, start with StateRead summary. Use elements or element when you need current ids; read document only when you truly need the full structure.' : '',
-        includeCartography ? 'StateRead summary tells you whether the map is `uninitialized` or `active`, and whether this turn calls for initialization or incremental maintenance. Do not decide whether to read based only on your own guess about "whether anything changed." ' : '',
-        includeCartography ? 'Structured state should record only confirmed spatial changes from this turn. Unknown rooms, future routes, and unconfirmed details should stay unwritten until the RP actually confirms them.' : '',
-        includeMemory ? 'Keep durable Markdown files clear. Update facts that still hold, and do not write uncertain claims as if they were settled facts.' : '',
+        includeCartography ? 'StateRead summary tells you whether the map is `uninitialized` or `active`, and whether this turn looks like initialization or incremental maintenance. Do not skip reading based only on your own guess that "nothing changed".' : '',
+        includeCartography ? 'Structured state records only confirmed spatial changes from this turn. Unknown rooms, future routes, and unconfirmed details should stay unwritten until RP confirms them.' : '',
+        includeMemory ? 'Keep Markdown memory clear and restrained. Update facts that still hold, and do not write guesses, plans, or unconfirmed psychology as settled truth.' : '',
     ];
 
     const structuredStateLines = includeCartography ? [
-        'State tools maintain structured spatial state for the current session. The default document is `tavern.map/main`. New sessions already include a seed map. Read StateRead first, inspect `meta.status` and `meta.hint`, then decide whether to initialize or maintain incrementally. Do not skip the read step.',
-        'The map is a spatial relation view of the current scene, not a board of floating text labels. Your job is to project what already happened into a flat layout with boundaries, direction, focus, and proportion.',
-        'When you read spatial information, answer these questions first: what defines the boundary, where are the entrances and exits, where is the current player or viewpoint focus, what occupies interactive space, and which directions remain unexplored.',
-        'Place the most certain anchors first, such as outer room walls, a main road, a river, corridor edges, or the current location. Place other elements relative to those anchors.',
-        'Use the default orientation north-up: north = smaller y, south = larger y, west = smaller x, east = larger x. If the narration only says left/right/front/back, choose a reasonable facing and keep it consistent inside one map.',
-        'For indoor scenes, use an outer-wall rect as the anchor and place furniture and doors inside it. For outdoor scenes, use roads or rivers as the backbone and scatter buildings or terrain around them. For passage scenes, use two parallel boundary lines and a stretched `viewBox` aspect ratio.',
-        '`meta.viewBox` is the camera. It does not move map elements. Move the player by changing the player `at`, then adjust `meta.viewBox` only if the camera should follow.',
-        'If the map is still `uninitialized`, initialize it with one `meta + add` transaction as soon as the current turn clearly establishes a scene or place. First appearance does not require a prior "change".',
-        'Initialization must include at least one spatial geometry element (`rect`, `circle`, `path`, `curve`, or `icon`) plus a player marker. `text` is only for short labels and cannot replace geometry. Name, `viewBox`, and labels alone are not a valid map.',
-        'When a map already exists, prefer growing the same map for connected space: add adjacent rooms, paths, yards, landmarks, forest edges, or districts, and enlarge `meta.viewBox` when the visible scope needs more room.',
+        'State tools maintain persistent structured spatial maps for the current session. The default starting document is `tavern.map/main`, but independent named locations should get their own docId such as `home`, `office`, or another stable place key.',
+        'The active map is the current scene map. Normal StatePatch calls do not change active; pass `activate:true` only when the story has moved to that document. `activate:true` with `ops:[]` only switches the active map.',
+        'Before scene switches, use StateList and match existing maps by docId, meta.name, or digest. If the location already has a map, activate that doc; if not, create a new doc and activate it. Do not replace an old map just because the scene changed.',
+        'Within the same location or connected short-range spaces, grow the current map: adjacent rooms, yard, doorway, street edge, landmarks, paths, forest edges, or districts. Create/switch docs only for clearly named, independent interiors or distant locations.',
+        'Read StateRead summary first for the candidate doc, inspect `meta.status` and `meta.hint`, then decide whether to initialize, maintain incrementally, activate, or skip.',
+        'The map is a spatial relation view of the current scene, not a board of floating text labels. Project confirmed spatial facts into a flat layout with clear boundaries, direction, focus, and proportion.',
+        'When reading spatial information, first identify what defines the boundary, where entrances and exits are, where the current player or viewpoint focus is, what occupies interactive space, and which directions remain unexplored.',
+        'Place the most certain anchors first, such as outer walls, a main road, a river, corridor edges, or the current location. Place other elements relative to those anchors.',
+        'Use the default orientation north-up: north = smaller y, south = larger y, west = smaller x, east = larger x. If narration only gives left/right/front/back, choose a reasonable facing and keep it consistent within one map.',
+        'For indoor scenes, use an outer-wall rect as the anchor and place furniture and doors inside it. For outdoor scenes, use roads or rivers as the backbone. For passage scenes, use two parallel boundary lines and a stretched `viewBox`.',
+        '`meta.viewBox` is the camera; it does not move map elements. Move the player by changing the player `at`, then adjust `meta.viewBox` only if the camera should follow.',
+        'If the selected doc is still `uninitialized`, initialize it with one `meta + add` transaction as soon as the current turn clearly establishes a scene or place. First appearance does not require a prior "change".',
+        'Initialization must include at least one drawable spatial geometry element (`rect`, `circle`, `path`, `curve`, or `icon`) plus a player actor using `cat:"actor"` and `actorKey:"player"`. `text` is only a short label and cannot replace geometry. Name, `viewBox`, and labels alone are not a valid map.',
+        'When a map already exists, prefer growing the same connected map. Enlarge `meta.viewBox` when the visible scope needs more room.',
         'Let `meta.name` grow with the map scope. For example, a bedroom map may become a house map, then a glade or town-edge map as confirmed connected areas appear.',
-        'Replace the whole map only when the story moves to a clearly separate place with no useful spatial continuity, such as a far-away city, teleportation, dream space, or unrelated interior. If nothing changes spatially, skip the map update. If you are unsure, do not change the map yet.',
+        'For a clearly separate place with no useful spatial continuity, switch to an existing doc or create a new doc instead of replacing the previous map. If nothing changes spatially, skip the map update; if unsure, do not change it yet.',
         'Common updates: character movement = modify `at`; discovering a door or route = add door/road; an item appearing = add icon + label; an item being taken away = remove; a door opening = modify style; a new danger = add danger; camera follow = meta viewBox.',
+        'Actors use `cat:"actor"` and optional `actorKey`. `actorKey` is the full-session identity key; id is only the element id inside this document. The runtime removes older actors with the same final key from other documents, so do not duplicate the same actor manually.',
         'Use `meta.name` as the map scope title. If you add an area label such as a room, house, road, or district name, attach it to that visible region instead of placing it at the top edge as a second title.',
-        'Keep at least 20 units of spacing between elements to avoid overlap. Place text labels 15-25 units beside what they describe instead of on top of the shape center.',
-        'Before submitting, sanity-check the map: clear anchors, a clear focus, drawable elements, a well-defined `viewBox` as the camera, and enough geometry to carry the map body.',
-        'The map should record only spatial facts that already happened and are worth visualizing. Uncertain spatial information stays unwritten until confirmed.',
+        'Keep at least 20 units of spacing between elements. Place text labels 15-25 units beside what they describe instead of on top of the shape center.',
+        'Before submitting, sanity-check the map: clear anchors, clear focus, drawable elements, a reasonable camera `viewBox`, and enough geometry to carry the map body.',
+        'The map should record only spatial facts that already happened and are worth visualizing. Unconfirmed spatial information stays unwritten until confirmed.',
     ] : [];
 
     const memoryToneLines = includeMemory ? [
-        'Write memory like a case file for your future self: specific, restrained, and easy to carry forward.',
+        'Write memory like a case file for a future model: specific, restrained, and easy to carry forward.',
         'Character psychology, secrets, and future plans become facts only after the RP source text clearly establishes them.',
-        'Separate what happened, what the user requested, what you inferred, and what is still unconfirmed. Only established facts belong in durable memory.',
-        'When a character section starts to bloat `memory/state.md`, create or update that character\'s `memory/characters/<角色名>.md` instead and keep the global state concise.',
+        'Separate what happened, what the user requested, what you inferred, and what is still unconfirmed. Long-term memory should contain established facts only.',
+        'When character-specific material makes `memory/state.md` bloated, create or update the matching `memory/characters/<角色名>.md` and keep global memory concise.',
     ] : [];
 
     const outputLines = [
-        'Reply like an ebook file-operation confirmation: short, clear, and user-facing.',
-        'Say what you verified, wrote, skipped, or left unchanged this turn. If nothing changed, say that you checked and why.',
+        'Reply with a short, clear, user-facing operation summary.',
+        'State what you verified, wrote, skipped, or left unchanged. If nothing changed, say that you checked and why you did not write.',
         'Only expand tool arguments, raw JSON, full Markdown, or protocol details when the user explicitly asks for debugging detail.',
     ];
 
@@ -187,9 +157,14 @@ function buildFixedManagerSystemPrompt(options: TavernManagerPromptOptions = {})
         joinSection('Injected Context', injectedContextLines),
         fileDisciplineLines.length ? '\n' + joinSection('File Discipline', fileDisciplineLines) : '',
         '',
+        joinSection('Tool Use Guide', [
+            'You may call multiple tools in one assistant turn. Independent reads may run in parallel; edits to the same file should be combined into one MemoryEdit.',
+            'If a tool returns an error, adjust the arguments, path, or strategy based on that error.',
+        ]),
+        '',
         joinSection('Work Loop', workLoopLines),
         '',
-        joinSection('Source Strategy', sourceStrategyLines),
+        joinSection('Selection Strategy', sourceStrategyLines),
         structuredStateLines.length ? '\n' + joinSection('Structured State', structuredStateLines) : '',
         memoryToneLines.length ? '\n' + joinSection('Memory Tone', memoryToneLines) : '',
         '',
@@ -203,75 +178,67 @@ function normalizeText(value: unknown = ''): string {
     return String(value || '').trim();
 }
 
+const FIXED_MEMORY_PATH_PATTERN = /`?memory\/(?:state\.md|characters\/<角色名>\.md|session\.md|turns\/\*\.md)`?/i;
+const LEGACY_ASSISTANT_SECTION_PATTERN = /facts and states that are still true|keep character state|do not keep transient events|旧三页规则|旧整套规则/i;
+
 function joinLines(lines: string[] = []): string {
     return lines.join('\n').trim();
 }
 
-function buildDefaultAssistantPresetSections() {
-    return {
-        storyArcPrompt: buildDefaultStoryArcPrompt(),
-        statePrompt: buildDefaultStatePrompt(),
-        turnPrompt: buildDefaultTurnPrompt(),
-    };
-}
-
-export function buildDefaultStoryArcPrompt(): string {
+export function buildDefaultStateMemoryPrompt(): string {
     return joinLines([
-        '职责：维护 `memory/state.md` 中“剧情脉络”和“未解决事项”的全局长期内容；人物专属动机、秘密、关系弧光应沉淀到 `memory/characters/<角色名>.md`。',
+        'Recommended structure:',
+        '- `## Story Context`: current mainline, long-term pressure, unresolved hooks, and relationship situation that affects the global scene.',
+        '- `## Current State`: time, place, present characters, key items, body/emotion/constraint state.',
+        '- `## Recent Carry-Forward Events`: compressed events still in progress or needed next turn, but not yet ready to rewrite as stable long-term conclusions.',
         '',
-        '推荐格式：',
-        '## 剧情脉络',
-        '### 当前主线',
-        '- 主角/角色正在围绕什么目标、危机或矛盾行动。',
-        '### 长期压力',
-        '- 仍在逼近、尚未解除、会改变后续选择的压力。',
-        '### 未解伏笔',
-        '- 已经出现但尚未解决的线索、承诺、秘密或隐患。',
-        '### 关系态势',
-        '- 只写影响主线或当前局面的关系摘要；人物专属细节放入角色文件。',
-        '',
-        '规则：',
-        '- 只在主线方向、核心矛盾、长期伏笔、关键关系发生变化时更新。',
-        '- 不写逐轮流水账，不重复临时动作，不记录已经失去后续意义的细节。',
+        'Writing rules:',
+        '- Write only facts that affect the global situation, mainline understanding, or immediate scene continuity.',
+        '- Do not write a directory or "see another file" notes. Global memory is a fact controller, not an index.',
+        '- Character-specific motives, secrets, constraints, relationship arcs, promises, debts, and risks belong in character memory.',
+        '- Do not write a floor-by-floor log. When an ongoing event ends, rewrite the still-relevant result into story context, current state, unresolved matters, or character memory; delete process details that no longer matter.',
+        '- Skip writing when there is no material global change. Read current global memory before changing it; use ChatHistory when source verification is needed.',
     ]);
 }
 
-export function buildDefaultStatePrompt(): string {
+export function buildDefaultCharacterMemoryPrompt(): string {
     return joinLines([
-        '职责：维护 `memory/state.md` 中“当前状态”的全局事实，并把人物长期状态写入对应 `memory/characters/<角色名>.md`。',
+        'Recommended structure:',
+        '- `## Current State`: location/presence, body/emotion/constraints, public goal, hidden motive/secret.',
+        '- `## Relationships`: toward the player and toward other characters.',
+        '- `## Character Arc`: long-term changes that have happened and unresolved inner conflicts.',
+        '- `## Promises, Debts, And Risks`: promises, debts, risks.',
+        '- `## Recent Related Events`: events specific to this character that still need carry-forward, but are not yet ready to rewrite as long-term conclusions.',
         '',
-        '推荐格式：',
-        '## 当前状态',
-        '- 时间：',
-        '- 地点：',
-        '- 在场人物：',
-        '- 关键物品：',
-        '- 身体/情绪/约束状态：',
-        '',
-        '规则：',
-        '- 只保留现在仍为真的事实；事实变化时改写旧状态，不在后面追加矛盾说法。',
-        '- 关系摘要交给“剧情脉络/关系态势”，人物专属细节交给角色文件；不要在当前状态下另起关系段。',
-        '- 临时事件结束后删除或降级，不让过期状态污染后续判断。',
+        'Writing rules:',
+        '- Record only what has happened or has been clearly established. Do not write guesses, plans, or unconfirmed psychology as facts.',
+        '- Keep one character memory per character. Do not create indexes or per-turn logs.',
+        '- Write only when there is a material character change; skip if nothing durable changed.',
+        '- If a character fact affects the global mainline or current situation, also copy a brief summary into global memory relationship situation or current state.',
+        '- Read the target character memory before modifying it; use ChatHistory when source verification is needed.',
     ]);
 }
 
-export function buildDefaultTurnPrompt(): string {
-    return joinLines([
-        '职责：维护 `memory/state.md` 中全局“近期连续事件”，并把只和某个人物相关的连续事件沉淀到对应角色文件。',
-        '',
-        '推荐格式：',
-        '## 近期连续事件',
-        '- 用压缩段落记录尚未沉淀成稳定状态的连续事件。',
-        '',
-        '规则：',
-        '- 不逐楼流水账，只保留还没沉淀但仍需要携带的连续事件。',
-        '- 连续事件结束后，把它合并进当前状态、剧情脉络、未解决事项或对应角色文件，再清理近期段落。',
-    ]);
+function buildFixedStateMemoryDutyIntro(): string {
+    return 'Maintain the current session\'s global long-term memory in `memory/state.md`. This target path and responsibility are fixed system contract; the user-editable preset only defines the file\'s internal format, content scope, and selection rules.';
+}
+
+function buildFixedCharacterMemoryDutyIntro(): string {
+    return 'Maintain current-session character long-term memory in `memory/characters/<角色名>.md`. Use one file per character, with the filename as the entity name; the user-editable preset only defines the file\'s internal format, content scope, and selection rules.';
 }
 
 function normalizeAssistantSectionText(value: unknown, fallback: string): string {
     const text = normalizeText(value);
     if (!text) {return fallback;}
+    if (LEGACY_ASSISTANT_SECTION_PATTERN.test(text)) {return fallback;}
+    if (FIXED_MEMORY_PATH_PATTERN.test(text)) {
+        const cleaned = text
+            .split(/\r?\n/)
+            .filter((line) => !FIXED_MEMORY_PATH_PATTERN.test(line))
+            .join('\n')
+            .trim();
+        return cleaned || fallback;
+    }
     return text;
 }
 
@@ -280,16 +247,17 @@ function composeManagerSystemPrompt(
     options: TavernManagerPromptOptions = {},
 ): string {
     const { includeMemory } = normalizeManagerPromptOptions(options);
-    const fallback = buildDefaultAssistantPresetSections();
-    const sections = includeMemory ? [
-        ['State.md Plot Duties', normalizeText(input.storyArcPrompt) || fallback.storyArcPrompt],
-        ['State.md Current State Duties', normalizeText(input.statePrompt) || fallback.statePrompt],
-        ['State.md Recent Event Compression', normalizeText(input.turnPrompt) || fallback.turnPrompt],
-    ].filter(([, content]) => content) : [];
+    const statePrompt = normalizeText(input.statePrompt) || buildDefaultStateMemoryPrompt();
+    const characterPrompt = normalizeText(input.characterPrompt) || buildDefaultCharacterMemoryPrompt();
     const lines = [buildFixedManagerSystemPrompt(options)];
-    sections.forEach(([title, content]) => {
-        lines.push('', `## ${title}`, String(content));
-    });
+    if (includeMemory) {
+        if (statePrompt) {
+            lines.push('', '## Global Memory Rules', buildFixedStateMemoryDutyIntro(), statePrompt);
+        }
+        if (characterPrompt) {
+            lines.push('', '## Character Memory Rules', buildFixedCharacterMemoryDutyIntro(), characterPrompt);
+        }
+    }
     return lines.join('\n').trim();
 }
 
@@ -301,17 +269,19 @@ export function buildTavernManagerSystemPrompt(
 }
 
 export function buildDefaultMemoryManagerPrompt(): string {
-    return composeManagerSystemPrompt(buildDefaultAssistantPresetSections());
+    return composeManagerSystemPrompt({
+        statePrompt: buildDefaultStateMemoryPrompt(),
+        characterPrompt: buildDefaultCharacterMemoryPrompt(),
+    });
 }
 
 export function createDefaultTavernAssistantPreset(): TavernAssistantPreset {
-    const sections = buildDefaultAssistantPresetSections();
     return {
         id: DEFAULT_TAVERN_ASSISTANT_PRESET_ID,
         name: '默认助手预设',
         description: '记忆管理员的默认维护规则。',
-        ...sections,
-        memoryManagerPrompt: composeManagerSystemPrompt(sections),
+        statePrompt: buildDefaultStateMemoryPrompt(),
+        characterPrompt: buildDefaultCharacterMemoryPrompt(),
     };
 }
 
@@ -323,11 +293,9 @@ export function normalizeTavernAssistantPreset(input: AssistantPresetInput = {})
         id,
         name,
         description: String(input.description || ''),
-        storyArcPrompt: normalizeAssistantSectionText(input.storyArcPrompt, fallback.storyArcPrompt),
         statePrompt: normalizeAssistantSectionText(input.statePrompt, fallback.statePrompt),
-        turnPrompt: normalizeAssistantSectionText(input.turnPrompt, fallback.turnPrompt),
+        characterPrompt: normalizeAssistantSectionText(input.characterPrompt, fallback.characterPrompt),
         updatedAt: Number(input.updatedAt) || undefined,
     };
-    normalized.memoryManagerPrompt = composeManagerSystemPrompt(normalized);
     return normalized;
 }

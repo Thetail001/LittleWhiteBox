@@ -44,12 +44,20 @@ import type {
 
 export type TavernSettingsWorkspaceKey = 'api' | 'chatPreset' | 'worldbooks' | 'regex' | 'assistantPreset' | 'base';
 
+interface TavernWorldbookSyncOptions {
+    keepSelection?: boolean;
+    preferredName?: string;
+    requestSerial?: number;
+    selectFirst?: boolean;
+}
+
 interface TavernSettingsControllerOptions {
     activeView: Ref<string>;
     activeSettingsWorkspace: Ref<TavernSettingsWorkspaceKey>;
     agentConfig: Ref<Record<string, unknown>>;
     tavernDisplaySettings: Ref<TavernDisplaySettings>;
     effectiveContext: ComputedRef<XbTavernContext>;
+    currentWorldbookCharacterId: ComputedRef<string>;
     homeThemeDark: Ref<boolean>;
     isRunning: Ref<boolean>;
     describeError: (error: unknown) => string;
@@ -76,7 +84,7 @@ interface PromptEditorRow {
 }
 
 interface AssistantPresetSectionRow {
-    key: 'storyArcPrompt' | 'statePrompt' | 'turnPrompt';
+    key: 'statePrompt' | 'characterPrompt';
     label: string;
     summary: string;
 }
@@ -151,9 +159,8 @@ const WORLDBOOK_PREVIEW_BATCH_SIZE = 24;
 const REGEX_GROUP_BATCH_SIZE = 60;
 
 const assistantPresetSections: AssistantPresetSectionRow[] = [
-    { key: 'storyArcPrompt', label: '剧情脉络', summary: '长期脉络规则' },
-    { key: 'statePrompt', label: '当前状态', summary: '现场状态规则' },
-    { key: 'turnPrompt', label: '近期压缩', summary: '连续事件规则' },
+    { key: 'statePrompt', label: '全局记忆', summary: '全局状态输出规则' },
+    { key: 'characterPrompt', label: '人物记忆', summary: '人物长期状态输出规则' },
 ];
 
 const placementLabels: Record<string, string> = {
@@ -411,7 +418,7 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
     const assistantPresetStatus = ref('');
     const savedAssistantPresetJson = ref(JSON.stringify(initialAssistantPreset));
     const selectedPresetSourceId = ref('');
-    const selectedAssistantPresetItemId = ref('storyArcPrompt');
+    const selectedAssistantPresetItemId = ref('statePrompt');
     const worldbookList = ref<Record<string, unknown>>({});
     const selectedWorldbookName = ref('');
     const worldbookStatus = ref('');
@@ -450,6 +457,7 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
     let baseSettingsSaveSerial = 0;
     let worldbookEntryLoadRequestSerial = 0;
     let worldbookEntryLoadRequestKey = '';
+    let worldbookSyncRequestSerial = 0;
     let globalWorldbookRequestSerial = 0;
     let globalWorldbookSavingRequestSerial = 0;
 
@@ -929,7 +937,9 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
         presetStatus.value = '';
         options.postToHost('xb-tavern:refresh-context', {});
     }
-    async function syncWorldbooksFromHost(syncOptions: { keepSelection?: boolean } = {}) {
+    async function syncWorldbooksFromHost(syncOptions: TavernWorldbookSyncOptions = {}) {
+        const requestSerial = syncOptions.requestSerial || ++worldbookSyncRequestSerial;
+        if (requestSerial !== worldbookSyncRequestSerial) {return;}
         worldbookStatus.value = '正在同步';
         try {
             const result = await options.requestHost('xb-tavern:list-worldbook-sources', {
@@ -937,20 +947,29 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
                     context: options.effectiveContext.value,
                 },
             });
+            if (requestSerial !== worldbookSyncRequestSerial) {return;}
             const payload = (result.result || result) as Record<string, unknown>;
             worldbookList.value = payload;
             const currentName = String(selectedWorldbookName.value || '').trim();
             const selectedStillExists = !!currentName
                 && worldbookOptions.value.some((item) => item.name === currentName);
-            const preferredName = worldbookOptions.value.find((item) => item.globalActive)?.name
-                || worldbookOptions.value[0]?.name
-                || '';
-            selectedWorldbookName.value = syncOptions.keepSelection && selectedStillExists
+            const preferredName = String(syncOptions.preferredName || '').trim();
+            const preferredStillExists = !!preferredName
+                && worldbookOptions.value.some((item) => item.name === preferredName);
+            const fallbackName = syncOptions.selectFirst
+                ? (worldbookOptions.value.find((item) => item.globalActive)?.name
+                    || worldbookOptions.value[0]?.name
+                    || '')
+                : '';
+            selectedWorldbookName.value = preferredStillExists
+                ? preferredName
+                : syncOptions.keepSelection && selectedStillExists
                 ? selectedWorldbookName.value
-                : preferredName;
+                : fallbackName;
             worldbookStatus.value = '';
             void loadSelectedWorldbookPreview(selectedWorldbookName.value);
         } catch (error) {
+            if (requestSerial !== worldbookSyncRequestSerial) {return;}
             worldbookStatus.value = error instanceof Error ? error.message : String(error || '读取失败');
         }
     }
@@ -1741,10 +1760,37 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
     }
     function openWorldbookWorkspace(name = '') {
         const targetName = String(name || '').trim();
-        if (targetName) {
-            selectedWorldbookName.value = targetName;
-        }
+        selectedWorldbookName.value = targetName;
         openSettingsWorkspace('worldbooks');
+    }
+    async function syncWorldbooksForCurrentCharacter() {
+        const requestSerial = ++worldbookSyncRequestSerial;
+        const characterId = String(options.currentWorldbookCharacterId.value || '').trim();
+        let bindingStatus = '';
+        selectedWorldbookName.value = '';
+        if (!characterId) {
+            await syncWorldbooksFromHost({ requestSerial });
+            return;
+        }
+        try {
+            const result = await options.requestHost('xb-tavern:get-character-worldbook-state', {
+                payload: { characterId },
+            });
+            if (requestSerial !== worldbookSyncRequestSerial) {return;}
+            const payload = (result.result || result) as Record<string, unknown>;
+            const boundName = String(payload.boundWorldbookName || '').trim();
+            if (boundName && payload.boundExists === true) {
+                await syncWorldbooksFromHost({ preferredName: boundName, requestSerial });
+                return;
+            }
+        } catch (error) {
+            if (requestSerial !== worldbookSyncRequestSerial) {return;}
+            bindingStatus = error instanceof Error ? error.message : String(error || '绑定状态读取失败');
+        }
+        await syncWorldbooksFromHost({ requestSerial });
+        if (bindingStatus && requestSerial === worldbookSyncRequestSerial) {
+            worldbookStatus.value = bindingStatus;
+        }
     }
     function selectSettingsWorkspace(workspace: string) {
         const normalized = workspace as TavernSettingsWorkspaceKey;
@@ -1944,6 +1990,7 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
         switchingTavernUserId,
         syncChatPresetFromHost,
         syncGlobalWorldbooksFromHost,
+        syncWorldbooksForCurrentCharacter,
         syncWorldbooksFromHost,
         switchTavernUser,
         tavernUsers,

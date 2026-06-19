@@ -56,7 +56,7 @@ const {
     apiSettingsRootRef,
     syncChatPresetFromHost,
     syncGlobalWorldbooksFromHost,
-    syncWorldbooksFromHost,
+    syncWorldbooksForCurrentCharacter,
 } = settings;
 
 let pendingChatScrollSnapshot: ElementScrollSnapshot | null = null;
@@ -136,7 +136,7 @@ function openQuickSettingsModal(workspace: 'api' | 'chatPreset' | 'worldbooks') 
         void syncChatPresetFromHost();
     }
     if (workspace === 'worldbooks') {
-        void syncWorldbooksFromHost({ keepSelection: true });
+        void syncWorldbooksForCurrentCharacter();
         void syncGlobalWorldbooksFromHost();
     }
 }

@@ -48,6 +48,9 @@ const {
     stateMemoryFile,
 } = memory;
 const {
+    activateMapDocument,
+    activeMapDocId,
+    mapStateDocuments,
     mapStateDocument,
     mapStatePatches,
 } = workspace;
@@ -115,8 +118,11 @@ function selectMobileMemoryFile(path: string) {
     >
       <TavernMapPanel
         compact
+        :documents="mapStateDocuments"
+        :active-doc-id="activeMapDocId"
         :document="mapStateDocument"
         :patches="mapStatePatches"
+        @activate-document="activateMapDocument"
       />
       <article class="tavern-current-state">
         <div
@@ -233,5 +239,4 @@ function selectMobileMemoryFile(path: string) {
     </section>
   </aside>
 </template>
-
 

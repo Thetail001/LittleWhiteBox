@@ -1,16 +1,13 @@
 import db, {
     appendTavernStructuredStatePatch,
     ensureSeedStructuredStateDocument,
-    ensureTavernManagerStateSnapshot,
     getTavernStructuredStateDocument,
     listTavernStructuredStateDocuments,
     listTavernStructuredStatePatches,
     putTavernStructuredStateDocument,
-    tavernManagerStateSnapshotsTable,
     tavernSessionsTable,
     tavernStateDocumentsTable,
     tavernStatePatchesTable,
-    updateTavernManagerStateSnapshotAfter,
     type TavernStructuredStateDocType,
     type TavernStructuredStateDocumentRecord,
     type TavernStructuredStatePatchRecord,
@@ -44,6 +41,7 @@ export type TavernMapElementCategory =
     | 'door'
     | 'danger'
     | 'marker'
+    | 'actor'
     | 'label'
     | 'grid'
     | 'magic'
@@ -87,6 +85,7 @@ export interface TavernMapElement {
     curve?: Array<[number, number]>;
     icon?: TavernMapIconName;
     text?: string;
+    actorKey?: string;
     closed?: boolean;
     fill?: string;
     style?: TavernMapStyle;
@@ -117,7 +116,7 @@ export interface TavernStateToolResult {
     count?: number;
     truncated?: boolean;
     nextOffset?: number;
-    documents?: Array<Pick<TavernStructuredStateDocumentRecord, 'docType' | 'docId' | 'title' | 'revision' | 'digest' | 'status' | 'updatedAt'>>;
+    documents?: TavernStateDocumentListItem[];
     document?: unknown;
     digest?: string;
     meta?: TavernMapDocumentMeta;
@@ -154,6 +153,7 @@ const MAP_ELEMENT_CATEGORIES = new Set<TavernMapElementCategory>([
     'door',
     'danger',
     'marker',
+    'actor',
     'label',
     'grid',
     'magic',
@@ -176,8 +176,41 @@ const MAP_ICON_NAMES = new Set<TavernMapIconName>([
 const MAP_THEMES = new Set<TavernMapTheme>(['parchment', 'paper', 'dark', 'blueprint', 'grid']);
 const MAP_STATUSES = new Set<TavernMapStatus>(['uninitialized', 'active']);
 
+export type TavernStateDocumentListItem = Pick<TavernStructuredStateDocumentRecord, 'docType' | 'docId' | 'title' | 'revision' | 'digest' | 'status' | 'updatedAt'> & {
+    active?: boolean;
+};
+
+export type TavernMapStateDocumentItem = TavernStructuredStateDocumentRecord & {
+    active?: boolean;
+};
+
 function now(): number {
     return Date.now();
+}
+
+function normalizeMapDocId(value: unknown = DEFAULT_DOC_ID): string {
+    const text = String(value || DEFAULT_DOC_ID).trim() || DEFAULT_DOC_ID;
+    return /^[\w.-]{1,80}$/i.test(text) ? text : DEFAULT_DOC_ID;
+}
+
+async function getActiveMapDocId(sessionId = ''): Promise<string> {
+    const session = await tavernSessionsTable.get(String(sessionId || '').trim());
+    return normalizeMapDocId(session?.state?.activeMapDocId || DEFAULT_DOC_ID);
+}
+
+async function setActiveMapDocId(sessionId = '', docId = DEFAULT_DOC_ID): Promise<string> {
+    const id = String(sessionId || '').trim();
+    const activeMapDocId = normalizeMapDocId(docId);
+    if (!id) {return activeMapDocId;}
+    const session = await tavernSessionsTable.get(id);
+    const state = session?.state && typeof session.state === 'object' && !Array.isArray(session.state)
+        ? { ...session.state, activeMapDocId }
+        : { activeMapDocId };
+    await tavernSessionsTable.update(id, {
+        state,
+        updatedAt: now(),
+    });
+    return activeMapDocId;
 }
 
 function cloneJson<T>(value: T): T {
@@ -281,6 +314,16 @@ function normalizeCategory(value: unknown, fallback: TavernMapElementCategory): 
 function normalizeIcon(value: unknown): TavernMapIconName | undefined {
     const text = String(value || '').trim() as TavernMapIconName;
     return MAP_ICON_NAMES.has(text) ? text : undefined;
+}
+
+function normalizeActorKey(value: unknown = ''): string {
+    return String(value || '')
+        .normalize('NFKC')
+        .replace(/[\u200B-\u200D\uFEFF]/g, '')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, '-')
+        .slice(0, 120);
 }
 
 function normalizeStyle(value: unknown): TavernMapStyle | undefined {
@@ -461,6 +504,8 @@ function finalizeElement(
         if (!text) {throw new Error(`map_element_text_required:${finalId}`);}
         next.text = text;
     }
+    const actorKey = normalizeText(element.actorKey, 120);
+    if (actorKey && next.cat === 'actor') {next.actorKey = actorKey;}
     if (element.closed === true) {next.closed = true;}
     if (normalizeText(element.fill, 120)) {next.fill = normalizeText(element.fill, 120);}
     if (element.style !== undefined) {
@@ -560,6 +605,7 @@ function normalizeMapElementInput(
         closed: value.closed === true || shapeParts.closed === true,
         fill: normalizeText(value.fill ?? shapeParts.fill, 120) || undefined,
         style: normalizeStyle(value.style),
+        actorKey: normalizeText(value.actorKey, 120) || undefined,
         ...shapeParts,
     };
 
@@ -572,6 +618,7 @@ function normalizeMapElementInput(
             closed: base.closed,
             fill: base.fill,
             style: base.style,
+            actorKey: base.actorKey,
             [geometryKey]: base[geometryKey],
         };
         const geometryElement = finalizeElement(geometry, id, { allowReservedId: options.allowReservedId === true || source === 'stored-document' });
@@ -637,6 +684,121 @@ function mapTitle(document: TavernMapDocument): string {
 
 function mapElementSummary(element: TavernMapElement): TavernMapElement {
     return cloneJson(element);
+}
+
+async function dedupeActorElementsForSavedDocument(input: {
+    sessionId: string;
+    docType: TavernStructuredStateDocType;
+    docId: string;
+    document: TavernMapDocument;
+    timestamp: number;
+    managerRunId?: string;
+    sourceUserOrder?: number;
+    sourceAssistantOrder?: number;
+}): Promise<{
+    document: TavernMapDocument;
+    removedElements: TavernMapElement[];
+    otherDocumentRemovals: Array<{
+        docId: string;
+        revision: number;
+        removedElements: TavernMapElement[];
+        removeOps: Extract<TavernMapPatchOp, { op: 'remove' }>[];
+    }>;
+}> {
+    const actorKeyToKeepId = new Map<string, string>();
+    input.document.elements.forEach((element) => {
+        if (element.cat !== 'actor') {return;}
+        const key = normalizeActorKey(element.actorKey || element.id);
+        if (key) {actorKeyToKeepId.set(key, element.id);}
+    });
+    if (!actorKeyToKeepId.size) {
+        return { document: input.document, removedElements: [], otherDocumentRemovals: [] };
+    }
+
+    const dedupeElements = (document: TavernMapDocument, isSavedDocument: boolean): {
+        document: TavernMapDocument;
+        removedElements: TavernMapElement[];
+        removeOps: Extract<TavernMapPatchOp, { op: 'remove' }>[];
+    } => {
+        let changed = false;
+        const removedActorIds = new Set<string>();
+        const removedElements: TavernMapElement[] = [];
+        const withoutDuplicateActors = document.elements.filter((element) => {
+            if (element.cat !== 'actor') {return true;}
+            const key = normalizeActorKey(element.actorKey || element.id);
+            if (!actorKeyToKeepId.has(key)) {return true;}
+            const keep = isSavedDocument && actorKeyToKeepId.get(key) === element.id;
+            if (!keep) {
+                removedElements.push(cloneJson(element));
+                removedActorIds.add(element.id);
+                changed = true;
+            }
+            return keep;
+        });
+        const removedLabelIds = new Set([...removedActorIds].map((actorId) => buildSeedLabelId(actorId)));
+        const elements = removedLabelIds.size
+            ? withoutDuplicateActors.filter((element) => {
+                if (!removedLabelIds.has(element.id)) {return true;}
+                removedElements.push(cloneJson(element));
+                changed = true;
+                return false;
+            })
+            : withoutDuplicateActors;
+        const removeOps = removedElements.map((element) => ({ op: 'remove' as const, id: element.id }));
+        return { document: changed ? { ...document, elements } : document, removedElements, removeOps };
+    };
+
+    const currentDedupe = dedupeElements(input.document, true);
+    const otherDocumentRemovals: Array<{
+        docId: string;
+        revision: number;
+        removedElements: TavernMapElement[];
+        removeOps: Extract<TavernMapPatchOp, { op: 'remove' }>[];
+    }> = [];
+    const rows = await tavernStateDocumentsTable.where('sessionId').equals(input.sessionId).toArray();
+    for (const row of rows) {
+        if (row.docType !== input.docType || row.docId === input.docId || row.status === 'stale') {continue;}
+        const current = normalizeMapDocumentFromRecord(row);
+        const next = dedupeElements(current, false);
+        if (!next.removedElements.length) {continue;}
+        const revision = Math.max(0, Number(row.revision) || 0) + 1;
+        const digest = createMapDigest(next.document, revision);
+        await tavernStateDocumentsTable.put({
+            ...row,
+            data: next.document,
+            digest,
+            revision,
+            title: mapTitle(next.document),
+            updatedAt: input.timestamp,
+        });
+        await appendTavernStructuredStatePatch({
+            sessionId: input.sessionId,
+            docType: input.docType,
+            docId: row.docId,
+            revision,
+            status: 'active',
+            managerRunId: input.managerRunId,
+            sourceUserOrder: input.sourceUserOrder,
+            sourceAssistantOrder: input.sourceAssistantOrder,
+            source: 'system',
+            summary: normalizeText(`Actor dedupe ${revision}`, 400),
+            ops: next.removeOps,
+            changedIds: next.removedElements.map((element) => element.id),
+            removedElements: next.removedElements,
+        });
+        otherDocumentRemovals.push({
+            docId: row.docId,
+            revision,
+            removedElements: next.removedElements,
+            removeOps: next.removeOps,
+        });
+    }
+
+    return {
+        document: currentDedupe.document,
+        removedElements: currentDedupe.removedElements,
+        otherDocumentRemovals,
+    };
 }
 
 function describeMapPatchError(error = ''): string {
@@ -1103,7 +1265,7 @@ function buildMapElementSchema() {
             cat: {
                 type: 'string',
                 enum: [...MAP_ELEMENT_CATEGORIES],
-                description: 'Semantic category such as wall, door, marker, terrain, road, or label.',
+                description: 'Semantic category such as wall, door, marker, actor, terrain, road, or label.',
             },
             rect: {
                 type: 'array',
@@ -1135,6 +1297,10 @@ function buildMapElementSchema() {
                 type: 'string',
                 description: 'Short label text. If you provide text together with geometry in an add input, the runtime will split the text into a derived label element automatically.',
             },
+            actorKey: {
+                type: 'string',
+                description: 'Optional full-session actor identity key for cat:"actor". If omitted, the element id is used as the actor key fallback.',
+            },
             closed: { type: 'boolean', description: 'Whether a path or curve should be closed.' },
             fill: { type: 'string', description: 'Fill token or color name for closed shapes.' },
             style: {
@@ -1163,7 +1329,7 @@ export function getTavernStateToolDefinitions(): Array<{ type: 'function'; funct
                 description: [
                     'List structured state documents in the current session.',
                     'Returns document entries only. It does not read full state, elements, or patch history.',
-                    'Use before StateRead when you need available structured documents such as `tavern.map/main`.',
+                    'Use before StateRead when you need available structured documents such as `tavern.map/main`, or when you need to find the active current-scene map.',
                 ].join('\n'),
                 parameters: {
                     type: 'object',
@@ -1181,14 +1347,14 @@ export function getTavernStateToolDefinitions(): Array<{ type: 'function'; funct
                 description: [
                     'Read a structured state document in the current session.',
                     'Use `summary` first. It returns the revision plus compact meta fields: status, name, viewBox, theme, hint, and digest.',
-                    'For tavern maps, the default document is `tavern.map/main`. New sessions already include a seed map, so this document is readable even before first initialization.',
+                    'For tavern maps, omitting docId reads the active current-scene map. New sessions start with `tavern.map/main`, so a map is readable even before first initialization.',
                     'Use `elements` to browse or filter map elements, `element` for one stable id, `document` for the full current state, and `history` for saved patch transactions.',
                 ].join('\n'),
                 parameters: {
                     type: 'object',
                     properties: {
                         docType: { type: 'string', enum: [MAP_DOC_TYPE], description: 'Structured document type. Currently `tavern.map`.' },
-                        docId: { type: 'string', description: 'Structured document id. Defaults to `main` for tavern maps.' },
+                        docId: { type: 'string', description: 'Structured document id. Omit to read the active current-scene map.' },
                         mode: { type: 'string', enum: ['summary', 'elements', 'document', 'element', 'history'], description: '`summary` returns compact meta, `elements` pages/filter element summaries, `document` returns the full state, `element` returns one exact id, and `history` returns saved patch transactions.' },
                         elementId: { type: 'string', description: 'Required for `element` mode. Exact element id to read.' },
                         elementType: { type: 'string', enum: [...MAP_SHAPE_KEYS], description: 'Optional `elements`-mode shape filter such as rect, circle, path, curve, icon, or text.' },
@@ -1211,8 +1377,10 @@ export function getTavernStateToolDefinitions(): Array<{ type: 'function'; funct
                     'Canonical ops are `meta`, `add`, `modify`, and `remove`. One StatePatch call is one atomic transaction and becomes exactly one revision when it saves.',
                     'Use `meta` to update document fields such as name, viewBox, theme, status, or hint. Use `add` to create elements, `modify` to change existing ids, and `remove` to delete ids.',
                     'Each element has `id` and `cat`, plus exactly one shape field: `rect`, `circle`, `path`, `curve`, `icon`, or `text`. Most elements use `at:[x,y]`; `path` and `curve` may omit `at` and use the first point as the anchor.',
+                    'For `cat:"actor"`, optional `actorKey` is the full-session identity key. If omitted, the element id is used. The runtime keeps only the latest actor with the same final key across all map documents.',
                     'With `at`, `path` and `curve` points are relative offsets. Without `at`, the points are treated as absolute coordinates and the stored result becomes relative to the first point.',
                     'If one add element contains geometry plus text, the runtime splits the text into a system label element automatically.',
+                    'Pass `activate:true` to make this doc the current scene. `activate:true` with `ops:[]` only switches active map; normal patches do not change active map.',
                     '`meta.viewBox` is the camera. Changing it does not move elements. Move actors by changing their `at`, then adjust `viewBox` only if the camera should follow.',
                     'Legacy `init`, `reset`, and `replace` input is still absorbed at runtime, but do not rely on it in new calls.',
                 ].join('\n'),
@@ -1220,9 +1388,10 @@ export function getTavernStateToolDefinitions(): Array<{ type: 'function'; funct
                     type: 'object',
                     properties: {
                         docType: { type: 'string', enum: [MAP_DOC_TYPE], description: 'Structured document type. Currently `tavern.map`.' },
-                        docId: { type: 'string', description: 'Structured document id. Defaults to `main` for tavern maps.' },
+                        docId: { type: 'string', description: 'Structured document id. Omit to patch the active current-scene map; pass a docId when creating or editing another map.' },
                         baseRevision: { type: 'number', description: 'Optional optimistic revision check from StateRead summary/document.' },
                         dryRun: { type: 'boolean', description: 'Validate and simulate the transaction without saving or incrementing the revision.' },
+                        activate: { type: 'boolean', description: 'Set this map document as the current scene after the transaction. With `ops:[]`, this only switches the active map.' },
                         desc: { type: 'string', description: 'Short one-line summary of this turn’s spatial update.' },
                         ops: {
                             type: 'array',
@@ -1264,15 +1433,29 @@ export async function executeTavernStateTool(
     if (!id) {return { ok: false, summary: 'Missing sessionId.', error: 'state_session_required' };}
     try {
         const docType = normalizeDocType(args.docType || MAP_DOC_TYPE);
-        const docId = normalizeDocId(args.docId || DEFAULT_DOC_ID);
+        const explicitDocId = normalizeText(args.docId, 80);
+        const docId = normalizeDocId(explicitDocId || (
+            toolName === TAVERN_STATE_TOOL_NAMES.READ || toolName === TAVERN_STATE_TOOL_NAMES.PATCH
+                ? await getActiveMapDocId(id)
+                : DEFAULT_DOC_ID
+        ));
 
         if (toolName === TAVERN_STATE_TOOL_NAMES.LIST) {
             const documents = await listTavernStructuredStateDocuments(id, { docType, includeStale: true });
+            const activeMapDocId = await getActiveMapDocId(id);
+            const sorted = [...documents].sort((left, right) => {
+                const leftActive = left.docType === MAP_DOC_TYPE && left.docId === activeMapDocId;
+                const rightActive = right.docType === MAP_DOC_TYPE && right.docId === activeMapDocId;
+                if (leftActive !== rightActive) {return leftActive ? -1 : 1;}
+                return (Number(right.updatedAt) || 0) - (Number(left.updatedAt) || 0)
+                    || (Number(right.revision) || 0) - (Number(left.revision) || 0);
+            });
             return {
                 ok: true,
-                summary: `Found ${documents.length} structured state document(s).`,
-                count: documents.length,
-                documents: documents.map((document) => ({
+                summary: `Found ${sorted.length} structured state document(s).`,
+                count: sorted.length,
+                docId: activeMapDocId,
+                documents: sorted.map((document) => ({
                     docType: document.docType,
                     docId: document.docId,
                     title: document.title,
@@ -1280,6 +1463,7 @@ export async function executeTavernStateTool(
                     digest: document.digest,
                     status: document.status,
                     updatedAt: document.updatedAt,
+                    active: document.docType === MAP_DOC_TYPE && document.docId === activeMapDocId,
                 })),
             };
         }
@@ -1373,12 +1557,16 @@ export async function executeTavernStateTool(
             if (!Array.isArray(args.ops)) {
                 return { ok: false, summary: 'StatePatch ops must be a real array.', docType, docId, error: 'state_patch_ops_must_be_array' };
             }
+            const ops = args.ops as unknown[];
+            const activate = args.activate === true;
+            if (!ops.length && !activate) {
+                return { ok: false, summary: 'StatePatch ops are required unless activate:true is used to switch active map.', docType, docId, error: 'state_patch_ops_required' };
+            }
             await options.beforeWriteGuard?.();
             return await db.transaction(
                 'rw',
                 tavernStateDocumentsTable,
                 tavernStatePatchesTable,
-                tavernManagerStateSnapshotsTable,
                 tavernSessionsTable,
                 async () => {
                     const existing = await getTavernStructuredStateDocument(id, docType, docId);
@@ -1394,8 +1582,29 @@ export async function executeTavernStateTool(
                         };
                     }
 
+                    if (!ops.length && activate) {
+                        if (!existing) {
+                            return { ok: false, summary: `${docType}/${docId} does not exist.`, docType, docId, error: 'state_document_not_found' };
+                        }
+                        const previousActiveDocId = await getActiveMapDocId(id);
+                        const activeDocId = await setActiveMapDocId(id, docId);
+                        return {
+                            ok: true,
+                            summary: `Activated ${docType}/${docId}.`,
+                            docType,
+                            docId,
+                            title: existing.title,
+                            revision: currentRevision,
+                            digest: existing.digest,
+                            changed: previousActiveDocId !== activeDocId,
+                            appliedCount: 0,
+                            satisfiedCount: 0,
+                            failedCount: 0,
+                        };
+                    }
+
                     const currentDocument = existing ? normalizeMapDocumentFromRecord(existing) : defaultMapDocument();
-                    const patch = applyMapOps(currentDocument, args.ops as unknown[]);
+                    const patch = applyMapOps(currentDocument, ops);
                     if (patch.failed.length) {
                         const failureSummary = summarizePatchFailures(patch.failed);
                         return {
@@ -1414,13 +1623,24 @@ export async function executeTavernStateTool(
                         };
                     }
                     if (!patch.changed) {
+                        let activeChanged = false;
+                        if (activate && args.dryRun !== true) {
+                            if (!existing) {
+                                return { ok: false, summary: `${docType}/${docId} does not exist.`, docType, docId, error: 'state_document_not_found' };
+                            }
+                            const previousActiveDocId = await getActiveMapDocId(id);
+                            const activeDocId = await setActiveMapDocId(id, docId);
+                            activeChanged = previousActiveDocId !== activeDocId;
+                        }
                         return {
                             ok: true,
-                            summary: 'State is already at the target result. No write was needed.',
+                            summary: activeChanged
+                                ? `Activated ${docType}/${docId}. State was already at the target result.`
+                                : 'State is already at the target result. No write was needed.',
                             docType,
                             docId,
                             revision: currentRevision,
-                            changed: false,
+                            changed: activeChanged,
                             appliedCount: 0,
                             satisfiedCount: patch.satisfiedCount,
                             failedCount: 0,
@@ -1429,8 +1649,9 @@ export async function executeTavernStateTool(
                     }
 
                     const nextRevision = currentRevision + 1;
-                    const digest = createMapDigest(patch.document, nextRevision);
+                    const timestamp = now();
                     if (args.dryRun === true) {
+                        const digest = createMapDigest(patch.document, nextRevision);
                         return {
                             ok: true,
                             summary: `Dry run passed: ${docType}/${docId} would advance to revision ${nextRevision} with ${patch.appliedCount} applied op(s). Nothing was saved.`,
@@ -1451,17 +1672,32 @@ export async function executeTavernStateTool(
                         };
                     }
 
-                    if (options.managerRunId) {
-                        await ensureTavernManagerStateSnapshot({ managerRunId: options.managerRunId, sessionId: id, docType, docId });
-                    }
-                    const timestamp = now();
+                    const actorDedupe = await dedupeActorElementsForSavedDocument({
+                        sessionId: id,
+                        docType,
+                        docId,
+                        document: patch.document,
+                        timestamp,
+                        managerRunId: options.managerRunId,
+                        sourceUserOrder: options.sourceUserOrder,
+                        sourceAssistantOrder: options.sourceAssistantOrder,
+                    });
+                    const nextDocument = actorDedupe.document;
+                    const effectiveOps = [...patch.effectiveOps, ...actorDedupe.removedElements.map((element) => ({ op: 'remove' as const, id: element.id }))];
+                    const removedElements = [...patch.removedElements, ...actorDedupe.removedElements];
+                    const changedIds = [...new Set([
+                        ...patch.changedIds,
+                        ...actorDedupe.removedElements.map((element) => element.id),
+                    ])];
+                    const digest = createMapDigest(nextDocument, nextRevision);
+
                     const saved = await putTavernStructuredStateDocument({
                         sessionId: id,
                         docType,
                         docId,
-                        title: mapTitle(patch.document),
+                        title: mapTitle(nextDocument),
                         revision: nextRevision,
-                        data: patch.document,
+                        data: nextDocument,
                         digest,
                         status: 'active',
                         source: options.caller || 'auto',
@@ -1479,12 +1715,12 @@ export async function executeTavernStateTool(
                         sourceAssistantOrder: options.sourceAssistantOrder,
                         source: options.caller || 'auto',
                         summary: normalizeText(args.desc || `StatePatch ${nextRevision}`, 400),
-                        ops: patch.effectiveOps,
-                        changedIds: patch.changedIds,
-                        removedElements: patch.removedElements,
+                        ops: effectiveOps,
+                        changedIds,
+                        removedElements,
                     });
-                    if (options.managerRunId) {
-                        await updateTavernManagerStateSnapshotAfter({ managerRunId: options.managerRunId, sessionId: id, docType, docId });
+                    if (activate) {
+                        await setActiveMapDocId(id, docId);
                     }
                     return {
                         ok: true,
@@ -1498,11 +1734,11 @@ export async function executeTavernStateTool(
                         appliedCount: patch.appliedCount,
                         satisfiedCount: patch.satisfiedCount,
                         failedCount: 0,
-                        changedIds: patch.changedIds,
-                        removedElements: patch.removedElements,
+                        changedIds,
+                        removedElements,
                         warnings: patch.warnings,
-                        meta: cloneJson(patch.document.meta),
-                        elementCount: patch.document.elements.length,
+                        meta: cloneJson(nextDocument.meta),
+                        elementCount: nextDocument.elements.length,
                     };
                 },
             );
@@ -1524,29 +1760,61 @@ export async function executeTavernStateTool(
 }
 
 export async function getTavernMapStateForSession(sessionId = ''): Promise<{
-    document: TavernStructuredStateDocumentRecord | null;
-    patches: TavernStructuredStatePatchRecord[];
+    documents: TavernMapStateDocumentItem[];
+    activeDocId: string;
+    activeDocument: TavernStructuredStateDocumentRecord | null;
+    activePatches: TavernStructuredStatePatchRecord[];
 }> {
-    const record = await getSeededMapDocumentRecord(sessionId, MAP_DOC_TYPE, DEFAULT_DOC_ID);
+    await ensureSeedStructuredStateDocument(sessionId, { touchSession: false });
+    const activeDocId = await getActiveMapDocId(sessionId);
+    const rows = await listTavernStructuredStateDocuments(sessionId, { docType: MAP_DOC_TYPE, includeStale: false });
+    const documents = rows
+        .map((record) => {
+            const normalized = normalizeMapDocumentFromRecord(record);
+            return {
+                ...record,
+                data: normalized,
+                docType: record.docType,
+                docId: record.docId,
+                title: mapTitle(normalized),
+                revision: record.revision,
+                digest: createMapDigest(normalized, record.revision),
+                status: record.status,
+                updatedAt: record.updatedAt,
+                active: record.docId === activeDocId,
+            };
+        })
+        .sort((left, right) => {
+            if (!!left.active !== !!right.active) {return left.active ? -1 : 1;}
+            return (Number(right.updatedAt) || 0) - (Number(left.updatedAt) || 0)
+                || (Number(right.revision) || 0) - (Number(left.revision) || 0);
+        });
+    const record = rows.find((row) => row.docId === activeDocId) || rows.find((row) => row.docId === DEFAULT_DOC_ID) || null;
     const normalizedDocument = record ? normalizeMapDocumentFromRecord(record) : null;
-    const patches = record
-        ? await listTavernStructuredStatePatches({ sessionId, docType: MAP_DOC_TYPE, docId: DEFAULT_DOC_ID, limit: 80 })
+    const activePatches = record
+        ? await listTavernStructuredStatePatches({ sessionId, docType: MAP_DOC_TYPE, docId: record.docId, limit: 80 })
         : [];
-    if (!record || !normalizedDocument) {return { document: null, patches: [] };}
+    if (!record || !normalizedDocument) {
+        return { documents, activeDocId, activeDocument: null, activePatches: [] };
+    }
     return {
-        document: {
+        documents,
+        activeDocId,
+        activeDocument: {
             ...record,
             data: normalizedDocument,
             title: mapTitle(normalizedDocument),
             digest: createMapDigest(normalizedDocument, record.revision),
         },
-        patches,
+        activePatches,
     };
 }
 
 export async function listTavernStructuredStateDigests(sessionId = '') {
-    const documents = await listTavernStructuredStateDocuments(sessionId, { includeStale: false });
+    const activeDocId = await getActiveMapDocId(sessionId);
+    const documents = await listTavernStructuredStateDocuments(sessionId, { docType: MAP_DOC_TYPE, includeStale: false });
     return documents
+        .filter((document) => document.docType === MAP_DOC_TYPE && document.docId === activeDocId)
         .map((document) => ({
             record: document,
             normalized: normalizeMapDocumentFromRecord(document),

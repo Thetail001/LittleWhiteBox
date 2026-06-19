@@ -52,6 +52,31 @@
     flex: 0 0 auto;
 }
 
+.tavern-chat.xb-page .tavern-map-select {
+    min-width: 112px;
+    max-width: 180px;
+    height: 28px;
+    border: 1px solid rgba(58, 44, 30, 0.18);
+    border-radius: 6px;
+    background: rgba(255, 252, 239, 0.86);
+    color: var(--xb-ink);
+    font: 12px/1 var(--xb-font-ui);
+}
+
+.tavern-chat.xb-page .tavern-map-active-button {
+    height: 28px;
+    padding: 0 9px;
+    border: 1px solid rgba(58, 44, 30, 0.16);
+    border-radius: 6px;
+    background: rgba(255, 252, 239, 0.8);
+    color: var(--xb-ink);
+    font: 12px/1 var(--xb-font-ui);
+}
+
+.tavern-chat.xb-page .tavern-map-active-button:disabled {
+    opacity: 0.48;
+}
+
 .tavern-chat.xb-page .tavern-map-canvas {
     position: relative;
     min-height: 0;
@@ -65,24 +90,41 @@
     border-top: 0;
 }
 
-.tavern-chat.xb-page .tavern-map-canvas-title {
+.tavern-chat.xb-page .tavern-map-compact-controls {
+    max-width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    overflow: visible;
+    color: rgba(47, 36, 24, 0.74);
+    font: 720 12px/1.2 var(--xb-font-ui);
+    pointer-events: auto;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.tavern-chat.xb-page .tavern-map-compact-controls.is-floating {
     position: absolute;
     top: 9px;
     left: 50%;
     z-index: 5;
     max-width: calc(100% - 86px);
-    overflow: hidden;
-    color: rgba(47, 36, 24, 0.74);
-    font: 720 12px/1.2 var(--xb-font-ui);
-    pointer-events: none;
-    text-align: center;
-    text-overflow: ellipsis;
     transform: translateX(-50%);
-    white-space: nowrap;
 }
 
-.tavern-chat.xb-page .theme-dark .tavern-map-canvas-title,
-.tavern-chat.xb-page .theme-blueprint .tavern-map-canvas-title {
+.tavern-chat.xb-page .tavern-map-compact-controls .tavern-map-select {
+    max-width: min(42vw, 170px);
+    height: 26px;
+    font-size: 11px;
+}
+
+.tavern-chat.xb-page .tavern-map-compact-controls .tavern-map-active-button {
+    height: 26px;
+    font-size: 11px;
+}
+
+.tavern-chat.xb-page .theme-dark .tavern-map-compact-controls,
+.tavern-chat.xb-page .theme-blueprint .tavern-map-compact-controls {
     color: rgba(221, 235, 245, 0.72);
 }
 

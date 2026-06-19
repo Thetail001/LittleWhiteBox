@@ -82,6 +82,9 @@ export function applyTrustedMapPatchOps(
                     document.meta as unknown as Record<string, unknown>,
                     set,
                 ) as unknown as TavernMapDocumentMeta;
+                if (document.meta.status !== 'uninitialized') {
+                    delete document.meta.hint;
+                }
             }
             return;
         }

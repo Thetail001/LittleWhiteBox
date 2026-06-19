@@ -1592,32 +1592,38 @@ test('xb tavern run turn can trigger manager summary with delegate config', asyn
     assert.ok(result.managerRunId);
     assert.equal(managerProvider, 'sillytavern-openai-compatible');
     assert.match(managerPrompt, /小白酒馆后台管理员/);
-    assert.match(managerPrompt, /backstage steward/i);
+    assert.match(managerPrompt, /running inside the user's SillyTavern instance/i);
+    assert.match(managerPrompt, /main chat handles immersive roleplay/i);
     assert.match(managerPrompt, /## Work Loop/);
-    assert.match(managerPrompt, /## Source Strategy/);
+    assert.match(managerPrompt, /## Selection Strategy/);
+    assert.match(managerPrompt, /## Tool Use Guide/);
     assert.match(managerPrompt, /## Structured State/);
     assert.match(managerPrompt, /memory\/state\.md/);
-    assert.match(managerPrompt, /only if this completed assistant reply changed durable memory/i);
+    assert.match(managerPrompt, /assistant reply makes a fact or state actually established/i);
     assert.doesNotMatch(managerPrompt, /建议流水路径/);
     assert.doesNotMatch(managerPrompt, /suggested turn note/i);
-    assert.match(managerPrompt, /New sessions already include a seed map/i);
-    assert.match(managerPrompt, /Read StateRead first, inspect `meta\.status` and `meta\.hint`/i);
-    assert.match(managerPrompt, /If the map is still `uninitialized`, initialize it with one `meta \+ add` transaction/i);
-    assert.match(managerPrompt, /initialize it with one `meta \+ add` transaction/i);
-    assert.match(managerPrompt, /always start with StateRead summary and inspect `meta\.status`/i);
-    assert.match(managerPrompt, /Do not decide whether to read based only on your own guess about/i);
-    assert.match(managerPrompt, /prefer growing the same map for connected space/i);
+    assert.match(managerPrompt, /default starting document is `tavern\.map\/main`/i);
+    assert.match(managerPrompt, /The active map is the current scene map/i);
+    assert.match(managerPrompt, /Before scene switches, use StateList/i);
+    assert.match(managerPrompt, /StateRead summary for the active or candidate doc/i);
+    assert.match(managerPrompt, /Read StateRead summary first for the candidate doc, inspect `meta\.status` and `meta\.hint`/i);
+    assert.match(managerPrompt, /If the selected doc is still `uninitialized`/i);
+    assert.match(managerPrompt, /one `meta \+ add` transaction/i);
+    assert.match(managerPrompt, /Do not skip reading based only on your own guess/i);
+    assert.match(managerPrompt, /prefer growing the same connected map/i);
     assert.match(managerPrompt, /Let `meta\.name` grow with the map scope/i);
-    assert.match(managerPrompt, /Replace the whole map only when the story moves to a clearly separate place/i);
+    assert.match(managerPrompt, /create a new doc instead of replacing the previous map/i);
+    assert.match(managerPrompt, /Actors use .*actorKey/i);
     assert.match(managerPrompt, /First appearance does not require a prior/i);
-    assert.match(managerPrompt, /what defines the boundary, where are the entrances and exits, where is the current player or viewpoint focus/i);
+    assert.match(managerPrompt, /what defines the boundary, where entrances and exits are/i);
     assert.match(managerPrompt, /For indoor scenes, use an outer-wall rect as the anchor/i);
     assert.match(managerPrompt, /`meta\.viewBox` is the camera/i);
-    assert.match(managerPrompt, /at least one spatial geometry element/i);
+    assert.match(managerPrompt, /at least one drawable spatial geometry element/i);
     assert.match(managerPrompt, /Place text labels 15-25 units beside what they describe/i);
     assert.match(managerPrompt, /enough geometry to carry the map body/i);
-    assert.match(managerPrompt, /Reply like an ebook file-operation confirmation/i);
-    assert.match(managerPrompt, /Use MemoryGrep to ask whether a fact already exists in memory\. Use ChatHistory grep to ask whether something happened in the RP source text\./i);
+    assert.match(managerPrompt, /Reply with a short, clear, user-facing operation summary/i);
+    assert.doesNotMatch(managerPrompt, /电纸书|ebook file-operation/i);
+    assert.match(managerPrompt, /Use MemoryGrep to ask whether a fact is already in memory/i);
     assert.doesNotMatch(managerPrompt, /可派生格式/);
     assert.doesNotMatch(managerPrompt, /messages userOrder\/assistantOrder/);
     assert.doesNotMatch(managerPrompt, /ChatHistory recent 读取最新消息/);
@@ -1635,11 +1641,14 @@ test('tavern manager prompt strips unauthorized module rules cleanly', () => {
         includeCartography: false,
     });
     assert.match(memoryOnly, /MemoryWrite/);
+    assert.match(memoryOnly, /Maintain the current session's global long-term memory in `memory\/state\.md`/);
+    assert.match(memoryOnly, /Maintain current-session character long-term memory in `memory\/characters\/<角色名>\.md`/);
+    assert.match(memoryOnly, /user-editable preset only defines the file's internal format, content scope, and selection rules/);
     assert.doesNotMatch(memoryOnly, /## Structured State/);
     assert.doesNotMatch(memoryOnly, /StateRead/);
     assert.doesNotMatch(memoryOnly, /inspect or change the map/i);
     assert.doesNotMatch(memoryOnly, /spatial relation view/i);
-    assert.doesNotMatch(memoryOnly, /The map is extra spatial state/i);
+    assert.doesNotMatch(memoryOnly, /separate spatial state/i);
 
     const mapOnly = buildTavernManagerSystemPrompt({}, {
         includeMemory: false,
@@ -2783,7 +2792,7 @@ test('xb tavern world entry substitution skips null worldbook records', async ()
     assert.doesNotMatch(result.buildSnapshot.rawMessagesJson, /null/);
 });
 
-test('xb tavern simulated request injects map digest without full map JSON', async () => {
+test('xb tavern simulated request injects only the active map digest without full map JSON', async () => {
     await resetDb();
     const preset = createDefaultXbTavernPreset();
     const session = await createTavernSession({
@@ -2808,6 +2817,17 @@ test('xb tavern simulated request injects map digest without full map JSON', asy
             },
         }],
     });
+    await executeTavernStateTool(session.id, 'StatePatch', {
+        docId: 'office',
+        activate: true,
+        ops: [{
+            op: 'meta',
+            set: { name: 'Office', theme: 'parchment', viewBox: [0, 0, 500, 400], status: 'active' },
+        }, {
+            op: 'add',
+            element: { id: 'office-desk', at: [80, 80], rect: [120, 60], cat: 'furniture', text: 'Desk' },
+        }],
+    });
 
     const result = await simulateXbTavernRequest({
         sessionId: session.id,
@@ -2830,11 +2850,13 @@ test('xb tavern simulated request injects map digest without full map JSON', asy
     });
 
     assert.match(result.buildSnapshot.rawMessagesJson, /状态摘要/);
-    assert.match(result.buildSnapshot.rawMessagesJson, /Hidden Cellar/);
-    assert.doesNotMatch(result.buildSnapshot.rawMessagesJson, /revision 1|tavern\.map\/main|docId|docType/);
+    assert.match(result.buildSnapshot.rawMessagesJson, /Office/);
+    assert.match(result.buildSnapshot.rawMessagesJson, /Desk/);
+    assert.doesNotMatch(result.buildSnapshot.rawMessagesJson, /Hidden Cellar/);
+    assert.doesNotMatch(result.buildSnapshot.rawMessagesJson, /revision 1|tavern\.map\/office|tavern\.map\/main|docId|docType/);
     assert.doesNotMatch(result.buildSnapshot.rawMessagesJson, /"elements"/);
     assert.equal(result.buildSnapshot.structuredStates?.[0]?.docType, 'tavern.map');
-    assert.equal(result.buildSnapshot.structuredStates?.[0]?.docId, 'main');
+    assert.equal(result.buildSnapshot.structuredStates?.[0]?.docId, 'office');
     assert.equal(result.buildSnapshot.structuredStates?.[0]?.revision, 1);
     assert.ok(Number(result.buildSnapshot.structuredStates?.[0]?.digestChars) > 0);
 });

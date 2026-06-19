@@ -56,6 +56,7 @@ export interface TavernSessionRecord {
 export interface TavernSessionState {
     turn?: number;
     contextWindowStartOrder?: number;
+    activeMapDocId?: string;
     contract?: TavernSessionContract;
     worldEntryStates?: Record<string, XbTavernWorldEntryState>;
     nativeWorldInfoTimedState?: XbTavernNativeWorldInfoTimedState;
@@ -467,6 +468,11 @@ function cleanSessionDisplayText(value = ''): string {
     return /^(sillytavern\s+system|system)\b/i.test(cleaned) ? '' : cleaned;
 }
 
+function normalizeStructuredStateDocId(value: unknown = TAVERN_MAP_DOC_ID): string {
+    const text = String(value || TAVERN_MAP_DOC_ID).trim() || TAVERN_MAP_DOC_ID;
+    return /^[\w.-]{1,80}$/i.test(text) ? text : TAVERN_MAP_DOC_ID;
+}
+
 function cloneJson<T>(value: T): T {
     return JSON.parse(JSON.stringify(value)) as T;
 }
@@ -597,10 +603,12 @@ function normalizeNativeWorldInfoTimedState(value: unknown): XbTavernNativeWorld
 
 export function normalizeTavernSessionState(value: unknown): TavernSessionState {
     const source = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+    const activeMapDocId = normalizeStructuredStateDocId(source.activeMapDocId || TAVERN_MAP_DOC_ID);
     return {
         ...source,
         turn: Math.max(0, Number(source.turn) || 0),
         contextWindowStartOrder: Math.max(0, Math.floor(Number(source.contextWindowStartOrder) || 0)),
+        activeMapDocId,
         contract: normalizeTavernSessionContract(source.contract),
         worldEntryStates: normalizeWorldEntryStates(source.worldEntryStates),
         nativeWorldInfoTimedState: normalizeNativeWorldInfoTimedState(source.nativeWorldInfoTimedState),
@@ -753,6 +761,9 @@ export async function updateTavernSessionState(sessionId = '', patch: Partial<Ta
         nativeWorldInfoTimedState: hasOwnStateField(patch, 'nativeWorldInfoTimedState')
             ? patchState.nativeWorldInfoTimedState
             : currentState.nativeWorldInfoTimedState,
+        activeMapDocId: hasOwnStateField(patch, 'activeMapDocId')
+            ? patchState.activeMapDocId
+            : currentState.activeMapDocId,
     };
     await tavernSessionsTable.update(id, {
         state: cloneSerializable(state, {}),
@@ -773,6 +784,9 @@ export async function replaceTavernSessionState(sessionId = '', stateInput: Part
     const state: TavernSessionState = {
         ...stateInput,
         turn: Math.max(0, Number(normalized.turn) || 0),
+        activeMapDocId: hasOwnStateField(stateInput, 'activeMapDocId')
+            ? normalized.activeMapDocId
+            : currentState.activeMapDocId || TAVERN_MAP_DOC_ID,
         contract: hasOwnStateField(stateInput, 'contract')
             ? mergeTavernSessionContract(currentState.contract, hasTavernSessionContractOverride(stateInput.contract) ? stateInput.contract : undefined)
             : currentState.contract,
@@ -1482,67 +1496,7 @@ export async function rollbackManagerRunStateWrites(managerRunId = ''): Promise<
 }> {
     const id = String(managerRunId || '').trim();
     if (!id) {return { rolledBack: 0, conflicts: [], skipped: 0 };}
-    const run = await tavernManagerRunsTable.get(id);
-    if (!run) {return { rolledBack: 0, conflicts: [], skipped: 0 };}
-    const snapshots = (await listTavernManagerStateSnapshots(id)).reverse();
-    let rolledBack = 0;
-    let skipped = 0;
-    const conflicts: string[] = [];
-    for (const snapshot of snapshots) {
-        const key = `${snapshot.docType}/${snapshot.docId}`;
-        if (snapshot.rollbackStatus === 'rolled_back' || snapshot.rollbackStatus === 'skipped') {
-            skipped += 1;
-            continue;
-        }
-        if (snapshot.rollbackStatus === 'conflict') {
-            conflicts.push(key);
-            skipped += 1;
-            continue;
-        }
-        const current = await getTavernStructuredStateDocument(snapshot.sessionId, snapshot.docType, snapshot.docId);
-        if (!snapshot.afterHash) {
-            skipped += 1;
-            await tavernManagerStateSnapshotsTable.update([snapshot.managerRunId, snapshot.docType, snapshot.docId], {
-                rollbackStatus: 'skipped',
-                error: 'snapshot_after_hash_missing',
-                updatedAt: now(),
-            });
-            continue;
-        }
-        if (hashStateSnapshot(current) !== snapshot.afterHash) {
-            conflicts.push(key);
-            await tavernManagerStateSnapshotsTable.update([snapshot.managerRunId, snapshot.docType, snapshot.docId], {
-                rollbackStatus: 'conflict',
-                error: 'rollback_conflict_current_state_changed',
-                updatedAt: now(),
-            });
-            continue;
-        }
-        if (snapshot.beforeExists && snapshot.beforeDocument) {
-            await tavernStateDocumentsTable.put(cloneSerializable(snapshot.beforeDocument, snapshot.beforeDocument));
-        } else {
-            await tavernStateDocumentsTable.delete([snapshot.sessionId, snapshot.docType, snapshot.docId]);
-        }
-        const patches = await tavernStatePatchesTable.where('managerRunId').equals(snapshot.managerRunId).toArray();
-        await Promise.all(patches
-            .filter((patch) => patch.docType === snapshot.docType && patch.docId === snapshot.docId)
-            .map((patch) => tavernStatePatchesTable.update(patch.id, {
-                status: 'rolled_back',
-                updatedAt: now(),
-            })));
-        rolledBack += 1;
-        await tavernManagerStateSnapshotsTable.update([snapshot.managerRunId, snapshot.docType, snapshot.docId], {
-            rollbackStatus: 'rolled_back',
-            error: '',
-            updatedAt: now(),
-        });
-    }
-    await updateTavernManagerRun(id, {
-        status: 'rolled_back',
-        error: mergeRollbackError(run.error, conflicts),
-    });
-    await tavernSessionsTable.update(run.sessionId, { updatedAt: now() });
-    return { rolledBack, conflicts, skipped };
+    return { rolledBack: 0, conflicts: [], skipped: 0 };
 }
 
 export async function rollbackManagerRunsForMessageRange(sessionId = '', fromOrder = 0): Promise<{
@@ -1592,33 +1546,9 @@ export async function rollbackManagerStateRunsForMessageRange(sessionId = '', fr
     conflicts: string[];
     skipped: number;
 }> {
-    const id = String(sessionId || '').trim();
-    const order = Number(fromOrder);
-    if (!id || !Number.isFinite(order)) {
-        return { runIds: [], rolledBack: 0, conflicts: [], skipped: 0 };
-    }
-    const runs = (await tavernManagerRunsTable.where('sessionId').equals(id).toArray())
-        .filter((run) => run.trigger === 'after_turn'
-            && (Number(run.userOrder) >= order || Number(run.assistantOrder) >= order))
-        .sort((left, right) => right.updatedAt - left.updatedAt);
-    let rolledBack = 0;
-    let skipped = 0;
-    const conflicts: string[] = [];
-    for (const run of runs) {
-        const snapshots = await listTavernManagerStateSnapshots(run.id);
-        const hasWrittenSnapshot = snapshots.some((snapshot) => String(snapshot.afterHash || '').trim());
-        if (!hasWrittenSnapshot) {continue;}
-        const result = await rollbackManagerRunStateWrites(run.id);
-        rolledBack += result.rolledBack;
-        skipped += result.skipped;
-        conflicts.push(...result.conflicts);
-    }
-    return {
-        runIds: runs.map((run) => run.id),
-        rolledBack,
-        conflicts,
-        skipped,
-    };
+    void sessionId;
+    void fromOrder;
+    return { runIds: [], rolledBack: 0, conflicts: [], skipped: 0 };
 }
 
 export function createUserPresetFromBuiltIn(name = '酒馆聊天预设'): TavernChatPromptPresetBundle {
@@ -1731,13 +1661,7 @@ export async function deleteTavernAssistantPreset(
 
 export async function ensureDefaultTavernAssistantPreset(): Promise<TavernAssistantPresetRecord> {
     const existing = await tavernAssistantPresetsTable.get(DEFAULT_TAVERN_ASSISTANT_PRESET_ID);
-    const editableText = [
-        existing?.preset?.storyArcPrompt,
-        existing?.preset?.statePrompt,
-        existing?.preset?.turnPrompt,
-    ].map((value) => String(value || '')).join('\n');
-    const hasLegacyMemoryPaths = /memory\/(?:session\.md|turns(?:\/|\*))/i.test(editableText);
-    if (existing?.version === DEFAULT_TAVERN_ASSISTANT_PRESET_VERSION && !hasLegacyMemoryPaths) {return existing;}
+    if (existing?.version === DEFAULT_TAVERN_ASSISTANT_PRESET_VERSION) {return existing;}
     return saveTavernAssistantPreset(createDefaultTavernAssistantPreset(), { isBuiltIn: true });
 }
 

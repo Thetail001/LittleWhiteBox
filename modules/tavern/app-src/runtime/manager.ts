@@ -20,13 +20,10 @@ import {
     createTavernManagerRun,
     deleteTavernManagerMessages,
     listTavernManagerMemorySnapshots,
-    listTavernManagerStateSnapshots,
     listTavernManagerMessages,
     listTavernMessages,
     rollbackManagerRunMemoryWrites,
-    rollbackManagerRunStateWrites,
     rollbackManagerRunsForMessageRange,
-    rollbackManagerStateRunsForMessageRange,
     touchRunningTavernManagerRun,
     updateTavernManagerRun,
     type TavernManagerMessageRecord,
@@ -240,7 +237,7 @@ function buildAutoManagerUserPrompt(input: {
         step += 1;
     }
     if (allowMap) {
-        requirements.push(`${step}. Map maintenance is two-step: always start with StateRead summary and inspect \`meta.status\`. If it is still \`uninitialized\`, initialize \`tavern.map/main\` with one meta + add transaction as soon as this turn clearly establishes a current scene/place/space. If it is already \`active\`, apply incremental add/modify/remove/meta updates only for confirmed spatial changes this turn; otherwise skip the map update.`);
+        requirements.push(`${step}. Map maintenance is scene-aware: use StateList before scene switches, keep connected spaces in the same doc, and use StatePatch activate:true only when a different map document becomes the current scene. Read StateRead summary for the chosen doc, initialize uninitialized docs with one meta + add transaction, apply incremental add/modify/remove/meta updates only for confirmed spatial changes, and otherwise skip the map update.`);
         step += 1;
     }
     if (allowMemory && allowMap) {
@@ -412,16 +409,13 @@ async function rollbackManagerRunIfWroteMemory(managerRunId = ''): Promise<{
     conflicts: string[];
 } | null> {
     const snapshots = await listTavernManagerMemorySnapshots(managerRunId);
-    const stateSnapshots = await listTavernManagerStateSnapshots(managerRunId);
-    if (!snapshots.some((snapshot) => String(snapshot.afterHash || '').trim())
-        && !stateSnapshots.some((snapshot) => String(snapshot.afterHash || '').trim())) {
+    if (!snapshots.some((snapshot) => String(snapshot.afterHash || '').trim())) {
         return null;
     }
     const memoryResult = await rollbackManagerRunMemoryWrites(managerRunId);
-    const stateResult = await rollbackManagerRunStateWrites(managerRunId);
     return {
         managerRun: await updateTavernManagerRun(managerRunId, {}),
-        conflicts: [...memoryResult.conflicts, ...stateResult.conflicts],
+        conflicts: [...memoryResult.conflicts],
     };
 }
 
@@ -1333,11 +1327,10 @@ export async function cancelAndRollbackXbTavernManagersForMessageRange(sessionId
         }
     });
     const memory = await rollbackManagerRunsForMessageRange(id, order);
-    const state = await rollbackManagerStateRunsForMessageRange(id, order);
     return {
-        runIds: [...new Set([...memory.runIds, ...state.runIds])],
-        rolledBack: memory.rolledBack + state.rolledBack,
-        conflicts: [...memory.conflicts, ...state.conflicts],
-        skipped: memory.skipped + state.skipped,
+        runIds: [...new Set([...memory.runIds])],
+        rolledBack: memory.rolledBack,
+        conflicts: [...memory.conflicts],
+        skipped: memory.skipped,
     };
 }

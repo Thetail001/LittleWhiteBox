@@ -4,7 +4,7 @@ import type {
     TavernStructuredStateDocumentRecord,
     TavernStructuredStatePatchRecord,
 } from '../../shared/session-db';
-import type { TavernMapDocument, TavernMapElement } from '../../shared/structured-state';
+import type { TavernMapDocument, TavernMapElement, TavernMapStateDocumentItem } from '../../shared/structured-state';
 import { isRenderableMapDocument } from '../../shared/map-state-content';
 import { createSeedMapDocument } from '../../shared/map-state-seed';
 import { applyTrustedMapPatchOps } from '../../shared/map-state-ops';
@@ -42,16 +42,24 @@ interface MapReplayFrame {
 }
 
 const props = withDefaults(defineProps<{
+    documents?: TavernMapStateDocumentItem[];
+    activeDocId?: string;
     document: TavernStructuredStateDocumentRecord | null;
     patches: TavernStructuredStatePatchRecord[];
     compact?: boolean;
 }>(), {
+    documents: () => [],
+    activeDocId: 'main',
     compact: false,
 });
+const emit = defineEmits<{
+    (event: 'activate-document', docId: string): void;
+}>();
 
 const replayKey = ref(0);
 const replayMode = ref<MapReplayMode>('patch');
 const timelineIndex = ref(0);
+const selectedDocId = ref('');
 const mapSvgRef = ref<SVGSVGElement | null>(null);
 const mapPanOffset = ref<[number, number]>([0, 0]);
 const mapDrag = ref<{
@@ -92,16 +100,28 @@ function normalizeDisplayMap(value: unknown): TavernMapDocument {
     };
 }
 
+const selectedDocumentRecord = computed<TavernMapStateDocumentItem | TavernStructuredStateDocumentRecord | null>(() => {
+    const docs = Array.isArray(props.documents) ? props.documents : [];
+    const selected = String(selectedDocId.value || props.activeDocId || props.document?.docId || '').trim();
+    return docs.find((document) => document.docId === selected)
+        || docs.find((document) => document.docId === props.activeDocId)
+        || props.document
+        || null;
+});
+const selectedDocPatches = computed(() => {
+    const docId = String(selectedDocumentRecord.value?.docId || '').trim();
+    return docId && docId === String(props.document?.docId || '').trim() ? props.patches : [];
+});
 const mapDocument = computed<TavernMapDocument | null>(() => {
-    const data = props.document?.data;
+    const data = selectedDocumentRecord.value?.data;
     if (!data || typeof data !== 'object' || Array.isArray(data)) {return null;}
     return normalizeDisplayMap(data);
 });
 
-const latestPatch = computed(() => props.patches.at(-1) || null);
+const latestPatch = computed(() => selectedDocPatches.value.at(-1) || null);
 const mapBadgeExpanded = ref(false);
 const timelineFrames = computed<MapReplayFrame[]>(() => {
-    const sorted = [...props.patches].sort((left, right) => Number(left.revision || 0) - Number(right.revision || 0));
+    const sorted = [...selectedDocPatches.value].sort((left, right) => Number(left.revision || 0) - Number(right.revision || 0));
     let document = defaultDisplayMap();
     return sorted.map((patch, index) => {
         const ops = Array.isArray(patch.ops) ? patch.ops as Array<Record<string, unknown>> : [];
@@ -162,12 +182,12 @@ const viewBoxArray = computed<[number, number, number, number]>(() => {
 const viewBox = computed(() => viewBoxArray.value.join(' '));
 const theme = computed(() => String(activeMapDocument.value?.meta?.theme || 'parchment'));
 const title = computed(() => String(replayMode.value === 'timeline'
-    ? activeMapDocument.value?.meta?.name || props.document?.title || '地图'
-    : props.document?.title || activeMapDocument.value?.meta?.name || '地图'));
-const digest = computed(() => String(props.document?.digest || ''));
+    ? activeMapDocument.value?.meta?.name || selectedDocumentRecord.value?.title || '地图'
+    : selectedDocumentRecord.value?.title || activeMapDocument.value?.meta?.name || '地图'));
+const digest = computed(() => String(selectedDocumentRecord.value?.digest || ''));
 const revisionLabel = computed(() => activeTimelineFrame.value && replayMode.value === 'timeline'
     ? `revision ${activeTimelineFrame.value.revision}`
-    : props.document ? `revision ${props.document.revision}` : 'no map');
+    : selectedDocumentRecord.value ? `revision ${selectedDocumentRecord.value.revision}` : 'no map');
 const patchLabel = computed(() => activePatch.value?.summary || (activePatch.value ? `revision ${activePatch.value.revision}` : '等待空间变化'));
 const badgeModeLabel = computed(() => (
     replayMode.value === 'full'
@@ -178,7 +198,12 @@ const badgeModeLabel = computed(() => (
 ));
 const digestLines = computed(() => digest.value.split('\n').map((line) => line.trim()).filter(Boolean).slice(0, 4));
 const elementCount = computed(() => activeMapDocument.value?.elements.length || 0);
-const totalPatchCount = computed(() => props.patches.length);
+const totalPatchCount = computed(() => selectedDocPatches.value.length);
+const mapDocuments = computed(() => Array.isArray(props.documents) && props.documents.length
+    ? props.documents
+    : props.document ? [{ ...props.document, active: true }] : []);
+const selectedIsActive = computed(() => String(selectedDocumentRecord.value?.docId || '') === String(props.activeDocId || 'main'));
+const canActivateSelectedDocument = computed(() => !!selectedDocumentRecord.value?.docId && !selectedIsActive.value);
 const timelineLabel = computed(() => activeTimelineFrame.value ? `${activeTimelineFrame.value.index + 1} / ${timelineFrames.value.length}` : '0 / 0');
 const hasRenderableMap = computed(() => isRenderableMapDocument(activeMapDocument.value));
 const showMapBadge = computed(() => !!activePatch.value);
@@ -192,7 +217,13 @@ watch(() => props.document?.revision, () => {
     resetMapPan();
 });
 
-watch(() => props.patches.length, () => {
+watch(() => [props.activeDocId, props.document?.docId, props.documents.length] as const, () => {
+    const next = String(selectedDocId.value || props.activeDocId || props.document?.docId || '').trim();
+    const exists = mapDocuments.value.some((document) => document.docId === next);
+    selectedDocId.value = exists ? next : String(props.activeDocId || props.document?.docId || mapDocuments.value[0]?.docId || '').trim();
+}, { immediate: true });
+
+watch(() => selectedDocPatches.value.length, () => {
     if (timelineIndex.value >= timelineFrames.value.length) {
         timelineIndex.value = Math.max(0, timelineFrames.value.length - 1);
     }
@@ -303,6 +334,7 @@ function elementColor(element: TavernMapElement): string {
         door: '#a5652b',
         danger: '#b94035',
         marker: '#b94035',
+        actor: '#b94035',
         label: '#2b2118',
         grid: '#9f987f',
         magic: '#76539a',
@@ -594,6 +626,21 @@ function collapseMapBadge() {
     mapBadgeExpanded.value = false;
 }
 
+function handleSelectedDocChange(event: Event) {
+    const target = event.target instanceof HTMLSelectElement ? event.target : null;
+    selectedDocId.value = String(target?.value || '').trim();
+    replayMode.value = 'patch';
+    clearTimelineTimer();
+    replayKey.value += 1;
+    resetMapPan();
+}
+
+function activateSelectedDocument() {
+    const docId = String(selectedDocumentRecord.value?.docId || '').trim();
+    if (!docId || selectedIsActive.value) {return;}
+    emit('activate-document', docId);
+}
+
 function handleMapPointerDown(event: PointerEvent) {
     const svg = event.currentTarget instanceof SVGSVGElement ? event.currentTarget : mapSvgRef.value;
     if (!svg || event.button !== 0) {return;}
@@ -649,9 +696,32 @@ function handleMapPointerEnd(event: PointerEvent) {
       <div class="tavern-map-title">
         <span class="tavern-map-kicker">LIVE CARTOGRAPHY</span>
         <strong>{{ title }}</strong>
-        <span v-if="document">{{ revisionLabel }} · {{ elementCount }} elements</span>
+        <span v-if="selectedDocumentRecord">{{ revisionLabel }} · {{ elementCount }} elements</span>
       </div>
       <div class="tavern-editor-actions xb-editor-actions tavern-map-actions">
+        <select
+          class="tavern-map-select"
+          :value="selectedDocumentRecord?.docId || ''"
+          :disabled="mapDocuments.length <= 1"
+          aria-label="选择地图"
+          @change="handleSelectedDocChange"
+        >
+          <option
+            v-for="mapDocumentItem in mapDocuments"
+            :key="mapDocumentItem.docId"
+            :value="mapDocumentItem.docId"
+          >
+            {{ mapDocumentItem.active ? '当前 · ' : '' }}{{ mapDocumentItem.title || mapDocumentItem.docId }}
+          </option>
+        </select>
+        <button
+          type="button"
+          class="tavern-editor-mode-button"
+          :disabled="!canActivateSelectedDocument"
+          @click="activateSelectedDocument"
+        >
+          设为当前
+        </button>
         <button
           type="button"
           class="tavern-editor-mode-button"
@@ -688,9 +758,31 @@ function handleMapPointerEnd(event: PointerEvent) {
     >
       <div
         v-if="compact"
-        class="tavern-map-canvas-title"
+        class="tavern-map-compact-controls is-floating"
       >
-        {{ title }}
+        <select
+          class="tavern-map-select"
+          :value="selectedDocumentRecord?.docId || ''"
+          :disabled="mapDocuments.length <= 1"
+          aria-label="选择地图"
+          @change="handleSelectedDocChange"
+        >
+          <option
+            v-for="mapDocumentItem in mapDocuments"
+            :key="mapDocumentItem.docId"
+            :value="mapDocumentItem.docId"
+          >
+            {{ mapDocumentItem.active ? '当前 · ' : '' }}{{ mapDocumentItem.title || mapDocumentItem.docId }}
+          </option>
+        </select>
+        <button
+          type="button"
+          class="tavern-map-active-button"
+          :disabled="!canActivateSelectedDocument"
+          @click="activateSelectedDocument"
+        >
+          设为当前
+        </button>
       </div>
       <svg
         ref="mapSvgRef"
@@ -895,6 +987,34 @@ function handleMapPointerEnd(event: PointerEvent) {
       v-else
       class="tavern-map-empty"
     >
+      <div
+        v-if="compact"
+        class="tavern-map-compact-controls"
+      >
+        <select
+          class="tavern-map-select"
+          :value="selectedDocumentRecord?.docId || ''"
+          :disabled="mapDocuments.length <= 1"
+          aria-label="选择地图"
+          @change="handleSelectedDocChange"
+        >
+          <option
+            v-for="mapDocumentItem in mapDocuments"
+            :key="mapDocumentItem.docId"
+            :value="mapDocumentItem.docId"
+          >
+            {{ mapDocumentItem.active ? '当前 · ' : '' }}{{ mapDocumentItem.title || mapDocumentItem.docId }}
+          </option>
+        </select>
+        <button
+          type="button"
+          class="tavern-map-active-button"
+          :disabled="!canActivateSelectedDocument"
+          @click="activateSelectedDocument"
+        >
+          设为当前
+        </button>
+      </div>
       <strong>地图待初始化</strong>
       <span>当前会话已备好种子地图；剧情出现明确空间变化后，后台会激活并维护它。</span>
     </div>

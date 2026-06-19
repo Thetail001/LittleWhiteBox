@@ -57,7 +57,7 @@ import {
     type TavernStructuredStatePatchRecord,
     type TavernSessionRecord,
 } from '../shared/session-db';
-import { getTavernMapStateForSession } from '../shared/structured-state';
+import { executeTavernStateTool, getTavernMapStateForSession, type TavernMapStateDocumentItem } from '../shared/structured-state';
 import {
     normalizeTavernSessionContract,
     type TavernSessionContract,
@@ -231,6 +231,8 @@ const memoryEditorBaseContent = ref('');
 const memoryEditorMode = ref<'preview' | 'edit'>('preview');
 const memoryEditorStatus = ref('');
 const chatWorkspacePanel = ref<'state' | 'memory'>('state');
+const mapStateDocuments = ref<TavernMapStateDocumentItem[]>([]);
+const activeMapDocId = ref('main');
 const mapStateDocument = ref<TavernStructuredStateDocumentRecord | null>(null);
 const mapStatePatches = ref<TavernStructuredStatePatchRecord[]>([]);
 const managerActionStatus = ref('');
@@ -443,6 +445,9 @@ const effectiveContext = computed<XbTavernContext>(() => ({
         ? buildContextHistory(sessionMessages.value)
         : context.value.history,
 }));
+const currentWorldbookCharacterId = computed(() => (
+    String(selectedSession.value?.characterId || effectiveContext.value.character?.id || selectedCharacterId.value || '').trim()
+));
 const {
     activeAssistantPreset,
     applyHostChatPreset,
@@ -465,6 +470,7 @@ const {
     agentConfig,
     tavernDisplaySettings,
     effectiveContext,
+    currentWorldbookCharacterId,
     homeThemeDark,
     isRunning,
     describeError,
@@ -2164,6 +2170,8 @@ async function refreshManagerRecords(sessionId = selectedSessionId.value) {
         memoryIndex.value = null;
         invalidateMemoryFileRecordLoad();
         stateMemoryFile.value = null;
+        mapStateDocuments.value = [];
+        activeMapDocId.value = 'main';
         mapStateDocument.value = null;
         mapStatePatches.value = [];
         selectedMemoryFilePath.value = '';
@@ -2196,8 +2204,10 @@ async function refreshManagerRecords(sessionId = selectedSessionId.value) {
     })) : [];
     memoryIndex.value = index;
     stateMemoryFile.value = nextStateFile;
-    mapStateDocument.value = mapState.document;
-    mapStatePatches.value = mapState.patches;
+    mapStateDocuments.value = mapState.documents;
+    activeMapDocId.value = mapState.activeDocId;
+    mapStateDocument.value = mapState.activeDocument;
+    mapStatePatches.value = mapState.activePatches;
     if (!memoryFiles.value.some((file) => file.path === selectedMemoryFilePath.value)) {
         if (memoryEditorDirty.value && selectedMemoryFilePath.value) {
             memoryEditorStatus.value = '当前档案已变化，草稿仍保留';
@@ -2205,6 +2215,17 @@ async function refreshManagerRecords(sessionId = selectedSessionId.value) {
         }
         selectedMemoryFilePath.value = memoryFiles.value[0]?.path || '';
     }
+}
+
+async function activateMapDocument(docId = '') {
+    const id = String(docId || '').trim();
+    if (!selectedSessionId.value || !id || id === activeMapDocId.value) {return;}
+    await executeTavernStateTool(selectedSessionId.value, 'StatePatch', {
+        docId: id,
+        activate: true,
+        ops: [],
+    }, { caller: 'chat' });
+    await refreshManagerRecords(selectedSessionId.value);
 }
 
 async function pollLiveManagerRecords() {
@@ -4169,7 +4190,10 @@ provide(TAVERN_APP_UI_CONTEXT, {
     },
     workspace: {
         activeMemoryFiles,
+        activateMapDocument,
+        activeMapDocId,
         chatWorkspacePanel,
+        mapStateDocuments,
         mapStateDocument,
         mapStatePatches,
         saveSessionContract,

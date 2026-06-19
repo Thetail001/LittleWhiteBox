@@ -27,6 +27,7 @@ import type {
     TavernStructuredStatePatchRecord,
 } from '../../shared/session-db';
 import type { TavernDisplaySettings, TavernUserOption } from '../../shared/settings';
+import type { TavernMapStateDocumentItem } from '../../shared/structured-state';
 export type { TavernDisplaySettings, TavernUserOption } from '../../shared/settings';
 
 export type TavernReadable<T> = Ref<T> | ComputedRef<T>;
@@ -411,7 +412,10 @@ export interface TavernMemoryContext {
 
 export interface TavernWorkspaceContext {
     activeMemoryFiles: TavernReadable<TavernMemoryIndexFileEntry[]>;
+    activateMapDocument: TavernCommand<[docId?: string], Promise<void>>;
+    activeMapDocId: Ref<string>;
     chatWorkspacePanel: Ref<string>;
+    mapStateDocuments: Ref<TavernMapStateDocumentItem[]>;
     mapStateDocument: Ref<TavernStructuredStateDocumentRecord | null>;
     mapStatePatches: Ref<TavernStructuredStatePatchRecord[]>;
     saveSessionContract: TavernCommand<[nextContract?: Partial<TavernSessionContract>], Promise<TavernSessionRecord | null>>;
@@ -521,7 +525,8 @@ export interface TavernSettingsContext {
     switchingTavernUserId: Ref<string>;
     syncChatPresetFromHost: TavernCommand<[], Promise<void>>;
     syncGlobalWorldbooksFromHost: TavernCommand<[], Promise<void>>;
-    syncWorldbooksFromHost: TavernCommand<[options?: { keepSelection?: boolean }], Promise<void>>;
+    syncWorldbooksForCurrentCharacter: TavernCommand<[], Promise<void>>;
+    syncWorldbooksFromHost: TavernCommand<[options?: { keepSelection?: boolean; preferredName?: string; selectFirst?: boolean }], Promise<void>>;
     switchTavernUser: TavernCommand<[userId: string], Promise<void>>;
     tavernUsers: Ref<TavernUserOption[]>;
     toggleGlobalWorldbook: TavernCommand<[name: string, selected: boolean]>;

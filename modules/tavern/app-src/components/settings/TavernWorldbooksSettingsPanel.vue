@@ -319,9 +319,13 @@ watch(
             :value="selectedWorldbookName"
             @change="selectedWorldbookName = ($event.target as HTMLSelectElement).value"
           >
+            <option value="">
+              未选择
+            </option>
             <option
               v-if="!worldbookOptions.length"
               value=""
+              disabled
             >
               没有世界书
             </option>

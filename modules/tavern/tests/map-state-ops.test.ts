@@ -35,7 +35,7 @@ test('trusted map patch replay reaches the same end state as canonical transacti
     ]);
 
     assert.deepEqual(replayed, {
-        meta: { name: 'Hall', theme: 'parchment', viewBox: [0, 0, 400, 300], status: 'active', hint: 'seed' },
+        meta: { name: 'Hall', theme: 'parchment', viewBox: [0, 0, 400, 300], status: 'active' },
         elements: [
             { id: 'hall', at: [20, 30], cat: 'wall', rect: [180, 120] },
             { id: 'token', at: [90, 95], cat: 'marker', icon: 'o' },

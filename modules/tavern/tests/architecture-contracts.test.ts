@@ -76,6 +76,16 @@ test('tavern startup posts frame-ready before heavy app tasks and prewarms host 
     assert.match(hostSource, /case 'xb-tavern:frame-ready':[\s\S]*void sendInitialConfigToFrame\(\)\.catch\(\(error\) => \{[\s\S]*failed to send initial config[\s\S]*\}\)\.finally\(flushPendingMessages\);/);
 });
 
+test('tavern assistant preset settings expose state and character memory rules', () => {
+    const controllerSource = readRepoFile('modules/tavern/app-src/components/settings/useTavernSettingsController.ts');
+    const sectionMatch = controllerSource.match(/const assistantPresetSections:[\s\S]*?];/);
+    assert.ok(sectionMatch);
+    const sectionSource = sectionMatch[0];
+    assert.match(sectionSource, /key: 'statePrompt'/);
+    assert.match(sectionSource, /key: 'characterPrompt'/);
+    assert.equal((sectionSource.match(/key:/g) || []).length, 2);
+});
+
 test('tavern worldbook bridge edits named entries through native save boundary', () => {
     const badSplits = sourceMatches(/split\(\s*\/\\r\?\\n\|,\//);
     assert.deepEqual(badSplits, []);
@@ -228,9 +238,16 @@ test('tavern character and global worldbook actions stay on native ST boundaries
     assert.match(settingsControllerSource, /openSettingsWorkspace\('worldbooks'\)/);
     assert.match(appSource, /openWorldbookWorkspace\(String\(payload\.name \|\| ''\)\)/);
     assert.match(appSource, /openWorldbookWorkspace\(targetName\)/);
+    assert.match(appSource, /const currentWorldbookCharacterId = computed\(\(\) => \([\s\S]*selectedSession\.value\?\.characterId[\s\S]*effectiveContext\.value\.character\?\.id/);
+    assert.match(appSource, /useTavernSettingsController\(\{[\s\S]*effectiveContext,[\s\S]*currentWorldbookCharacterId,/);
+    assert.match(settingsControllerSource, /async function syncWorldbooksForCurrentCharacter\(\)[\s\S]*const requestSerial = \+\+worldbookSyncRequestSerial;[\s\S]*options\.currentWorldbookCharacterId\.value[\s\S]*requestHost\('xb-tavern:get-character-worldbook-state'[\s\S]*requestSerial !== worldbookSyncRequestSerial[\s\S]*boundName && payload\.boundExists === true[\s\S]*syncWorldbooksFromHost\(\{ preferredName: boundName, requestSerial \}\)/);
+    assert.match(settingsControllerSource, /async function syncWorldbooksFromHost\(syncOptions: TavernWorldbookSyncOptions = \{\}\)[\s\S]*const requestSerial = syncOptions\.requestSerial \|\| \+\+worldbookSyncRequestSerial;[\s\S]*if \(requestSerial !== worldbookSyncRequestSerial\) \{return;\}/);
+    assert.match(settingsControllerSource, /const fallbackName = syncOptions\.selectFirst[\s\S]*: '';/);
+    assert.doesNotMatch(settingsControllerSource, /worldbookOptions\.value\[0\]\?\.name[\s\S]*selectedWorldbookName\.value = syncOptions\.keepSelection/);
     assert.doesNotMatch(appSource, /action === 'opened'/);
     assert.doesNotMatch(appSource, /postToHost\('xb-tavern:close'\);[\s\S]*return;[\s\S]*action === 'imported'/);
     assert.match(worldbookSource, /class="worldbook-section worldbook-global-enable"[\s\S]*<h3>已启用的全局世界书<\/h3>[\s\S]*class="worldbook-section worldbook-main-section"[\s\S]*<h3>世界书操作<\/h3>[\s\S]*class="preset-command-bar worldbook-command-bar"[\s\S]*class="preset-source-select worldbook-source-select"/);
+    assert.match(worldbookSource, /<option value="">\s*未选择\s*<\/option>/);
     assert.doesNotMatch(worldbookSource, /worldbook-section-kicker|全局区|操作区/);
     assert.match(worldbookSource, /:disabled="globalWorldbookSaving"/);
     assert.doesNotMatch(worldbookSource, /打开酒馆编辑器/);
@@ -381,7 +398,8 @@ test('tavern chat exposes local settings modals without leaving the session', ()
     assert.match(chatPageSource, /<TavernCornerActions[\s\S]*include-api[\s\S]*include-chat-preset[\s\S]*include-home[\s\S]*include-worldbooks[\s\S]*home-last[\s\S]*@api="openQuickSettingsModal\('api'\)"[\s\S]*@chat-preset="openQuickSettingsModal\('chatPreset'\)"[\s\S]*@worldbooks="openQuickSettingsModal\('worldbooks'\)"/);
     assert.match(chatPageSource, /class="chat-mobile-action-group"[\s\S]*title="聊天预设"[\s\S]*title="API 配置"[\s\S]*title="世界书"[\s\S]*title="首页"/);
     assert.match(chatPageSource, /const quickSettingsOpen = ref<'api' \| 'chatPreset' \| 'worldbooks' \| null>\(null\)/);
-    assert.match(chatPageSource, /function openQuickSettingsModal\(workspace: 'api' \| 'chatPreset' \| 'worldbooks'\)[\s\S]*activeSettingsWorkspace\.value = workspace;[\s\S]*syncChatPresetFromHost\(\)[\s\S]*syncWorldbooksFromHost\(\{ keepSelection: true \}\)[\s\S]*syncGlobalWorldbooksFromHost\(\)/);
+    assert.match(chatPageSource, /function openQuickSettingsModal\(workspace: 'api' \| 'chatPreset' \| 'worldbooks'\)[\s\S]*activeSettingsWorkspace\.value = workspace;[\s\S]*syncChatPresetFromHost\(\)[\s\S]*syncWorldbooksForCurrentCharacter\(\)[\s\S]*syncGlobalWorldbooksFromHost\(\)/);
+    assert.doesNotMatch(chatPageSource, /syncWorldbooksFromHost\(\{ keepSelection: true \}\)/);
     assert.match(chatPageSource, /class="chat-quick-settings-overlay"[\s\S]*class="tavern-api-settings chat-quick-api-root"[\s\S]*class="settings-layout chat-quick-settings-layout"[\s\S]*<TavernChatPresetSettingsPanel \/>[\s\S]*<TavernWorldbooksSettingsPanel \/>/);
     assert.doesNotMatch(chatPageSource, /class="chat-quick-settings-overlay"[\s\S]*@click\.self="closeQuickSettingsModal"/);
     assert.match(chatPageSource, /class="chat-quick-settings-close"[\s\S]*@click="closeQuickSettingsModal"/);
@@ -702,7 +720,11 @@ test('tavern streaming action-check UI renders from live runtime events and keep
     assert.match(composeCss, /\.compose-menu-button svg \{[\s\S]*width: 22px;[\s\S]*height: 22px;[\s\S]*stroke-width: 2;/);
     assert.match(composeCss, /\.compose-menu-popover \{[\s\S]*bottom: calc\(100% \+ 10px\);[\s\S]*min-width: 142px;/);
     assert.match(composeCss, /\.compose-menu-popover\.is-author-note \{[\s\S]*width: min\(360px, calc\(100vw - 24px\)\);/);
-    assert.match(composeCss, /@media \(max-width: 980px\) \{[\s\S]*\.compose-menu-popover \{[\s\S]*position: fixed;[\s\S]*right: 10px;[\s\S]*bottom: calc\(10px \+ env\(safe-area-inset-bottom, 0px\)\);[\s\S]*left: 10px;[\s\S]*max-height: calc\(100dvh - 20px - env\(safe-area-inset-top, 0px\) - env\(safe-area-inset-bottom, 0px\)\);/);
+    assert.match(composeCss, /@media \(max-width: 980px\) \{[\s\S]*\.compose-menu-popover \{[\s\S]*position: absolute;[\s\S]*right: auto;[\s\S]*bottom: calc\(100% \+ 8px\);[\s\S]*left: 0;[\s\S]*width: min\(280px, calc\(100vw - 20px\)\);[\s\S]*max-height: calc\(100dvh - 82px - env\(safe-area-inset-top, 0px\) - env\(safe-area-inset-bottom, 0px\)\);/);
+    assert.match(composeCss, /@media \(max-width: 980px\) \{[\s\S]*\.compose-menu-popover\.is-author-note \{[\s\S]*width: min\(360px, calc\(100vw - 20px\)\);[\s\S]*height: min\(560px, calc\(100dvh - 82px - env\(safe-area-inset-top, 0px\) - env\(safe-area-inset-bottom, 0px\)\)\);[\s\S]*overflow: hidden;/);
+    assert.match(composeCss, /@media \(max-width: 980px\) \{[\s\S]*\.compose-menu-popover\.is-author-note \.compose-author-note-panel \{[\s\S]*height: 100%;[\s\S]*min-height: 0;[\s\S]*overflow: auto;[\s\S]*overscroll-behavior: contain;/);
+    assert.match(composeCss, /@media \(max-width: 980px\) \{[\s\S]*\.compose-author-note-field textarea \{[\s\S]*resize: none;[\s\S]*max-height: min\(190px, 34vh\);/);
+    assert.doesNotMatch(composeCss, /@media \(max-width: 980px\) \{[\s\S]*\.compose-menu-popover \{[\s\S]*position: fixed;[\s\S]*bottom: calc\(10px \+ env\(safe-area-inset-bottom, 0px\)\);/);
     assert.doesNotMatch(composeCss, /left: max\(-8px, calc\(48px - 100vw\)\)/);
     assert.match(composeCss, /\.compose-author-note-segments \{[\s\S]*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);/);
     assert.match(composeCss, /\.compose-author-note-actions \{[\s\S]*grid-template-columns: minmax\(0, 1fr\) auto;/);

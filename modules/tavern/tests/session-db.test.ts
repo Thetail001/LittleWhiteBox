@@ -15,7 +15,6 @@ import db, {
     getTavernSession,
     listTavernManagerMessages,
     listTavernManagerMemorySnapshots,
-    listTavernManagerStateSnapshots,
     listTavernManagerRuns,
     listUserTavernPresets,
     listTavernMessages,
@@ -42,6 +41,8 @@ import { DEFAULT_XB_TAVERN_PRESET_ID, createDefaultXbTavernPreset } from '../sha
 import { DEFAULT_TAVERN_SESSION_CONTRACT, mergeTavernSessionContract } from '../shared/session-contract';
 import { buildXbTavernMessages, createXbTavernBuildSnapshot } from '../shared/message-assembler';
 import { createActionCheckEvent, createChanceEncounterEvent } from '../shared/runtime-events';
+import { applyTrustedMapPatchOps } from '../shared/map-state-ops';
+import { createSeedMapDocument } from '../shared/map-state-seed';
 import {
     MAX_MANAGER_TOOL_ROUNDS,
     cancelAndRollbackXbTavernManagersForMessageRange,
@@ -71,8 +72,9 @@ import {
     createDefaultTavernAssistantPreset,
     DEFAULT_TAVERN_ASSISTANT_PRESET_ID,
     DEFAULT_TAVERN_ASSISTANT_PRESET_VERSION,
+    normalizeTavernAssistantPreset,
 } from '../shared/assistant-presets';
-import { executeTavernStateTool, getTavernStateToolDefinitions } from '../shared/structured-state';
+import { executeTavernStateTool, getTavernMapStateForSession, getTavernStateToolDefinitions } from '../shared/structured-state';
 import { retrieveXbTavernMemoryContext } from '../shared/memory-retrieval';
 import * as looseToolArgumentsModule from '../../agent-core/runtime/loose-tool-arguments.js';
 
@@ -350,20 +352,20 @@ test('tavern built-in assistant preset upgrades stale local defaults', async () 
     await db.open();
 
     const staleDefault = createDefaultTavernAssistantPreset();
+    const staleTwoPagePreset = {
+        ...staleDefault,
+        statePrompt: '过期规则：只维护全局记忆。',
+        characterPrompt: '过期规则：不单独维护人物记忆。',
+    };
     await tavernAssistantPresetsTable.put({
         id: DEFAULT_TAVERN_ASSISTANT_PRESET_ID,
         name: '默认助手预设',
         description: '旧内置默认。',
-        version: 'legacy-three-file-memory',
+        version: 'stale-two-page-memory',
         isBuiltIn: true,
         createdAt: 1,
         updatedAt: 1,
-        preset: {
-            ...staleDefault,
-            storyArcPrompt: '旧三页规则：维护 memory/session.md。',
-            statePrompt: '旧三页规则：维护 memory/state.md。',
-            turnPrompt: '旧三页规则：维护 memory/turns/*.md。',
-        },
+        preset: staleTwoPagePreset,
     });
 
     const upgraded = await ensureDefaultTavernAssistantPreset();
@@ -371,32 +373,35 @@ test('tavern built-in assistant preset upgrades stale local defaults', async () 
     assert.equal(upgraded.createdAt, 1);
 
     const active = await loadActiveTavernAssistantPreset();
-    const editableSections = [
-        active.storyArcPrompt,
-        active.statePrompt,
-        active.turnPrompt,
-    ].join('\n');
-    assert.doesNotMatch(editableSections, /memory\/session\.md|memory\/turns/i);
-    assert.match(editableSections, /memory\/characters\/<角色名>\.md/);
+    assert.doesNotMatch(active.statePrompt, /memory\/session\.md|memory\/turns/i);
+    assert.doesNotMatch(active.statePrompt, /memory\/state\.md/);
+    assert.doesNotMatch(active.characterPrompt, /memory\/characters\/<角色名>\.md/);
+    assert.match(active.statePrompt, /Recommended structure:/);
+    assert.match(active.statePrompt, /Story Context/);
+    assert.match(active.characterPrompt, /Character Arc/);
+    assert.match(active.characterPrompt, /Recent Related Events/);
+});
 
-    await tavernAssistantPresetsTable.put({
-        ...upgraded,
-        version: DEFAULT_TAVERN_ASSISTANT_PRESET_VERSION,
-        preset: {
-            ...upgraded.preset,
-            storyArcPrompt: '同版本旧内容：维护 memory/session.md。',
-            turnPrompt: '同版本旧内容：维护 memory/turns/*.md。',
-        },
+test('tavern assistant preset editable sections hide fixed memory paths', () => {
+    const normalized = normalizeTavernAssistantPreset({
+        id: 'legacy-visible-paths',
+        name: '旧可见路径',
+        statePrompt: [
+            'Use `memory/state.md` for facts and states that are still true right now.',
+            'Keep character state, relationships, places, time, possessions, and ongoing constraints.',
+            'Do not keep transient events after they stop being true.',
+        ].join('\n'),
+        characterPrompt: [
+            'Maintain current-session character long-term memory in `memory/characters/<角色名>.md`.',
+            '## Relationships',
+            '- Toward the player:',
+        ].join('\n'),
     });
-    const repaired = await ensureDefaultTavernAssistantPreset();
-    const repairedEditableSections = [
-        repaired.preset.storyArcPrompt,
-        repaired.preset.statePrompt,
-        repaired.preset.turnPrompt,
-    ].join('\n');
-    assert.equal(repaired.version, DEFAULT_TAVERN_ASSISTANT_PRESET_VERSION);
-    assert.doesNotMatch(repairedEditableSections, /memory\/session\.md|memory\/turns/i);
-    assert.match(repairedEditableSections, /memory\/characters\/<角色名>\.md/);
+
+    assert.doesNotMatch(normalized.statePrompt, /memory\/state\.md|facts and states that are still true/i);
+    assert.match(normalized.statePrompt, /Recommended structure:/);
+    assert.doesNotMatch(normalized.characterPrompt, /memory\/characters\/<角色名>\.md/);
+    assert.match(normalized.characterPrompt, /## Relationships/);
 });
 
 test('tavern session state stores turn and merges world entry states', async () => {
@@ -415,6 +420,7 @@ test('tavern session state stores turn and merges world entry states', async () 
 
     assert.deepEqual(normalizeTavernSessionState(session.state), {
         turn: 2,
+        activeMapDocId: 'main',
         contextWindowStartOrder: 0,
         contract: DEFAULT_TAVERN_SESSION_CONTRACT,
         worldEntryStates: {
@@ -475,6 +481,7 @@ test('replaceTavernSessionState preserves stored contract when runtime rebuild o
         title: 'Contract replace',
         state: {
             turn: 2,
+            activeMapDocId: 'office',
             contract: {
                 memoryArchiving: false,
                 cartographyEngine: false,
@@ -498,6 +505,7 @@ test('replaceTavernSessionState preserves stored contract when runtime rebuild o
     const replaced = await getTavernSession(session.id);
     assert.deepEqual(normalizeTavernSessionState(replaced?.state), {
         turn: 5,
+        activeMapDocId: 'office',
         contextWindowStartOrder: 0,
         contract: {
             memoryArchiving: false,
@@ -701,7 +709,7 @@ test('tavern memory retrieval injects character files by deterministic entity na
 
     const session = await createTavernSession({ title: 'Character memory retrieval', characterName: '椎名真昼' });
     const characterTailMarker = 'CHARACTER_TAIL_AFTER_2400_MUST_SURVIVE_DB_CHAIN';
-    const longCharacterMemory = `# 椎名真昼\n\n${'真昼的长期弧光继续沉淀。'.repeat(260)}\n${characterTailMarker}`;
+    const longCharacterMemory = `# 椎名真昼\n\n${'真昼的长期变化继续记录。'.repeat(260)}\n${characterTailMarker}`;
     await writeTavernMemoryFile(session.id, 'memory/state.md', '# 会话记忆\n\n全局主线仍在推进。', { source: 'manager' });
     await writeTavernMemoryFile(session.id, 'memory/characters/椎名真昼.md', longCharacterMemory, { source: 'manager' });
     await writeTavernMemoryFile(session.id, 'memory/characters/佐藤.md', '# 佐藤\n\n佐藤掌握码头钥匙。', { source: 'manager' });
@@ -1075,8 +1083,10 @@ test('StateRead tool schema documents summary-first and mode semantics', () => {
     };
 
     assert.match(readTool?.function.description || '', /Use `summary` first/i);
-    assert.match(readTool?.function.description || '', /default document is `tavern\.map\/main`/i);
+    assert.match(readTool?.function.description || '', /omitting docId reads the active current-scene map/i);
+    assert.match(readTool?.function.description || '', /New sessions start with `tavern\.map\/main`/i);
     assert.match(readTool?.function.description || '', /`elements` to browse or filter map elements/i);
+    assert.match(parameters.properties?.docId?.description || '', /Omit to read the active current-scene map/i);
     assert.match(parameters.properties?.mode?.description || '', /`summary` returns compact meta/i);
     assert.match(parameters.properties?.elementId?.description || '', /Required for `element` mode/i);
     assert.match(parameters.properties?.tail?.description || '', /For `history` mode, return the final N patch transactions/i);
@@ -1094,6 +1104,8 @@ test('StatePatch tool schema documents canonical ops and camera semantics', () =
     assert.match(patchTool?.function.description || '', /one atomic transaction/i);
     assert.match(patchTool?.function.description || '', /`meta\.viewBox` is the camera/i);
     assert.match(patchTool?.function.description || '', /splits the text into a system label element automatically/i);
+    assert.match(parameters.properties?.docId?.description || '', /Omit to patch the active current-scene map/i);
+    assert.match(parameters.properties?.activate?.description || '', /With `ops:\[\]`, this only switches the active map/i);
     assert.match(opsProperties.op?.description || '', /Use `meta` for document fields, `add` for a new element/i);
     assert.match(opsProperties.set?.description || '', /Shape-field changes replace the previous shape/i);
     assert.match(opsProperties.element?.description || '', /Full element object for `add`/i);
@@ -1449,11 +1461,11 @@ test('StatePatch dryRun keeps revision stable and legacy reset/init inputs are s
     assert.deepEqual(ids, ['new-room']);
 });
 
-test('StatePatch snapshots roll back manager map writes and preserve conflicts', async () => {
+test('StatePatch manager map writes are not rolled back by message rollback', async () => {
     await db.delete();
     await db.open();
 
-    const session = await createTavernSession({ title: 'Map rollback' });
+    const session = await createTavernSession({ title: 'Map survives rollback' });
     const userMessage = await appendTavernMessage(session.id, { role: 'user', content: '进北屋。' });
     const assistantMessage = await appendTavernMessage(session.id, { role: 'assistant', content: '北屋里有一口井。' });
     const run = await createTavernManagerRun({
@@ -1473,34 +1485,14 @@ test('StatePatch snapshots roll back manager map writes and preserve conflicts',
         sourceUserOrder: userMessage.order,
         sourceAssistantOrder: assistantMessage.order,
     });
-    assert.equal((await listTavernManagerStateSnapshots(run.id)).length, 1);
 
     const rollback = await rollbackManagerStateRunsForMessageRange(session.id, userMessage.order);
-    assert.equal(rollback.rolledBack, 1);
-    const rolledBack = await getTavernStructuredStateDocument(session.id, 'tavern.map', 'main');
-    assert.equal((rolledBack?.data as { meta?: { status?: string } })?.meta?.status, 'uninitialized');
-    assert.equal((await listTavernStructuredStatePatches({ sessionId: session.id })).length, 0);
-    assert.equal((await listTavernStructuredStatePatches({ sessionId: session.id, includeRolledBack: true }))[0]?.status, 'rolled_back');
-
-    const conflictRun = await createTavernManagerRun({
-        sessionId: session.id,
-        trigger: 'after_turn',
-        status: 'running',
-        turn: 2,
-        userOrder: userMessage.order,
-        assistantOrder: assistantMessage.order,
-    });
-    await executeTavernStateTool(session.id, 'StatePatch', {
-        ops: [{ op: 'add', element: { id: 'well', type: 'circle', center: [20, 20], r: 8, cat: 'water' } }],
-    }, { caller: 'auto', managerRunId: conflictRun.id });
-    await executeTavernStateTool(session.id, 'StatePatch', {
-        baseRevision: 1,
-        ops: [{ op: 'meta', changes: { name: '用户手改地图名' } }],
-    }, { caller: 'chat' });
-    const conflict = await rollbackManagerStateRunsForMessageRange(session.id, userMessage.order);
-    assert.deepEqual(conflict.conflicts, ['tavern.map/main']);
-    const snapshot = (await listTavernManagerStateSnapshots(conflictRun.id))[0];
-    assert.equal(snapshot?.rollbackStatus, 'conflict');
+    assert.deepEqual(rollback, { runIds: [], rolledBack: 0, conflicts: [], skipped: 0 });
+    const map = await getTavernStructuredStateDocument(session.id, 'tavern.map', 'main');
+    const elements = (map?.data as { elements?: Array<{ id?: string }> })?.elements || [];
+    assert.equal(elements.some((element) => element.id === 'north-room'), true);
+    assert.equal((await listTavernStructuredStatePatches({ sessionId: session.id })).length, 1);
+    assert.equal((await listTavernStructuredStatePatches({ sessionId: session.id, includeRolledBack: true }))[0]?.status, 'active');
 });
 
 test('StatePatch serializes concurrent map writes without losing elements', async () => {
@@ -1527,7 +1519,208 @@ test('StatePatch serializes concurrent map writes without losing elements', asyn
     assert.deepEqual((await listTavernStructuredStatePatches({ sessionId: session.id })).map((patch) => patch.revision), [1, 2]);
 });
 
-test('manager range cancellation rolls back state-only writes without leaving cancelled status', async () => {
+test('StatePatch supports explicit active map switching without replacing other maps', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Multi map active' });
+    const office = await executeTavernStateTool(session.id, 'StatePatch', {
+        docId: 'office',
+        activate: true,
+        ops: [
+            { op: 'meta', set: { name: '办公室' } },
+            { op: 'add', element: { id: 'desk', at: [40, 40], rect: [30, 16], cat: 'furniture', text: '工位' } },
+        ],
+    });
+    assert.equal(office.ok, true);
+
+    const home = await executeTavernStateTool(session.id, 'StatePatch', {
+        docId: 'home',
+        ops: [
+            { op: 'meta', set: { name: '家' } },
+            { op: 'add', element: { id: 'door', at: [10, 20], rect: [10, 30], cat: 'door', text: '门' } },
+        ],
+    });
+    assert.equal(home.ok, true);
+
+    let state = await getTavernMapStateForSession(session.id);
+    assert.equal(state.activeDocId, 'office');
+    assert.equal(state.activeDocument?.docId, 'office');
+    assert.deepEqual(state.documents.map((document) => [document.docId, document.active]), [
+        ['office', true],
+        ['home', false],
+        ['main', false],
+    ]);
+    assert.equal((await getTavernStructuredStateDocument(session.id, 'tavern.map', 'main'))?.revision, 0);
+
+    const listed = await executeTavernStateTool(session.id, 'StateList', {});
+    assert.equal(listed.ok, true);
+    assert.deepEqual((listed.documents || []).map((document) => [document.docId, document.active]), [
+        ['office', true],
+        ['home', false],
+        ['main', false],
+    ]);
+
+    const activateHome = await executeTavernStateTool(session.id, 'StatePatch', {
+        docId: 'home',
+        activate: true,
+        ops: [],
+    });
+    assert.equal(activateHome.ok, true);
+
+    state = await getTavernMapStateForSession(session.id);
+    assert.equal(state.activeDocId, 'home');
+    assert.equal(state.activeDocument?.docId, 'home');
+    assert.deepEqual(state.activePatches.map((patch) => patch.docId), ['home']);
+
+    const activeSummary = await executeTavernStateTool(session.id, 'StateRead', { mode: 'summary' });
+    assert.equal(activeSummary.ok, true);
+    assert.equal(activeSummary.docId, 'home');
+
+    const activePatch = await executeTavernStateTool(session.id, 'StatePatch', {
+        ops: [{ op: 'add', element: { id: 'sofa', at: [70, 30], rect: [24, 12], cat: 'furniture', text: '沙发' } }],
+    });
+    assert.equal(activePatch.ok, true);
+    assert.equal(activePatch.docId, 'home');
+    assert.deepEqual((await listTavernStructuredStatePatches({ sessionId: session.id, docId: 'home' })).map((patch) => patch.revision), [1, 2]);
+
+    const activateOfficeWithNoopPatch = await executeTavernStateTool(session.id, 'StatePatch', {
+        docId: 'office',
+        activate: true,
+        ops: [{ op: 'meta', set: { name: '办公室' } }],
+    });
+    assert.equal(activateOfficeWithNoopPatch.ok, true);
+    assert.equal(activateOfficeWithNoopPatch.changed, true);
+    state = await getTavernMapStateForSession(session.id);
+    assert.equal(state.activeDocId, 'office');
+    assert.equal(state.activeDocument?.docId, 'office');
+    assert.deepEqual((await listTavernStructuredStatePatches({ sessionId: session.id, docId: 'office' })).map((patch) => patch.revision), [1]);
+});
+
+test('StatePatch dedupes actors by actorKey across map documents', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Actor dedupe' });
+    const userMessage = await appendTavernMessage(session.id, { role: 'user', content: '去办公室。' });
+    const assistantMessage = await appendTavernMessage(session.id, { role: 'assistant', content: '玩家站在办公室。' });
+    const run = await createTavernManagerRun({
+        sessionId: session.id,
+        trigger: 'after_turn',
+        status: 'running',
+        turn: 1,
+        userOrder: userMessage.order,
+        assistantOrder: assistantMessage.order,
+    });
+    await executeTavernStateTool(session.id, 'StatePatch', {
+        docId: 'office',
+        activate: true,
+        ops: [
+            { op: 'meta', set: { name: '办公室' } },
+            { op: 'add', element: { id: 'player-office', at: [20, 20], icon: 'o', cat: 'actor', actorKey: 'player', text: '玩家' } },
+        ],
+    });
+    await executeTavernStateTool(session.id, 'StatePatch', {
+        docId: 'home',
+        activate: true,
+        ops: [
+            { op: 'meta', set: { name: '家' } },
+            { op: 'add', element: { id: 'player-home', at: [80, 60], icon: 'o', cat: 'actor', actorKey: 'player', text: '玩家' } },
+        ],
+    }, {
+        managerRunId: run.id,
+        sourceUserOrder: userMessage.order,
+        sourceAssistantOrder: assistantMessage.order,
+    });
+
+    const office = await getTavernStructuredStateDocument(session.id, 'tavern.map', 'office');
+    const home = await getTavernStructuredStateDocument(session.id, 'tavern.map', 'home');
+    const officeActors = ((office?.data as { elements?: Array<{ id?: string; cat?: string }> })?.elements || [])
+        .filter((element) => element.cat === 'actor');
+    const homeActors = ((home?.data as { elements?: Array<{ id?: string; cat?: string }> })?.elements || [])
+        .filter((element) => element.cat === 'actor');
+    const officePatches = await listTavernStructuredStatePatches({ sessionId: session.id, docId: 'office' });
+    const homePatches = await listTavernStructuredStatePatches({ sessionId: session.id, docId: 'home' });
+    const replayedOffice = applyTrustedMapPatchOps(createSeedMapDocument(), officePatches.flatMap((patch) => patch.ops as Array<Record<string, unknown>>));
+    const replayedHome = applyTrustedMapPatchOps(createSeedMapDocument(), homePatches.flatMap((patch) => patch.ops as Array<Record<string, unknown>>));
+
+    assert.equal(office?.revision, 2);
+    assert.deepEqual(officePatches.map((patch) => patch.revision), [1, 2]);
+    assert.deepEqual((officePatches[1]?.ops as Array<{ op?: string; id?: string }>).map((op) => [op.op, op.id]), [
+        ['remove', 'player-office'],
+        ['remove', '__label__player-office'],
+    ]);
+    assert.equal(officePatches[1]?.managerRunId, run.id);
+    assert.equal(officePatches[1]?.sourceUserOrder, userMessage.order);
+    assert.equal(officePatches[1]?.sourceAssistantOrder, assistantMessage.order);
+    assert.deepEqual(replayedOffice, office?.data);
+    assert.deepEqual(replayedHome, home?.data);
+    assert.deepEqual(officeActors.map((element) => element.id), []);
+    assert.deepEqual(homeActors.map((element) => element.id), ['player-home']);
+});
+
+test('StatePatch actor dedupe keeps same-document patch replay equivalent', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Actor same doc dedupe' });
+    await executeTavernStateTool(session.id, 'StatePatch', {
+        docId: 'office',
+        ops: [
+            { op: 'meta', set: { name: '办公室' } },
+            { op: 'add', element: { id: 'player-east', at: [20, 20], icon: 'o', cat: 'actor', actorKey: 'player', text: '玩家东侧' } },
+            { op: 'add', element: { id: 'player-west', at: [80, 60], icon: 'o', cat: 'actor', actorKey: 'player', text: '玩家西侧' } },
+        ],
+    });
+
+    const office = await getTavernStructuredStateDocument(session.id, 'tavern.map', 'office');
+    const patches = await listTavernStructuredStatePatches({ sessionId: session.id, docId: 'office' });
+    const replayed = applyTrustedMapPatchOps(createSeedMapDocument(), patches.flatMap((patch) => patch.ops as Array<Record<string, unknown>>));
+    const actors = ((office?.data as { elements?: Array<{ id?: string; cat?: string }> })?.elements || [])
+        .filter((element) => element.cat === 'actor');
+    const ops = patches[0]?.ops as Array<{ op?: string; id?: string; element?: { id?: string } }>;
+
+    assert.equal(office?.revision, 1);
+    assert.deepEqual(actors.map((element) => element.id), ['player-west']);
+    assert.deepEqual(ops.map((op) => [op.op, op.id || op.element?.id]), [
+        ['meta', undefined],
+        ['add', 'player-east'],
+        ['add', '__label__player-east'],
+        ['add', 'player-west'],
+        ['add', '__label__player-west'],
+        ['meta', undefined],
+        ['remove', 'player-east'],
+        ['remove', '__label__player-east'],
+    ]);
+    assert.deepEqual(replayed, office?.data);
+});
+
+test('StatePatch actor dedupe falls back to actor id when actorKey is missing', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Actor id fallback' });
+    await executeTavernStateTool(session.id, 'StatePatch', {
+        docId: 'street',
+        ops: [{ op: 'add', element: { id: 'npc-kai', at: [10, 10], icon: 'o', cat: 'actor', text: '凯恩' } }],
+    });
+    await executeTavernStateTool(session.id, 'StatePatch', {
+        docId: 'bar',
+        ops: [{ op: 'add', element: { id: 'npc-kai', at: [30, 30], icon: 'o', cat: 'actor', text: '凯恩' } }],
+    });
+
+    const street = await getTavernStructuredStateDocument(session.id, 'tavern.map', 'street');
+    const bar = await getTavernStructuredStateDocument(session.id, 'tavern.map', 'bar');
+    const streetActors = ((street?.data as { elements?: Array<{ id?: string; cat?: string }> })?.elements || [])
+        .filter((element) => element.cat === 'actor');
+    const barActors = ((bar?.data as { elements?: Array<{ id?: string; cat?: string }> })?.elements || [])
+        .filter((element) => element.cat === 'actor');
+
+    assert.deepEqual(streetActors.map((element) => element.id), []);
+    assert.deepEqual(barActors.map((element) => element.id), ['npc-kai']);
+});
+
+test('manager range cancellation does not roll back map-only writes', async () => {
     await db.delete();
     await db.open();
 
@@ -1553,10 +1746,11 @@ test('manager range cancellation rolls back state-only writes without leaving ca
     });
 
     const rollback = await cancelAndRollbackXbTavernManagersForMessageRange(session.id, assistantMessage.order);
-    assert.equal(rollback.rolledBack, 1);
-    const rolledBack = await getTavernStructuredStateDocument(session.id, 'tavern.map', 'main');
-    assert.equal((rolledBack?.data as { meta?: { status?: string } })?.meta?.status, 'uninitialized');
-    assert.equal((await listTavernManagerRuns(session.id))[0]?.status, 'rolled_back');
+    assert.equal(rollback.rolledBack, 0);
+    const map = await getTavernStructuredStateDocument(session.id, 'tavern.map', 'main');
+    const elements = (map?.data as { elements?: Array<{ id?: string }> })?.elements || [];
+    assert.equal(elements.some((element) => element.id === 'yard'), true);
+    assert.equal((await listTavernManagerRuns(session.id))[0]?.status, 'cancelled');
 });
 
 test('State tools are in the unified manager tool schema', () => {
