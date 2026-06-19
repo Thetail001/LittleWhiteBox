@@ -3,7 +3,7 @@ import type {
     XbTavernMemoryContext,
 } from './message-assembler';
 import { extensionFolderPath } from '../../../core/constants.js';
-import { getTavernMemoryIndex, rebuildTavernMemoryDerivedIndex } from './memory-files';
+import { getTavernMemoryFile, getTavernMemoryIndex, rebuildTavernMemoryDerivedIndex } from './memory-files';
 import { listTavernStructuredStateDigests } from './structured-state';
 import * as stopwordsBase from '../../story-summary/vector/utils/stopwords-base.js';
 import * as stopwordsPatch from '../../story-summary/vector/utils/stopwords-patch.js';
@@ -448,10 +448,7 @@ function memoryFileTitle(file: TavernMemoryIndexFileEntry | TavernMemoryFileReco
 
 function memoryFileFields(file: TavernMemoryIndexFileEntry | TavernMemoryFileRecord): WeightedMemoryField[] {
     const path = String(file.path || '');
-    const pathWeight = path === 'memory/state.md' ? 2.2
-        : path === 'memory/session.md' ? 2.0
-            : path.startsWith('memory/turns/') ? 1.6
-                : 1.4;
+    const pathWeight = path === 'memory/state.md' ? 2.2 : 1.4;
     return [
         weightedField(file.path, pathWeight),
         weightedField(memoryFileTitle(file), pathWeight),
@@ -462,11 +459,31 @@ function memoryFileFields(file: TavernMemoryIndexFileEntry | TavernMemoryFileRec
     ];
 }
 
+function memoryFilePromptContent(file: TavernMemoryIndexFileEntry | TavernMemoryFileRecord): string {
+    const path = String(file.path || '');
+    if (path === 'memory/state.md') {
+        return String(('content' in file ? file.content : '') || ('preview' in file ? file.preview : '') || '');
+    }
+    return String(('preview' in file && file.preview) || ('content' in file ? file.content : '') || '').slice(0, 2400);
+}
+
 function isRecallMemoryFile(file: Pick<TavernMemoryIndexFileEntry, 'path' | 'status'> | Pick<TavernMemoryFileRecord, 'path' | 'status'>): boolean {
     const path = String(file.path || '');
     if (file.status === 'stale') {return false;}
-    return ['memory/session.md', 'memory/state.md'].includes(path)
-        || path.startsWith('memory/turns/');
+    return path === 'memory/state.md';
+}
+
+async function hydrateSelectedMemoryPromptContent(sessionId = '', context: XbTavernMemoryContext = {}): Promise<XbTavernMemoryContext> {
+    const files = Array.isArray(context.memoryFiles) ? context.memoryFiles : [];
+    if (!files.some((file) => file.path === 'memory/state.md')) {return context;}
+    const stateFile = await getTavernMemoryFile(sessionId, 'memory/state.md');
+    if (!stateFile) {return context;}
+    return {
+        ...context,
+        memoryFiles: files.map((file) => file.path === 'memory/state.md'
+            ? { ...file, content: String(stateFile.content || '') }
+            : file),
+    };
 }
 
 export function buildXbTavernMemoryIgnoredTerms(context: XbTavernContext = {}): string[] {
@@ -502,7 +519,7 @@ export function selectXbTavernMemoryContext(input: XbTavernMemorySelectionInput 
     const averageLength = averageWeightedLength(allDocuments);
     const memoryFileDocumentById = new Map(memoryFileDocuments.map((document) => [document.id, document]));
 
-    const alwaysKeepMemoryPaths = new Set(['memory/session.md', 'memory/state.md']);
+    const alwaysKeepMemoryPaths = new Set(['memory/state.md']);
     const selectedMemoryFiles = memoryFiles
         .map((file) => ({
             file,
@@ -523,7 +540,7 @@ export function selectXbTavernMemoryContext(input: XbTavernMemorySelectionInput 
         memoryFiles: selectedMemoryFiles.map((file) => ({
             path: file.path,
             title: memoryFileTitle(file),
-            content: String(('preview' in file && file.preview) || ('content' in file ? file.content : '') || '').slice(0, 2400),
+            content: memoryFilePromptContent(file),
             recallReason: file.recallReason,
             recallScore: file.recallScore,
         })),
@@ -558,12 +575,18 @@ export async function retrieveXbTavernMemoryContext(input: {
     if (hasRecallMemory) {
         await ensureXbTavernMemoryTokenizerReady();
     }
-    return {
-        ...(hasRecallMemory ? selectXbTavernMemoryContext({
+    const memoryContext = hasRecallMemory
+        ? selectXbTavernMemoryContext({
             memoryFiles,
             queryText: input.queryText,
             ignoredTerms: input.ignoredTerms,
-        }) : {}),
+        })
+        : {};
+    const hydratedMemoryContext = hasRecallMemory
+        ? await hydrateSelectedMemoryPromptContent(sessionId, memoryContext)
+        : memoryContext;
+    return {
+        ...hydratedMemoryContext,
         structuredStates,
     };
 }

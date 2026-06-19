@@ -331,7 +331,7 @@ test('xb tavern run turn sends the same ST-native prompt shape used by simulatio
             }),
         },
     });
-    await writeTavernMemoryFile(session.id, 'memory/session.md', '# Session\nNATIVE_MEMORY_NOTE', { source: 'user' });
+    await writeTavernMemoryFile(session.id, 'memory/state.md', '# 会话记忆\n\nNATIVE_MEMORY_NOTE', { source: 'user' });
     let nativeInput: { chatPreset?: unknown; memoryPrompt?: string; chancePrompt?: string; actionCheckPrompt?: string } | null = null;
     let sentMessages: Array<{ role?: string; content?: string }> = [];
 
@@ -1571,7 +1571,6 @@ test('xb tavern run turn can trigger manager summary with delegate config', asyn
         executeManagerOnce: async (options) => {
             managerCalls += 1;
             managerPrompt = JSON.stringify(options.messages);
-            const turnMemoryPath = managerPrompt.match(/memory\/turns\/\d{8}-\d+\.md/)?.[0] || '';
             const delegateConfig = options.agentConfig.delegateConfig as { provider?: string } | undefined;
             managerProvider = String(delegateConfig?.provider || '');
             if (managerCalls === 1) {
@@ -1580,12 +1579,12 @@ test('xb tavern run turn can trigger manager summary with delegate config', asyn
                     model: 'manager-model',
                     text: '',
                     toolCalls: [{
-                        id: 'write-turn',
+                        id: 'write-state',
                         name: 'MemoryWrite',
                         arguments: {
-                            filePath: turnMemoryPath,
+                            filePath: 'memory/state.md',
                             content: [
-                                '# 去码头',
+                                '# 会话记忆',
                                 '',
                                 '两人决定去码头，Aster 接受行动。',
                                 '',
@@ -1597,24 +1596,6 @@ test('xb tavern run turn can trigger manager summary with delegate config', asyn
                                 '',
                                 '地点与物品：',
                                 '目标地点变成码头。',
-                            ].join('\n'),
-                        },
-                    }, {
-                        id: 'write-session',
-                        name: 'MemoryWrite',
-                        arguments: {
-                            filePath: 'memory/session.md',
-                            content: [
-                                '# 剧情脉络',
-                                '',
-                                '## 故事为什么走到现在',
-                                '- 两人决定前往码头，行动目标已经明确。',
-                                '',
-                                '## 当前剧情压力',
-                                '- 码头会揭开什么。',
-                                '',
-                                '## 未解决事项',
-                                '- 码头有什么等待她们。',
                             ].join('\n'),
                         },
                     }],
@@ -1637,8 +1618,10 @@ test('xb tavern run turn can trigger manager summary with delegate config', asyn
     assert.match(managerPrompt, /## Work Loop/);
     assert.match(managerPrompt, /## Source Strategy/);
     assert.match(managerPrompt, /## Structured State/);
-    assert.match(managerPrompt, /建议流水路径：memory\/turns\/\d{8}-0000\.md/);
-    assert.match(managerPrompt, /create or update the suggested turn note/i);
+    assert.match(managerPrompt, /memory\/state\.md/);
+    assert.match(managerPrompt, /only if this completed assistant reply changed durable memory/i);
+    assert.doesNotMatch(managerPrompt, /建议流水路径/);
+    assert.doesNotMatch(managerPrompt, /suggested turn note/i);
     assert.match(managerPrompt, /New sessions already include a seed map/i);
     assert.match(managerPrompt, /Read StateRead first, inspect `meta\.status` and `meta\.hint`/i);
     assert.match(managerPrompt, /If the map is still `uninitialized`, initialize it with one `meta \+ add` transaction/i);
@@ -1661,8 +1644,8 @@ test('xb tavern run turn can trigger manager summary with delegate config', asyn
     assert.doesNotMatch(managerPrompt, /messages userOrder\/assistantOrder/);
     assert.doesNotMatch(managerPrompt, /ChatHistory recent 读取最新消息/);
     assert.doesNotMatch(managerPrompt, /MemoryEdit `edits` 必须是真正的非空数组/);
-    const turnFiles = (await getTavernMemoryIndex(result.sessionId))?.files || [];
-    assert.equal(turnFiles.some((file) => file.path === 'memory/turns/20260612-0000.md' || /memory\/turns\/\d{8}-0000\.md/.test(String(file.path || ''))), true);
+    const memoryFiles = (await getTavernMemoryIndex(result.sessionId))?.files || [];
+    assert.equal(memoryFiles.some((file) => file.path === 'memory/state.md'), true);
     const runs = await listTavernManagerRuns(result.sessionId);
     assert.equal(runs[0]?.status, 'completed');
     assert.equal(runs[0]?.model, 'manager-model');
@@ -1700,14 +1683,9 @@ test('xb tavern run turn retrieves relevant old memory beyond recent summaries',
             character: { id: 'char-1', name: 'Aster' },
         },
     });
-    await writeTavernMemoryFile(session.id, 'memory/turns/20260601-0000.md', '# 本轮记忆\n\nAster 把银钥匙藏在码头钟楼下面。', {
+    await writeTavernMemoryFile(session.id, 'memory/state.md', '# 会话记忆\n\nAster 把银钥匙藏在码头钟楼下面。', {
         source: 'manager',
     });
-    for (let index = 2; index <= 13; index += 1) {
-        await writeTavernMemoryFile(session.id, `memory/turns/20260601-${String(index).padStart(4, '0')}.md`, `# 本轮记忆\n\n无关闲聊 ${index}。`, {
-            source: 'manager',
-        });
-    }
 
     let rawMessagesJson = '';
     await runXbTavernTurn({
@@ -2267,7 +2245,7 @@ test('xb tavern does not pass empty macro name overrides that would hide SillyTa
     assert.equal((await listTavernMessages(result.sessionId)).find((message) => message.role === 'user')?.content, 'Aster meets GlobalUser.');
 });
 
-test('xb tavern memory recall reuses tokenizer terms without letting user and character names recall everything', () => {
+test('xb tavern memory recall reuses tokenizer terms while keeping only state memory', () => {
     const context = {
         character: { name: 'Aster' },
         user: { name: 'Player' },
@@ -2275,26 +2253,23 @@ test('xb tavern memory recall reuses tokenizer terms without letting user and ch
     };
     const queryText = buildXbTavernMemoryQuery(context, 'Player：Aster 还记得银钥匙吗？');
     const ignoredTerms = buildXbTavernMemoryIgnoredTerms(context);
-    const memoryFiles = [
-        {
-            sessionId: 'session',
-            path: 'memory/turns/20260601-0001.md',
-            content: '# 银钥匙\n\nAster 把银钥匙藏在码头钟楼下面。',
-            status: 'active' as const,
-            source: 'manager',
-            createdAt: 1,
-            updatedAt: 1,
-        },
-        ...Array.from({ length: 12 }, (_, index) => ({
-            sessionId: 'session',
-            path: `memory/turns/20260601-${String(index + 2).padStart(4, '0')}.md`,
-            content: `# 无关闲聊 ${index}\n\nAster 和 Player 进行无关闲聊 ${index}。`,
-            status: 'active' as const,
-            source: 'manager',
-            createdAt: index + 2,
-            updatedAt: index + 2,
-        })),
-    ];
+    const memoryFiles = [{
+        sessionId: 'session',
+        path: 'memory/state.md',
+        content: '# 会话记忆\n\nAster 把银钥匙藏在码头钟楼下面。',
+        status: 'active' as const,
+        source: 'manager',
+        createdAt: 1,
+        updatedAt: 1,
+    }, {
+        sessionId: 'session',
+        path: 'memory/notes.md',
+        content: '# 无关闲聊\n\nAster 和 Player 进行无关闲聊。',
+        status: 'active' as const,
+        source: 'manager',
+        createdAt: 2,
+        updatedAt: 2,
+    }];
 
     const memory = selectXbTavernMemoryContext({
         memoryFiles,
@@ -2302,7 +2277,7 @@ test('xb tavern memory recall reuses tokenizer terms without letting user and ch
         ignoredTerms,
     });
 
-    assert.deepEqual(memory.memoryFiles?.map((file) => file.path), ['memory/turns/20260601-0001.md']);
+    assert.deepEqual(memory.memoryFiles?.map((file) => file.path), ['memory/state.md']);
 });
 
 test('xb tavern memory query uses current input plus the last two history messages', () => {
@@ -2325,11 +2300,11 @@ test('xb tavern memory query uses current input plus the last two history messag
     assert.doesNotMatch(queryText, /Player：/);
 });
 
-test('xb tavern memory recall does not keep unrelated turn notes without a match', () => {
+test('xb tavern memory recall ignores non-state memory files', () => {
     const memory = selectXbTavernMemoryContext({
         memoryFiles: Array.from({ length: 3 }, (_, index) => ({
             sessionId: 'session',
-            path: `memory/turns/20260601-${String(index).padStart(4, '0')}.md`,
+            path: `memory/notes-${index}.md`,
             content: `# 普通闲聊 ${index}\n\n普通闲聊 ${index}`,
             status: 'active' as const,
             source: 'manager',
@@ -2342,11 +2317,11 @@ test('xb tavern memory recall does not keep unrelated turn notes without a match
     assert.deepEqual(memory.memoryFiles, []);
 });
 
-test('xb tavern memory recall gives heading hits stronger lexical weight than plain body text', () => {
+test('xb tavern memory recall keeps state memory even when another file has stronger lexical text', () => {
     const memory = selectXbTavernMemoryContext({
         memoryFiles: [{
             sessionId: 'session',
-            path: 'memory/turns/20260601-0001.md',
+            path: 'memory/state.md',
             content: '# 路过记录\n\n银钥匙在码头，钟楼下面。',
             status: 'active' as const,
             source: 'manager',
@@ -2354,7 +2329,7 @@ test('xb tavern memory recall gives heading hits stronger lexical weight than pl
             updatedAt: 1,
         }, {
             sessionId: 'session',
-            path: 'memory/turns/20260601-0002.md',
+            path: 'memory/notes.md',
             content: '# 银钥匙码头钟楼\n\n他们换了一个话题。',
             status: 'active' as const,
             source: 'manager',
@@ -2363,41 +2338,15 @@ test('xb tavern memory recall gives heading hits stronger lexical weight than pl
         }],
         queryText: '银钥匙 码头 钟楼',
     });
-    const byPath = new Map((memory.memoryFiles || []).map((file) => [file.path, file]));
 
-    assert.ok(Number(byPath.get('memory/turns/20260601-0002.md')?.recallScore || 0) > Number(byPath.get('memory/turns/20260601-0001.md')?.recallScore || 0));
-});
-
-test('xb tavern memory recall filters weak body matches but keeps stronger heading matches', () => {
-    const memory = selectXbTavernMemoryContext({
-        memoryFiles: [{
-            sessionId: 'session',
-            path: 'memory/turns/20260601-0001.md',
-            content: '# 普通记录\n\n银钥匙。',
-            status: 'active' as const,
-            source: 'manager',
-            createdAt: 1,
-            updatedAt: 1,
-        }, {
-            sessionId: 'session',
-            path: 'memory/turns/20260601-0002.md',
-            content: '# 银钥匙码头钟楼\n\n他们继续赶路。',
-            status: 'active' as const,
-            source: 'manager',
-            createdAt: 2,
-            updatedAt: 2,
-        }],
-        queryText: '银钥匙 码头 钟楼',
-    });
-
-    assert.deepEqual(memory.memoryFiles?.map((file) => file.path), ['memory/turns/20260601-0002.md']);
+    assert.deepEqual(memory.memoryFiles?.map((file) => file.path), ['memory/state.md']);
 });
 
 test('xb tavern memory recall handles Japanese text through the loaded tokenizer path', () => {
     const memory = selectXbTavernMemoryContext({
         memoryFiles: [{
             sessionId: 'session',
-            path: 'memory/turns/20260601-0001.md',
+            path: 'memory/state.md',
             content: '# 赤いお守り\n\n凛は古い神社で赤いお守りを隠した。',
             status: 'active' as const,
             source: 'manager',
@@ -2407,23 +2356,15 @@ test('xb tavern memory recall handles Japanese text through the loaded tokenizer
         queryText: '赤いお守りはどこ？',
     });
 
-    assert.deepEqual(memory.memoryFiles?.map((file) => file.path), ['memory/turns/20260601-0001.md']);
+    assert.deepEqual(memory.memoryFiles?.map((file) => file.path), ['memory/state.md']);
 });
 
-test('xb tavern memory recall skips unrelated notes and keeps matched files only once', () => {
+test('xb tavern memory recall keeps state memory only once', () => {
     const memory = selectXbTavernMemoryContext({
         memoryFiles: [{
             sessionId: 'session',
-            path: 'memory/turns/20260601-0000.md',
-            content: '# 银钥匙 码头 钟楼\n\nAster 把银钥匙藏在码头钟楼下面。银钥匙。',
-            status: 'active' as const,
-            source: 'manager',
-            createdAt: 1,
-            updatedAt: 1,
-        }, {
-            sessionId: 'session',
             path: 'memory/state.md',
-            content: '# 稳定状态\n\n## 物品\n- 银钥匙在码头钟楼下面。',
+            content: '# 银钥匙 码头 钟楼\n\nAster 把银钥匙藏在码头钟楼下面。银钥匙。',
             status: 'active' as const,
             source: 'manager',
             createdAt: 1,
@@ -2440,7 +2381,7 @@ test('xb tavern memory recall skips unrelated notes and keeps matched files only
         queryText: '银钥匙 码头 钟楼',
     });
 
-    assert.deepEqual(memory.memoryFiles?.map((file) => file.path), ['memory/state.md', 'memory/turns/20260601-0000.md']);
+    assert.deepEqual(memory.memoryFiles?.map((file) => file.path), ['memory/state.md']);
 });
 
 test('xb tavern memory recall keeps jieba calls on bounded Asian text segments', () => {
@@ -2487,7 +2428,7 @@ test('xb tavern memory recall does not silently fall back when tokenizer is unav
     assert.throws(() => selectXbTavernMemoryContext({
         memoryFiles: [{
             sessionId: 'session',
-            path: 'memory/turns/20260601-0001.md',
+            path: 'memory/state.md',
             content: '# 银钥匙\n\n银钥匙藏在码头钟楼下面。',
             status: 'active' as const,
             source: 'manager',
@@ -2734,7 +2675,7 @@ test('xb tavern simulated request injects only memory files when cartography is 
             }),
         },
     });
-    await writeTavernMemoryFile(session.id, 'memory/session.md', '# Session\nSECRET_MEMORY_NOTE', { source: 'user' });
+    await writeTavernMemoryFile(session.id, 'memory/state.md', '# 会话记忆\n\nSECRET_MEMORY_NOTE', { source: 'user' });
     await executeTavernStateTool(session.id, 'StatePatch', {
         ops: [{
             op: 'meta',
@@ -2793,7 +2734,7 @@ test('xb tavern simulated request injects only structured state when memory arch
             }),
         },
     });
-    await writeTavernMemoryFile(session.id, 'memory/session.md', '# Session\nSECRET_MEMORY_NOTE', { source: 'user' });
+    await writeTavernMemoryFile(session.id, 'memory/state.md', '# 会话记忆\n\nSECRET_MEMORY_NOTE', { source: 'user' });
     await executeTavernStateTool(session.id, 'StatePatch', {
         ops: [{
             op: 'meta',
@@ -3538,7 +3479,7 @@ test('xb tavern rerun preserves contract and skips automatic manager work when d
     assert.equal(session?.state?.contract?.cartographyEngine, false);
 });
 
-test('xb tavern rerun preserves rollback conflicts instead of rebuilding them away', async () => {
+test('xb tavern rerun restores state memory to the snapshot before the changed floor', async () => {
     await resetDb();
     const preset = createDefaultXbTavernPreset();
     const first = await runXbTavernTurn({
@@ -3565,18 +3506,18 @@ test('xb tavern rerun preserves rollback conflicts instead of rebuilding them aw
         assistantOrder: assistantMessage.order,
         trigger: 'after_turn',
         status: 'completed',
-        changedFiles: ['memory/session.md'],
+        changedFiles: ['memory/state.md'],
     });
-    const before = (await getTavernMemoryFile(first.sessionId, 'memory/session.md'))?.content || '';
+    const before = (await getTavernMemoryFile(first.sessionId, 'memory/state.md'))?.content || '';
     const writeResult = await executeTavernMemoryTool(first.sessionId, 'MemoryWrite', {
-        filePath: 'memory/session.md',
+        filePath: 'memory/state.md',
         content: `${before}\n\n管理员写入。`,
     }, {
         caller: 'auto',
         managerRunId: run.id,
     });
     assert.equal(writeResult.ok, true);
-    await writeTavernMemoryFile(first.sessionId, 'memory/session.md', '用户手动修正。', { source: 'user' });
+    await writeTavernMemoryFile(first.sessionId, 'memory/state.md', '用户手动修正。', { source: 'user' });
 
     await runXbTavernTurn({
         sessionId: first.sessionId,
@@ -3593,8 +3534,9 @@ test('xb tavern rerun preserves rollback conflicts instead of rebuilding them aw
         }),
     });
 
-    assert.equal((await getTavernMemoryFile(first.sessionId, 'memory/session.md'))?.content, '用户手动修正。');
-    assert.match((await getTavernMemoryIndex(first.sessionId))?.error || '', /rollback_conflict:memory\/session\.md/);
+    assert.match((await getTavernMemoryFile(first.sessionId, 'memory/state.md'))?.content || '', /# 会话记忆/);
+    assert.doesNotMatch((await getTavernMemoryFile(first.sessionId, 'memory/state.md'))?.content || '', /用户手动修正/);
+    assert.doesNotMatch((await getTavernMemoryIndex(first.sessionId))?.error || '', /rollback_conflict/);
 });
 
 test('xb tavern context history filters saved error messages for preview and runtime', () => {

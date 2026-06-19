@@ -1,9 +1,13 @@
 import { applyTextEdits } from '../../agent-core/tools/text-edit.js';
+import Dexie from '../../../libs/dexie.mjs';
+
 import { getTavernStateToolDefinitions } from './structured-state';
 import {
     listTavernMessages,
     tavernMemoryFilesTable,
+    tavernMemoryStateSnapshotsTable,
     tavernMemoryIndexesTable,
+    tavernMessagesTable,
     tavernSessionsTable,
     ensureTavernManagerMemorySnapshot,
     updateTavernManagerMemorySnapshotAfter,
@@ -12,8 +16,11 @@ import {
     type TavernMemoryIndexFileEntry,
     type TavernMemoryFileStatus,
     type TavernMemoryIndexRecord,
+    type TavernMemoryStateSnapshotRecord,
     type TavernMessageRecord,
 } from './session-db';
+
+export const MEMORY_BASELINE_FLOOR = -1;
 
 export const TAVERN_MEMORY_TOOL_NAMES = {
     LIST: 'MemoryList',
@@ -64,18 +71,26 @@ const MAX_MEMORY_READ_LIMIT = 2000;
 const DEFAULT_MEMORY_GREP_LIMIT = 100;
 const MAX_MEMORY_GREP_LIMIT = 100;
 
+type DexieRangeCollection<T> = {
+    reverse(): DexieRangeCollection<T>;
+    filter(predicate: (value: T) => boolean): DexieRangeCollection<T>;
+    first(): Promise<T | undefined>;
+};
+
+type DexieRangeTable<T> = {
+    where(index: string): {
+        between(lower: unknown, upper: unknown): DexieRangeCollection<T>;
+    };
+};
+
+const DexieRangeKeys = Dexie as unknown as { minKey: unknown; maxKey: unknown };
+
 function now(): number {
     return Date.now();
 }
 
 function memoryFileTitleFromPath(path = ''): string {
-    if (path === 'memory/session.md') {return '剧情脉络';}
-    if (path === 'memory/state.md') {return '状态栏';}
-    const turnMatch = String(path || '').match(/^memory\/turns\/(\d{8})-(\d+)\.md$/);
-    if (turnMatch) {
-        const order = Number(turnMatch[2]) || 0;
-        return order > 0 ? `第 ${order} 楼小记` : '楼层小记';
-    }
+    if (path === 'memory/state.md') {return '会话记忆';}
     return String(path || '').replace(/^memory\//, '').replace(/\.md$/i, '') || '记忆档案';
 }
 
@@ -140,60 +155,48 @@ function cloneJson<T>(value: T): T {
     return JSON.parse(JSON.stringify(value)) as T;
 }
 
-function ymd(timestamp = Date.now()): string {
-    return new Date(timestamp).toISOString().slice(0, 10).replace(/-/g, '');
-}
-
-function padOrder(order = 0): string {
-    return String(Math.max(0, Number(order) || 0)).padStart(4, '0');
-}
-
-export function buildTurnMemoryPath(userOrder = 0, timestamp = Date.now()): string {
-    return `memory/turns/${ymd(timestamp)}-${padOrder(userOrder)}.md`;
+export function buildDefaultTavernMemoryStateContent(characterName = ''): string {
+    const name = normalizeInline(characterName, 120) || '当前角色';
+    return [
+        '# 会话记忆',
+        '',
+        '## 剧情脉络',
+        '',
+        '### 当前主线',
+        '- 未开始。',
+        '',
+        '### 长期压力',
+        '- 暂无。',
+        '',
+        '### 未解伏笔',
+        '- 暂无。',
+        '',
+        '### 关系变化',
+        '- 暂无。',
+        '',
+        '## 当前状态',
+        '- 时间：未明确',
+        '- 地点：未明确',
+        `- 在场人物：${name}`,
+        '- 关键物品：暂无',
+        '- 身体/情绪/约束状态：暂无',
+        '',
+        '## 人物关系与弧光',
+        '- 人物A -> 人物B：关系变化、态度变化、长期动机。',
+        '',
+        '## 近期连续事件',
+        '- 暂无。',
+    ].join('\n');
 }
 
 function defaultMemoryFiles(sessionId = '', characterName = ''): TavernMemoryFileRecord[] {
     const timestamp = now();
-    const name = normalizeInline(characterName, 120) || '当前角色';
     const base = { sessionId, status: 'active' as TavernMemoryFileStatus, createdAt: timestamp, updatedAt: timestamp, source: 'default' };
     return [
         {
             ...base,
-            path: 'memory/session.md',
-            content: [
-                '# 剧情脉络',
-                '',
-                `- 角色：${name}`,
-                '- 当前剧情段：未开始',
-                '',
-                '## 故事为什么走到现在',
-                '- 暂无。',
-                '',
-                '## 当前剧情压力',
-                '- 暂无。',
-                '',
-                '## 未解决事项',
-                '- 暂无。',
-            ].join('\n'),
-        },
-        {
-            ...base,
             path: 'memory/state.md',
-            content: [
-                '# 状态栏',
-                '',
-                '## 当前事实',
-                '- 暂无。',
-                '',
-                '## 当前关系',
-                '- 暂无。',
-                '',
-                '## 当前地点',
-                '- 暂无。',
-                '',
-                '## 当前物品',
-                '- 暂无。',
-            ].join('\n'),
+            content: buildDefaultTavernMemoryStateContent(characterName),
         },
     ];
 }
@@ -219,9 +222,7 @@ export async function listTavernMemoryFiles(sessionId = '', options: {
 }
 
 function buildMemoryFilePreview(file: Pick<TavernMemoryFileRecord, 'path' | 'content'>): string {
-    const path = String(file.path || '');
-    const limit = ['memory/session.md', 'memory/state.md'].includes(path) ? 2400 : 1200;
-    return normalizeBody(file.content, limit);
+    return normalizeBody(file.content, 1200);
 }
 
 function buildMemoryFileListEntry(file: TavernMemoryFileRecord): TavernMemoryFileListEntry {
@@ -255,6 +256,105 @@ export async function getTavernMemoryFile(sessionId = '', pathInput = ''): Promi
     if (!id) {return null;}
     const path = normalizeTavernMemoryPath(pathInput);
     return await tavernMemoryFilesTable.get([id, path]) || null;
+}
+
+async function getLatestAssistantFloor(sessionId = ''): Promise<number> {
+    const id = String(sessionId || '').trim();
+    if (!id) {return MEMORY_BASELINE_FLOOR;}
+    const latest = await (tavernMessagesTable as unknown as DexieRangeTable<TavernMessageRecord>)
+        .where('[sessionId+order]')
+        .between([id, DexieRangeKeys.minKey], [id, DexieRangeKeys.maxKey])
+        .reverse()
+        .filter((message) => message.role === 'assistant' && message.error !== true)
+        .first();
+    return latest ? Math.floor(Number(latest.order)) : MEMORY_BASELINE_FLOOR;
+}
+
+async function resolveMemoryStateSnapshotFloor(sessionId = '', floorInput?: number): Promise<number> {
+    const explicit = Number(floorInput);
+    if (Number.isFinite(explicit)) {return Math.floor(explicit);}
+    return getLatestAssistantFloor(sessionId);
+}
+
+export async function saveTavernMemoryStateSnapshot(
+    sessionId = '',
+    floorInput?: number,
+): Promise<TavernMemoryStateSnapshotRecord | null> {
+    const id = String(sessionId || '').trim();
+    if (!id) {return null;}
+    const file = await getTavernMemoryFile(id, 'memory/state.md');
+    if (!file) {return null;}
+    const floor = await resolveMemoryStateSnapshotFloor(id, floorInput);
+    if (floor === MEMORY_BASELINE_FLOOR) {
+        const session = await tavernSessionsTable.get(id);
+        if (file.content === buildDefaultTavernMemoryStateContent(session?.characterName || '')) {
+            return null;
+        }
+    }
+    const record: TavernMemoryStateSnapshotRecord = {
+        sessionId: id,
+        floor,
+        file: cloneJson(file),
+        createdAt: now(),
+    };
+    await tavernMemoryStateSnapshotsTable.put(record);
+    return record;
+}
+
+export async function listTavernMemoryStateSnapshots(sessionId = ''): Promise<TavernMemoryStateSnapshotRecord[]> {
+    const id = String(sessionId || '').trim();
+    if (!id) {return [];}
+    return (await tavernMemoryStateSnapshotsTable.where('sessionId').equals(id).sortBy('floor'))
+        .sort((left, right) => left.floor - right.floor || left.createdAt - right.createdAt);
+}
+
+export async function getLatestTavernMemoryStateSnapshot(
+    sessionId = '',
+    targetFloor = Number.POSITIVE_INFINITY,
+): Promise<TavernMemoryStateSnapshotRecord | null> {
+    const id = String(sessionId || '').trim();
+    const floor = Number(targetFloor);
+    if (!id) {return null;}
+    const snapshots = await listTavernMemoryStateSnapshots(id);
+    return snapshots
+        .filter((snapshot) => Number(snapshot.floor) <= floor || floor === Number.POSITIVE_INFINITY)
+        .sort((left, right) => Number(right.floor) - Number(left.floor) || Number(right.createdAt) - Number(left.createdAt))[0]
+        || null;
+}
+
+export async function trimTavernMemoryStateSnapshotsFromFloor(sessionId = '', fromFloor = 0): Promise<number> {
+    const id = String(sessionId || '').trim();
+    const floor = Number(fromFloor);
+    if (!id || !Number.isFinite(floor)) {return 0;}
+    const snapshots = await listTavernMemoryStateSnapshots(id);
+    const affected = snapshots.filter((snapshot) => Number(snapshot.floor) >= floor);
+    if (!affected.length) {return 0;}
+    await tavernMemoryStateSnapshotsTable.bulkDelete(affected.map((snapshot) => [snapshot.sessionId, snapshot.floor]));
+    return affected.length;
+}
+
+export async function restoreTavernMemoryStateToFloor(sessionId = '', targetFloor = -1): Promise<TavernMemoryFileRecord> {
+    const id = String(sessionId || '').trim();
+    if (!id) {throw new Error('memory_session_required');}
+    const snapshot = await getLatestTavernMemoryStateSnapshot(id, targetFloor);
+    if (snapshot?.file) {
+        const timestamp = now();
+        const file: TavernMemoryFileRecord = {
+            ...cloneJson(snapshot.file),
+            sessionId: id,
+            path: 'memory/state.md',
+            status: 'active',
+            updatedAt: timestamp,
+        };
+        await tavernMemoryFilesTable.put(file);
+        await tavernSessionsTable.update(id, { updatedAt: timestamp });
+        await markTavernMemoryIndexStale(id);
+        return file;
+    }
+    const session = await tavernSessionsTable.get(id);
+    return writeTavernMemoryFile(id, 'memory/state.md', buildDefaultTavernMemoryStateContent(session?.characterName || ''), {
+        source: 'default',
+    });
 }
 
 export async function writeTavernMemoryFile(sessionId = '', pathInput = '', contentInput = '', options: {
@@ -376,6 +476,11 @@ function getToolPath(args: Record<string, unknown>): string {
     return normalizeTavernMemoryPath(args.filePath || args.path || '');
 }
 
+function validateStateMemoryPath(path = ''): string | null {
+    const normalized = normalizeTavernMemoryPath(path);
+    return normalized === 'memory/state.md' ? normalized : null;
+}
+
 export function getTavernMemoryToolDefinitions(): Array<{ type: 'function'; function: { name: string; description: string; parameters: unknown } }> {
     return [
         {
@@ -399,13 +504,13 @@ export function getTavernMemoryToolDefinitions(): Array<{ type: 'function'; func
                     'Read a current-session memory Markdown file.',
                     'Returns raw `content` plus line-numbered `numberedContent`. Large files include continuation hints.',
                     'Use `tail` by itself when you need the end of a file. Do not combine `tail` with `offset` or `limit`.',
-                    'The argument name is `filePath`, not `path`. Memory file paths look like `memory/session.md`, `memory/state.md`, or `memory/turns/20260612-0042.md`.',
+                    'The argument name is `filePath`, not `path`. The canonical long-term memory file is `memory/state.md`.',
                     'This reads memory files only. Use ChatHistory for original RP chat messages.',
                 ].join('\n'),
                 parameters: {
                     type: 'object',
                     properties: {
-                        filePath: { type: 'string', description: 'Memory file path, for example `memory/session.md`, `memory/state.md`, or `memory/turns/20260612-0042.md`. Do not pass path.' },
+                        filePath: { type: 'string', description: 'Memory file path. Use `memory/state.md` for the session memory state.' },
                         offset: { type: 'number', description: '1-based line offset. Default 1.' },
                         limit: { type: 'number', description: 'Maximum lines to return. Default 1200, max 2000.' },
                         tail: { type: 'number', description: 'Return the final N lines. Use by itself when you need the end of a file; do not combine it with offset or limit.' },
@@ -420,16 +525,17 @@ export function getTavernMemoryToolDefinitions(): Array<{ type: 'function'; func
             function: {
                 name: TAVERN_MEMORY_TOOL_NAMES.WRITE,
                 description: [
-                    'Write a complete current-session memory Markdown file.',
-                    'Use for creating or replacing session, state, or turn-note files, or for whole-file rewrites where most content is new.',
+                    'Write the complete current-session `memory/state.md` Markdown file.',
+                    'Use for whole-file rewrites where most of the session memory state is new.',
                     'Read the target file first when it already exists. Write overwrites the entire file, so include all original content you want to keep.',
                     'The argument names are `filePath` and `content`. Write replaces the complete target file content.',
                     'Use MemoryEdit instead for small corrections inside an existing file.',
+                    'Only `memory/state.md` is writable.',
                 ].join('\n'),
                 parameters: {
                     type: 'object',
                     properties: {
-                        filePath: { type: 'string', description: 'Target memory file path, for example `memory/turns/0001.md` or `memory/state.md`.' },
+                        filePath: { type: 'string', description: 'Target memory file path. Must be `memory/state.md`.' },
                         content: { type: 'string', description: 'Complete Markdown file content to save.' },
                     },
                     required: ['filePath', 'content'],
@@ -442,7 +548,7 @@ export function getTavernMemoryToolDefinitions(): Array<{ type: 'function'; func
             function: {
                 name: TAVERN_MEMORY_TOOL_NAMES.EDIT,
                 description: [
-                    'Edit one existing current-session memory Markdown file by replacing original text fragments, replacing inclusive line ranges, inserting text at line positions, or removing text with empty replacements.',
+                    'Edit the existing current-session `memory/state.md` file by replacing original text fragments, replacing inclusive line ranges, inserting text at line positions, or removing text with empty replacements.',
                     'One call edits one file.',
                     'Use oldString/newString for in-sentence, small-paragraph, or multi-spot local revisions. Use startLine/endLine/newString for contiguous section replacement where copying oldString would be fragile. Use insertAtLine/newString to add new text before a line or at the end without replacing existing text. Use MemoryWrite instead for creating files or whole-file rewrites where most content is new.',
                     'Read the target file first unless the exact current text is already available in the conversation or a recent tool result. Line-range and insertion edits must use line numbers from the latest MemoryRead result.',
@@ -470,11 +576,12 @@ export function getTavernMemoryToolDefinitions(): Array<{ type: 'function'; func
                     'oldString edits execute in order. Line-range and insertion edits execute bottom-to-top by original line numbers. Do not let a later oldString match text just inserted by an earlier newString.',
                     'If two changes overlap, merge them into one replacement for the larger fragment instead of splitting them into separate edits.',
                     'Use MemoryWrite for complete file rewrites, or when most of the file should be replaced.',
+                    'Only `memory/state.md` is editable.',
                 ].join('\n'),
                 parameters: {
                     type: 'object',
                     properties: {
-                        filePath: { type: 'string', description: 'Canonical path under memory/.' },
+                        filePath: { type: 'string', description: 'Canonical path. Must be `memory/state.md`.' },
                         edits: {
                             type: 'array',
                             description: 'List of edits as a real, non-empty JSON array, not a quoted JSON string. Each item should use exactly one mode: oldString/newString, startLine/endLine/newString, or insertAtLine/newString. Stray optional fields are ignored by mode priority when possible.',
@@ -514,7 +621,7 @@ export function getTavernMemoryToolDefinitions(): Array<{ type: 'function'; func
                     type: 'object',
                     properties: {
                         pattern: { type: 'string', description: 'Search pattern. Treated as literal text by default; use regex/useRegex only when you intentionally need regex.' },
-                        path: { type: 'string', description: 'Optional search scope. Can be a directory like `memory/turns/` or one file like `memory/state.md`.' },
+                        path: { type: 'string', description: 'Optional search scope. Prefer exact file `memory/state.md`.' },
                         filePath: { type: 'string', description: 'Optional exact file scope. Alias for path when targeting one memory file such as memory/state.md.' },
                         outputMode: { type: 'string', enum: ['content', 'files_with_matches', 'count'], description: '`content` returns matched lines, `files_with_matches` returns files only, and `count` returns match counts. Default content.' },
                         limit: { type: 'number', description: 'Maximum results to return. Default 100, max 100.' },
@@ -670,12 +777,24 @@ export async function executeTavernMemoryTool(
             };
         }
         if (toolName === TAVERN_MEMORY_TOOL_NAMES.WRITE) {
-            const path = getToolPath(args);
+            const pathInput = String(args.filePath || args.path || '');
+            const path = validateStateMemoryPath(pathInput);
+            if (!path) {
+                return {
+                    ok: false,
+                    summary: '当前记忆系统只允许写入 memory/state.md。',
+                    path: normalizeTavernMemoryPath(pathInput),
+                    changed: false,
+                    error: 'memory_state_only',
+                };
+            }
             await options.beforeWriteGuard?.();
             if (options.managerRunId) {
                 await ensureTavernManagerMemorySnapshot({ managerRunId: options.managerRunId, sessionId: id, path });
             }
-            const file = await writeTavernMemoryFile(id, path, String(args.content || ''), { source: 'manager' });
+            const file = await writeTavernMemoryFile(id, path, String(args.content || ''), {
+                source: 'manager',
+            });
             if (options.managerRunId) {
                 await updateTavernManagerMemorySnapshotAfter({ managerRunId: options.managerRunId, sessionId: id, path: file.path });
             }
@@ -692,7 +811,17 @@ export async function executeTavernMemoryTool(
             return { ok: true, summary: `已写入 ${file.path}。`, path: file.path, changed: true };
         }
         if (toolName === TAVERN_MEMORY_TOOL_NAMES.EDIT) {
-            const path = getToolPath(args);
+            const pathInput = String(args.filePath || args.path || '');
+            const path = validateStateMemoryPath(pathInput);
+            if (!path) {
+                return {
+                    ok: false,
+                    summary: '当前记忆系统只允许编辑 memory/state.md。',
+                    path: normalizeTavernMemoryPath(pathInput),
+                    changed: false,
+                    error: 'memory_state_only',
+                };
+            }
             const file = await getTavernMemoryFile(id, path);
             if (!file) {return { ok: false, summary: `${path} 不存在。`, path, error: 'memory_file_not_found' };}
             const result = applyTextEdits(file.content, args.edits) as {
@@ -713,7 +842,9 @@ export async function executeTavernMemoryTool(
                 if (options.managerRunId) {
                     await ensureTavernManagerMemorySnapshot({ managerRunId: options.managerRunId, sessionId: id, path });
                 }
-                await writeTavernMemoryFile(id, path, result.content, { source: 'manager' });
+                await writeTavernMemoryFile(id, path, result.content, {
+                    source: 'manager',
+                });
                 if (options.managerRunId) {
                     await updateTavernManagerMemorySnapshotAfter({ managerRunId: options.managerRunId, sessionId: id, path });
                 }

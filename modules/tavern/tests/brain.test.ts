@@ -8,6 +8,31 @@ import {
     createXbTavernWorldSettings,
 } from '../shared/brain';
 import { createDefaultXbTavernPreset } from '../shared/presets';
+import {
+    selectXbTavernMemoryContext,
+    setXbTavernMemoryTokenizerForTest,
+} from '../shared/memory-retrieval';
+
+function tokenizeForMemoryTests(text: string): string[] {
+    const value = String(text || '').normalize('NFKC').toLowerCase();
+    const tokens: string[] = value.match(/[a-z0-9]{3,}/g) || [];
+    const runs = value.match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]{2,}/gu) || [];
+    runs.forEach((run) => {
+        for (let size = 2; size <= Math.min(6, run.length); size += 1) {
+            for (let index = 0; index <= run.length - size; index += 1) {
+                tokens.push(run.slice(index, index + size));
+            }
+        }
+    });
+    return tokens;
+}
+
+setXbTavernMemoryTokenizerForTest({
+    jiebaCut: (text) => tokenizeForMemoryTests(text),
+    tinySegmenter: {
+        segment: (text) => tokenizeForMemoryTests(text),
+    },
+});
 
 test('xb tavern brain applies one shared runtime contract for preview and runs', () => {
     const preset = createDefaultXbTavernPreset();
@@ -102,8 +127,8 @@ test('xb tavern brain injects memory as D1 system before current user message', 
         currentUserMessage: 'Continue.',
         memoryContext: {
             memoryFiles: [{
-                path: 'memory/session.md',
-                title: '剧情脉络',
+                path: 'memory/state.md',
+                title: '会话记忆',
                 content: '双方已经完成试探，信任正在增加。',
             }],
         },
@@ -122,4 +147,36 @@ test('xb tavern brain injects memory as D1 system before current user message', 
     assert.doesNotMatch(brain.buildResult.messages[memoryLayer.index]?.content || '', /<session_memory|memory\/session\.md|剧情脉络/);
     assert.doesNotMatch(brain.rawMessagesJson, /<world_info_depth/);
     assert.match(brain.rawMessagesJson, /信任正在增加/);
+});
+
+test('xb tavern brain keeps full state memory content in D1 without preview truncation', () => {
+    const tailMarker = 'STATE_TAIL_AFTER_2400_MUST_SURVIVE';
+    const longState = `# 会话记忆\n\n${'稳定记忆。'.repeat(620)}\n${tailMarker}`;
+    assert.ok(longState.length > 2400);
+    const memoryContext = selectXbTavernMemoryContext({
+        memoryFiles: [{
+            path: 'memory/state.md',
+            status: 'active',
+            title: '会话记忆',
+            preview: longState,
+            contentLength: longState.length,
+            createdAt: 1,
+            updatedAt: 1,
+            source: 'manager',
+        }],
+        queryText: '继续',
+    });
+    const brain = buildXbTavernBrain({
+        context: {
+            character: { id: 'char-1', name: 'Aster' },
+            history: [{ role: 'assistant', content: 'Old reply.' }],
+        },
+        preset: createDefaultXbTavernPreset(),
+        currentUserMessage: 'Continue.',
+        memoryContext,
+    });
+    const memoryLayer = brain.buildResult.messageLayers.find((layer) => layer.layer === 'world-depth' && layer.label === 'world info depth 1');
+
+    assert.ok(memoryLayer);
+    assert.match(brain.buildResult.messages[memoryLayer.index]?.content || '', new RegExp(tailMarker));
 });

@@ -35,7 +35,6 @@ import {
     deleteTavernMessages,
     getTavernSession,
     listTavernMessages,
-    markTavernMemoryStaleFromOrder,
     mergeWorldEntryStates,
     normalizeTavernSessionState,
     replaceTavernSessionState,
@@ -46,7 +45,12 @@ import {
     type TavernSessionRecord,
     type TavernSessionState,
 } from '../../shared/session-db';
-import { rebuildTavernMemoryDerivedIndex } from '../../shared/memory-files';
+import {
+    rebuildTavernMemoryDerivedIndex,
+    restoreTavernMemoryStateToFloor,
+    saveTavernMemoryStateSnapshot,
+    trimTavernMemoryStateSnapshotsFromFloor,
+} from '../../shared/memory-files';
 import { buildXbTavernBrain, buildXbTavernBrainAsync } from '../../shared/brain';
 import {
     ACTION_CHECK_TOOL_NAME,
@@ -1840,11 +1844,11 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
         ? sessionMessages.find((message) => message.order === reusedOrder && message.role === 'user' && !message.error) || null
         : null;
     if (reusedUserMessage) {
-        const rollback = await cancelAndRollbackXbTavernManagersForMessageRange(baseSession.id, reusedUserMessage.order + 1);
-        await markTavernMemoryStaleFromOrder(baseSession.id, reusedUserMessage.order);
-        if (!rollback.conflicts.length) {
-            await rebuildTavernMemoryDerivedIndex(baseSession.id);
-        }
+        const changedOrder = reusedUserMessage.order + 1;
+        await cancelAndRollbackXbTavernManagersForMessageRange(baseSession.id, changedOrder);
+        await restoreTavernMemoryStateToFloor(baseSession.id, changedOrder - 1);
+        await trimTavernMemoryStateSnapshotsFromFloor(baseSession.id, changedOrder);
+        await rebuildTavernMemoryDerivedIndex(baseSession.id);
         await deleteTavernMessages(
             baseSession.id,
             sessionMessages
@@ -1852,6 +1856,9 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
                 .map((message) => message.order),
         );
         sessionMessages = await listTavernMessages(baseSession.id);
+    }
+    if (!reusedUserMessage) {
+        await saveTavernMemoryStateSnapshot(baseSession.id);
     }
     const historyMessages = reusedUserMessage
         ? sessionMessages.filter((message) => message.order < reusedUserMessage.order)

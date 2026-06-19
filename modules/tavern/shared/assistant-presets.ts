@@ -46,16 +46,16 @@ function buildFixedManagerSystemPrompt(options: TavernManagerPromptOptions = {})
         includeCartography ? 'structured spatial state' : '',
     ].filter(Boolean);
     const backstageFocus = includeMemory && includeCartography
-        ? 'facts, continuity, long-lived state, turn notes, and spatial state.'
+        ? 'facts, continuity, long-lived state, unresolved threads, recent event compression, and spatial state.'
         : includeMemory
-            ? 'facts, continuity, long-lived state, and turn notes.'
+            ? 'facts, continuity, long-lived state, unresolved threads, and recent event compression.'
             : includeCartography
                 ? 'spatial boundaries, positions, routes, and scene geometry.'
                 : 'evidence and session context.';
     const maintenanceScope = includeMemory && includeCartography
-        ? 'Maintain continuity, state, places, time, possessions, hooks, turn notes, and spatial changes when they actually matter.'
+        ? 'Maintain continuity, state, places, time, possessions, hooks, recent event compression, and spatial changes when they actually matter.'
         : includeMemory
-            ? 'Maintain continuity, state, places, time, possessions, hooks, and turn notes when they actually matter.'
+            ? 'Maintain continuity, state, places, time, possessions, hooks, and recent event compression when they actually matter.'
             : includeCartography
                 ? 'Maintain the current scene map with boundaries, routes, positions, and hazards.'
                 : 'Help the user inspect backstage materials with evidence when asked.';
@@ -100,16 +100,16 @@ function buildFixedManagerSystemPrompt(options: TavernManagerPromptOptions = {})
     ];
 
     const injectedContextLines = [
-        includeMemory ? '`[Resident Memory Files]` usually contains `memory/session.md` and `memory/state.md`.' : '',
-        includeMemory ? 'Automatic after-turn runs also receive this turn\'s user/assistant source text and a suggested turn-note path. If this turn needs a turn file, maintain it with normal MemoryWrite or MemoryEdit Markdown updates.' : '',
+        includeMemory ? '`[Resident Memory Files]` contains the current `memory/state.md` snapshot.' : '',
+        includeMemory ? 'Automatic after-turn runs receive this turn\'s completed user/assistant source text. Maintain `memory/state.md` only when the assistant reply establishes a real memory change.' : '',
         'Manual manager chat receives the manager\'s own conversation history and the current user question. RP source text is not fully preloaded; use ChatHistory when needed.',
     ];
 
     const fileDisciplineLines = includeMemory ? [
         'You may operate on current-session `memory/...` Markdown files only through Memory tools.',
-        '`memory/session.md` tracks long-running plot continuity and pressure. `memory/state.md` tracks facts and states that still hold. `memory/turns/*.md` are lightweight per-turn notes and history fallback, not another durable summary layer.',
-        'Automatic after-turn runs receive a suggested turn-note path. When the user asks to correct memory, manager chat may also read and modify existing turn files.',
-        'These Markdown files are for future reading and retrieval, not a fixed database schema. Headings, paragraphs, and style are controlled by the assistant preset.',
+        '`memory/state.md` is the single long-term memory file. It carries current hard state, plot context, relationship arcs, unresolved matters, and compressed recent continuous events.',
+        'MemoryWrite and MemoryEdit should target `memory/state.md`.',
+        'This Markdown file is for future reading and retrieval, not a rigid database schema. Preserve useful headings and keep it readable.',
     ] : [];
 
     const workLoopLines = [
@@ -121,8 +121,8 @@ function buildFixedManagerSystemPrompt(options: TavernManagerPromptOptions = {})
         ].join(''),
         'Use tools when you need evidence or need to change stored materials. Save only through the tools that are currently available.',
         'Read the current state or the source RP first, then make the smallest necessary change. Do not blindly repeat a failed tool call.',
-        includeMemory ? 'In automatic after-turn runs, create or update the suggested turn note when useful, then sync `memory/session.md` and `memory/state.md` only when the turn changed durable continuity or durable state.' : '',
-        includeMemory && includeCartography ? 'The map is extra spatial state. It does not replace written memory, and turn notes do not replace durable memory.' : '',
+        includeMemory ? 'In automatic after-turn runs, update `memory/state.md` only when the completed assistant reply changes durable memory. If nothing materially changed, skip writing.' : '',
+        includeMemory && includeCartography ? 'The map is extra spatial state. It does not replace written memory.' : '',
         includeCartography ? 'For automatic map maintenance, always start with StateRead summary and inspect `meta.status`. If it is still `uninitialized`, initialize as soon as this turn establishes a clear current scene. If it is already `active`, apply incremental map changes only for confirmed spatial changes this turn.' : '',
         'In manual manager chat, answer the user question first. Write memory or state only when the user asks for a change, or when you verified a real error or omission.',
         'When a tool fails, adjust the path, arguments, or strategy before trying again.',
@@ -213,17 +213,17 @@ function buildDefaultAssistantPresetSections() {
 
 export function buildDefaultStoryArcPrompt(): string {
     return joinLines([
-        '职责：维护“故事为什么走到现在”的长期脉络，只记录会影响后续剧情理解的内容。',
+        '职责：维护 `memory/state.md` 中“剧情脉络”和“未解决事项”的长期内容，只记录会影响后续剧情理解的内容。',
         '',
         '推荐格式：',
-        '# 剧情脉络',
-        '## 当前主线',
+        '## 剧情脉络',
+        '### 当前主线',
         '- 主角/角色正在围绕什么目标、危机或矛盾行动。',
-        '## 长期压力',
+        '### 长期压力',
         '- 仍在逼近、尚未解除、会改变后续选择的压力。',
-        '## 未解伏笔',
+        '### 未解伏笔',
         '- 已经出现但尚未解决的线索、承诺、秘密或隐患。',
-        '## 关系变化',
+        '### 关系变化',
         '- 角色之间已经形成的信任、敌意、亏欠、误会或依赖。',
         '',
         '规则：',
@@ -234,19 +234,17 @@ export function buildDefaultStoryArcPrompt(): string {
 
 export function buildDefaultStatePrompt(): string {
     return joinLines([
-        '职责：维护“此刻仍然成立”的当前事实，让下一轮对话能自然接上现场。',
+        '职责：维护 `memory/state.md` 中“当前状态”和“人物关系与弧光”，让下一轮对话能自然接上现场。',
         '',
         '推荐格式：',
-        '# 状态栏',
-        '## 当前局面',
-        '- 时间/地点：',
-        '- 正在发生：',
-        '## 角色状态',
-        '- 角色名：身体、情绪、立场、可见目标。',
-        '## 关系与约定',
-        '- 谁和谁之间存在明确关系、承诺、敌意、误会或共同秘密。',
-        '## 持有物与限制',
-        '- 物品、资源、权限、伤势、规则、风险、倒计时。',
+        '## 当前状态',
+        '- 时间：',
+        '- 地点：',
+        '- 在场人物：',
+        '- 关键物品：',
+        '- 身体/情绪/约束状态：',
+        '## 人物关系与弧光',
+        '- 人物A -> 人物B：关系变化、态度变化、长期动机。',
         '',
         '规则：',
         '- 只保留现在仍为真的事实；事实变化时改写旧状态，不在后面追加矛盾说法。',
@@ -256,80 +254,21 @@ export function buildDefaultStatePrompt(): string {
 
 export function buildDefaultTurnPrompt(): string {
     return joinLines([
-        '职责：为本轮剧情写轻量小记，方便长篇故事在很久以后仍能回溯。',
+        '职责：维护 `memory/state.md` 中“近期连续事件”，把尚未沉淀的大段进行中事件压缩保住。',
         '',
         '推荐格式：',
-        '# 楼层小记',
-        '## 本轮变化',
-        '- 本轮真正改变了什么。',
-        '## 新信息',
-        '- 新揭示的事实、线索、人物态度或世界设定。',
-        '## 后续钩子',
-        '- 下一轮可能继续影响剧情的问题、风险、承诺或机会。',
+        '## 近期连续事件',
+        '- 用压缩段落记录尚未沉淀成稳定状态的连续事件。',
         '',
         '规则：',
-        '- 每轮只写 3-6 条高价值信息，短句优先。',
-        '- 已经写进剧情脉络或状态栏的长期信息，不要在楼层小记里再堆一遍。',
+        '- 不逐楼流水账，只保留还没沉淀但仍需要携带的连续事件。',
+        '- 连续事件结束后，把它合并进当前状态、剧情脉络、人物关系或未解决事项，再清理近期段落。',
     ]);
 }
 
-const SECTION_RESET_BASELINES: Record<keyof ReturnType<typeof buildDefaultAssistantPresetSections>, string[]> = {
-    storyArcPrompt: [
-        joinLines([
-            'Use `memory/session.md` for why the story has reached the current point.',
-            'Keep long-running direction, current pressure, and unresolved threads that still matter later.',
-            'Do not turn it into a turn-by-turn log.',
-        ]),
-        joinLines([
-            '`memory/session.md` writes why the story has reached the current point.',
-            'Keep long-running direction, current pressure, and unresolved threads that still matter later.',
-            'This is not a turn log. Update it when higher-level continuity changes instead of stuffing all long-term information into turns.',
-        ]),
-        joinLines([
-            '记录故事为什么走到现在，而不是复述每一轮聊天。',
-            '保留长期方向、当前压力、仍会影响后续的未解线索和关系变化。',
-            '只在剧情走向、核心矛盾、长期伏笔发生变化时更新，避免堆成流水账。',
-        ]),
-    ],
-    statePrompt: [
-        joinLines([
-            'Use `memory/state.md` for facts and states that are still true right now.',
-            'Keep character state, relationships, places, time, possessions, and ongoing constraints.',
-            'Do not keep transient events after they stop being true.',
-        ]),
-        joinLines([
-            '`memory/state.md` writes facts and states that are still true right now.',
-            'Include character state, relationships, places, time, possessions, constraints, and clear changes that still affect later turns.',
-            'This answers "what is true now." Do not keep transient events after they stop being true.',
-        ]),
-        joinLines([
-            '记录此刻仍然成立的事实和状态，让后续对话能直接接上当前局面。',
-            '保留角色状态、关系、地点、时间、持有物、限制条件、正在生效的约定和风险。',
-            '临时事件结束后要移除或改写，不要把已经失效的状态留在这里。',
-        ]),
-    ],
-    turnPrompt: [
-        joinLines([
-            'Use `memory/turns/*.md` for lightweight per-turn notes and history fallback.',
-            'Capture what this turn changed, revealed, or set up, so very long stories remain recoverable even if chat history becomes inaccessible.',
-            'Do not duplicate durable facts that already belong in `memory/session.md` or `memory/state.md`.',
-        ]),
-        joinLines([
-            '`memory/turns/*.md` writes lightweight per-turn notes.',
-            'Use it as long-story history fallback: what changed, what was revealed, and what was set up this turn.',
-            'Do not turn turn notes into a second durable summary layer, and do not repeat settled facts already captured in session or state.',
-        ]),
-        joinLines([
-            '记录本轮发生了什么关键变化，作为长篇剧情的轻量回溯。',
-            '重点写新揭示的信息、做出的选择、状态变化、埋下的后续钩子。',
-            '已经进入剧情脉络或状态栏的长期信息，不要在这里重复堆一遍。',
-        ]),
-    ],
-};
-
-function normalizeAssistantSectionText(value: unknown, fallback: string, resetDefaultTexts: string[] = []): string {
+function normalizeAssistantSectionText(value: unknown, fallback: string): string {
     const text = normalizeText(value);
-    if (!text || resetDefaultTexts.includes(text)) {return fallback;}
+    if (!text) {return fallback;}
     return text;
 }
 
@@ -340,9 +279,9 @@ function composeManagerSystemPrompt(
     const { includeMemory } = normalizeManagerPromptOptions(options);
     const fallback = buildDefaultAssistantPresetSections();
     const sections = includeMemory ? [
-        ['Story Arc Duties', normalizeText(input.storyArcPrompt) || fallback.storyArcPrompt],
-        ['State Duties and Format', normalizeText(input.statePrompt) || fallback.statePrompt],
-        ['Turn Notes Duties', normalizeText(input.turnPrompt) || fallback.turnPrompt],
+        ['State.md Plot Duties', normalizeText(input.storyArcPrompt) || fallback.storyArcPrompt],
+        ['State.md Current State Duties', normalizeText(input.statePrompt) || fallback.statePrompt],
+        ['State.md Recent Event Compression', normalizeText(input.turnPrompt) || fallback.turnPrompt],
     ].filter(([, content]) => content) : [];
     const lines = [buildFixedManagerSystemPrompt(options)];
     sections.forEach(([title, content]) => {
@@ -381,9 +320,9 @@ export function normalizeTavernAssistantPreset(input: AssistantPresetInput = {})
         id,
         name,
         description: String(input.description || ''),
-        storyArcPrompt: normalizeAssistantSectionText(input.storyArcPrompt, fallback.storyArcPrompt, SECTION_RESET_BASELINES.storyArcPrompt),
-        statePrompt: normalizeAssistantSectionText(input.statePrompt, fallback.statePrompt, SECTION_RESET_BASELINES.statePrompt),
-        turnPrompt: normalizeAssistantSectionText(input.turnPrompt, fallback.turnPrompt, SECTION_RESET_BASELINES.turnPrompt),
+        storyArcPrompt: normalizeAssistantSectionText(input.storyArcPrompt, fallback.storyArcPrompt),
+        statePrompt: normalizeAssistantSectionText(input.statePrompt, fallback.statePrompt),
+        turnPrompt: normalizeAssistantSectionText(input.turnPrompt, fallback.turnPrompt),
         updatedAt: Number(input.updatedAt) || undefined,
     };
     normalized.memoryManagerPrompt = composeManagerSystemPrompt(normalized);

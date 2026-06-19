@@ -27,6 +27,8 @@ import {
     getTavernMemoryIndex,
     getTavernMemoryFile,
     rebuildTavernMemoryDerivedIndex,
+    restoreTavernMemoryStateToFloor,
+    trimTavernMemoryStateSnapshotsFromFloor,
 } from '../shared/memory-files';
 import {
     createTavernSession,
@@ -41,7 +43,6 @@ import {
     listTavernManagerRuns,
     listTavernMessages,
     listTavernSessions,
-    markTavernMemoryStaleFromOrder,
     normalizeTavernSessionState,
     replaceTavernSessionState,
     setSelectedTavernSessionId,
@@ -779,28 +780,18 @@ const selectedMemoryFile = computed(() => (
 ));
 function memoryFileDisplayName(fileOrPath: TavernMemoryFileListEntry | TavernMemoryFileRecord | string | null | undefined) {
     const path = typeof fileOrPath === 'string' ? fileOrPath : String(fileOrPath?.path || '');
-    if (path === 'memory/session.md') {return '剧情脉络';}
-    if (path === 'memory/state.md') {return '状态栏';}
-    const turnMatch = path.match(/^memory\/turns\/(\d{8})-(\d+)\.md$/);
-    if (turnMatch) {
-        const order = Number(turnMatch[2]) || 0;
-        return order > 0 ? `第 ${order} 楼小记` : '楼层小记';
-    }
+    if (path === 'memory/state.md') {return '会话记忆';}
     return path.replace(/^memory\//, '').replace(/\.md$/i, '') || '记忆档案';
 }
 
 function memoryFileKindLabel(fileOrPath: TavernMemoryFileListEntry | TavernMemoryFileRecord | string | null | undefined) {
     const path = typeof fileOrPath === 'string' ? fileOrPath : String(fileOrPath?.path || '');
-    if (path === 'memory/session.md') {return '剧情为什么走到现在';}
-    if (path === 'memory/state.md') {return '当前事实与状态';}
-    if (path.startsWith('memory/turns/')) {return '楼层小记';}
+    if (path === 'memory/state.md') {return '当前有效记忆状态';}
     return '记忆档案';
 }
 
 function memoryFileSortWeight(path = '') {
-    if (path === 'memory/session.md') {return 0;}
-    if (path === 'memory/state.md') {return 1;}
-    if (path.startsWith('memory/turns/')) {return 20;}
+    if (path === 'memory/state.md') {return 0;}
     return 30;
 }
 
@@ -836,12 +827,7 @@ const memoryDirectoryGroups = computed(() => {
     const groups = [
         {
             key: 'core',
-            title: '核心档案',
-            files: [] as TavernMemoryIndexFileEntry[],
-        },
-        {
-            key: 'turns',
-            title: '楼层小记',
+            title: '会话记忆',
             files: [] as TavernMemoryIndexFileEntry[],
         },
     ];
@@ -852,10 +838,8 @@ const memoryDirectoryGroups = computed(() => {
             || String(left.path || '').localeCompare(String(right.path || ''))
         ))
         .forEach((file) => {
-            if (['memory/session.md', 'memory/state.md'].includes(file.path)) {
+            if (file.path === 'memory/state.md') {
                 groups[0].files.push(file);
-            } else if (file.path.startsWith('memory/turns/')) {
-                groups[1].files.push(file);
             } else {
                 rest.push(file);
             }
@@ -2980,6 +2964,15 @@ function handleComposeInput(event: Event) {
         : { minHeight: 36, maxHeight: 76 });
 }
 
+async function restoreMemoryStateBeforeMessage(sessionId = '', changedOrder = 0) {
+    const id = String(sessionId || '').trim();
+    const order = Number(changedOrder);
+    if (!id || !Number.isFinite(order)) {return;}
+    await restoreTavernMemoryStateToFloor(id, order - 1);
+    await trimTavernMemoryStateSnapshotsFromFloor(id, order);
+    await rebuildTavernMemoryDerivedIndex(id);
+}
+
 async function saveEditMessage(message: TavernMessageRecord, options: { rerun?: boolean; content?: string } = {}) {
     if (!canEditMessage(message)) {return;}
     const draft = 'content' in options
@@ -3006,11 +2999,8 @@ async function saveEditMessage(message: TavernMessageRecord, options: { rerun?: 
         ...(message.role === 'user' ? { runtimeEvents: [] } : {}),
     });
     if (updated) {
-        const rollback = await cancelAndRollbackXbTavernManagersForMessageRange(message.sessionId, message.order);
-        await markTavernMemoryStaleFromOrder(message.sessionId, message.order);
-        if (!rollback.conflicts.length) {
-            await rebuildTavernMemoryDerivedIndex(message.sessionId);
-        }
+        await cancelAndRollbackXbTavernManagersForMessageRange(message.sessionId, message.order);
+        await restoreMemoryStateBeforeMessage(message.sessionId, message.order);
     }
     if (updated && selectedSessionId.value) {
         sessionMessages.value = await listTavernMessages(selectedSessionId.value);
@@ -3073,21 +3063,16 @@ function findDeleteOrders(message: TavernMessageRecord) {
 async function deleteMessageTurn(message: TavernMessageRecord) {
     if (isRunning.value) {return;}
     const ordersToDelete = findDeleteOrders(message);
-    const sorted = [...sessionMessages.value].sort((left, right) => left.order - right.order);
-    const startIndex = sorted.findIndex((item) => item.order === message.order);
-    const floor = startIndex >= 0 ? startIndex + 1 : Math.max(1, Number(message.order) + 1);
+    const floor = Math.max(1, Number(message.order) + 1);
     const confirmText = ordersToDelete.length > 1
         ? `从第 ${floor} 楼开始删除后续剧情？将移除 ${ordersToDelete.length} 楼。`
         : `删除第 ${floor} 楼？`;
     if (!window.confirm(confirmText)) {return;}
     const fromOrder = Math.min(...ordersToDelete);
-    const rollback = await cancelAndRollbackXbTavernManagersForMessageRange(message.sessionId, fromOrder);
+    await cancelAndRollbackXbTavernManagersForMessageRange(message.sessionId, fromOrder);
     const deleted = await deleteTavernMessages(message.sessionId, ordersToDelete);
     if (deleted > 0) {
-        await markTavernMemoryStaleFromOrder(message.sessionId, message.order);
-        if (!rollback.conflicts.length) {
-            await rebuildTavernMemoryDerivedIndex(message.sessionId);
-        }
+        await restoreMemoryStateBeforeMessage(message.sessionId, fromOrder);
     }
     if (selectedSessionId.value) {
         sessionMessages.value = await listTavernMessages(selectedSessionId.value);

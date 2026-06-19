@@ -95,8 +95,8 @@ test('xb tavern assembler honors SillyTavern prompt manager marker order', () =>
         }],
         memoryContext: {
             memoryFiles: [{
-                path: 'memory/session.md',
-                title: 'Session',
+                path: 'memory/state.md',
+                title: '会话记忆',
                 content: 'Prompt manager memory note.',
             }],
         },
@@ -1473,8 +1473,8 @@ test('xb tavern assembler treats memory as D1 system depth injection inside chat
         }],
         memoryContext: {
             memoryFiles: [{
-                path: 'memory/session.md',
-                title: 'Session',
+                path: 'memory/state.md',
+                title: '会话记忆',
                 content: 'Memory D1 note.',
             }],
         },
