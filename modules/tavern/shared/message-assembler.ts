@@ -427,6 +427,7 @@ export interface XbTavernRuntimeDepthEntry {
 export interface XbTavernMemoryContext {
     memoryFiles?: XbTavernMemoryFileSummary[];
     structuredStates?: XbTavernStructuredStateSummary[];
+    spatialState?: string;
 }
 
 export interface XbTavernStructuredStateSummary {
@@ -572,6 +573,7 @@ export interface XbTavernMessageBuildResult {
         worldPositionCounts: Record<string, number>;
         worldEntryStateUpdates: Record<string, XbTavernWorldEntryState>;
         structuredStates?: XbTavernStructuredStateSummary[];
+        spatialState?: string;
     };
 }
 
@@ -608,6 +610,7 @@ export interface XbTavernBuildSnapshot {
         revision: number;
         digestChars: number;
     }>;
+    spatialStateChars?: number;
     worldBudget: XbTavernMessageBuildResult['meta']['worldBudget'];
     worldPositionCounts: Record<string, number>;
     scanTextChars: number;
@@ -1701,6 +1704,7 @@ function buildSingleCharacterFieldBlock(title: string, content: unknown): string
 function buildMemoryBlock(memoryContext: XbTavernMemoryContext = {}): string {
     const memoryFiles = Array.isArray(memoryContext.memoryFiles) ? memoryContext.memoryFiles : [];
     const structuredStates = Array.isArray(memoryContext.structuredStates) ? memoryContext.structuredStates : [];
+    const spatialState = normalizeText(memoryContext.spatialState);
     const sections: string[] = [];
 
     const stateContent = normalizeText(memoryFiles.find((file) => file.path === 'memory/state.md')?.content || '');
@@ -1721,7 +1725,7 @@ function buildMemoryBlock(memoryContext: XbTavernMemoryContext = {}): string {
         sections.push(`## 相关人物记忆\n${characterLines.join('\n\n')}`);
     }
 
-    const stateLines = structuredStates
+    const stateLines = spatialState ? [] : structuredStates
         .map((state) => {
             const digest = normalizeText(state.digest);
             return digest;
@@ -1729,6 +1733,9 @@ function buildMemoryBlock(memoryContext: XbTavernMemoryContext = {}): string {
         .filter(Boolean);
     if (stateLines.length) {
         sections.push(`## 状态摘要\n${stateLines.join('\n\n')}`);
+    }
+    if (spatialState) {
+        sections.push(`## 空间状态\n${spatialState}`);
     }
 
     return sections.join('\n\n');
@@ -2353,6 +2360,7 @@ function buildXbTavernMessagesFromPrepared(
             rawMessagesJson: JSON.stringify(messages, null, 2),
             ...(regexApplications ? { regexApplications } : {}),
             ...(memoryContext.structuredStates?.length ? { structuredStates: memoryContext.structuredStates } : {}),
+            ...(memoryContext.spatialState ? { spatialState: memoryContext.spatialState } : {}),
             worldBudget: {
                 enabled: budgetDebug.enabled,
                 limit: budgetDebug.limit,
@@ -2506,6 +2514,7 @@ export function createXbTavernBuildSnapshot(
                 digestChars: normalizeText(state.digest).length,
             })),
         } : {}),
+        ...(result.meta.spatialState ? { spatialStateChars: normalizeText(result.meta.spatialState).length } : {}),
         worldBudget: result.meta.worldBudget,
         worldPositionCounts: result.meta.worldPositionCounts,
         scanTextChars: result.meta.scanTextChars,

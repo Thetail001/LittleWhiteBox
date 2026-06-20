@@ -1161,6 +1161,7 @@ ${text}` : "";
 function buildMemoryBlock(memoryContext = {}) {
   const memoryFiles = Array.isArray(memoryContext.memoryFiles) ? memoryContext.memoryFiles : [];
   const structuredStates = Array.isArray(memoryContext.structuredStates) ? memoryContext.structuredStates : [];
+  const spatialState = normalizeText(memoryContext.spatialState);
   const sections = [];
   const stateContent = normalizeText(memoryFiles.find((file) => file.path === "memory/state.md")?.content || "");
   if (stateContent) {
@@ -1180,13 +1181,17 @@ ${content}`;
     sections.push(`## \u76F8\u5173\u4EBA\u7269\u8BB0\u5FC6
 ${characterLines.join("\n\n")}`);
   }
-  const stateLines = structuredStates.map((state) => {
+  const stateLines = spatialState ? [] : structuredStates.map((state) => {
     const digest = normalizeText(state.digest);
     return digest;
   }).filter(Boolean);
   if (stateLines.length) {
     sections.push(`## \u72B6\u6001\u6458\u8981
 ${stateLines.join("\n\n")}`);
+  }
+  if (spatialState) {
+    sections.push(`## \u7A7A\u95F4\u72B6\u6001
+${spatialState}`);
   }
   return sections.join("\n\n");
 }
@@ -1717,6 +1722,7 @@ function buildXbTavernMessagesFromPrepared(chatPreset = {}, prepared, regexAppli
       rawMessagesJson: JSON.stringify(messages, null, 2),
       ...regexApplications ? { regexApplications } : {},
       ...memoryContext.structuredStates?.length ? { structuredStates: memoryContext.structuredStates } : {},
+      ...memoryContext.spatialState ? { spatialState: memoryContext.spatialState } : {},
       worldBudget: {
         enabled: budgetDebug.enabled,
         limit: budgetDebug.limit,
@@ -1841,6 +1847,7 @@ function createXbTavernBuildSnapshot(context = {}, chatPreset = {}, result, diag
         digestChars: normalizeText(state.digest).length
       }))
     } : {},
+    ...result.meta.spatialState ? { spatialStateChars: normalizeText(result.meta.spatialState).length } : {},
     worldBudget: result.meta.worldBudget,
     worldPositionCounts: result.meta.worldPositionCounts,
     scanTextChars: result.meta.scanTextChars,

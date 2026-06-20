@@ -10,7 +10,7 @@ import {
     getTavernMemoryIndex,
     rebuildTavernMemoryDerivedIndex,
 } from './memory-files';
-import { listTavernStructuredStateDigests } from './structured-state';
+import { buildTavernSpatialStateDigest, listTavernStructuredStateDigests } from './structured-state';
 import {
     type TavernMemoryFileRecord,
     type TavernMemoryIndexFileEntry,
@@ -279,9 +279,10 @@ export async function retrieveXbTavernMemoryContext(input: {
     if (!sessionId) {return {};}
     const includeMemoryFiles = input.includeMemoryFiles !== false;
     const includeStructuredStates = input.includeStructuredStates !== false;
-    const [memoryIndex, structuredStates] = await Promise.all([
+    const [memoryIndex, structuredStates, spatialState] = await Promise.all([
         includeMemoryFiles ? getTavernMemoryIndex(sessionId) : Promise.resolve(null),
         includeStructuredStates ? listTavernStructuredStateDigests(sessionId) : Promise.resolve([]),
+        includeStructuredStates ? buildTavernSpatialStateDigest(sessionId) : Promise.resolve(''),
     ]);
     const readyMemoryIndex = includeMemoryFiles && memoryIndex?.status === 'ready' && Array.isArray(memoryIndex.files)
         ? memoryIndex
@@ -292,7 +293,7 @@ export async function retrieveXbTavernMemoryContext(input: {
                 : null;
     const memoryFiles = Array.isArray(readyMemoryIndex?.files) ? readyMemoryIndex.files : [];
     const hasRecallMemory = memoryFiles.some(isRecallMemoryFile);
-    if (!hasRecallMemory && !structuredStates.length) {return {};}
+    if (!hasRecallMemory && !structuredStates.length && !spatialState) {return {};}
     const memoryContext = hasRecallMemory
         ? selectXbTavernMemoryContext({
             memoryFiles,
@@ -306,5 +307,6 @@ export async function retrieveXbTavernMemoryContext(input: {
     return {
         ...hydratedMemoryContext,
         structuredStates,
+        ...(spatialState ? { spatialState } : {}),
     };
 }

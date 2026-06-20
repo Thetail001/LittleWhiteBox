@@ -255,6 +255,7 @@ function buildChanceEncounterDepthEntries(event: TavernChanceEncounterRuntimeEve
 function buildMemoryPromptContent(memoryContext: XbTavernMemoryContext = {}): string {
     const memoryFiles = Array.isArray(memoryContext.memoryFiles) ? memoryContext.memoryFiles : [];
     const structuredStates = Array.isArray(memoryContext.structuredStates) ? memoryContext.structuredStates : [];
+    const spatialState = String(memoryContext.spatialState || '').trim();
     const sections: string[] = [];
     const stateFile = memoryFiles.find((file) => String(file.path || '') === 'memory/state.md');
     const stateContent = String(stateFile?.content || '').trim();
@@ -274,11 +275,14 @@ function buildMemoryPromptContent(memoryContext: XbTavernMemoryContext = {}): st
     if (characterLines.length) {
         sections.push(`## 相关人物记忆\n${characterLines.join('\n\n')}`);
     }
-    const stateLines = structuredStates
+    const stateLines = spatialState ? [] : structuredStates
         .map((state) => String(state.digest || '').trim())
         .filter(Boolean);
     if (stateLines.length) {
         sections.push(`## 状态摘要\n${stateLines.join('\n\n')}`);
+    }
+    if (spatialState) {
+        sections.push(`## 空间状态\n${spatialState}`);
     }
     return sections.join('\n\n');
 }
@@ -714,6 +718,9 @@ function filterMemoryContextByRuntime(
     }
     if (runtime.includeStructuredStates && Array.isArray(memoryContext.structuredStates)) {
         filtered.structuredStates = memoryContext.structuredStates;
+    }
+    if (runtime.includeStructuredStates && memoryContext.spatialState) {
+        filtered.spatialState = memoryContext.spatialState;
     }
     return filtered;
 }

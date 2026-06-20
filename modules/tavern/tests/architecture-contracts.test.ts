@@ -460,6 +460,20 @@ test('tavern map update badge stays collapsed until requested', () => {
     assert.doesNotMatch(mapCss, /tavern-map-active-button/);
 });
 
+test('tavern atlas only opens scene maps that actually exist', () => {
+    const atlasPanelSource = readRepoFile('modules/tavern/app-src/components/TavernAtlasPanel.vue');
+    const workspacePanelSource = readRepoFile('modules/tavern/app-src/components/chat/TavernWorkspacePanel.vue');
+
+    assert.match(atlasPanelSource, /const mapDocIds = computed\(\(\) => new Set\(props\.mapDocuments\.map\(\(document\) => document\.docId\)\)\)/);
+    assert.match(atlasPanelSource, /function hasMapDocument\(location: TavernAtlasLocation \| null \| undefined\): boolean/);
+    assert.match(atlasPanelSource, /'has-map': hasMapDocument\(location\)/);
+    assert.match(atlasPanelSource, /v-if="hasMapDocument\(selectedLocation\)"/);
+    assert.match(atlasPanelSource, /已关联 \$\{docId\}，地图未创建/);
+    assert.match(workspacePanelSource, /if \(atlasDocument\.value\.activeLocationKey\) \{return atlasActiveMapDocId\.value;\}/);
+    assert.match(workspacePanelSource, /return String\(activeMapDocId\.value \|\| 'main'\)\.trim\(\)/);
+    assert.match(workspacePanelSource, /!!atlasDocument\.value\.activeLocationKey && !atlasActiveMapDocId\.value/);
+});
+
 test('tavern UI context is grouped by page responsibility instead of one flat bag', () => {
     const contextSource = readRepoFile('modules/tavern/app-src/components/tavern-app-context.ts');
     const appSource = readRepoFile('modules/tavern/app-src/App.vue');

@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import TavernAtlasPanel from '../TavernAtlasPanel.vue';
 import TavernMapPanel from '../TavernMapPanel.vue';
 import TavernMemoryEditor from '../TavernMemoryEditor.vue';
 import { useTavernMemoryContext, useTavernWorkspaceContext } from '../tavern-app-context';
 import { useMobileSheetDrag } from './useMobileSheetDrag';
 import { createSeedMapDocument } from '../../../shared/map-state-seed';
-import type { TavernMapDocument, TavernMapElement } from '../../../shared/structured-state';
+import type { TavernAtlasDocument, TavernMapDocument, TavernMapElement } from '../../../shared/structured-state';
 
 defineProps<{
     mobileMemoryDirectoryOpen: boolean;
@@ -50,19 +51,48 @@ const {
 } = memory;
 const {
     activeMapDocId,
+    atlasActiveLocationKey,
+    atlasStateDocument,
+    atlasStatePatches,
     mapStateDocuments,
     mapStateDocument,
     mapStatePatches,
 } = workspace;
 
-const selectedMapDocId = ref('');
+const stateWorkspaceView = ref<'scene' | 'world'>('scene');
+const mapPreviewDocId = ref('');
+const mapPreviewPinned = ref(false);
+const atlasDocument = computed<TavernAtlasDocument>(() => {
+    const raw = atlasStateDocument.value?.data;
+    const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Partial<TavernAtlasDocument> : {};
+    return {
+        version: 1,
+        activeLocationKey: String(source.activeLocationKey || atlasActiveLocationKey.value || '').trim() || undefined,
+        locations: Array.isArray(source.locations) ? source.locations as TavernAtlasDocument['locations'] : [],
+        links: Array.isArray(source.links) ? source.links as TavernAtlasDocument['links'] : [],
+        actors: Array.isArray(source.actors) ? source.actors as TavernAtlasDocument['actors'] : [],
+    };
+});
+const atlasActiveLocation = computed(() => {
+    const activeKey = atlasDocument.value.activeLocationKey || atlasActiveLocationKey.value || '';
+    return atlasDocument.value.locations.find((location) => location.key === activeKey) || null;
+});
+const atlasActiveMapDocId = computed(() => String(atlasActiveLocation.value?.mapDocId || '').trim());
+const selectedMapDocId = computed({
+    get() {
+        if (mapPreviewPinned.value) {return String(mapPreviewDocId.value || '').trim();}
+        if (atlasDocument.value.activeLocationKey) {return atlasActiveMapDocId.value;}
+        return String(activeMapDocId.value || 'main').trim();
+    },
+    set(value: string) {
+        mapPreviewDocId.value = String(value || '').trim();
+        mapPreviewPinned.value = !!mapPreviewDocId.value;
+    },
+});
 const selectedMapRecord = computed(() => {
     const docs = Array.isArray(mapStateDocuments.value) ? mapStateDocuments.value : [];
-    const selectedId = String(selectedMapDocId.value || activeMapDocId.value || '').trim();
-    return docs.find((document) => document.docId === selectedId)
-        || docs.find((document) => document.docId === activeMapDocId.value)
-        || mapStateDocument.value
-        || null;
+    const selectedId = String(selectedMapDocId.value || '').trim();
+    return selectedId ? docs.find((document) => document.docId === selectedId) || null : null;
 });
 const selectedMapDocument = computed<TavernMapDocument | null>(() => {
     const data = selectedMapRecord.value?.data;
@@ -84,6 +114,8 @@ const selectedMapTitle = computed(() => String(
     || '地图',
 ));
 const selectedMapIsActive = computed(() => String(selectedMapRecord.value?.docId || '') === String(activeMapDocId.value || 'main'));
+const selectedMapPatches = computed(() => selectedMapIsActive.value ? mapStatePatches.value : []);
+const currentLocationHasNoMap = computed(() => !mapPreviewPinned.value && !!atlasDocument.value.activeLocationKey && !atlasActiveMapDocId.value);
 const mapDigestLines = computed(() => String(selectedMapRecord.value?.digest || '')
     .split('\n')
     .map((line) => line.trim())
@@ -107,12 +139,15 @@ const mapInfoStats = computed(() => {
     ];
 });
 
-watch([activeMapDocId, mapStateDocuments], ([docId]) => {
+watch([atlasActiveMapDocId, mapStateDocuments], () => {
     const docs = Array.isArray(mapStateDocuments.value) ? mapStateDocuments.value : [];
-    const selectedId = String(selectedMapDocId.value || '').trim();
+    const selectedId = String(mapPreviewDocId.value || '').trim();
     const selectedExists = selectedId && docs.some((document) => document.docId === selectedId);
     if (selectedExists) {return;}
-    selectedMapDocId.value = String(docId || mapStateDocument.value?.docId || docs[0]?.docId || 'main');
+    if (mapPreviewPinned.value) {
+        mapPreviewPinned.value = false;
+        mapPreviewDocId.value = '';
+    }
 }, { immediate: true });
 
 function formatMapInfoTime(timestamp = 0) {
@@ -144,6 +179,17 @@ function toggleMobileMemoryDirectory() {
 function selectMobileMemoryFile(path: string) {
     selectMemoryFile(path);
     emit('close-memory-directory');
+}
+
+function viewAtlasMap(docId: string) {
+    mapPreviewDocId.value = String(docId || '').trim();
+    mapPreviewPinned.value = !!mapPreviewDocId.value;
+    stateWorkspaceView.value = 'scene';
+}
+
+function followAtlasLocation() {
+    mapPreviewDocId.value = '';
+    mapPreviewPinned.value = false;
 }
 </script>
 
@@ -181,13 +227,55 @@ function selectMobileMemoryFile(path: string) {
       v-if="chatWorkspacePanel === 'state'"
       class="tavern-state-panel"
     >
+      <div class="tavern-state-view-tabs">
+        <button
+          type="button"
+          :class="{ active: stateWorkspaceView === 'scene' }"
+          @click="stateWorkspaceView = 'scene'"
+        >
+          场景图
+        </button>
+        <button
+          type="button"
+          :class="{ active: stateWorkspaceView === 'world' }"
+          @click="stateWorkspaceView = 'world'"
+        >
+          世界图
+        </button>
+        <button
+          v-if="mapPreviewPinned"
+          type="button"
+          class="tavern-state-follow-button"
+          @click="followAtlasLocation"
+        >
+          回到当前位置
+        </button>
+      </div>
       <TavernMapPanel
+        v-if="stateWorkspaceView === 'scene' && selectedMapRecord"
         v-model:selected-doc-id="selectedMapDocId"
         compact
         :documents="mapStateDocuments"
         :active-doc-id="activeMapDocId"
-        :document="mapStateDocument"
-        :patches="mapStatePatches"
+        :document="selectedMapRecord"
+        :patches="selectedMapPatches"
+      />
+      <div
+        v-else-if="stateWorkspaceView === 'scene'"
+        class="tavern-map-current-empty"
+      >
+        <strong>{{ atlasActiveLocation?.name || '当前地点' }}</strong>
+        <p>{{ currentLocationHasNoMap ? '当前地点暂无详细地图。' : '暂无地图信息。' }}</p>
+      </div>
+      <TavernAtlasPanel
+        v-else
+        :document="atlasStateDocument"
+        :patches="atlasStatePatches"
+        :active-location-key="atlasActiveLocationKey"
+        :active-map-doc-id="activeMapDocId"
+        :preview-map-doc-id="selectedMapDocId"
+        :map-documents="mapStateDocuments"
+        @view-map="viewAtlasMap"
       />
       <article class="tavern-map-info">
         <div

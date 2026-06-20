@@ -26,6 +26,11 @@ import {
     TAVERN_MAP_DOC_TYPE,
 } from './map-state-seed';
 import {
+    createSeedAtlasDocument,
+    TAVERN_ATLAS_DOC_ID,
+    TAVERN_ATLAS_DOC_TYPE,
+} from './atlas-state-seed';
+import {
     hasTavernSessionContractOverride,
     mergeTavernSessionContract,
     normalizeTavernSessionContract,
@@ -136,7 +141,7 @@ export interface TavernManagerRunRecord {
 export type TavernMemoryFileStatus = 'active' | 'stale';
 export type TavernMemoryIndexStatus = 'ready' | 'stale' | 'failed';
 export type TavernStructuredStateStatus = 'active' | 'stale';
-export type TavernStructuredStateDocType = 'tavern.map';
+export type TavernStructuredStateDocType = 'tavern.map' | 'tavern.atlas';
 
 export interface TavernMemoryFileRecord {
     sessionId: string;
@@ -1206,10 +1211,10 @@ export async function ensureSeedStructuredStateDocument(
     const id = String(sessionId || '').trim();
     if (!id) {return null;}
     return await db.transaction('rw', tavernStateDocumentsTable, tavernSessionsTable, async () => {
-        const existing = await tavernStateDocumentsTable.get([id, TAVERN_MAP_DOC_TYPE, TAVERN_MAP_DOC_ID]);
-        if (existing) {return existing;}
         const timestamp = now();
-        const record: TavernStructuredStateDocumentRecord = {
+        const existingMap = await tavernStateDocumentsTable.get([id, TAVERN_MAP_DOC_TYPE, TAVERN_MAP_DOC_ID]);
+        const existingAtlas = await tavernStateDocumentsTable.get([id, TAVERN_ATLAS_DOC_TYPE, TAVERN_ATLAS_DOC_ID]);
+        const mapRecord: TavernStructuredStateDocumentRecord = existingMap || {
             sessionId: id,
             docType: TAVERN_MAP_DOC_TYPE,
             docId: TAVERN_MAP_DOC_ID,
@@ -1223,11 +1228,26 @@ export async function ensureSeedStructuredStateDocument(
             createdAt: timestamp,
             updatedAt: timestamp,
         };
-        await tavernStateDocumentsTable.put(record);
+        const atlasRecord: TavernStructuredStateDocumentRecord = existingAtlas || {
+            sessionId: id,
+            docType: TAVERN_ATLAS_DOC_TYPE,
+            docId: TAVERN_ATLAS_DOC_ID,
+            title: '世界图',
+            revision: 0,
+            data: createSeedAtlasDocument(),
+            digest: '',
+            status: 'active',
+            source: 'system-seed',
+            staleFromOrder: undefined,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+        };
+        if (!existingMap) {await tavernStateDocumentsTable.put(mapRecord);}
+        if (!existingAtlas) {await tavernStateDocumentsTable.put(atlasRecord);}
         if (options.touchSession !== false) {
             await tavernSessionsTable.update(id, { updatedAt: timestamp });
         }
-        return record;
+        return mapRecord;
     });
 }
 

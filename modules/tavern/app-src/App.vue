@@ -57,7 +57,7 @@ import {
     type TavernStructuredStatePatchRecord,
     type TavernSessionRecord,
 } from '../shared/session-db';
-import { getTavernMapStateForSession, type TavernMapStateDocumentItem } from '../shared/structured-state';
+import { getTavernAtlasStateForSession, getTavernMapStateForSession, type TavernMapStateDocumentItem } from '../shared/structured-state';
 import {
     normalizeTavernSessionContract,
     type TavernSessionContract,
@@ -236,6 +236,9 @@ const mapStateDocuments = ref<TavernMapStateDocumentItem[]>([]);
 const activeMapDocId = ref('main');
 const mapStateDocument = ref<TavernStructuredStateDocumentRecord | null>(null);
 const mapStatePatches = ref<TavernStructuredStatePatchRecord[]>([]);
+const atlasStateDocument = ref<TavernStructuredStateDocumentRecord | null>(null);
+const atlasStatePatches = ref<TavernStructuredStatePatchRecord[]>([]);
+const atlasActiveLocationKey = ref('');
 const managerActionStatus = ref('');
 const retryingManagerRunId = ref('');
 const managerInputDraft = ref('');
@@ -2220,14 +2223,18 @@ async function refreshManagerRecords(sessionId = selectedSessionId.value) {
         activeMapDocId.value = 'main';
         mapStateDocument.value = null;
         mapStatePatches.value = [];
+        atlasStateDocument.value = null;
+        atlasStatePatches.value = [];
+        atlasActiveLocationKey.value = '';
         selectedMemoryFilePath.value = '';
         return;
     }
-    const [managerMessages, runs, rawIndex, mapState, nextStateFile] = await Promise.all([
+    const [managerMessages, runs, rawIndex, mapState, atlasState, nextStateFile] = await Promise.all([
         listTavernManagerMessages(id),
         listTavernManagerRuns(id, { limit: 18 }),
         getTavernMemoryIndex(id),
         getTavernMapStateForSession(id),
+        getTavernAtlasStateForSession(id),
         getTavernMemoryFile(id, 'memory/state.md'),
     ]);
     const index = rawIndex && rawIndex.status === 'ready' && Array.isArray(rawIndex.files)
@@ -2254,6 +2261,9 @@ async function refreshManagerRecords(sessionId = selectedSessionId.value) {
     activeMapDocId.value = mapState.activeDocId;
     mapStateDocument.value = mapState.activeDocument;
     mapStatePatches.value = mapState.activePatches;
+    atlasStateDocument.value = atlasState.document;
+    atlasStatePatches.value = atlasState.patches;
+    atlasActiveLocationKey.value = atlasState.activeLocationKey;
     if (!memoryFiles.value.some((file) => file.path === selectedMemoryFilePath.value)) {
         if (memoryEditorDirty.value && selectedMemoryFilePath.value) {
             memoryEditorStatus.value = '当前档案已变化，草稿仍保留';
@@ -4227,6 +4237,9 @@ provide(TAVERN_APP_UI_CONTEXT, {
     workspace: {
         activeMemoryFiles,
         activeMapDocId,
+        atlasActiveLocationKey,
+        atlasStateDocument,
+        atlasStatePatches,
         chatWorkspacePanel,
         mapStateDocuments,
         mapStateDocument,

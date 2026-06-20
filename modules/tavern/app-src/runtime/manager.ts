@@ -237,7 +237,7 @@ function buildAutoManagerUserPrompt(input: {
         step += 1;
     }
     if (allowMap) {
-        requirements.push(`${step}. Map maintenance is scene-aware: use StateList before scene switches, keep connected spaces in the same doc, and use StatePatch activate:true only when a different map document becomes the current scene. Read StateRead summary for the chosen doc, initialize uninitialized docs with one meta + add transaction, apply incremental add/modify/remove/meta updates only for confirmed spatial changes, and otherwise skip the map update.`);
+        requirements.push(`${step}. Spatial maintenance has two layers: update \`tavern.atlas/main\` only when a location, connection, or actor location changed; update \`tavern.map/<docId>\` only when the current place layout or actor coordinates changed. Player location changes must use atlas \`move-actor\` with \`actorKey:"player"\`; map \`activate:true\` only switches the map tool doc and does not move the player.`);
         step += 1;
     }
     if (allowMemory && allowMap) {

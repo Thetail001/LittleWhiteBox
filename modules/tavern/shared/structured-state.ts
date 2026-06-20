@@ -23,6 +23,11 @@ import {
     type TavernMapStatus,
     type TavernMapTheme,
 } from './map-state-seed';
+import {
+    createSeedAtlasDocument,
+    TAVERN_ATLAS_DOC_ID,
+    TAVERN_ATLAS_DOC_TYPE,
+} from './atlas-state-seed';
 import { hasSpatialMapContent } from './map-state-content';
 import { mergeMapElementPatch } from './map-state-ops';
 
@@ -96,11 +101,55 @@ export interface TavernMapDocument {
     elements: TavernMapElement[];
 }
 
+export type TavernAtlasLocationScale = 'city' | 'district' | 'building' | 'floor' | 'room' | 'outdoor';
+export type TavernAtlasLocationStatus = 'mentioned' | 'visited';
+export type TavernAtlasLinkKind = 'door' | 'stairs' | 'elevator' | 'path' | 'road' | 'portal' | 'passage';
+
+export interface TavernAtlasLocation {
+    key: string;
+    name: string;
+    scale: TavernAtlasLocationScale;
+    status: TavernAtlasLocationStatus;
+    parent?: string;
+    mapDocId?: string;
+    aliases?: string[];
+    brief?: string;
+}
+
+export interface TavernAtlasLink {
+    id: string;
+    from: string;
+    to: string;
+    kind: TavernAtlasLinkKind;
+    label?: string;
+    bidirectional: boolean;
+}
+
+export interface TavernAtlasActorPosition {
+    actorKey: string;
+    locationKey: string;
+}
+
+export interface TavernAtlasDocument {
+    version: 1;
+    activeLocationKey?: string;
+    locations: TavernAtlasLocation[];
+    links: TavernAtlasLink[];
+    actors: TavernAtlasActorPosition[];
+}
+
 export type TavernMapPatchOp =
     | { op: 'meta'; set: Partial<TavernMapDocumentMeta> }
     | { op: 'add'; element: TavernMapElement }
     | { op: 'modify'; id: string; set: Partial<TavernMapElement> }
     | { op: 'remove'; id: string; _internalSoft?: true };
+
+export type TavernAtlasPatchOp =
+    | { op: 'upsert-location'; key: string; set?: Partial<Omit<TavernAtlasLocation, 'key'>>; unset?: Array<'parent' | 'mapDocId' | 'aliases' | 'brief'> }
+    | { op: 'remove-location'; key: string }
+    | { op: 'upsert-link'; id?: string; from: string; to: string; kind: TavernAtlasLinkKind; label?: string; bidirectional?: boolean }
+    | { op: 'remove-link'; id?: string; from?: string; to?: string; kind?: TavernAtlasLinkKind; bidirectional?: boolean }
+    | { op: 'move-actor'; actorKey: string; locationKey: string };
 
 export interface TavernStateToolResult {
     ok: boolean;
@@ -123,6 +172,11 @@ export interface TavernStateToolResult {
     elementCount?: number;
     element?: TavernMapElement;
     elements?: TavernMapElement[];
+    activeLocationKey?: string;
+    locations?: TavernAtlasLocation[];
+    location?: TavernAtlasLocation & { links?: TavernAtlasLink[]; actors?: TavernAtlasActorPosition[] };
+    links?: TavernAtlasLink[];
+    actors?: TavernAtlasActorPosition[];
     removedElements?: TavernMapElement[];
     patches?: TavernStructuredStatePatchRecord[];
     changedIds?: string[];
@@ -137,7 +191,9 @@ type MapShapeKey = 'rect' | 'circle' | 'path' | 'curve' | 'icon' | 'text';
 type NormalizeSource = 'model-input' | 'stored-document';
 
 const MAP_DOC_TYPE: TavernStructuredStateDocType = TAVERN_MAP_DOC_TYPE;
+const ATLAS_DOC_TYPE: TavernStructuredStateDocType = TAVERN_ATLAS_DOC_TYPE;
 const DEFAULT_DOC_ID = TAVERN_MAP_DOC_ID;
+const DEFAULT_ATLAS_DOC_ID = TAVERN_ATLAS_DOC_ID;
 const MAX_MAP_ELEMENTS = 2000;
 const MAX_STATE_PATCH_OPS = 1000;
 const MAX_STATE_READ_LIMIT = 300;
@@ -175,6 +231,10 @@ const MAP_ICON_NAMES = new Set<TavernMapIconName>([
 ]);
 const MAP_THEMES = new Set<TavernMapTheme>(['parchment', 'paper', 'dark', 'blueprint', 'grid']);
 const MAP_STATUSES = new Set<TavernMapStatus>(['uninitialized', 'active']);
+const ATLAS_LOCATION_SCALES = new Set<TavernAtlasLocationScale>(['city', 'district', 'building', 'floor', 'room', 'outdoor']);
+const ATLAS_LOCATION_STATUSES = new Set<TavernAtlasLocationStatus>(['mentioned', 'visited']);
+const ATLAS_LINK_KINDS = new Set<TavernAtlasLinkKind>(['door', 'stairs', 'elevator', 'path', 'road', 'portal', 'passage']);
+const ATLAS_UNSET_FIELDS = new Set(['parent', 'mapDocId', 'aliases', 'brief']);
 
 export type TavernStateDocumentListItem = Pick<TavernStructuredStateDocumentRecord, 'docType' | 'docId' | 'title' | 'revision' | 'digest' | 'status' | 'updatedAt'> & {
     active?: boolean;
@@ -191,6 +251,12 @@ function now(): number {
 function normalizeMapDocId(value: unknown = DEFAULT_DOC_ID): string {
     const text = String(value || DEFAULT_DOC_ID).trim() || DEFAULT_DOC_ID;
     return /^[\w.-]{1,80}$/i.test(text) ? text : DEFAULT_DOC_ID;
+}
+
+function normalizeMapDocIdOrThrow(value: unknown, error = 'state_doc_id_invalid'): string {
+    const text = String(value || '').trim();
+    if (!text || !/^[\w.-]{1,80}$/i.test(text)) {throw new Error(error);}
+    return text;
 }
 
 async function getActiveMapDocId(sessionId = ''): Promise<string> {
@@ -211,6 +277,17 @@ async function setActiveMapDocId(sessionId = '', docId = DEFAULT_DOC_ID): Promis
         updatedAt: now(),
     });
     return activeMapDocId;
+}
+
+async function buildMapAtlasMismatchWarning(sessionId = '', activatedDocId = ''): Promise<string[]> {
+    const atlasRecord = await getTavernStructuredStateDocument(sessionId, ATLAS_DOC_TYPE, DEFAULT_ATLAS_DOC_ID);
+    const atlas = normalizeAtlasDocumentFromRecord(atlasRecord);
+    const activeLocation = atlas.locations.find((location) => location.key === atlas.activeLocationKey);
+    const atlasMapDocId = activeLocation?.mapDocId;
+    if (!atlas.activeLocationKey || !atlasMapDocId || atlasMapDocId === activatedDocId) {return [];}
+    return [
+        `Map doc '${activatedDocId}' activated. Atlas still says player/current location is '${atlas.activeLocationKey}'. If the story moved the player, send tavern.atlas move-actor with actorKey:"player" and the correct locationKey.`,
+    ];
 }
 
 async function resolveTavernActiveMapDocument(
@@ -263,14 +340,23 @@ function deepEqual(left: unknown, right: unknown): boolean {
 
 function normalizeDocType(value: unknown = MAP_DOC_TYPE): TavernStructuredStateDocType {
     const text = String(value || MAP_DOC_TYPE).trim();
-    if (text !== MAP_DOC_TYPE) {throw new Error('state_doc_type_not_supported');}
-    return MAP_DOC_TYPE;
+    if (text === MAP_DOC_TYPE || text === ATLAS_DOC_TYPE) {return text as TavernStructuredStateDocType;}
+    throw new Error('state_doc_type_not_supported');
 }
 
 function normalizeDocId(value: unknown = DEFAULT_DOC_ID): string {
     const text = String(value || DEFAULT_DOC_ID).trim() || DEFAULT_DOC_ID;
     if (!/^[\w.-]{1,80}$/i.test(text)) {throw new Error('state_doc_id_invalid');}
     return text;
+}
+
+function normalizeStateDocIdForType(docType: TavernStructuredStateDocType, value: unknown): string {
+    if (docType === ATLAS_DOC_TYPE) {
+        const text = String(value || DEFAULT_ATLAS_DOC_ID).trim() || DEFAULT_ATLAS_DOC_ID;
+        if (text !== DEFAULT_ATLAS_DOC_ID) {throw new Error('atlas_doc_id_invalid');}
+        return DEFAULT_ATLAS_DOC_ID;
+    }
+    return normalizeDocId(value || DEFAULT_DOC_ID);
 }
 
 function normalizeMapTheme(value: unknown, fallback: TavernMapTheme = 'parchment'): TavernMapTheme {
@@ -709,6 +795,172 @@ function mapTitle(document: TavernMapDocument): string {
     return normalizeText(document.meta.name || 'Map', 120) || 'Map';
 }
 
+function normalizeAtlasKey(value: unknown = ''): string {
+    return String(value || '')
+        .normalize('NFKC')
+        .replace(/[\u200B-\u200D\uFEFF]/g, '')
+        .trim()
+        .replace(/\s+/g, '-')
+        .slice(0, 120);
+}
+
+function normalizeAtlasKeyOrThrow(value: unknown, error: string): string {
+    const key = normalizeAtlasKey(value);
+    if (!key || /[/\\:*?"<>|\u0000-\u001F]/.test(key) || key === '.' || key === '..') {
+        throw new Error(error);
+    }
+    return key;
+}
+
+function normalizeAtlasScale(value: unknown): TavernAtlasLocationScale {
+    const text = String(value || '').trim() as TavernAtlasLocationScale;
+    if (!ATLAS_LOCATION_SCALES.has(text)) {throw new Error('atlas_location_scale_invalid');}
+    return text;
+}
+
+function normalizeAtlasStatus(value: unknown): TavernAtlasLocationStatus {
+    const text = String(value || '').trim() as TavernAtlasLocationStatus;
+    if (!ATLAS_LOCATION_STATUSES.has(text)) {throw new Error('atlas_location_status_invalid');}
+    return text;
+}
+
+function normalizeAtlasLinkKind(value: unknown): TavernAtlasLinkKind {
+    const text = String(value || '').trim() as TavernAtlasLinkKind;
+    if (!ATLAS_LINK_KINDS.has(text)) {throw new Error('atlas_link_kind_invalid');}
+    return text;
+}
+
+function normalizeAtlasStringArray(value: unknown, limit = 20): string[] | undefined {
+    if (!Array.isArray(value)) {return undefined;}
+    return [...new Set(value.map((item) => normalizeText(item, 80)).filter(Boolean))].slice(0, limit);
+}
+
+function defaultAtlasLinkId(from: string, to: string, kind: TavernAtlasLinkKind, bidirectional = true): string {
+    if (bidirectional === false) {
+        return `link:${from}:${to}:${kind}`;
+    }
+    return `link:${[from, to].sort().join(':')}:${kind}`;
+}
+
+function normalizeAtlasLocation(value: unknown): TavernAtlasLocation | null {
+    if (!isPlainObject(value)) {return null;}
+    const key = normalizeAtlasKey(value.key);
+    const name = normalizeText(value.name, 120);
+    const scaleText = String(value.scale || '').trim() as TavernAtlasLocationScale;
+    const statusText = String(value.status || '').trim() as TavernAtlasLocationStatus;
+    if (!key || !name || !ATLAS_LOCATION_SCALES.has(scaleText) || !ATLAS_LOCATION_STATUSES.has(statusText)) {return null;}
+    const location: TavernAtlasLocation = {
+        key,
+        name,
+        scale: scaleText,
+        status: statusText,
+    };
+    const parent = normalizeAtlasKey(value.parent);
+    if (parent) {location.parent = parent;}
+    const mapDocId = normalizeText(value.mapDocId, 80);
+    if (mapDocId && /^[\w.-]{1,80}$/i.test(mapDocId)) {location.mapDocId = mapDocId;}
+    const aliases = normalizeAtlasStringArray(value.aliases);
+    if (aliases?.length) {location.aliases = aliases;}
+    const brief = normalizeText(value.brief, 240);
+    if (brief) {location.brief = brief;}
+    return location;
+}
+
+function normalizeAtlasLink(value: unknown): TavernAtlasLink | null {
+    if (!isPlainObject(value)) {return null;}
+    const from = normalizeAtlasKey(value.from);
+    const to = normalizeAtlasKey(value.to);
+    const kind = String(value.kind || '').trim() as TavernAtlasLinkKind;
+    if (!from || !to || !ATLAS_LINK_KINDS.has(kind)) {return null;}
+    const bidirectional = value.bidirectional !== false;
+    const id = normalizeText(value.id, 160) || defaultAtlasLinkId(from, to, kind, bidirectional);
+    const link: TavernAtlasLink = { id, from, to, kind, bidirectional };
+    const label = normalizeText(value.label, 120);
+    if (label) {link.label = label;}
+    return link;
+}
+
+function normalizeAtlasActor(value: unknown): TavernAtlasActorPosition | null {
+    if (!isPlainObject(value)) {return null;}
+    const actorKey = normalizeActorKey(value.actorKey);
+    const locationKey = normalizeAtlasKey(value.locationKey);
+    return actorKey && locationKey ? { actorKey, locationKey } : null;
+}
+
+function defaultAtlasDocument(): TavernAtlasDocument {
+    return normalizeAtlasDocument(createSeedAtlasDocument());
+}
+
+function normalizeAtlasDocument(value: unknown): TavernAtlasDocument {
+    const raw = isPlainObject(value) ? value : {};
+    const locations = Array.isArray(raw.locations)
+        ? raw.locations.map(normalizeAtlasLocation).filter((item): item is TavernAtlasLocation => !!item)
+        : [];
+    const links = Array.isArray(raw.links)
+        ? raw.links.map(normalizeAtlasLink).filter((item): item is TavernAtlasLink => !!item)
+        : [];
+    const actors = Array.isArray(raw.actors)
+        ? raw.actors.map(normalizeAtlasActor).filter((item): item is TavernAtlasActorPosition => !!item)
+        : [];
+    const locationKeys = new Set<string>();
+    const uniqueLocations: TavernAtlasLocation[] = [];
+    locations.forEach((location) => {
+        if (locationKeys.has(location.key)) {return;}
+        locationKeys.add(location.key);
+        uniqueLocations.push(location);
+    });
+    const linkIds = new Set<string>();
+    const uniqueLinks: TavernAtlasLink[] = [];
+    links.forEach((link) => {
+        if (linkIds.has(link.id)) {return;}
+        linkIds.add(link.id);
+        uniqueLinks.push(link);
+    });
+    const actorMap = new Map<string, TavernAtlasActorPosition>();
+    actors.forEach((actor) => actorMap.set(actor.actorKey, actor));
+    const activeLocationKey = normalizeAtlasKey(raw.activeLocationKey);
+    return {
+        version: 1,
+        ...(activeLocationKey ? { activeLocationKey } : {}),
+        locations: uniqueLocations,
+        links: uniqueLinks,
+        actors: [...actorMap.values()],
+    };
+}
+
+function normalizeAtlasDocumentFromRecord(document: TavernStructuredStateDocumentRecord | null): TavernAtlasDocument {
+    if (!document?.data) {return defaultAtlasDocument();}
+    return normalizeAtlasDocument(document.data);
+}
+
+function atlasTitle(document: TavernAtlasDocument): string {
+    const active = document.locations.find((location) => location.key === document.activeLocationKey);
+    return active ? `世界图：${active.name}` : '世界图';
+}
+
+function createAtlasDigest(document: TavernAtlasDocument): string {
+    const active = document.locations.find((location) => location.key === document.activeLocationKey);
+    const visitedCount = document.locations.filter((location) => location.status === 'visited').length;
+    return [
+        active ? `当前地点：${active.name}` : '',
+        `地点：${document.locations.length}`,
+        `连接：${document.links.length}`,
+        `人物：${document.actors.length}`,
+        visitedCount ? `已探索：${visitedCount}` : '',
+    ].filter(Boolean).join('\n');
+}
+
+function hasParentCycle(locations: Map<string, TavernAtlasLocation>, startKey: string): boolean {
+    const visited = new Set<string>();
+    let current: string | undefined = startKey;
+    while (current) {
+        if (visited.has(current)) {return true;}
+        visited.add(current);
+        current = locations.get(current)?.parent;
+    }
+    return false;
+}
+
 function mapElementSummary(element: TavernMapElement): TavernMapElement {
     return cloneJson(element);
 }
@@ -870,6 +1122,33 @@ function describeMapPatchError(error = ''): string {
         return `${id} is missing a center point.`;
     case 'map_element_arc_angles_required':
         return `${id} is missing arc start/end angles.`;
+    case 'atlas_doc_id_invalid':
+        return 'Atlas has exactly one document: tavern.atlas/main.';
+    case 'atlas_activate_not_supported':
+        return 'Atlas does not support activate:true. Move the player with move-actor(actorKey:"player").';
+    case 'atlas_location_key_invalid':
+        return 'Invalid atlas location key. Use a stable non-empty key without path separators or control characters.';
+    case 'atlas_location_create_required':
+        return `${id} is new. Provide set.name, set.scale, and set.status.`;
+    case 'atlas_location_not_found':
+        return `${id} does not exist in the atlas. Create the location before linking or moving actors there.`;
+    case 'atlas_parent_not_found':
+        return `${id} does not exist. Create the parent location before assigning it.`;
+    case 'atlas_parent_cycle':
+        return `${id} would create a parent cycle.`;
+    case 'atlas_link_location_not_found':
+        return `${id} does not exist. Atlas links cannot point to missing locations.`;
+    case 'atlas_link_kind_invalid':
+        return 'Invalid atlas link kind. Use door/stairs/elevator/path/road/portal/passage.';
+    case 'atlas_link_not_found':
+        return `${id} does not exist. Use StateRead links first.`;
+    case 'atlas_location_has_children':
+    case 'atlas_location_has_links':
+    case 'atlas_location_has_actors':
+    case 'atlas_location_active':
+        return `${id} still has dependencies. Remove child locations, links, actors, or active status first.`;
+    case 'atlas_op_not_supported':
+        return `Unsupported atlas op: ${id}. Use upsert-location/remove-location/upsert-link/remove-link/move-actor.`;
     default:
         return error;
     }
@@ -946,6 +1225,288 @@ function summarizeMapElements(document: TavernMapDocument, args: Record<string, 
         count: matches.length,
         truncated: nextOffset > 0,
         nextOffset,
+    };
+}
+
+function summarizeAtlasLocations(document: TavernAtlasDocument, args: Record<string, unknown> = {}): {
+    locations: TavernAtlasLocation[];
+    count: number;
+    truncated: boolean;
+    nextOffset: number;
+} {
+    const query = normalizeText(args.query, 120).toLowerCase();
+    const parent = normalizeAtlasKey(args.parent);
+    const status = String(args.status || '').trim();
+    const offset = Math.max(0, Number(args.offset) || 0);
+    const limit = Math.max(1, Math.min(MAX_STATE_READ_LIMIT, Number(args.limit) || 30));
+    const matches = document.locations.filter((location) => {
+        if (parent && location.parent !== parent) {return false;}
+        if (status && location.status !== status) {return false;}
+        if (!query) {return true;}
+        return [
+            location.key,
+            location.name,
+            location.scale,
+            location.status,
+            location.brief,
+            ...(location.aliases || []),
+        ].join('\n').toLowerCase().includes(query);
+    });
+    const page = matches.slice(offset, offset + limit).map((location) => cloneJson(location));
+    const nextOffset = offset + page.length < matches.length ? offset + page.length : 0;
+    return { locations: page, count: matches.length, truncated: nextOffset > 0, nextOffset };
+}
+
+function summarizeAtlasLinks(document: TavernAtlasDocument, args: Record<string, unknown> = {}): {
+    links: TavernAtlasLink[];
+    count: number;
+    truncated: boolean;
+    nextOffset: number;
+} {
+    const query = normalizeText(args.query, 120).toLowerCase();
+    const from = normalizeAtlasKey(args.from);
+    const to = normalizeAtlasKey(args.to);
+    const kind = String(args.kind || '').trim();
+    const offset = Math.max(0, Number(args.offset) || 0);
+    const limit = Math.max(1, Math.min(MAX_STATE_READ_LIMIT, Number(args.limit) || 30));
+    const matches = document.links.filter((link) => {
+        if (from && link.from !== from) {return false;}
+        if (to && link.to !== to) {return false;}
+        if (kind && link.kind !== kind) {return false;}
+        if (!query) {return true;}
+        return [link.id, link.from, link.to, link.kind, link.label].join('\n').toLowerCase().includes(query);
+    });
+    const page = matches.slice(offset, offset + limit).map((link) => cloneJson(link));
+    const nextOffset = offset + page.length < matches.length ? offset + page.length : 0;
+    return { links: page, count: matches.length, truncated: nextOffset > 0, nextOffset };
+}
+
+function normalizeAtlasLocationSet(value: unknown = {}): Partial<Omit<TavernAtlasLocation, 'key'>> {
+    if (!isPlainObject(value)) {throw new Error('atlas_location_set_required');}
+    const set: Partial<Omit<TavernAtlasLocation, 'key'>> = {};
+    if ('name' in value) {
+        const name = normalizeText(value.name, 120);
+        if (!name) {throw new Error('atlas_location_name_required');}
+        set.name = name;
+    }
+    if ('scale' in value) {set.scale = normalizeAtlasScale(value.scale);}
+    if ('status' in value) {set.status = normalizeAtlasStatus(value.status);}
+    if ('parent' in value) {
+        const parent = normalizeAtlasKey(value.parent);
+        if (parent) {set.parent = parent;}
+        else {set.parent = undefined;}
+    }
+    if ('mapDocId' in value) {
+        const mapDocId = normalizeText(value.mapDocId, 80);
+        if (mapDocId) {set.mapDocId = normalizeMapDocIdOrThrow(mapDocId, 'atlas_location_map_doc_id_invalid');}
+        else {set.mapDocId = undefined;}
+    }
+    if ('aliases' in value) {set.aliases = normalizeAtlasStringArray(value.aliases) || [];}
+    if ('brief' in value) {
+        const brief = normalizeText(value.brief, 240);
+        if (brief) {set.brief = brief;}
+        else {set.brief = undefined;}
+    }
+    return set;
+}
+
+function applyAtlasOps(source: TavernAtlasDocument, rawOps: unknown[]): {
+    document: TavernAtlasDocument;
+    effectiveOps: TavernAtlasPatchOp[];
+    appliedCount: number;
+    satisfiedCount: number;
+    failed: Array<{ index: number; error: string; hint?: string }>;
+    warnings: string[];
+    changedIds: string[];
+    changed: boolean;
+    syncedActiveMapDocId?: string;
+} {
+    if (!Array.isArray(rawOps)) {throw new Error('state_patch_ops_must_be_array');}
+    if (!rawOps.length) {throw new Error('state_patch_ops_required');}
+    if (rawOps.length > MAX_STATE_PATCH_OPS) {throw new Error('state_patch_ops_limit_exceeded');}
+
+    let document = normalizeAtlasDocument(source);
+    const effectiveOps: TavernAtlasPatchOp[] = [];
+    const failed: Array<{ index: number; error: string; hint?: string }> = [];
+    const warnings: string[] = [];
+    const changedIds = new Set<string>();
+    let appliedCount = 0;
+    let satisfiedCount = 0;
+    let changed = false;
+    let syncedActiveMapDocId: string | undefined;
+
+    const locationMap = () => new Map(document.locations.map((location) => [location.key, location]));
+    const linkIndex = (id: string) => document.links.findIndex((link) => link.id === id);
+    const actorIndex = (actorKey: string) => document.actors.findIndex((actor) => actor.actorKey === actorKey);
+    const assertParentGraph = () => {
+        const locations = locationMap();
+        document.locations.forEach((location) => {
+            if (location.parent) {
+                if (location.parent === location.key) {throw new Error(`atlas_parent_cycle:${location.key}`);}
+                if (!locations.has(location.parent)) {throw new Error(`atlas_parent_not_found:${location.parent}`);}
+            }
+        });
+        document.locations.forEach((location) => {
+            if (hasParentCycle(locations, location.key)) {throw new Error(`atlas_parent_cycle:${location.key}`);}
+        });
+    };
+    const assertLinkEndpoints = (from: string, to: string) => {
+        const locations = locationMap();
+        if (!locations.has(from)) {throw new Error(`atlas_link_location_not_found:${from}`);}
+        if (!locations.has(to)) {throw new Error(`atlas_link_location_not_found:${to}`);}
+    };
+    const markApplied = (op: TavernAtlasPatchOp, id: string) => {
+        effectiveOps.push(cloneJson(op));
+        changedIds.add(id);
+        changed = true;
+        appliedCount += 1;
+    };
+
+    rawOps.forEach((raw, index) => {
+        try {
+            if (!isPlainObject(raw)) {throw new Error('atlas_op_invalid');}
+            const op = String(raw.op || '').trim();
+            if (op === 'upsert-location') {
+                const key = normalizeAtlasKeyOrThrow(raw.key, 'atlas_location_key_invalid');
+                const set = normalizeAtlasLocationSet(raw.set || {});
+                const rawUnset = Array.isArray(raw.unset) ? raw.unset.map((field) => String(field || '').trim()) : [];
+                const invalidUnset = rawUnset.find((field) => !ATLAS_UNSET_FIELDS.has(field));
+                if (invalidUnset) {throw new Error(`atlas_unset_field_invalid:${invalidUnset || 'empty'}`);}
+                const unset = rawUnset.filter(Boolean);
+                const existingIndex = document.locations.findIndex((location) => location.key === key);
+                if (existingIndex < 0) {
+                    if (!set.name || !set.scale || !set.status) {throw new Error(`atlas_location_create_required:${key}`);}
+                    const location: TavernAtlasLocation = {
+                        key,
+                        name: set.name,
+                        scale: set.scale,
+                        status: set.status,
+                    };
+                    if (set.parent) {location.parent = set.parent;}
+                    if (set.mapDocId) {location.mapDocId = set.mapDocId;}
+                    if (set.aliases?.length) {location.aliases = set.aliases;}
+                    if (set.brief) {location.brief = set.brief;}
+                    document.locations.push(location);
+                    assertParentGraph();
+                    markApplied({ op: 'upsert-location', key, set: cloneJson(set), ...(unset.length ? { unset: unset as Array<'parent' | 'mapDocId' | 'aliases' | 'brief'> } : {}) }, `location:${key}`);
+                    return;
+                }
+                const current = document.locations[existingIndex];
+                const next: TavernAtlasLocation = { ...current, ...set };
+                const effectiveSet: Partial<Omit<TavernAtlasLocation, 'key'>> = { ...set };
+                if (current.status === 'visited' && set.status === 'mentioned') {
+                    next.status = 'visited';
+                    effectiveSet.status = 'visited';
+                    warnings.push(`${key} is already visited; status was not downgraded to mentioned.`);
+                }
+                unset.forEach((field) => {
+                    delete (next as unknown as Record<string, unknown>)[field];
+                });
+                if (!next.name || !next.scale || !next.status) {throw new Error(`atlas_location_required_field:${key}`);}
+                document.locations[existingIndex] = next;
+                assertParentGraph();
+                if (deepEqual(current, next)) {
+                    satisfiedCount += 1;
+                    return;
+                }
+                markApplied({ op: 'upsert-location', key, set: cloneJson(effectiveSet), ...(unset.length ? { unset: unset as Array<'parent' | 'mapDocId' | 'aliases' | 'brief'> } : {}) }, `location:${key}`);
+                return;
+            }
+            if (op === 'remove-location') {
+                const key = normalizeAtlasKeyOrThrow(raw.key, 'atlas_location_key_invalid');
+                const existingIndex = document.locations.findIndex((location) => location.key === key);
+                if (existingIndex < 0) {throw new Error(`atlas_location_not_found:${key}`);}
+                if (document.activeLocationKey === key) {throw new Error(`atlas_location_active:${key}`);}
+                if (document.locations.some((location) => location.parent === key)) {throw new Error(`atlas_location_has_children:${key}`);}
+                if (document.links.some((link) => link.from === key || link.to === key)) {throw new Error(`atlas_location_has_links:${key}`);}
+                if (document.actors.some((actor) => actor.locationKey === key)) {throw new Error(`atlas_location_has_actors:${key}`);}
+                document.locations.splice(existingIndex, 1);
+                markApplied({ op: 'remove-location', key }, `location:${key}`);
+                return;
+            }
+            if (op === 'upsert-link') {
+                const from = normalizeAtlasKeyOrThrow(raw.from, 'atlas_link_from_required');
+                const to = normalizeAtlasKeyOrThrow(raw.to, 'atlas_link_to_required');
+                const kind = normalizeAtlasLinkKind(raw.kind);
+                const bidirectional = raw.bidirectional !== false;
+                const id = normalizeText(raw.id, 160) || defaultAtlasLinkId(from, to, kind, bidirectional);
+                assertLinkEndpoints(from, to);
+                const next: TavernAtlasLink = { id, from, to, kind, bidirectional };
+                const label = normalizeText(raw.label, 120);
+                if (label) {next.label = label;}
+                const existingIndex = linkIndex(id);
+                if (existingIndex >= 0) {
+                    if (deepEqual(document.links[existingIndex], next)) {
+                        satisfiedCount += 1;
+                        return;
+                    }
+                    document.links[existingIndex] = next;
+                } else {
+                    document.links.push(next);
+                }
+                markApplied({ op: 'upsert-link', id, from, to, kind, ...(label ? { label } : {}), bidirectional }, `link:${id}`);
+                return;
+            }
+            if (op === 'remove-link') {
+                let id = normalizeText(raw.id, 160);
+                if (!id) {
+                    const from = normalizeAtlasKey(raw.from);
+                    const to = normalizeAtlasKey(raw.to);
+                    const kind = String(raw.kind || '').trim() as TavernAtlasLinkKind;
+                    if (!from || !to || !ATLAS_LINK_KINDS.has(kind)) {throw new Error('atlas_link_remove_locator_required');}
+                    id = defaultAtlasLinkId(from, to, kind, raw.bidirectional !== false);
+                }
+                const existingIndex = linkIndex(id);
+                if (existingIndex < 0) {throw new Error(`atlas_link_not_found:${id}`);}
+                document.links.splice(existingIndex, 1);
+                markApplied({ op: 'remove-link', id }, `link:${id}`);
+                return;
+            }
+            if (op === 'move-actor') {
+                const actorKey = normalizeActorKey(raw.actorKey);
+                const locationKey = normalizeAtlasKeyOrThrow(raw.locationKey, 'atlas_actor_location_required');
+                if (!actorKey) {throw new Error('atlas_actor_key_required');}
+                const location = locationMap().get(locationKey);
+                if (!location) {throw new Error(`atlas_location_not_found:${locationKey}`);}
+                const nextActor: TavernAtlasActorPosition = { actorKey, locationKey };
+                const existingIndex = actorIndex(actorKey);
+                const current = existingIndex >= 0 ? document.actors[existingIndex] : null;
+                if (current && deepEqual(current, nextActor) && !(actorKey === 'player' && document.activeLocationKey !== locationKey)) {
+                    satisfiedCount += 1;
+                    return;
+                }
+                if (existingIndex >= 0) {document.actors[existingIndex] = nextActor;}
+                else {document.actors.push(nextActor);}
+                if (actorKey === 'player') {
+                    document.activeLocationKey = locationKey;
+                    const locationIndex = document.locations.findIndex((item) => item.key === locationKey);
+                    if (locationIndex >= 0 && document.locations[locationIndex].status !== 'visited') {
+                        document.locations[locationIndex] = { ...document.locations[locationIndex], status: 'visited' };
+                    }
+                    syncedActiveMapDocId = document.locations[locationIndex]?.mapDocId;
+                }
+                markApplied({ op: 'move-actor', actorKey, locationKey }, `actor:${actorKey}`);
+                return;
+            }
+            throw new Error(`atlas_op_not_supported:${op || 'unknown'}`);
+        } catch (error) {
+            failed.push({
+                index,
+                error: error instanceof Error ? error.message : String(error || 'atlas_op_failed'),
+            });
+        }
+    });
+
+    return {
+        document,
+        effectiveOps,
+        appliedCount,
+        satisfiedCount,
+        failed,
+        warnings,
+        changedIds: [...changedIds],
+        changed,
+        syncedActiveMapDocId,
     };
 }
 
@@ -1037,6 +1598,15 @@ async function getSeededMapDocumentRecord(
     const existing = await getTavernStructuredStateDocument(sessionId, docType, docId);
     if (existing) {return existing;}
     return await ensureSeedStructuredStateDocument(sessionId, { touchSession: false });
+}
+
+async function getSeededAtlasDocumentRecord(
+    sessionId = '',
+): Promise<TavernStructuredStateDocumentRecord | null> {
+    const existing = await getTavernStructuredStateDocument(sessionId, ATLAS_DOC_TYPE, DEFAULT_ATLAS_DOC_ID);
+    if (existing) {return existing;}
+    await ensureSeedStructuredStateDocument(sessionId, { touchSession: false });
+    return await getTavernStructuredStateDocument(sessionId, ATLAS_DOC_TYPE, DEFAULT_ATLAS_DOC_ID);
 }
 
 function buildCanonicalFullReplaceOps(current: TavernMapDocument, next: TavernMapDocument): TavernMapPatchOp[] {
@@ -1356,12 +1926,12 @@ export function getTavernStateToolDefinitions(): Array<{ type: 'function'; funct
                 description: [
                     'List structured state documents in the current session.',
                     'Returns document entries only. It does not read full state, elements, or patch history.',
-                    'Use before StateRead when you need available structured documents such as `tavern.map/main`, or when you need to find the active current-scene map.',
+                    'Use before StateRead when you need available map documents, or when you need the atlas world index.',
                 ].join('\n'),
                 parameters: {
                     type: 'object',
                     properties: {
-                        docType: { type: 'string', enum: [MAP_DOC_TYPE], description: 'Optional structured document type filter. Currently `tavern.map`.' },
+                        docType: { type: 'string', enum: [MAP_DOC_TYPE, ATLAS_DOC_TYPE], description: 'Optional structured document type filter: `tavern.map` for scene maps, `tavern.atlas` for the world index.' },
                     },
                     additionalProperties: false,
                 },
@@ -1373,17 +1943,23 @@ export function getTavernStateToolDefinitions(): Array<{ type: 'function'; funct
                 name: TAVERN_STATE_TOOL_NAMES.READ,
                 description: [
                     'Read a structured state document in the current session.',
-                    'Use `summary` first. It returns the revision plus compact meta fields: status, name, viewBox, theme, hint, and digest.',
-                    'For tavern maps, omitting docId reads the active current-scene map. New sessions start with `tavern.map/main`, so a map is readable even before first initialization.',
-                    'Use `elements` to browse or filter map elements, `element` for one stable id, `document` for the full current state, and `history` for saved patch transactions.',
+                    'For `tavern.map`, use `summary` first, `elements` to browse map elements, `element` for one id, `document` for the full map, and `history` for saved map patch transactions.',
+                    'For `tavern.atlas`, use `summary`, `document`, `locations`, `location`, `links`, `actors`, or `history`. Atlas does not have map elements.',
                 ].join('\n'),
                 parameters: {
                     type: 'object',
                     properties: {
-                        docType: { type: 'string', enum: [MAP_DOC_TYPE], description: 'Structured document type. Currently `tavern.map`.' },
-                        docId: { type: 'string', description: 'Structured document id. Omit to read the active current-scene map.' },
-                        mode: { type: 'string', enum: ['summary', 'elements', 'document', 'element', 'history'], description: '`summary` returns compact meta, `elements` pages/filter element summaries, `document` returns the full state, `element` returns one exact id, and `history` returns saved patch transactions.' },
+                        docType: { type: 'string', enum: [MAP_DOC_TYPE, ATLAS_DOC_TYPE], description: 'Structured document type. Use `tavern.map` for scene maps or `tavern.atlas` for the world index.' },
+                        docId: { type: 'string', description: 'Structured document id. Omit for the active map; atlas always uses `main`.' },
+                        mode: { type: 'string', enum: ['summary', 'elements', 'document', 'element', 'history', 'locations', 'location', 'links', 'actors'], description: 'For maps: summary/elements/document/element/history. For atlas: summary/document/locations/location/links/actors/history.' },
                         elementId: { type: 'string', description: 'Required for `element` mode. Exact element id to read.' },
+                        locationKey: { type: 'string', description: 'Required for atlas `location` mode.' },
+                        actorKey: { type: 'string', description: 'Optional atlas `actors` filter.' },
+                        parent: { type: 'string', description: 'Optional atlas `locations` parent filter.' },
+                        status: { type: 'string', enum: ['mentioned', 'visited'], description: 'Optional atlas `locations` status filter.' },
+                        from: { type: 'string', description: 'Optional atlas `links` from filter.' },
+                        to: { type: 'string', description: 'Optional atlas `links` to filter.' },
+                        kind: { type: 'string', enum: [...ATLAS_LINK_KINDS], description: 'Optional atlas `links` kind filter.' },
                         elementType: { type: 'string', enum: [...MAP_SHAPE_KEYS], description: 'Optional `elements`-mode shape filter such as rect, circle, path, curve, icon, or text.' },
                         category: { type: 'string', enum: [...MAP_ELEMENT_CATEGORIES], description: 'Optional `elements`-mode category filter such as wall, door, marker, terrain, road, or label.' },
                         query: { type: 'string', description: 'Optional `elements`-mode text query matched against id, category, shape, icon, and label text.' },
@@ -1400,35 +1976,46 @@ export function getTavernStateToolDefinitions(): Array<{ type: 'function'; funct
             function: {
                 name: TAVERN_STATE_TOOL_NAMES.PATCH,
                 description: [
-                    'Apply map patch transactions to the current session.',
-                    'Canonical ops are `meta`, `add`, `modify`, and `remove`. One StatePatch call is one atomic transaction and becomes exactly one revision when it saves.',
+                    'Apply structured state patch transactions to the current session.',
+                    'For `tavern.map`, canonical ops are `meta`, `add`, `modify`, and `remove`. One StatePatch call is one atomic transaction and becomes exactly one revision when it saves.',
                     'Use `meta` to update document fields such as name, viewBox, theme, status, or hint. Use `add` to create elements, `modify` to change existing ids, and `remove` to delete ids.',
                     'Each element has `id` and `cat`, plus exactly one shape field: `rect`, `circle`, `path`, `curve`, `icon`, or `text`. Most elements use `at:[x,y]`; `path` and `curve` may omit `at` and use the first point as the anchor.',
                     'For `cat:"actor"`, optional `actorKey` is the full-session identity key. If omitted, the element id is used. The runtime keeps only the latest actor with the same final key across all map documents.',
                     'With `at`, `path` and `curve` points are relative offsets. Without `at`, the points are treated as absolute coordinates and the stored result becomes relative to the first point.',
                     'If one add element contains geometry plus text, the runtime splits the text into a system label element automatically.',
-                    'Pass `activate:true` to make this doc the current scene. `activate:true` with `ops:[]` only switches active map; normal patches do not change active map.',
+                    'For `tavern.atlas/main`, use only `upsert-location`, `remove-location`, `upsert-link`, `remove-link`, and `move-actor`. There is no set-active-location op.',
+                    'Move the player between places with `move-actor` and `actorKey:"player"`. That updates atlas.activeLocationKey, marks the location visited, and syncs activeMapDocId when the location has mapDocId. Non-player actors do not change the current location.',
+                    'Pass `activate:true` only for `tavern.map` to make that map document active for map tools. Do not use map activate to represent player movement.',
                     '`meta.viewBox` is the camera. Changing it does not move elements. Move actors by changing their `at`, then adjust `viewBox` only if the camera should follow.',
                     'Legacy `init`, `reset`, and `replace` input is still absorbed at runtime, but do not rely on it in new calls.',
                 ].join('\n'),
                 parameters: {
                     type: 'object',
                     properties: {
-                        docType: { type: 'string', enum: [MAP_DOC_TYPE], description: 'Structured document type. Currently `tavern.map`.' },
-                        docId: { type: 'string', description: 'Structured document id. Omit to patch the active current-scene map; pass a docId when creating or editing another map.' },
+                        docType: { type: 'string', enum: [MAP_DOC_TYPE, ATLAS_DOC_TYPE], description: 'Structured document type. Use `tavern.map` for scene maps or `tavern.atlas` for the world index.' },
+                        docId: { type: 'string', description: 'Structured document id. Omit to patch the active current-scene map; atlas always uses `main`.' },
                         baseRevision: { type: 'number', description: 'Optional optimistic revision check from StateRead summary/document.' },
                         dryRun: { type: 'boolean', description: 'Validate and simulate the transaction without saving or incrementing the revision.' },
                         activate: { type: 'boolean', description: 'Set this map document as the current scene after the transaction. With `ops:[]`, this only switches the active map.' },
                         desc: { type: 'string', description: 'Short one-line summary of this turn’s spatial update.' },
                         ops: {
                             type: 'array',
-                            description: 'Patch ops as one atomic transaction. Use canonical `meta`, `add`, `modify`, or `remove` ops.',
+                            description: 'Patch ops as one atomic transaction. For maps use `meta/add/modify/remove`. For atlas use `upsert-location/remove-location/upsert-link/remove-link/move-actor`.',
                             items: {
                                 type: 'object',
                                 properties: {
-                                    op: { type: 'string', enum: ['meta', 'add', 'modify', 'remove'], description: 'Operation type. Use `meta` for document fields, `add` for a new element, `modify` for an existing id, and `remove` for an existing id.' },
+                                    op: { type: 'string', enum: ['meta', 'add', 'modify', 'remove', 'upsert-location', 'remove-location', 'upsert-link', 'remove-link', 'move-actor'], description: 'Operation type. Map ops and atlas ops are selected by docType.' },
                                     id: { type: 'string', description: 'Exact element id for `modify` or `remove`.' },
-                                    set: { type: 'object', description: 'For `meta`, the meta fields to update. For `modify`, the partial element fields to change. Shape-field changes replace the previous shape; `style` merges by field.' },
+                                    key: { type: 'string', description: 'Atlas location key for upsert-location/remove-location.' },
+                                    locationKey: { type: 'string', description: 'Atlas target location key for move-actor.' },
+                                    actorKey: { type: 'string', description: 'Atlas actor key for move-actor. Use actorKey:"player" for the player.' },
+                                    from: { type: 'string', description: 'Atlas link source location key.' },
+                                    to: { type: 'string', description: 'Atlas link target location key.' },
+                                    kind: { type: 'string', enum: [...ATLAS_LINK_KINDS], description: 'Atlas link kind.' },
+                                    label: { type: 'string', description: 'Optional atlas link label.' },
+                                    bidirectional: { type: 'boolean', description: 'Atlas link direction flag. Defaults true.' },
+                                    unset: { type: 'array', items: { type: 'string', enum: ['parent', 'mapDocId', 'aliases', 'brief'] }, description: 'Atlas upsert-location optional fields to remove.' },
+                                    set: { type: 'object', description: 'For map `meta`/`modify`, fields to update. For atlas `upsert-location`, location fields to merge.' },
                                     element: { ...mapElementSchema, description: 'Full element object for `add`.' },
                                 },
                                 required: ['op'],
@@ -1459,24 +2046,32 @@ export async function executeTavernStateTool(
     const id = String(sessionId || '').trim();
     if (!id) {return { ok: false, summary: 'Missing sessionId.', error: 'state_session_required' };}
     try {
-        const docType = normalizeDocType(args.docType || MAP_DOC_TYPE);
+        const explicitDocType = normalizeText(args.docType, 40);
+        const hasExplicitDocType = !!explicitDocType;
+        const docType = normalizeDocType(explicitDocType || MAP_DOC_TYPE);
         const explicitDocId = normalizeText(args.docId, 80);
-        const docId = normalizeDocId(explicitDocId || (
+        const docId = normalizeStateDocIdForType(docType, explicitDocId || (
             docType === MAP_DOC_TYPE && (toolName === TAVERN_STATE_TOOL_NAMES.READ || toolName === TAVERN_STATE_TOOL_NAMES.PATCH)
                 ? (await resolveTavernActiveMapDocument(id)).activeDocId
-                : DEFAULT_DOC_ID
+                : docType === ATLAS_DOC_TYPE
+                    ? DEFAULT_ATLAS_DOC_ID
+                    : DEFAULT_DOC_ID
         ));
 
         if (toolName === TAVERN_STATE_TOOL_NAMES.LIST) {
-            const activeMapState = docType === MAP_DOC_TYPE
+            const listAllDocTypes = !hasExplicitDocType;
+            const activeMapState = listAllDocTypes || docType === MAP_DOC_TYPE
                 ? await resolveTavernActiveMapDocument(id, { includeStale: true })
                 : null;
-            const documents = activeMapState?.documents || await listTavernStructuredStateDocuments(id, { docType, includeStale: true });
+            const documents = listAllDocTypes
+                ? await listTavernStructuredStateDocuments(id, { includeStale: true })
+                : activeMapState?.documents || await listTavernStructuredStateDocuments(id, { docType, includeStale: true });
             const activeMapDocId = activeMapState?.activeDocId || DEFAULT_DOC_ID;
             const sorted = [...documents].sort((left, right) => {
                 const leftActive = left.docType === MAP_DOC_TYPE && left.docId === activeMapDocId;
                 const rightActive = right.docType === MAP_DOC_TYPE && right.docId === activeMapDocId;
                 if (leftActive !== rightActive) {return leftActive ? -1 : 1;}
+                if (left.docType !== right.docType) {return left.docType.localeCompare(right.docType);}
                 return (Number(right.updatedAt) || 0) - (Number(left.updatedAt) || 0)
                     || (Number(right.revision) || 0) - (Number(left.revision) || 0);
             });
@@ -1493,13 +2088,135 @@ export async function executeTavernStateTool(
                     digest: document.digest,
                     status: document.status,
                     updatedAt: document.updatedAt,
-                    active: document.docType === MAP_DOC_TYPE && document.docId === activeMapDocId,
+                    active: document.docType === MAP_DOC_TYPE
+                        ? document.docId === activeMapDocId
+                        : document.docType === ATLAS_DOC_TYPE && document.docId === DEFAULT_ATLAS_DOC_ID,
                 })),
             };
         }
 
         if (toolName === TAVERN_STATE_TOOL_NAMES.READ) {
             const mode = String(args.mode || 'summary').trim() || 'summary';
+            if (docType === ATLAS_DOC_TYPE) {
+                const record = await getSeededAtlasDocumentRecord(id);
+                if (!record) {
+                    return { ok: false, summary: `${docType}/${docId} does not exist.`, docType, docId, error: 'state_document_not_found' };
+                }
+                const document = normalizeAtlasDocumentFromRecord(record);
+                if (mode === 'summary') {
+                    return {
+                        ok: true,
+                        summary: `Read atlas summary, revision ${record.revision}.`,
+                        docType,
+                        docId,
+                        title: record.title,
+                        revision: record.revision,
+                        digest: createAtlasDigest(document),
+                        activeLocationKey: document.activeLocationKey,
+                        count: document.locations.length,
+                        details: {
+                            locationCount: document.locations.length,
+                            linkCount: document.links.length,
+                            actorCount: document.actors.length,
+                        },
+                    };
+                }
+                if (mode === 'document') {
+                    return {
+                        ok: true,
+                        summary: `Read full atlas, revision ${record.revision}.`,
+                        docType,
+                        docId,
+                        title: record.title,
+                        revision: record.revision,
+                        digest: createAtlasDigest(document),
+                        activeLocationKey: document.activeLocationKey,
+                        document,
+                    };
+                }
+                if (mode === 'locations') {
+                    const result = summarizeAtlasLocations(document, args);
+                    return {
+                        ok: true,
+                        summary: `Matched ${result.count} atlas location(s); returned ${result.locations.length}.`,
+                        docType,
+                        docId,
+                        revision: record.revision,
+                        count: result.count,
+                        truncated: result.truncated,
+                        nextOffset: result.nextOffset,
+                        locations: result.locations,
+                    };
+                }
+                if (mode === 'location') {
+                    const locationKey = normalizeAtlasKey(args.locationKey ?? args.key);
+                    if (!locationKey) {return { ok: false, summary: 'Missing locationKey.', docType, docId, error: 'atlas_location_key_required' };}
+                    const location = document.locations.find((item) => item.key === locationKey);
+                    if (!location) {return { ok: false, summary: `${locationKey} does not exist.`, docType, docId, revision: record.revision, error: 'atlas_location_not_found' };}
+                    return {
+                        ok: true,
+                        summary: `Read atlas location ${location.name}.`,
+                        docType,
+                        docId,
+                        revision: record.revision,
+                        location: {
+                            ...cloneJson(location),
+                            links: document.links.filter((link) => link.from === locationKey || link.to === locationKey).map((link) => cloneJson(link)),
+                            actors: document.actors.filter((actor) => actor.locationKey === locationKey).map((actor) => cloneJson(actor)),
+                        },
+                    };
+                }
+                if (mode === 'links') {
+                    const result = summarizeAtlasLinks(document, args);
+                    return {
+                        ok: true,
+                        summary: `Matched ${result.count} atlas link(s); returned ${result.links.length}.`,
+                        docType,
+                        docId,
+                        revision: record.revision,
+                        count: result.count,
+                        truncated: result.truncated,
+                        nextOffset: result.nextOffset,
+                        links: result.links,
+                    };
+                }
+                if (mode === 'actors') {
+                    const actorKey = normalizeActorKey(args.actorKey);
+                    const actors = actorKey
+                        ? document.actors.filter((actor) => actor.actorKey === actorKey)
+                        : document.actors;
+                    return {
+                        ok: true,
+                        summary: `Matched ${actors.length} atlas actor position(s).`,
+                        docType,
+                        docId,
+                        revision: record.revision,
+                        count: actors.length,
+                        actors: actors.map((actor) => cloneJson(actor)),
+                    };
+                }
+                if (mode === 'history') {
+                    const patches = await listTavernStructuredStatePatches({ sessionId: id, docType, docId });
+                    const tail = Math.max(0, Number(args.tail) || 0);
+                    const limit = Math.max(1, Math.min(MAX_STATE_READ_LIMIT, Number(args.limit) || 20));
+                    const offset = Math.max(0, Number(args.offset) || 0);
+                    const start = tail > 0 ? Math.max(0, patches.length - Math.min(MAX_STATE_READ_LIMIT, tail)) : offset;
+                    const page = patches.slice(start, start + (tail > 0 ? Math.min(MAX_STATE_READ_LIMIT, tail) : limit));
+                    const nextOffset = start + page.length < patches.length ? start + page.length : 0;
+                    return {
+                        ok: true,
+                        summary: `Found ${patches.length} saved atlas patch transaction(s); returned ${page.length}.`,
+                        docType,
+                        docId,
+                        revision: record.revision,
+                        count: patches.length,
+                        truncated: nextOffset > 0,
+                        nextOffset,
+                        patches: page,
+                    };
+                }
+                return { ok: false, summary: `Unsupported atlas StateRead mode: ${mode}`, docType, docId, error: 'state_read_mode_invalid' };
+            }
             const record = await getSeededMapDocumentRecord(id, docType, docId);
             if (!record) {
                 return { ok: false, summary: `${docType}/${docId} does not exist.`, docType, docId, error: 'state_document_not_found' };
@@ -1592,7 +2309,135 @@ export async function executeTavernStateTool(
             if (!ops.length && !activate) {
                 return { ok: false, summary: 'StatePatch ops are required unless activate:true is used to switch active map.', docType, docId, error: 'state_patch_ops_required' };
             }
+            if (docType === ATLAS_DOC_TYPE && activate) {
+                return { ok: false, summary: 'Atlas has no activate:true operation. Move the player with move-actor(actorKey:"player").', docType, docId, error: 'atlas_activate_not_supported' };
+            }
             await options.beforeWriteGuard?.();
+            if (docType === ATLAS_DOC_TYPE) {
+                return await db.transaction(
+                    'rw',
+                    tavernStateDocumentsTable,
+                    tavernStatePatchesTable,
+                    tavernSessionsTable,
+                    async () => {
+                        const existing = await getSeededAtlasDocumentRecord(id);
+                        const currentRevision = Number(existing?.revision) || 0;
+                        if (Number.isFinite(Number(args.baseRevision)) && Number(args.baseRevision) !== currentRevision) {
+                            return {
+                                ok: false,
+                                summary: `Revision changed: current is ${currentRevision}, but this call was based on ${Number(args.baseRevision)}. Run StateRead again before patching.`,
+                                docType,
+                                docId,
+                                revision: currentRevision,
+                                error: 'state_revision_conflict',
+                            };
+                        }
+                        const currentDocument = normalizeAtlasDocumentFromRecord(existing);
+                        const patch = applyAtlasOps(currentDocument, ops);
+                        if (patch.failed.length) {
+                            const failureSummary = summarizePatchFailures(patch.failed);
+                            return {
+                                ok: false,
+                                summary: `Atlas patch was not saved: ${patch.failed.length} op(s) failed.${failureSummary ? ` ${failureSummary}` : ''}`,
+                                docType,
+                                docId,
+                                revision: currentRevision,
+                                changed: false,
+                                appliedCount: 0,
+                                satisfiedCount: patch.satisfiedCount,
+                                failedCount: patch.failed.length,
+                                warnings: patch.warnings,
+                                error: 'state_patch_failed',
+                                details: patch.failed,
+                            };
+                        }
+                        if (!patch.changed) {
+                            return {
+                                ok: true,
+                                summary: 'Atlas is already at the target result. No write was needed.',
+                                docType,
+                                docId,
+                                revision: currentRevision,
+                                changed: false,
+                                appliedCount: 0,
+                                satisfiedCount: patch.satisfiedCount,
+                                failedCount: 0,
+                                warnings: patch.warnings,
+                            };
+                        }
+                        const nextRevision = currentRevision + 1;
+                        const digest = createAtlasDigest(patch.document);
+                        if (args.dryRun === true) {
+                            return {
+                                ok: true,
+                                summary: `Dry run passed: ${docType}/${docId} would advance to revision ${nextRevision} with ${patch.appliedCount} applied op(s). Nothing was saved.`,
+                                docType,
+                                docId,
+                                title: atlasTitle(patch.document),
+                                revision: currentRevision,
+                                digest,
+                                changed: true,
+                                appliedCount: patch.appliedCount,
+                                satisfiedCount: patch.satisfiedCount,
+                                failedCount: 0,
+                                changedIds: patch.changedIds,
+                                warnings: patch.warnings,
+                                activeLocationKey: patch.document.activeLocationKey,
+                                document: patch.document,
+                            };
+                        }
+                        const timestamp = now();
+                        const saved = await putTavernStructuredStateDocument({
+                            sessionId: id,
+                            docType,
+                            docId,
+                            title: atlasTitle(patch.document),
+                            revision: nextRevision,
+                            data: patch.document,
+                            digest,
+                            status: 'active',
+                            source: options.caller || 'auto',
+                            createdAt: Number(existing?.createdAt) || timestamp,
+                            updatedAt: timestamp,
+                        });
+                        await appendTavernStructuredStatePatch({
+                            sessionId: id,
+                            docType,
+                            docId,
+                            revision: nextRevision,
+                            status: 'active',
+                            managerRunId: options.managerRunId,
+                            sourceUserOrder: options.sourceUserOrder,
+                            sourceAssistantOrder: options.sourceAssistantOrder,
+                            source: options.caller || 'auto',
+                            summary: normalizeText(args.desc || `AtlasPatch ${nextRevision}`, 400),
+                            ops: patch.effectiveOps,
+                            changedIds: patch.changedIds,
+                            removedElements: [],
+                        });
+                        if (patch.syncedActiveMapDocId) {
+                            await setActiveMapDocId(id, patch.syncedActiveMapDocId);
+                        }
+                        return {
+                            ok: true,
+                            summary: `Updated ${docType}/${docId} to revision ${saved.revision} with ${patch.appliedCount} applied op(s).`,
+                            docType,
+                            docId,
+                            title: saved.title,
+                            revision: saved.revision,
+                            digest: saved.digest,
+                            changed: true,
+                            appliedCount: patch.appliedCount,
+                            satisfiedCount: patch.satisfiedCount,
+                            failedCount: 0,
+                            changedIds: patch.changedIds,
+                            warnings: patch.warnings,
+                            activeLocationKey: patch.document.activeLocationKey,
+                            document: patch.document,
+                        };
+                    },
+                );
+            }
             return await db.transaction(
                 'rw',
                 tavernStateDocumentsTable,
@@ -1618,6 +2463,7 @@ export async function executeTavernStateTool(
                         }
                         const previousActiveDocId = await getActiveMapDocId(id);
                         const activeDocId = await setActiveMapDocId(id, docId);
+                        const warnings = await buildMapAtlasMismatchWarning(id, docId);
                         return {
                             ok: true,
                             summary: `Activated ${docType}/${docId}.`,
@@ -1630,6 +2476,7 @@ export async function executeTavernStateTool(
                             appliedCount: 0,
                             satisfiedCount: 0,
                             failedCount: 0,
+                            warnings,
                         };
                     }
 
@@ -1662,6 +2509,9 @@ export async function executeTavernStateTool(
                             const activeDocId = await setActiveMapDocId(id, docId);
                             activeChanged = previousActiveDocId !== activeDocId;
                         }
+                        const activateWarnings = activate && args.dryRun !== true
+                            ? await buildMapAtlasMismatchWarning(id, docId)
+                            : [];
                         return {
                             ok: true,
                             summary: activeChanged
@@ -1674,7 +2524,7 @@ export async function executeTavernStateTool(
                             appliedCount: 0,
                             satisfiedCount: patch.satisfiedCount,
                             failedCount: 0,
-                            warnings: patch.warnings,
+                            warnings: [...patch.warnings, ...activateWarnings],
                         };
                     }
 
@@ -1752,6 +2602,9 @@ export async function executeTavernStateTool(
                     if (activate) {
                         await setActiveMapDocId(id, docId);
                     }
+                    const activateWarnings = activate
+                        ? await buildMapAtlasMismatchWarning(id, docId)
+                        : [];
                     return {
                         ok: true,
                         summary: `Updated ${docType}/${docId} to revision ${saved.revision} with ${patch.appliedCount} applied op(s).`,
@@ -1766,7 +2619,7 @@ export async function executeTavernStateTool(
                         failedCount: 0,
                         changedIds,
                         removedElements,
-                        warnings: patch.warnings,
+                        warnings: [...patch.warnings, ...activateWarnings],
                         meta: cloneJson(nextDocument.meta),
                         elementCount: nextDocument.elements.length,
                     };
@@ -1838,6 +2691,94 @@ export async function getTavernMapStateForSession(sessionId = ''): Promise<{
         },
         activePatches,
     };
+}
+
+export async function getTavernAtlasStateForSession(sessionId = ''): Promise<{
+    document: TavernStructuredStateDocumentRecord | null;
+    patches: TavernStructuredStatePatchRecord[];
+    activeLocationKey: string;
+}> {
+    const record = await getSeededAtlasDocumentRecord(sessionId);
+    if (!record) {return { document: null, patches: [], activeLocationKey: '' };}
+    const normalized = normalizeAtlasDocumentFromRecord(record);
+    const patches = await listTavernStructuredStatePatches({
+        sessionId,
+        docType: ATLAS_DOC_TYPE,
+        docId: DEFAULT_ATLAS_DOC_ID,
+        limit: 80,
+    });
+    return {
+        document: {
+            ...record,
+            data: normalized,
+            title: atlasTitle(normalized),
+            digest: createAtlasDigest(normalized),
+        },
+        patches,
+        activeLocationKey: normalized.activeLocationKey || '',
+    };
+}
+
+function atlasLocationLabel(location: TavernAtlasLocation | undefined): string {
+    if (!location) {return '';}
+    return location.brief
+        ? `${location.name}（${location.brief}）`
+        : location.name;
+}
+
+function mapDigestLabels(digest = ''): string {
+    return String(digest || '')
+        .split('\n')
+        .map((line) => line.trim())
+        .find((line) => line.startsWith('标注：'))
+        ?.replace(/^标注：/, '')
+        .trim() || '';
+}
+
+export async function buildTavernSpatialStateDigest(sessionId = ''): Promise<string> {
+    await ensureSeedStructuredStateDocument(sessionId, { touchSession: false });
+    const atlasRecord = await getTavernStructuredStateDocument(sessionId, ATLAS_DOC_TYPE, DEFAULT_ATLAS_DOC_ID);
+    const atlas = normalizeAtlasDocumentFromRecord(atlasRecord);
+    const locations = new Map(atlas.locations.map((location) => [location.key, location]));
+    const active = atlas.activeLocationKey ? locations.get(atlas.activeLocationKey) : undefined;
+    if (!active) {return '';}
+    const parent = active.parent ? locations.get(active.parent) : undefined;
+    const adjacent = atlas.links
+        .flatMap((link) => {
+            if (link.from === active.key) {return [locations.get(link.to)];}
+            if (link.bidirectional && link.to === active.key) {return [locations.get(link.from)];}
+            return [];
+        })
+        .filter((location): location is TavernAtlasLocation => !!location);
+    const visited = atlas.locations
+        .filter((location) => location.status === 'visited')
+        .map((location) => location.name)
+        .filter(Boolean);
+    const mentioned = atlas.locations
+        .filter((location) => location.status === 'mentioned')
+        .map((location) => location.name)
+        .filter(Boolean);
+    const actorLines = atlas.actors
+        .map((actor) => {
+            const location = locations.get(actor.locationKey);
+            return location ? `${actor.actorKey === 'player' ? '玩家' : actor.actorKey}=${location.name}` : '';
+        })
+        .filter(Boolean);
+    const mapRecord = active.mapDocId
+        ? await getTavernStructuredStateDocument(sessionId, MAP_DOC_TYPE, active.mapDocId)
+        : null;
+    const mapDigest = mapRecord ? createMapDigest(normalizeMapDocumentFromRecord(mapRecord), mapRecord.revision) : '';
+    const sceneLabels = mapDigestLabels(mapDigest);
+
+    return [
+        `当前地点：${atlasLocationLabel(active)}`,
+        parent ? `上级地点：${parent.name}` : '',
+        adjacent.length ? `相邻地点：${adjacent.map((location) => atlasLocationLabel(location)).join('、')}` : '',
+        visited.length ? `已探索地点：${visited.join('、')}` : '',
+        mentioned.length ? `已知但未到达：${mentioned.join('、')}` : '',
+        actorLines.length ? `人物位置：${actorLines.join('，')}` : '',
+        sceneLabels ? `当前场景标注：${sceneLabels}` : active.mapDocId ? '当前场景标注：暂无' : '当前地点暂无详细地图',
+    ].filter(Boolean).join('\n');
 }
 
 export async function listTavernStructuredStateDigests(sessionId = '') {

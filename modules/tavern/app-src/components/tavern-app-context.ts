@@ -413,6 +413,9 @@ export interface TavernMemoryContext {
 export interface TavernWorkspaceContext {
     activeMemoryFiles: TavernReadable<TavernMemoryIndexFileEntry[]>;
     activeMapDocId: Ref<string>;
+    atlasActiveLocationKey: Ref<string>;
+    atlasStateDocument: Ref<TavernStructuredStateDocumentRecord | null>;
+    atlasStatePatches: Ref<TavernStructuredStatePatchRecord[]>;
     chatWorkspacePanel: Ref<string>;
     mapStateDocuments: Ref<TavernMapStateDocumentItem[]>;
     mapStateDocument: Ref<TavernStructuredStateDocumentRecord | null>;

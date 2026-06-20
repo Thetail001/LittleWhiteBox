@@ -75,7 +75,9 @@ import {
     normalizeTavernAssistantPreset,
 } from '../shared/assistant-presets';
 import {
+    buildTavernSpatialStateDigest,
     executeTavernStateTool,
+    getTavernAtlasStateForSession,
     getTavernMapStateForSession,
     getTavernStateToolDefinitions,
     listTavernStructuredStateDigests,
@@ -1087,12 +1089,11 @@ test('StateRead tool schema documents summary-first and mode semantics', () => {
         properties?: Record<string, { description?: string }>;
     };
 
-    assert.match(readTool?.function.description || '', /Use `summary` first/i);
-    assert.match(readTool?.function.description || '', /omitting docId reads the active current-scene map/i);
-    assert.match(readTool?.function.description || '', /New sessions start with `tavern\.map\/main`/i);
-    assert.match(readTool?.function.description || '', /`elements` to browse or filter map elements/i);
-    assert.match(parameters.properties?.docId?.description || '', /Omit to read the active current-scene map/i);
-    assert.match(parameters.properties?.mode?.description || '', /`summary` returns compact meta/i);
+    assert.match(readTool?.function.description || '', /For `tavern\.map`/i);
+    assert.match(readTool?.function.description || '', /For `tavern\.atlas`/i);
+    assert.match(readTool?.function.description || '', /Atlas does not have map elements/i);
+    assert.match(parameters.properties?.docId?.description || '', /atlas always uses `main`/i);
+    assert.match(parameters.properties?.mode?.description || '', /For maps: summary\/elements\/document\/element\/history/i);
     assert.match(parameters.properties?.elementId?.description || '', /Required for `element` mode/i);
     assert.match(parameters.properties?.tail?.description || '', /For `history` mode, return the final N patch transactions/i);
 });
@@ -1105,15 +1106,216 @@ test('StatePatch tool schema documents canonical ops and camera semantics', () =
     };
     const opsProperties = parameters.properties?.ops?.items?.properties || {};
 
-    assert.match(patchTool?.function.description || '', /Canonical ops are `meta`, `add`, `modify`, and `remove`/);
+    assert.match(patchTool?.function.description || '', /For `tavern\.map`, canonical ops are `meta`, `add`, `modify`, and `remove`/);
+    assert.match(patchTool?.function.description || '', /For `tavern\.atlas\/main`/);
+    assert.match(patchTool?.function.description || '', /Move the player between places with `move-actor`/);
     assert.match(patchTool?.function.description || '', /one atomic transaction/i);
     assert.match(patchTool?.function.description || '', /`meta\.viewBox` is the camera/i);
     assert.match(patchTool?.function.description || '', /splits the text into a system label element automatically/i);
-    assert.match(parameters.properties?.docId?.description || '', /Omit to patch the active current-scene map/i);
+    assert.match(parameters.properties?.docId?.description || '', /atlas always uses `main`/i);
     assert.match(parameters.properties?.activate?.description || '', /With `ops:\[\]`, this only switches the active map/i);
-    assert.match(opsProperties.op?.description || '', /Use `meta` for document fields, `add` for a new element/i);
-    assert.match(opsProperties.set?.description || '', /Shape-field changes replace the previous shape/i);
+    assert.match(opsProperties.op?.description || '', /Map ops and atlas ops are selected by docType/i);
+    assert.match(opsProperties.set?.description || '', /For map `meta`\/`modify`/i);
     assert.match(opsProperties.element?.description || '', /Full element object for `add`/i);
+});
+
+test('State tools support tavern atlas without entering map element semantics', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Atlas session' });
+    const listAll = await executeTavernStateTool(session.id, 'StateList', {});
+    assert.equal(listAll.ok, true);
+    assert.deepEqual(listAll.documents?.map((document) => document.docType).sort(), ['tavern.atlas', 'tavern.map']);
+
+    const list = await executeTavernStateTool(session.id, 'StateList', { docType: 'tavern.atlas' });
+    assert.equal(list.ok, true);
+    assert.equal(list.documents?.[0]?.docType, 'tavern.atlas');
+    assert.equal(list.documents?.[0]?.docId, 'main');
+
+    const readEmpty = await executeTavernStateTool(session.id, 'StateRead', { docType: 'tavern.atlas', mode: 'summary' });
+    assert.equal(readEmpty.ok, true);
+    assert.equal(readEmpty.count, 0);
+
+    const patch = await executeTavernStateTool(session.id, 'StatePatch', {
+        docType: 'tavern.atlas',
+        ops: [
+            { op: 'upsert-location', key: 'office', set: { name: '办公室', scale: 'room', status: 'mentioned', brief: '公司三楼开放办公区', mapDocId: 'office' } },
+            { op: 'move-actor', actorKey: 'player', locationKey: 'office' },
+        ],
+    });
+    assert.equal(patch.ok, true);
+    assert.equal(patch.activeLocationKey, 'office');
+    assert.equal((await getTavernSession(session.id))?.state?.activeMapDocId, 'office');
+
+    const readLocations = await executeTavernStateTool(session.id, 'StateRead', { docType: 'tavern.atlas', mode: 'locations' });
+    assert.equal(readLocations.locations?.[0]?.status, 'visited');
+    assert.equal(readLocations.locations?.[0]?.mapDocId, 'office');
+
+    const elementRead = await executeTavernStateTool(session.id, 'StateRead', { docType: 'tavern.atlas', mode: 'elements' });
+    assert.equal(elementRead.ok, false);
+    assert.equal(elementRead.error, 'state_read_mode_invalid');
+});
+
+test('Atlas patch validates merge, links, dependencies, dryRun, and player sync rules', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Atlas rules' });
+    const seed = await executeTavernStateTool(session.id, 'StatePatch', {
+        docType: 'tavern.atlas',
+        ops: [
+            { op: 'upsert-location', key: 'company', set: { name: '公司', scale: 'building', status: 'visited' } },
+            { op: 'upsert-location', key: 'office', set: { name: '办公室', scale: 'room', status: 'visited', parent: 'company', mapDocId: 'office' } },
+            { op: 'upsert-location', key: 'hall', set: { name: '大厅', scale: 'room', status: 'mentioned', parent: 'company' } },
+            { op: 'upsert-link', from: 'office', to: 'hall', kind: 'door' },
+        ],
+    });
+    assert.equal(seed.ok, true);
+
+    const downgrade = await executeTavernStateTool(session.id, 'StatePatch', {
+        docType: 'tavern.atlas',
+        ops: [{ op: 'upsert-location', key: 'office', set: { status: 'mentioned', brief: '靠窗工位区' } }],
+    });
+    assert.equal(downgrade.ok, true);
+    const office = await executeTavernStateTool(session.id, 'StateRead', { docType: 'tavern.atlas', mode: 'location', locationKey: 'office' });
+    assert.equal(office.location?.status, 'visited');
+    assert.equal(office.location?.brief, '靠窗工位区');
+
+    const missingParent = await executeTavernStateTool(session.id, 'StatePatch', {
+        docType: 'tavern.atlas',
+        ops: [{ op: 'upsert-location', key: 'roof', set: { name: '天台', scale: 'floor', status: 'mentioned', parent: 'missing' } }],
+    });
+    assert.equal(missingParent.ok, false);
+    assert.equal(missingParent.error, 'state_patch_failed');
+
+    const invalidMapDocId = await executeTavernStateTool(session.id, 'StatePatch', {
+        docType: 'tavern.atlas',
+        ops: [{ op: 'upsert-location', key: 'street', set: { name: '街道', scale: 'outdoor', status: 'mentioned', mapDocId: 'street/main' } }],
+    });
+    assert.equal(invalidMapDocId.ok, false);
+    assert.match(invalidMapDocId.summary || '', /atlas_location_map_doc_id_invalid/);
+
+    const invalidUnset = await executeTavernStateTool(session.id, 'StatePatch', {
+        docType: 'tavern.atlas',
+        ops: [{ op: 'upsert-location', key: 'office', unset: ['status'] }],
+    });
+    assert.equal(invalidUnset.ok, false);
+    assert.match(invalidUnset.summary || '', /atlas_unset_field_invalid:status/);
+
+    const cycle = await executeTavernStateTool(session.id, 'StatePatch', {
+        docType: 'tavern.atlas',
+        ops: [{ op: 'upsert-location', key: 'company', set: { parent: 'office' } }],
+    });
+    assert.equal(cycle.ok, false);
+
+    const danglingLink = await executeTavernStateTool(session.id, 'StatePatch', {
+        docType: 'tavern.atlas',
+        ops: [{ op: 'upsert-link', from: 'office', to: 'missing', kind: 'door' }],
+    });
+    assert.equal(danglingLink.ok, false);
+
+    const directional = await executeTavernStateTool(session.id, 'StatePatch', {
+        docType: 'tavern.atlas',
+        ops: [
+            { op: 'upsert-link', from: 'office', to: 'hall', kind: 'passage', bidirectional: false },
+            { op: 'upsert-link', from: 'hall', to: 'office', kind: 'passage', bidirectional: false },
+        ],
+    });
+    assert.equal(directional.ok, true);
+    const links = await executeTavernStateTool(session.id, 'StateRead', { docType: 'tavern.atlas', mode: 'links', kind: 'passage' });
+    assert.deepEqual(links.links?.map((link) => link.id).sort(), ['link:hall:office:passage', 'link:office:hall:passage']);
+
+    const dryRun = await executeTavernStateTool(session.id, 'StatePatch', {
+        docType: 'tavern.atlas',
+        dryRun: true,
+        ops: [{ op: 'move-actor', actorKey: 'lina', locationKey: 'hall' }],
+    });
+    assert.equal(dryRun.ok, true);
+    const actorsAfterDryRun = await executeTavernStateTool(session.id, 'StateRead', { docType: 'tavern.atlas', mode: 'actors' });
+    assert.equal(actorsAfterDryRun.actors?.some((actor) => actor.actorKey === 'lina'), false);
+
+    const npcMove = await executeTavernStateTool(session.id, 'StatePatch', {
+        docType: 'tavern.atlas',
+        ops: [{ op: 'move-actor', actorKey: 'lina', locationKey: 'hall' }],
+    });
+    assert.equal(npcMove.ok, true);
+    assert.equal(npcMove.activeLocationKey, undefined);
+    assert.equal((await getTavernAtlasStateForSession(session.id)).activeLocationKey, '');
+
+    const playerMove = await executeTavernStateTool(session.id, 'StatePatch', {
+        docType: 'tavern.atlas',
+        ops: [{ op: 'move-actor', actorKey: 'player', locationKey: 'office' }],
+    });
+    assert.equal(playerMove.ok, true);
+    assert.equal((await getTavernAtlasStateForSession(session.id)).activeLocationKey, 'office');
+
+    const blockedRemove = await executeTavernStateTool(session.id, 'StatePatch', {
+        docType: 'tavern.atlas',
+        ops: [{ op: 'remove-location', key: 'office' }],
+    });
+    assert.equal(blockedRemove.ok, false);
+});
+
+test('Map activate does not move atlas and spatial digest uses atlas active map', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Atlas digest' });
+    await executeTavernStateTool(session.id, 'StatePatch', {
+        docType: 'tavern.map',
+        docId: 'office',
+        ops: [
+            { op: 'meta', set: { name: '办公室', viewBox: [0, 0, 400, 300], status: 'active' } },
+            { op: 'add', element: { id: 'door', cat: 'door', at: [200, 260], icon: 'o', text: '门' } },
+            { op: 'add', element: { id: 'player-office', cat: 'actor', actorKey: 'player', at: [200, 180], icon: 'o', text: '玩家' } },
+        ],
+    });
+    await executeTavernStateTool(session.id, 'StatePatch', {
+        docType: 'tavern.map',
+        docId: 'home',
+        ops: [
+            { op: 'meta', set: { name: '家', viewBox: [0, 0, 400, 300], status: 'active' } },
+            { op: 'add', element: { id: 'bed', cat: 'furniture', at: [100, 100], rect: [80, 40], text: '床' } },
+        ],
+    });
+    await executeTavernStateTool(session.id, 'StatePatch', {
+        docType: 'tavern.atlas',
+        ops: [
+            { op: 'upsert-location', key: 'office', set: { name: '办公室', scale: 'room', status: 'visited', mapDocId: 'office' } },
+            { op: 'upsert-location', key: 'home', set: { name: '家', scale: 'room', status: 'visited', mapDocId: 'home' } },
+            { op: 'move-actor', actorKey: 'player', locationKey: 'office' },
+        ],
+    });
+
+    const activateHome = await executeTavernStateTool(session.id, 'StatePatch', {
+        docType: 'tavern.map',
+        docId: 'home',
+        activate: true,
+        ops: [],
+    });
+    assert.equal(activateHome.ok, true);
+    assert.equal(activateHome.warnings?.length, 1);
+    assert.equal((await getTavernAtlasStateForSession(session.id)).activeLocationKey, 'office');
+
+    const spatial = await buildTavernSpatialStateDigest(session.id);
+    assert.match(spatial, /当前地点：办公室/);
+    assert.match(spatial, /当前场景标注：门, 玩家/);
+
+    const memoryContext = await retrieveXbTavernMemoryContext({
+        sessionId: session.id,
+        includeMemoryFiles: false,
+        includeStructuredStates: true,
+    });
+    assert.match(memoryContext.spatialState || '', /当前地点：办公室/);
+    assert.equal(memoryContext.structuredStates?.some((state) => /地图：家/.test(state.digest || '')), true);
+    const build = buildXbTavernMessages({ character: { id: '0', name: 'Aster' } }, createDefaultXbTavernPreset(), {
+        currentUserMessage: '看看四周。',
+        memoryContext,
+    });
+    assert.match(build.meta.rawMessagesJson, /空间状态/);
+    assert.doesNotMatch(build.meta.rawMessagesJson, /状态摘要/);
+    assert.doesNotMatch(build.meta.rawMessagesJson, /地图：家/);
 });
 
 test('StatePatch creates and updates tavern map documents with semantic ops', async () => {
@@ -1558,7 +1760,7 @@ test('StatePatch supports explicit active map switching without replacing other 
     ]);
     assert.equal((await getTavernStructuredStateDocument(session.id, 'tavern.map', 'main'))?.revision, 0);
 
-    const listed = await executeTavernStateTool(session.id, 'StateList', {});
+    const listed = await executeTavernStateTool(session.id, 'StateList', { docType: 'tavern.map' });
     assert.equal(listed.ok, true);
     assert.deepEqual((listed.documents || []).map((document) => [document.docId, document.active]), [
         ['office', true],
@@ -1625,7 +1827,7 @@ test('map active resolution falls back to main consistently across workspace, to
         ['main', true],
     ]);
 
-    const listed = await executeTavernStateTool(session.id, 'StateList', {});
+    const listed = await executeTavernStateTool(session.id, 'StateList', { docType: 'tavern.map' });
     assert.equal(listed.ok, true);
     assert.equal(listed.docId, 'main');
     assert.deepEqual((listed.documents || []).map((document) => [document.docId, document.active]), [

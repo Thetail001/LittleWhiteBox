@@ -91,7 +91,7 @@ function buildFixedManagerSystemPrompt(options: TavernManagerPromptOptions = {})
         includeMemory ? 'In automatic after-turn maintenance, update memory only when this turn\'s assistant reply confirms a new long-term fact, current state, character change, unresolved matter, or next-turn carry-forward event.' : '',
         includeMemory ? 'Write global facts to `memory/state.md`; write character-specific changes to the matching `memory/characters/<角色名>.md`. If nothing material changed, skip writing and say why.' : '',
         includeMemory && includeCartography ? 'The map is separate spatial state. It does not replace written memory; maintain textual facts and spatial changes in their own places.' : '',
-        includeCartography ? 'Automatic map maintenance must start by choosing the current scene document: use StateList before scene switches, then StateRead summary for the active or candidate doc and inspect `meta.status`. If the chosen doc is still `uninitialized`, initialize it as soon as this turn clearly establishes the scene/place/space. If it is already `active`, apply only confirmed incremental spatial changes from this turn.' : '',
+        includeCartography ? 'Automatic spatial maintenance has two layers: `tavern.atlas/main` records world locations, links, and actor locations; `tavern.map/<docId>` records the current place’s internal layout.' : '',
         'In manual manager chat, answer the user question first. Write memory or state only when the user asks for a change, or when you verify a real error or omission.',
         'When a tool fails, adjust the path, arguments, or strategy based on the error. Do not repeat the same failing call unchanged.',
     ];
@@ -101,16 +101,19 @@ function buildFixedManagerSystemPrompt(options: TavernManagerPromptOptions = {})
         includeMemory ? 'To check memory against RP source text, gather evidence with ChatHistory recent/range/grep first, then repair the file with MemoryRead or MemoryEdit.' : '',
         includeMemory ? 'Use MemoryGrep to ask whether a fact is already in memory; use ChatHistory grep to ask whether something actually happened in the RP source text. Match the search scope to the question.' : '',
         'If you know the message order range, use ChatHistory range. If you only know a keyword, use ChatHistory grep. If you only need recent continuity, use ChatHistory recent.',
-        includeCartography ? 'When maintaining structured state, start with StateRead summary. Use elements or element when you need current ids; read document only when you truly need the full structure.' : '',
-        includeCartography ? 'StateRead summary tells you whether the map is `uninitialized` or `active`, and whether this turn looks like initialization or incremental maintenance. Do not skip reading based only on your own guess that "nothing changed".' : '',
+        includeCartography ? 'When maintaining structured state, start with StateRead summary for the relevant docType. For maps use elements/element when you need ids; for atlas use locations/location/links/actors.' : '',
+        includeCartography ? 'Only update atlas when a place is confirmed, a link is discovered, or an actor changes location. Only update maps when internal layout or actor coordinates change.' : '',
         includeCartography ? 'Structured state records only confirmed spatial changes from this turn. Unknown rooms, future routes, and unconfirmed details should stay unwritten until RP confirms them.' : '',
         includeMemory ? 'Keep Markdown memory clear and restrained. Update facts that still hold, and do not write guesses, plans, or unconfirmed psychology as settled truth.' : '',
     ];
 
     const structuredStateLines = includeCartography ? [
-        'State tools maintain persistent structured spatial maps for the current session. The default starting document is `tavern.map/main`, but independent named locations should get their own docId such as `home`, `office`, or another stable place key.',
-        'The active map is the current scene map. Normal StatePatch calls do not change active; pass `activate:true` only when the story has moved to that document. `activate:true` with `ops:[]` only switches the active map.',
-        'Before scene switches, use StateList and match existing maps by docId, meta.name, or digest. If the location already has a map, activate that doc; if not, create a new doc and activate it. Do not replace an old map just because the scene changed.',
+        'State tools maintain two persistent spatial layers: `tavern.atlas/main` is the world topology, and `tavern.map/<docId>` is a detailed scene map for one location.',
+        'Use `tavern.atlas/main` for location hierarchy, place links, and actor location. Ops are only `upsert-location`, `remove-location`, `upsert-link`, `remove-link`, and `move-actor`.',
+        'Move the player between locations only with `move-actor` and `actorKey:"player"` in `tavern.atlas/main`. There is no `set-active-location` op. Do not use map `activate:true` to mean player movement.',
+        'Use map `activate:true` only to switch or maintain the map tool’s current doc. It does not change atlas.activeLocationKey, player location, or visited status.',
+        'Before scene switches, use StateList and match existing maps by docId, meta.name, digest, or the atlas location mapDocId. If the location already has a map, use it; if not, create a new map doc and link it from the atlas location with `mapDocId`. Do not replace an old map just because the scene changed.',
+        'In atlas, create parent hierarchy when confirmed: city/district/building/floor/room/outdoor. Use `status:"mentioned"` for known but unvisited places and `status:"visited"` for explored places. Player movement automatically promotes the target location to visited.',
         'Within the same location or connected short-range spaces, grow the current map: adjacent rooms, yard, doorway, street edge, landmarks, paths, forest edges, or districts. Create/switch docs only for clearly named, independent interiors or distant locations.',
         'Read StateRead summary first for the candidate doc, inspect `meta.status` and `meta.hint`, then decide whether to initialize, maintain incrementally, activate, or skip.',
         'The map is a spatial relation view of the current scene, not a board of floating text labels. Project confirmed spatial facts into a flat layout with clear boundaries, direction, focus, and proportion.',
