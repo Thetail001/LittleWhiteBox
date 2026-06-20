@@ -17,12 +17,14 @@ export const DEFAULT_TAVERN_ASSISTANT_PRESET_VERSION = '2026-06-assistant-prompt
 interface TavernManagerPromptOptions extends Partial<TavernContractManagerPromptOptions> {
     includeMemory?: boolean;
     includeCartography?: boolean;
+    includeQuestOrchestration?: boolean;
 }
 
 function normalizeManagerPromptOptions(options: TavernManagerPromptOptions = {}) {
     return {
         includeMemory: options.includeMemory !== false,
         includeCartography: options.includeCartography !== false,
+        includeQuestOrchestration: options.includeQuestOrchestration === true,
     };
 }
 
@@ -32,7 +34,7 @@ function joinSection(title: string, lines: string[] = []): string {
 }
 
 function buildFixedManagerSystemPrompt(options: TavernManagerPromptOptions = {}): string {
-    const { includeMemory, includeCartography } = normalizeManagerPromptOptions(options);
+    const { includeMemory, includeCartography, includeQuestOrchestration } = normalizeManagerPromptOptions(options);
 
     const roleLines = [
         'You are the backstage manager for the current LittleWhiteTavern RP session, running inside the user\'s SillyTavern instance through the LittleWhiteBox tavern workspace.',
@@ -40,12 +42,14 @@ function buildFixedManagerSystemPrompt(options: TavernManagerPromptOptions = {})
         'Automatic after-turn maintenance and manual manager chat share the same identity and evidence standard. The trigger differs: automatic maintenance handles a completed RP turn, while manual chat answers the user\'s current question.',
         includeMemory ? 'When memory authority is enabled, you maintain the current session\'s Markdown memory files.' : '',
         includeCartography ? 'When map authority is enabled, you maintain the current session\'s structured spatial state.' : '',
+        includeQuestOrchestration ? 'When event orchestration is enabled, you maintain a small rollbackable pool of possible next narrative directions.' : '',
     ];
 
     const responsibilityLines = [
         includeMemory ? 'Turn already-confirmed RP source text into long-term memory instead of repeatedly stuffing whole chat logs back into the prompt.' : '',
         includeMemory ? 'Update memory only when facts, current state, relationships, constraints, hooks, risks, or near-term carry-forward context actually changed. If nothing material changed, explicitly skip writing.' : '',
         includeCartography ? 'Update the map only when confirmed spatial facts changed: position, boundaries, routes, objects, hazards, or current scene scope.' : '',
+        includeQuestOrchestration ? 'Maintain event directions only as forward-looking possibilities. They are not memory, not old events, and not random surprises.' : '',
         includeCartography
             ? 'When the user asks about memory, continuity, the map, or backstage materials, answer from evidence. If uncertain, inspect RP source text or existing records instead of guessing.'
             : 'When the user asks about memory, continuity, or backstage materials, answer from evidence. If uncertain, inspect RP source text or existing records instead of guessing.',
@@ -57,6 +61,7 @@ function buildFixedManagerSystemPrompt(options: TavernManagerPromptOptions = {})
         [
             includeMemory ? 'current-session `memory/...` files' : '',
             includeCartography ? 'current-session structured state' : '',
+            includeQuestOrchestration ? 'current-session event pool' : '',
             'manager chat history',
             'RP source evidence',
         ].filter(Boolean).join(', ') + ' all belong to this session only.',
@@ -67,6 +72,7 @@ function buildFixedManagerSystemPrompt(options: TavernManagerPromptOptions = {})
     const injectedContextLines = [
         includeMemory ? '`[Resident Memory Files]` automatically provides the current global memory file, `memory/state.md`. Character memory files are not all resident; use MemoryList / MemoryRead for relevant `memory/characters/<角色名>.md` files when needed.' : '',
         includeMemory ? 'Automatic after-turn maintenance receives this turn\'s completed user message and assistant reply. Update memory only when the assistant reply makes a fact or state actually established.' : '',
+        includeQuestOrchestration ? 'The event pool is not preloaded as prose. Use TaskPatch to maintain it, and rely on the current turn plus established memory/map evidence.' : '',
         'Manual manager chat receives the manager\'s own conversation history and the current user question. RP source text is not fully preloaded; use ChatHistory when evidence is needed.',
     ];
 
@@ -135,6 +141,16 @@ function buildFixedManagerSystemPrompt(options: TavernManagerPromptOptions = {})
         'The map should record only spatial facts that already happened and are worth visualizing. Unconfirmed spatial information stays unwritten until confirmed.',
     ] : [];
 
+    const questLines = includeQuestOrchestration ? [
+        'TaskPatch maintains a rollbackable event pool. It proposes what could happen next; it does not record what already happened.',
+        'Allowed TaskPatch ops are only `upsert-task`, `advance-task`, `complete-task`, and `abandon-task`.',
+        'Advance or complete active tasks only when the completed assistant reply actually moved, resolved, or invalidated that direction.',
+        'Create new active tasks only when the active pool is low, the story has reached at least floor 5, and the direction uses already established people, places, relationships, world facts, and current tone.',
+        'Do not create a task when the hook is generic, disconnected from the current story, a repeat of memory, or a random event tossed in from outside.',
+        '`hookForUser` is direct UI text. `hookForModel` is a soft in-world sentence for the RP model; it must not use meta words such as task, goal, objective, completed, or quest.',
+        'Stale active tasks are abandoned by the system after your tool work. Do not use TaskPatch merely to clean up stale items.',
+    ] : [];
+
     const memoryToneLines = includeMemory ? [
         'Write memory like a case file for a future model: specific, restrained, and easy to carry forward.',
         'Character psychology, secrets, and future plans become facts only after the RP source text clearly establishes them.',
@@ -169,6 +185,7 @@ function buildFixedManagerSystemPrompt(options: TavernManagerPromptOptions = {})
         '',
         joinSection('Selection Strategy', sourceStrategyLines),
         structuredStateLines.length ? '\n' + joinSection('Structured State', structuredStateLines) : '',
+        questLines.length ? '\n' + joinSection('Event Orchestration', questLines) : '',
         memoryToneLines.length ? '\n' + joinSection('Memory Tone', memoryToneLines) : '',
         '',
         joinSection('Output', outputLines),

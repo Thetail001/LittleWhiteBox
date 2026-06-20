@@ -25,6 +25,7 @@ import type {
     TavernSessionRecord,
     TavernStructuredStateDocumentRecord,
     TavernStructuredStatePatchRecord,
+    TavernTaskRecord,
 } from '../../shared/session-db';
 import type { TavernDisplaySettings, TavernUserOption } from '../../shared/settings';
 import type { TavernMapStateDocumentItem } from '../../shared/structured-state';
@@ -417,6 +418,7 @@ export interface TavernWorkspaceContext {
     atlasStateDocument: Ref<TavernStructuredStateDocumentRecord | null>;
     atlasStatePatches: Ref<TavernStructuredStatePatchRecord[]>;
     chatWorkspacePanel: Ref<string>;
+    currentAssistantFloor: TavernReadable<number>;
     mapStateDocuments: Ref<TavernMapStateDocumentItem[]>;
     mapStateDocument: Ref<TavernStructuredStateDocumentRecord | null>;
     mapStatePatches: Ref<TavernStructuredStatePatchRecord[]>;
@@ -424,6 +426,7 @@ export interface TavernWorkspaceContext {
     selectedSessionId: Ref<string>;
     sessionContract: TavernReadable<TavernSessionContract>;
     stateMemoryFile: Ref<TavernMemoryFileRecord | null>;
+    tavernTasks: Ref<TavernTaskRecord[]>;
 }
 
 export interface TavernSettingsContext {

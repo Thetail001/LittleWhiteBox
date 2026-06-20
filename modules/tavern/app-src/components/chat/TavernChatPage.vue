@@ -38,7 +38,6 @@ const {
     activeView,
     chatFocus,
     homeThemeDark,
-    openPromptInspector,
 } = shell;
 const {
     chatAutoScroll,
@@ -110,7 +109,7 @@ function openMobileSessionsPanel() {
     mobileMemoryDirectoryOpen.value = false;
 }
 
-function toggleMobileWorkspacePanel(panel: 'state' | 'memory') {
+function toggleMobileWorkspacePanel(panel: 'state' | 'memory' | 'event') {
     const sameOpenPanel = mobileChatPanel.value === 'workspace' && chatWorkspacePanel.value === panel;
     chatWorkspacePanel.value = panel;
     mobileChatPanel.value = sameOpenPanel ? 'none' : 'workspace';
@@ -512,20 +511,21 @@ onUpdated(() => {
         <button
           type="button"
           class="chat-mobile-context-button"
+          :class="{ 'is-active': mobileChatPanel === 'workspace' && chatWorkspacePanel === 'event' }"
+          title="事件"
+          aria-label="事件"
+          @click="toggleMobileWorkspacePanel('event')"
+        >
+          事件
+        </button>
+        <button
+          type="button"
+          class="chat-mobile-context-button"
           title="契约"
           aria-label="契约"
           @click="closeMobileChatPanel(); openContractModal()"
         >
           契约
-        </button>
-        <button
-          type="button"
-          class="chat-mobile-context-button"
-          title="请求日志"
-          aria-label="请求日志"
-          @click="closeMobileChatPanel(); openPromptInspector('history')"
-        >
-          日志
         </button>
       </div>
     </header>

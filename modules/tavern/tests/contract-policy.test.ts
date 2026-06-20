@@ -24,6 +24,7 @@ test('tavern contract runtime resolves module capabilities without leaking reser
     assert.deepEqual(memoryOnly.managerPromptOptions, {
         includeMemory: true,
         includeCartography: false,
+        includeQuestOrchestration: false,
     });
 
     const mapOnly = resolveTavernSessionContractRuntime(mergeTavernSessionContract(undefined, {
@@ -38,6 +39,7 @@ test('tavern contract runtime resolves module capabilities without leaking reser
     assert.deepEqual(mapOnly.managerPromptOptions, {
         includeMemory: false,
         includeCartography: true,
+        includeQuestOrchestration: false,
     });
 
     const disabled = resolveTavernSessionContractRuntime(mergeTavernSessionContract(undefined, {
@@ -52,6 +54,7 @@ test('tavern contract runtime resolves module capabilities without leaking reser
     assert.deepEqual(disabled.managerPromptOptions, {
         includeMemory: false,
         includeCartography: false,
+        includeQuestOrchestration: false,
     });
 
     const reservedOnly = resolveTavernSessionContractRuntime(mergeTavernSessionContract(undefined, {
@@ -65,7 +68,13 @@ test('tavern contract runtime resolves module capabilities without leaking reser
     assert.equal(reservedOnly.includeStructuredStates, false);
     assert.equal(reservedOnly.includeActionChecks, true);
     assert.equal(reservedOnly.includeRandomEncounters, true);
-    assert.equal(reservedOnly.hasAutomaticManagerWork, false);
+    assert.equal(reservedOnly.includeQuestOrchestration, true);
+    assert.equal(reservedOnly.hasAutomaticManagerWork, true);
+    assert.deepEqual(reservedOnly.managerPromptOptions, {
+        includeMemory: false,
+        includeCartography: false,
+        includeQuestOrchestration: true,
+    });
 });
 
 test('tavern auto manager tool policy keeps ChatHistory and module-specific tools only', () => {
@@ -76,6 +85,7 @@ test('tavern auto manager tool policy keeps ChatHistory and module-specific tool
     assert.equal(memoryOnly.allowedToolNames.includes('ChatHistory'), true);
     assert.equal(memoryOnly.allowedToolNames.includes('MemoryWrite'), true);
     assert.equal(memoryOnly.allowedToolNames.includes('StateRead'), false);
+    assert.equal(memoryOnly.allowedToolNames.includes('TaskPatch'), false);
     assert.equal(memoryOnly.deniedToolNames.includes('StatePatch'), true);
 
     const mapOnly = resolveTavernAutoManagerToolPolicy(mergeTavernSessionContract(undefined, {
@@ -84,8 +94,19 @@ test('tavern auto manager tool policy keeps ChatHistory and module-specific tool
     }));
     assert.equal(mapOnly.allowedToolNames.includes('ChatHistory'), true);
     assert.equal(mapOnly.allowedToolNames.includes('StatePatch'), true);
+    assert.equal(mapOnly.allowedToolNames.includes('TaskPatch'), false);
     assert.equal(mapOnly.allowedToolNames.includes('MemoryWrite'), false);
     assert.equal(mapOnly.deniedToolNames.includes('MemoryRead'), true);
+
+    const questOnly = resolveTavernAutoManagerToolPolicy(mergeTavernSessionContract(undefined, {
+        memoryArchiving: false,
+        cartographyEngine: false,
+        questOrchestration: true,
+    }));
+    assert.equal(questOnly.allowedToolNames.includes('ChatHistory'), true);
+    assert.equal(questOnly.allowedToolNames.includes('TaskPatch'), true);
+    assert.equal(questOnly.allowedToolNames.includes('MemoryWrite'), false);
+    assert.equal(questOnly.allowedToolNames.includes('StatePatch'), false);
 
     const disabled = resolveTavernAutoManagerToolPolicy(mergeTavernSessionContract(undefined, {
         memoryArchiving: false,
@@ -94,6 +115,7 @@ test('tavern auto manager tool policy keeps ChatHistory and module-specific tool
     assert.deepEqual(disabled.allowedToolNames, ['ChatHistory']);
     assert.equal(isAutoManagerToolAllowed('MemoryWrite', disabled.runtime.contract), false);
     assert.equal(isAutoManagerToolAllowed('StatePatch', disabled.runtime.contract), false);
+    assert.equal(isAutoManagerToolAllowed('TaskPatch', disabled.runtime.contract), false);
 
     const memoryDenied = buildDeniedAutoManagerToolResult('MemoryWrite', disabled.runtime.contract);
     assert.equal(memoryDenied.ok, false);
@@ -102,4 +124,8 @@ test('tavern auto manager tool policy keeps ChatHistory and module-specific tool
     const stateDenied = buildDeniedAutoManagerToolResult('StatePatch', disabled.runtime.contract);
     assert.equal(stateDenied.ok, false);
     assert.match(stateDenied.summary, /契约未授权 Cartography Engine/);
+
+    const taskDenied = buildDeniedAutoManagerToolResult('TaskPatch', disabled.runtime.contract);
+    assert.equal(taskDenied.ok, false);
+    assert.match(taskDenied.summary, /契约未授权 Quest Orchestration/);
 });

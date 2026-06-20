@@ -142,6 +142,7 @@ export type TavernMemoryFileStatus = 'active' | 'stale';
 export type TavernMemoryIndexStatus = 'ready' | 'stale' | 'failed';
 export type TavernStructuredStateStatus = 'active' | 'stale';
 export type TavernStructuredStateDocType = 'tavern.map' | 'tavern.atlas';
+export type TavernTaskStatus = 'active' | 'completed' | 'abandoned';
 
 export interface TavernMemoryFileRecord {
     sessionId: string;
@@ -249,6 +250,54 @@ export interface TavernManagerStateSnapshotRecord {
     updatedAt: number;
 }
 
+export interface TavernTaskRecord {
+    id: string;
+    sessionId: string;
+    status: TavernTaskStatus;
+    horizon: string;
+    current: string;
+    hookForUser: string;
+    hookForModel: string;
+    fingerprint: string;
+    createdOrder: number;
+    updatedOrder: number;
+    lastAdvancedOrder: number;
+    completedOrder?: number;
+    abandonedOrder?: number;
+    sourceManagerRunId?: string;
+    createdAt: number;
+    updatedAt: number;
+}
+
+export interface TavernTaskSnapshotRecord {
+    sessionId: string;
+    floor: number;
+    tasks: TavernTaskRecord[];
+    abandonedFingerprints: string[];
+    createdAt: number;
+}
+
+export type TavernManagerTaskSnapshotStatus = 'pending' | 'rolled_back' | 'conflict' | 'skipped';
+
+export interface TavernManagerTaskSnapshotRecord {
+    managerRunId: string;
+    sessionId: string;
+    beforeTasks: TavernTaskRecord[];
+    beforeFingerprints: string[];
+    beforeHash: string;
+    afterHash?: string;
+    rollbackStatus: TavernManagerTaskSnapshotStatus;
+    error?: string;
+    createdAt: number;
+    updatedAt: number;
+}
+
+export interface TavernTaskFingerprintStateRecord {
+    sessionId: string;
+    abandonedFingerprints: string[];
+    updatedAt: number;
+}
+
 export interface TavernMemoryIndexRecord {
     sessionId: string;
     kind: string;
@@ -346,6 +395,10 @@ class TavernDatabase extends Dexie {
     stateDocuments!: DexieTable<TavernStructuredStateDocumentRecord>;
     statePatches!: DexieTable<TavernStructuredStatePatchRecord>;
     managerStateSnapshots!: DexieTable<TavernManagerStateSnapshotRecord>;
+    tasks!: DexieTable<TavernTaskRecord>;
+    taskSnapshots!: DexieTable<TavernTaskSnapshotRecord>;
+    managerTaskSnapshots!: DexieTable<TavernManagerTaskSnapshotRecord>;
+    taskFingerprintStates!: DexieTable<TavernTaskFingerprintStateRecord>;
 
     constructor() {
         super('LittleWhiteBox_Tavern');
@@ -430,6 +483,27 @@ class TavernDatabase extends Dexie {
             statePatches: 'id, sessionId, docType, docId, managerRunId, revision, status, updatedAt',
             managerStateSnapshots: '[managerRunId+docType+docId], managerRunId, sessionId, docType, docId, updatedAt',
         });
+        this.version(6).stores({
+            sessions: 'id, updatedAt, characterId, characterName',
+            messages: '[sessionId+order], sessionId, order',
+            managerMessages: '[sessionId+order], sessionId, order',
+            meta: 'key',
+            presets: 'id, updatedAt, sourcePresetId',
+            managerRuns: 'id, sessionId, status, turn, updatedAt',
+            memoryFiles: '[sessionId+path], sessionId, path, status, updatedAt',
+            memoryStateSnapshots: null,
+            memorySnapshots: '[sessionId+floor], sessionId, floor, createdAt',
+            memoryIndexes: '[sessionId+kind], sessionId, kind, status, updatedAt',
+            assistantPresets: 'id, updatedAt',
+            managerMemorySnapshots: '[managerRunId+path], managerRunId, sessionId, path, updatedAt',
+            stateDocuments: '[sessionId+docType+docId], sessionId, docType, docId, status, updatedAt',
+            statePatches: 'id, sessionId, docType, docId, managerRunId, revision, status, updatedAt',
+            managerStateSnapshots: '[managerRunId+docType+docId], managerRunId, sessionId, docType, docId, updatedAt',
+            tasks: 'id, sessionId, status, fingerprint, updatedOrder, updatedAt',
+            taskSnapshots: '[sessionId+floor], sessionId, floor, createdAt',
+            managerTaskSnapshots: 'managerRunId, sessionId, updatedAt',
+            taskFingerprintStates: 'sessionId, updatedAt',
+        });
     }
 }
 
@@ -449,6 +523,10 @@ export const tavernManagerMemorySnapshotsTable = db.managerMemorySnapshots;
 export const tavernStateDocumentsTable = db.stateDocuments;
 export const tavernStatePatchesTable = db.statePatches;
 export const tavernManagerStateSnapshotsTable = db.managerStateSnapshots;
+export const tavernTasksTable = db.tasks;
+export const tavernTaskSnapshotsTable = db.taskSnapshots;
+export const tavernManagerTaskSnapshotsTable = db.managerTaskSnapshots;
+export const tavernTaskFingerprintStatesTable = db.taskFingerprintStates;
 
 function now(): number {
     return Date.now();
@@ -701,24 +779,32 @@ export async function deleteTavernSession(sessionId = ''): Promise<number> {
         tavernManagerRunsTable,
         tavernManagerMemorySnapshotsTable,
         tavernManagerStateSnapshotsTable,
+        tavernManagerTaskSnapshotsTable,
         tavernMemoryFilesTable,
         tavernMemorySnapshotsTable,
         tavernMemoryIndexesTable,
         tavernStateDocumentsTable,
         tavernStatePatchesTable,
+        tavernTasksTable,
+        tavernTaskSnapshotsTable,
+        tavernTaskFingerprintStatesTable,
         tavernMetaTable,
         async () => {
-            const [messages, managerMessages, runs, snapshots, stateSnapshots, files, memorySnapshots, indexes, stateDocuments, statePatches] = await Promise.all([
+            const [messages, managerMessages, runs, snapshots, stateSnapshots, taskRunSnapshots, files, memorySnapshots, indexes, stateDocuments, statePatches, tasks, taskSnapshots, fingerprintStates] = await Promise.all([
                 tavernMessagesTable.where('sessionId').equals(id).toArray(),
                 tavernManagerMessagesTable.where('sessionId').equals(id).toArray(),
                 tavernManagerRunsTable.where('sessionId').equals(id).toArray(),
                 tavernManagerMemorySnapshotsTable.where('sessionId').equals(id).toArray(),
                 tavernManagerStateSnapshotsTable.where('sessionId').equals(id).toArray(),
+                tavernManagerTaskSnapshotsTable.where('sessionId').equals(id).toArray(),
                 tavernMemoryFilesTable.where('sessionId').equals(id).toArray(),
                 tavernMemorySnapshotsTable.where('sessionId').equals(id).toArray(),
                 tavernMemoryIndexesTable.where('sessionId').equals(id).toArray(),
                 tavernStateDocumentsTable.where('sessionId').equals(id).toArray(),
                 tavernStatePatchesTable.where('sessionId').equals(id).toArray(),
+                tavernTasksTable.where('sessionId').equals(id).toArray(),
+                tavernTaskSnapshotsTable.where('sessionId').equals(id).toArray(),
+                tavernTaskFingerprintStatesTable.where('sessionId').equals(id).toArray(),
             ]);
             await Promise.all([
                 messages.length ? tavernMessagesTable.bulkDelete(messages.map((message) => [message.sessionId, message.order])) : 0,
@@ -726,11 +812,15 @@ export async function deleteTavernSession(sessionId = ''): Promise<number> {
                 runs.length ? tavernManagerRunsTable.bulkDelete(runs.map((run) => run.id)) : 0,
                 snapshots.length ? tavernManagerMemorySnapshotsTable.bulkDelete(snapshots.map((snapshot) => [snapshot.managerRunId, snapshot.path])) : 0,
                 stateSnapshots.length ? tavernManagerStateSnapshotsTable.bulkDelete(stateSnapshots.map((snapshot) => [snapshot.managerRunId, snapshot.docType, snapshot.docId])) : 0,
+                taskRunSnapshots.length ? tavernManagerTaskSnapshotsTable.bulkDelete(taskRunSnapshots.map((snapshot) => snapshot.managerRunId)) : 0,
                 files.length ? tavernMemoryFilesTable.bulkDelete(files.map((file) => [file.sessionId, file.path])) : 0,
                 memorySnapshots.length ? tavernMemorySnapshotsTable.bulkDelete(memorySnapshots.map((snapshot) => [snapshot.sessionId, snapshot.floor])) : 0,
                 indexes.length ? tavernMemoryIndexesTable.bulkDelete(indexes.map((index) => [index.sessionId, index.kind])) : 0,
                 stateDocuments.length ? tavernStateDocumentsTable.bulkDelete(stateDocuments.map((document) => [document.sessionId, document.docType, document.docId])) : 0,
                 statePatches.length ? tavernStatePatchesTable.bulkDelete(statePatches.map((patch) => patch.id)) : 0,
+                tasks.length ? tavernTasksTable.bulkDelete(tasks.map((task) => task.id)) : 0,
+                taskSnapshots.length ? tavernTaskSnapshotsTable.bulkDelete(taskSnapshots.map((snapshot) => [snapshot.sessionId, snapshot.floor])) : 0,
+                fingerprintStates.length ? tavernTaskFingerprintStatesTable.bulkDelete(fingerprintStates.map((state) => state.sessionId)) : 0,
             ]);
             await tavernSessionsTable.delete(id);
             const selected = await tavernMetaTable.get('selectedSessionId');

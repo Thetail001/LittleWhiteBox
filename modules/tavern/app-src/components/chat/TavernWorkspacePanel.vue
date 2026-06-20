@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import TavernAtlasPanel from '../TavernAtlasPanel.vue';
+import TavernEventPanel from '../TavernEventPanel.vue';
 import TavernMapPanel from '../TavernMapPanel.vue';
 import TavernMemoryEditor from '../TavernMemoryEditor.vue';
 import { useTavernMemoryContext, useTavernWorkspaceContext } from '../tavern-app-context';
@@ -54,9 +55,12 @@ const {
     atlasActiveLocationKey,
     atlasStateDocument,
     atlasStatePatches,
+    currentAssistantFloor,
     mapStateDocuments,
     mapStateDocument,
     mapStatePatches,
+    sessionContract,
+    tavernTasks,
 } = workspace;
 
 const stateWorkspaceView = ref<'scene' | 'world'>('scene');
@@ -222,6 +226,13 @@ function followAtlasLocation() {
       >
         记忆
       </button>
+      <button
+        type="button"
+        :class="{ active: chatWorkspacePanel === 'event' }"
+        @click="chatWorkspacePanel = 'event'"
+      >
+        事件
+      </button>
     </div>
     <section
       v-if="chatWorkspacePanel === 'state'"
@@ -340,7 +351,7 @@ function followAtlasLocation() {
       </article>
     </section>
     <section
-      v-else
+      v-else-if="chatWorkspacePanel === 'memory'"
       class="tavern-memory-workspace"
       :class="{ 'is-memory-directory-open': mobileMemoryDirectoryOpen }"
     >
@@ -437,5 +448,11 @@ function followAtlasLocation() {
         @save="saveSelectedMemoryFile"
       />
     </section>
+    <TavernEventPanel
+      v-else
+      :tasks="tavernTasks"
+      :enabled="sessionContract.questOrchestration"
+      :assistant-floor="currentAssistantFloor"
+    />
   </aside>
 </template>

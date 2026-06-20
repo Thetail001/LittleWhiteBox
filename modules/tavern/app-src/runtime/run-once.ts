@@ -48,9 +48,14 @@ import {
 import {
     rebuildTavernMemoryDerivedIndex,
     restoreTavernMemoryToFloor,
-    saveTavernMemorySnapshot,
     trimTavernMemorySnapshotsFromFloor,
 } from '../../shared/memory-files';
+import { saveAcceptedStateSnapshot } from '../../shared/accepted-state';
+import {
+    getLatestQuestHooksForPrompt,
+    restoreTavernTasksToFloor,
+    trimTavernTaskSnapshotsFromFloor,
+} from '../../shared/tasks';
 import { buildXbTavernBrain, buildXbTavernBrainAsync } from '../../shared/brain';
 import {
     ACTION_CHECK_TOOL_NAME,
@@ -98,6 +103,7 @@ import { createXbTavernAgentRuntime } from './agent-runtime';
 import {
     cancelAndRollbackXbTavernManagersForMessageRange,
     scheduleXbTavernManagerAfterTurn,
+    settleTavernManagersForSession,
     type XbTavernManagerOnceOptions,
     type XbTavernManagerOnceResult,
 } from './manager';
@@ -256,7 +262,13 @@ function buildMemoryPromptContent(memoryContext: XbTavernMemoryContext = {}): st
     const memoryFiles = Array.isArray(memoryContext.memoryFiles) ? memoryContext.memoryFiles : [];
     const structuredStates = Array.isArray(memoryContext.structuredStates) ? memoryContext.structuredStates : [];
     const spatialState = String(memoryContext.spatialState || '').trim();
+    const questHooks = Array.isArray(memoryContext.questHooks)
+        ? memoryContext.questHooks.map((hook) => String(hook || '').trim()).filter(Boolean)
+        : [];
     const sections: string[] = [];
+    if (questHooks.length) {
+        sections.push(questHooks.join('\n'));
+    }
     const stateFile = memoryFiles.find((file) => String(file.path || '') === 'memory/state.md');
     const stateContent = String(stateFile?.content || '').trim();
     if (stateContent) {
@@ -709,7 +721,7 @@ function filterMemoryContextByRuntime(
     runtime: TavernSessionContractRuntime,
 ): XbTavernMemoryContext | undefined {
     if (!memoryContext) {return memoryContext;}
-    if (!runtime.includeMemoryFiles && !runtime.includeStructuredStates) {
+    if (!runtime.includeMemoryFiles && !runtime.includeStructuredStates && !runtime.includeQuestOrchestration) {
         return {};
     }
     const filtered: XbTavernMemoryContext = {};
@@ -721,6 +733,9 @@ function filterMemoryContextByRuntime(
     }
     if (runtime.includeStructuredStates && memoryContext.spatialState) {
         filtered.spatialState = memoryContext.spatialState;
+    }
+    if (runtime.includeQuestOrchestration && Array.isArray(memoryContext.questHooks)) {
+        filtered.questHooks = memoryContext.questHooks;
     }
     return filtered;
 }
@@ -1568,7 +1583,7 @@ export async function simulateXbTavernRequest(input: XbTavernSimulateRequestInpu
         options: substituteOptions,
     }));
     const memoryQuery = await runTavernStage('simulate_memory_query', () => buildXbTavernMemoryQuery(contextForBuild, currentUserMessage));
-    const memoryContext = session && (sessionContractRuntime.includeMemoryFiles || sessionContractRuntime.includeStructuredStates)
+    const retrievedMemoryContext = session && (sessionContractRuntime.includeMemoryFiles || sessionContractRuntime.includeStructuredStates)
         ? await runTavernStage('simulate_memory_retrieval', () => retrieveXbTavernMemoryContext({
             sessionId: session.id,
             queryText: memoryQuery,
@@ -1576,6 +1591,15 @@ export async function simulateXbTavernRequest(input: XbTavernSimulateRequestInpu
             includeMemoryFiles: sessionContractRuntime.includeMemoryFiles,
             includeStructuredStates: sessionContractRuntime.includeStructuredStates,
         }))
+        : undefined;
+    const simulateQuestHooks = session && sessionContractRuntime.includeQuestOrchestration
+        ? await runTavernStage('simulate_quest_hook_retrieval', () => getLatestQuestHooksForPrompt(session.id, 1))
+        : [];
+    const memoryContext: XbTavernMemoryContext | undefined = retrievedMemoryContext || simulateQuestHooks.length
+        ? {
+            ...(retrievedMemoryContext || {}),
+            ...(simulateQuestHooks.length ? { questHooks: simulateQuestHooks } : {}),
+        }
         : undefined;
     const filteredMemoryContext = filterMemoryContextByRuntime(memoryContext, sessionContractRuntime);
     const runtimeProtocolMessages = buildRuntimeProtocolMessages(sessionContractRuntime);
@@ -1873,7 +1897,9 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
         const changedOrder = reusedUserMessage.order + 1;
         await cancelAndRollbackXbTavernManagersForMessageRange(baseSession.id, changedOrder);
         await restoreTavernMemoryToFloor(baseSession.id, changedOrder - 1);
+        await restoreTavernTasksToFloor(baseSession.id, changedOrder - 1);
         await trimTavernMemorySnapshotsFromFloor(baseSession.id, changedOrder);
+        await trimTavernTaskSnapshotsFromFloor(baseSession.id, changedOrder);
         await rebuildTavernMemoryDerivedIndex(baseSession.id);
         await deleteTavernMessages(
             baseSession.id,
@@ -1884,7 +1910,8 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
         sessionMessages = await listTavernMessages(baseSession.id);
     }
     if (!reusedUserMessage) {
-        await saveTavernMemorySnapshot(baseSession.id);
+        await settleTavernManagersForSession(baseSession.id, 8000);
+        await saveAcceptedStateSnapshot(baseSession.id);
     }
     const historyMessages = reusedUserMessage
         ? sessionMessages.filter((message) => message.order < reusedUserMessage.order)
@@ -1997,7 +2024,7 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
         options: substituteOptions,
     }));
     const memoryQuery = await runTavernStage('turn_memory_query', () => buildXbTavernMemoryQuery(contextForBuild, currentUserMessage));
-    const memoryContext = (sessionContractRuntime.includeMemoryFiles || sessionContractRuntime.includeStructuredStates)
+    const retrievedMemoryContext = (sessionContractRuntime.includeMemoryFiles || sessionContractRuntime.includeStructuredStates)
         ? await runTavernStage('turn_memory_retrieval', () => retrieveXbTavernMemoryContext({
             sessionId: baseSession.id,
             queryText: memoryQuery,
@@ -2005,6 +2032,15 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
             includeMemoryFiles: sessionContractRuntime.includeMemoryFiles,
             includeStructuredStates: sessionContractRuntime.includeStructuredStates,
         }))
+        : undefined;
+    const questHooks = sessionContractRuntime.includeQuestOrchestration
+        ? await runTavernStage('turn_quest_hook_retrieval', () => getLatestQuestHooksForPrompt(baseSession.id, 1))
+        : [];
+    const memoryContext: XbTavernMemoryContext | undefined = retrievedMemoryContext || questHooks.length
+        ? {
+            ...(retrievedMemoryContext || {}),
+            ...(questHooks.length ? { questHooks } : {}),
+        }
         : undefined;
     const filteredMemoryContext = filterMemoryContextByRuntime(memoryContext, sessionContractRuntime);
     const runtimeProtocolMessages = buildRuntimeProtocolMessages(sessionContractRuntime);

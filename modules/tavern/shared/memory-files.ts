@@ -2,6 +2,7 @@ import { applyTextEdits } from '../../agent-core/tools/text-edit.js';
 import Dexie from '../../../libs/dexie.mjs';
 
 import { getTavernStateToolDefinitions } from './structured-state';
+import { getTavernTaskToolDefinitions } from './tasks';
 import db, {
     listTavernMessages,
     tavernMemoryFilesTable,
@@ -808,6 +809,7 @@ export function getTavernManagerToolDefinitions(): Array<{ type: 'function'; fun
     return [
         ...getTavernMemoryToolDefinitions(),
         ...getTavernStateToolDefinitions(),
+        ...getTavernTaskToolDefinitions(),
         {
             type: 'function',
             function: {

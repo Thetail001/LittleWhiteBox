@@ -56,8 +56,10 @@ import {
     type TavernStructuredStateDocumentRecord,
     type TavernStructuredStatePatchRecord,
     type TavernSessionRecord,
+    type TavernTaskRecord,
 } from '../shared/session-db';
 import { getTavernAtlasStateForSession, getTavernMapStateForSession, type TavernMapStateDocumentItem } from '../shared/structured-state';
+import { listTavernTasks } from '../shared/tasks';
 import {
     normalizeTavernSessionContract,
     type TavernSessionContract,
@@ -221,6 +223,7 @@ const selectedSessionId = ref('');
 const sessionMessages = ref<TavernMessageRecord[]>([]);
 const sessionMessageCounts = ref<Record<string, number>>({});
 const managerRuns = ref<TavernManagerRunRecord[]>([]);
+const tavernTasks = ref<TavernTaskRecord[]>([]);
 const memoryFiles = ref<TavernMemoryIndexFileEntry[]>([]);
 const memoryIndex = ref<TavernMemoryIndexRecord | null>(null);
 const selectedMemoryFilePath = ref('');
@@ -231,7 +234,7 @@ const memoryEditorLoadedPath = ref('');
 const memoryEditorBaseContent = ref('');
 const memoryEditorMode = ref<'preview' | 'edit'>('preview');
 const memoryEditorStatus = ref('');
-const chatWorkspacePanel = ref<'state' | 'memory'>('state');
+const chatWorkspacePanel = ref<'state' | 'memory' | 'event'>('state');
 const mapStateDocuments = ref<TavernMapStateDocumentItem[]>([]);
 const activeMapDocId = ref('main');
 const mapStateDocument = ref<TavernStructuredStateDocumentRecord | null>(null);
@@ -667,6 +670,13 @@ const displayCharacterName = computed(() => (
 const lastRequestSnapshot = computed(() => selectedSession.value?.state?.lastRequestSnapshot as RequestAuditSnapshot | undefined);
 const lastRequestRawJson = computed(() => String(lastRequestSnapshot.value?.rawRequestJson || lastRequestSnapshot.value?.rawMessagesJson || ''));
 const chatMessages = computed(() => sessionMessages.value);
+const currentAssistantFloor = computed(() => Math.max(
+    -1,
+    ...sessionMessages.value
+        .filter((message) => message.role === 'assistant' && message.error !== true)
+        .map((message) => Number(message.order))
+        .filter((order) => Number.isFinite(order)),
+));
 const chatMessageWindow = computed(() => getMessageWindow({
     uiMessageWindowLimit: chatMessageWindowLimit.value,
 }, chatMessages.value.length, { defaultLimit: hiddenOutsideCount.value }));
@@ -2215,6 +2225,7 @@ async function refreshManagerRecords(sessionId = selectedSessionId.value) {
     if (!id) {
         managerChatMessages.value = [];
         managerRuns.value = [];
+        tavernTasks.value = [];
         memoryFiles.value = [];
         memoryIndex.value = null;
         invalidateMemoryFileRecordLoad();
@@ -2229,9 +2240,10 @@ async function refreshManagerRecords(sessionId = selectedSessionId.value) {
         selectedMemoryFilePath.value = '';
         return;
     }
-    const [managerMessages, runs, rawIndex, mapState, atlasState, nextStateFile] = await Promise.all([
+    const [managerMessages, runs, tasks, rawIndex, mapState, atlasState, nextStateFile] = await Promise.all([
         listTavernManagerMessages(id),
         listTavernManagerRuns(id, { limit: 18 }),
+        listTavernTasks(id, { includeCompleted: true }),
         getTavernMemoryIndex(id),
         getTavernMapStateForSession(id),
         getTavernAtlasStateForSession(id),
@@ -2243,6 +2255,7 @@ async function refreshManagerRecords(sessionId = selectedSessionId.value) {
     if (id !== selectedSessionId.value) {return;}
     managerChatMessages.value = managerMessages;
     managerRuns.value = runs;
+    tavernTasks.value = tasks;
     memoryFiles.value = Array.isArray(index.files) ? index.files.map((file) => ({
         path: String(file.path || ''),
         status: file.status === 'stale' ? 'stale' : 'active',
@@ -4241,6 +4254,7 @@ provide(TAVERN_APP_UI_CONTEXT, {
         atlasStateDocument,
         atlasStatePatches,
         chatWorkspacePanel,
+        currentAssistantFloor,
         mapStateDocuments,
         mapStateDocument,
         mapStatePatches,
@@ -4248,6 +4262,7 @@ provide(TAVERN_APP_UI_CONTEXT, {
         selectedSessionId,
         sessionContract,
         stateMemoryFile,
+        tavernTasks,
     },
     settings: settingsContext,
 });

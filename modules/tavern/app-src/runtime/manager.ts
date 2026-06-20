@@ -31,6 +31,15 @@ import {
     type TavernMessageRecord,
 } from '../../shared/session-db';
 import { executeTavernStateTool, TAVERN_STATE_TOOL_NAMES, type TavernStateToolResult } from '../../shared/structured-state';
+import {
+    abandonStaleTavernTasks,
+    executeTavernTaskTool,
+    listTavernManagerTaskSnapshots,
+    rollbackManagerRunTaskWrites,
+    TAVERN_TASK_MIN_GENERATION_FLOOR,
+    TAVERN_TASK_TOOL_NAMES,
+    type TavernTaskToolResult,
+} from '../../shared/tasks';
 import { resolveTavernSessionContractRuntime, type TavernSessionContract, type TavernSessionContractRuntime } from '../../shared/session-contract';
 import {
     buildDeniedAutoManagerToolResult,
@@ -204,7 +213,7 @@ function safeJsonParse(value: unknown, fallback: Record<string, unknown> = {}): 
 
 function buildManagerSystemPrompt(
     assistantPreset: TavernAssistantPreset | undefined,
-    options: { includeMemory?: boolean; includeCartography?: boolean } = {},
+    options: { includeMemory?: boolean; includeCartography?: boolean; includeQuestOrchestration?: boolean } = {},
 ): string {
     return buildTavernManagerSystemPrompt(assistantPreset, options).trim();
 }
@@ -230,6 +239,7 @@ function buildAutoManagerUserPrompt(input: {
 }): string {
     const allowMemory = input.runtime.managerPromptOptions.includeMemory;
     const allowMap = input.runtime.managerPromptOptions.includeCartography;
+    const allowQuest = input.runtime.managerPromptOptions.includeQuestOrchestration;
     const requirements: string[] = [];
     let step = 1;
     if (allowMemory) {
@@ -249,8 +259,12 @@ function buildAutoManagerUserPrompt(input: {
     } else if (allowMap) {
         requirements.push(`${step}. This contract authorizes only the map system. Do not write memory Markdown.`);
         step += 1;
-    } else {
+    } else if (!allowQuest) {
         requirements.push(`${step}. This contract authorizes neither background memory nor map maintenance. Do not write memory or State; clearly say that you skipped it.`);
+        step += 1;
+    }
+    if (allowQuest) {
+        requirements.push(`${step}. Maintain the event pool with TaskPatch only when useful: advance or complete active directions that the reply actually addressed; after floor ${TAVERN_TASK_MIN_GENERATION_FLOOR}, create fresh active directions only when the pool is low and the hook uses established people, places, relationships, world facts, and current tone. Do not use TaskPatch for old facts, and do not generate if no good hook exists.`);
         step += 1;
     }
     requirements.push(`${step}. Close with a short result: say what you wrote, skipped, or left pending.`);
@@ -342,7 +356,7 @@ function summarizeToolArguments(args: Record<string, unknown> = {}): string {
         .join('; ');
 }
 
-function summarizeToolResult(result: TavernMemoryToolResult | TavernStateToolResult): string {
+function summarizeToolResult(result: TavernMemoryToolResult | TavernStateToolResult | TavernTaskToolResult): string {
     const summary = normalizeText(result.summary || result.error || '', 360);
     if (result.ok !== false) {return summary;}
     const details = (result as { details?: unknown }).details;
@@ -360,6 +374,10 @@ function summarizeToolResult(result: TavernMemoryToolResult | TavernStateToolRes
 
 function isStateToolName(name = ''): boolean {
     return Object.values(TAVERN_STATE_TOOL_NAMES).includes(name as typeof TAVERN_STATE_TOOL_NAMES[keyof typeof TAVERN_STATE_TOOL_NAMES]);
+}
+
+function isTaskToolName(name = ''): boolean {
+    return Object.values(TAVERN_TASK_TOOL_NAMES).includes(name as typeof TAVERN_TASK_TOOL_NAMES[keyof typeof TAVERN_TASK_TOOL_NAMES]);
 }
 
 function hasFailedTool(toolTrace: Array<Record<string, unknown>> = []): boolean {
@@ -408,14 +426,22 @@ async function rollbackManagerRunIfWroteMemory(managerRunId = ''): Promise<{
     managerRun: TavernManagerRunRecord | null;
     conflicts: string[];
 } | null> {
-    const snapshots = await listTavernManagerMemorySnapshots(managerRunId);
-    if (!snapshots.some((snapshot) => String(snapshot.afterHash || '').trim())) {
+    const [memorySnapshots, taskSnapshots] = await Promise.all([
+        listTavernManagerMemorySnapshots(managerRunId),
+        listTavernManagerTaskSnapshots(managerRunId),
+    ]);
+    const hasMemoryWrites = memorySnapshots.some((snapshot) => String(snapshot.afterHash || '').trim());
+    const hasTaskWrites = taskSnapshots.some((snapshot) => String(snapshot.afterHash || '').trim());
+    if (!hasMemoryWrites && !hasTaskWrites) {
         return null;
     }
-    const memoryResult = await rollbackManagerRunMemoryWrites(managerRunId);
+    const [memoryResult, taskResult] = await Promise.all([
+        hasMemoryWrites ? rollbackManagerRunMemoryWrites(managerRunId) : Promise.resolve({ rolledBack: 0, conflicts: [], skipped: 0 }),
+        hasTaskWrites ? rollbackManagerRunTaskWrites(managerRunId) : Promise.resolve({ rolledBack: 0, conflicts: [], skipped: 0 }),
+    ]);
     return {
         managerRun: await updateTavernManagerRun(managerRunId, {}),
-        conflicts: [...memoryResult.conflicts],
+        conflicts: [...memoryResult.conflicts, ...taskResult.conflicts],
     };
 }
 
@@ -606,7 +632,15 @@ async function runManagerAgentWithTools(input: {
                         sourceAssistantOrder: input.assistantOrder,
                         beforeWriteGuard: input.beforeWriteGuard,
                     })
-                    : await executeTavernMemoryTool(input.sessionId, toolCall.name, args, {
+                    : isTaskToolName(toolCall.name)
+                        ? await executeTavernTaskTool(input.sessionId, toolCall.name, args, {
+                            caller: input.caller,
+                            managerRunId: input.managerRunId,
+                            sourceUserOrder: input.userOrder,
+                            sourceAssistantOrder: input.assistantOrder,
+                            beforeWriteGuard: input.beforeWriteGuard,
+                        })
+                        : await executeTavernMemoryTool(input.sessionId, toolCall.name, args, {
                         caller: input.caller,
                         managerRunId: input.managerRunId,
                         turn: input.turn,
@@ -616,6 +650,7 @@ async function runManagerAgentWithTools(input: {
                     });
             const resultPath = 'path' in toolResult ? toolResult.path : '';
             const resultStateKey = 'docType' in toolResult && toolResult.docType ? `${toolResult.docType}/${toolResult.docId || ''}` : '';
+            const resultTaskKey = 'taskId' in toolResult && toolResult.taskId ? `task/${toolResult.taskId}` : '';
             if (toolResult.changed && resultPath) {
                 changedFiles.add(resultPath);
             }
@@ -626,7 +661,7 @@ async function runManagerAgentWithTools(input: {
                 status: 'resolved',
                 ok: toolResult.ok,
                 args: summarizeToolArguments(args),
-                path: resultPath || resultStateKey,
+                path: resultPath || resultStateKey || resultTaskKey,
                 summary: summarizeToolResult(toolResult),
                 error: toolResult.error || '',
                 finishedAt: Date.now(),
@@ -1164,6 +1199,15 @@ export async function runXbTavernManagerAfterTurn(input: XbTavernManagerRunInput
             };
         }
         await assertManagerSourceMessagesCurrent(input);
+        if (contractRuntime.includeQuestOrchestration) {
+            await abandonStaleTavernTasks(sessionId, input.assistantMessage.order, {
+                managerRunId: managerRun.id,
+                beforeWriteGuard: async () => {
+                    throwIfManagerAborted(input.signal);
+                    await assertManagerSourceMessagesCurrent(input);
+                },
+            });
+        }
         const changedFiles = [...(result.changedFiles || [])];
         const completedRun = result.managerRun;
         return {
@@ -1309,6 +1353,30 @@ export async function scheduleXbTavernManagerAfterTurn(input: XbTavernManagerRun
     };
 }
 
+export async function settleTavernManagersForSession(sessionId = '', timeoutMs = 8000): Promise<{
+    settled: boolean;
+    timedOut: boolean;
+}> {
+    const id = String(sessionId || '').trim();
+    if (!id) {return { settled: true, timedOut: false };}
+    const queue = managerQueues.get(id);
+    if (!queue) {return { settled: true, timedOut: false };}
+    const timeout = Math.max(1, Number(timeoutMs) || 8000);
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const timeoutPromise = new Promise<'timeout'>((resolve) => {
+        timer = setTimeout(() => resolve('timeout'), timeout);
+    });
+    const result = await Promise.race([
+        queue.then(() => 'settled' as const).catch(() => 'settled' as const),
+        timeoutPromise,
+    ]);
+    if (timer) {clearTimeout(timer);}
+    return {
+        settled: result === 'settled',
+        timedOut: result === 'timeout',
+    };
+}
+
 export async function cancelAndRollbackXbTavernManagersForMessageRange(sessionId = '', fromOrder = 0): Promise<{
     runIds: string[];
     rolledBack: number;
@@ -1327,10 +1395,21 @@ export async function cancelAndRollbackXbTavernManagersForMessageRange(sessionId
         }
     });
     const memory = await rollbackManagerRunsForMessageRange(id, order);
+    let taskRolledBack = 0;
+    let taskSkipped = 0;
+    const taskConflicts: string[] = [];
+    for (const runId of memory.runIds) {
+        const taskSnapshots = await listTavernManagerTaskSnapshots(runId);
+        if (!taskSnapshots.some((snapshot) => String(snapshot.afterHash || '').trim())) {continue;}
+        const result = await rollbackManagerRunTaskWrites(runId);
+        taskRolledBack += result.rolledBack;
+        taskSkipped += result.skipped;
+        taskConflicts.push(...result.conflicts);
+    }
     return {
         runIds: [...new Set([...memory.runIds])],
-        rolledBack: memory.rolledBack,
-        conflicts: [...memory.conflicts],
-        skipped: memory.skipped,
+        rolledBack: memory.rolledBack + taskRolledBack,
+        conflicts: [...memory.conflicts, ...taskConflicts],
+        skipped: memory.skipped + taskSkipped,
     };
 }

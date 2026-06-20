@@ -82,6 +82,17 @@ import {
     getTavernStateToolDefinitions,
     listTavernStructuredStateDigests,
 } from '../shared/structured-state';
+import {
+    abandonStaleTavernTasks,
+    executeTavernTaskTool,
+    getLatestQuestHooksForPrompt,
+    listTavernTasks,
+    listTavernTaskSnapshots,
+    restoreTavernTasksToFloor,
+    saveTavernTaskSnapshot,
+    trimTavernTaskSnapshotsFromFloor,
+} from '../shared/tasks';
+import { saveAcceptedStateSnapshot } from '../shared/accepted-state';
 import { retrieveXbTavernMemoryContext } from '../shared/memory-retrieval';
 import * as looseToolArgumentsModule from '../../agent-core/runtime/loose-tool-arguments.js';
 
@@ -2006,12 +2017,302 @@ test('State tools are in the unified manager tool schema', () => {
     assert.equal(names.includes('StateList'), true);
     assert.equal(names.includes('StateRead'), true);
     assert.equal(names.includes('StatePatch'), true);
+    assert.equal(names.includes('TaskPatch'), true);
 
     const statePatch = getTavernStateToolDefinitions().find((tool) => tool.function.name === 'StatePatch');
     assert.match(statePatch?.function.description || '', /Canonical ops are .*meta.*add.*modify.*remove/i);
     assert.match(statePatch?.function.description || '', /one atomic transaction/);
     assert.match(statePatch?.function.description || '', /at:\[x,y\]/);
     assert.match(statePatch?.function.description || '', /Legacy .*init.*reset.*replace.*still absorbed/i);
+});
+
+test('TaskPatch maintains active, completed, and abandoned event tasks', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Tasks' });
+    const created = await executeTavernTaskTool(session.id, 'TaskPatch', {
+        op: 'upsert-task',
+        taskId: 'dock-name',
+        fingerprint: 'lina:dock-name',
+        horizon: '弄清莉娜避开的码头名字',
+        current: '让码头名字自然浮出水面',
+        hookForUser: '莉娜一直绕开码头的名字。',
+        hookForModel: '莉娜似乎在刻意避开某个码头名字。',
+    }, { sourceAssistantOrder: 5 });
+    assert.equal(created.ok, true);
+    assert.equal(created.changed, true);
+    assert.equal((await listTavernTasks(session.id))[0]?.id, 'dock-name');
+    assert.deepEqual(await getLatestQuestHooksForPrompt(session.id), ['莉娜似乎在刻意避开某个码头名字。']);
+
+    const advanced = await executeTavernTaskTool(session.id, 'TaskPatch', {
+        op: 'advance-task',
+        taskId: 'dock-name',
+        current: '找到知道旧码头名字的人',
+        hookForUser: '旧码头名字可能藏在熟人嘴里。',
+        hookForModel: '有人提到旧码头时，莉娜的手指短暂收紧。',
+    }, { sourceAssistantOrder: 7 });
+    assert.equal(advanced.ok, true);
+    assert.equal((await listTavernTasks(session.id))[0]?.lastAdvancedOrder, 7);
+
+    const completed = await executeTavernTaskTool(session.id, 'TaskPatch', {
+        op: 'complete-task',
+        taskId: 'dock-name',
+    }, { sourceAssistantOrder: 9 });
+    assert.equal(completed.ok, true);
+    const allTasks = await listTavernTasks(session.id, { includeCompleted: true });
+    assert.equal(allTasks[0]?.status, 'completed');
+    assert.deepEqual(await getLatestQuestHooksForPrompt(session.id), []);
+
+    await executeTavernTaskTool(session.id, 'TaskPatch', {
+        op: 'upsert-task',
+        taskId: 'repeat',
+        fingerprint: 'repeat:fingerprint',
+        horizon: '重复方向',
+        current: '重复方向',
+        hookForUser: '重复方向。',
+        hookForModel: '重复方向仍在阴影里。',
+    }, { sourceAssistantOrder: 10 });
+    const abandoned = await executeTavernTaskTool(session.id, 'TaskPatch', {
+        op: 'abandon-task',
+        taskId: 'repeat',
+    }, { sourceAssistantOrder: 11 });
+    assert.equal(abandoned.ok, true);
+    const recreated = await executeTavernTaskTool(session.id, 'TaskPatch', {
+        op: 'upsert-task',
+        taskId: 'repeat-2',
+        fingerprint: 'repeat:fingerprint',
+        horizon: '重复方向',
+        current: '重复方向',
+        hookForUser: '重复方向。',
+        hookForModel: '重复方向仍在阴影里。',
+    }, { sourceAssistantOrder: 12 });
+    assert.equal(recreated.ok, false);
+    assert.equal(recreated.error, 'task_fingerprint_abandoned');
+});
+
+test('TaskPatch enforces auto generation floor, pool cap, and hook wording guards', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Task guards' });
+    const early = await executeTavernTaskTool(session.id, 'TaskPatch', {
+        op: 'upsert-task',
+        taskId: 'too-early',
+        fingerprint: 'too-early',
+        horizon: '过早远景',
+        current: '过早当前',
+        hookForUser: '过早说明。',
+        hookForModel: '窗外的雾还没有散。',
+    }, { caller: 'auto', sourceAssistantOrder: 4 });
+    assert.equal(early.ok, false);
+    assert.equal(early.error, 'task_floor_too_early');
+
+    const metaHook = await executeTavernTaskTool(session.id, 'TaskPatch', {
+        op: 'upsert-task',
+        taskId: 'meta-hook',
+        fingerprint: 'meta-hook',
+        horizon: '元词远景',
+        current: '元词当前',
+        hookForUser: '元词说明。',
+        hookForModel: '这是下一个任务目标。',
+    }, { caller: 'auto', sourceAssistantOrder: 5 });
+    assert.equal(metaHook.ok, false);
+    assert.equal(metaHook.error, 'task_hook_meta_words');
+
+    for (let index = 1; index <= 3; index += 1) {
+        const created = await executeTavernTaskTool(session.id, 'TaskPatch', {
+            op: 'upsert-task',
+            taskId: `pool-${index}`,
+            fingerprint: `pool-${index}`,
+            horizon: `池子远景 ${index}`,
+            current: `池子当前 ${index}`,
+            hookForUser: `池子说明 ${index}。`,
+            hookForModel: `第 ${index} 条暗线在门后轻轻晃动。`,
+        }, { caller: 'auto', sourceAssistantOrder: 5 + index });
+        assert.equal(created.ok, true);
+    }
+    const overflow = await executeTavernTaskTool(session.id, 'TaskPatch', {
+        op: 'upsert-task',
+        taskId: 'pool-4',
+        fingerprint: 'pool-4',
+        horizon: '第四条远景',
+        current: '第四条当前',
+        hookForUser: '第四条说明。',
+        hookForModel: '第四条暗线在远处亮了一下。',
+    }, { caller: 'auto', sourceAssistantOrder: 10 });
+    assert.equal(overflow.ok, false);
+    assert.equal(overflow.error, 'task_active_pool_full');
+
+    const manual = await executeTavernTaskTool(session.id, 'TaskPatch', {
+        op: 'upsert-task',
+        taskId: 'manual-extra',
+        fingerprint: 'manual-extra',
+        horizon: '手动远景',
+        current: '手动当前',
+        hookForUser: '手动说明。',
+        hookForModel: '额外暗线贴着墙根延伸。',
+    }, { caller: 'chat', sourceAssistantOrder: 10 });
+    assert.equal(manual.ok, true);
+
+    const badAdvance = await executeTavernTaskTool(session.id, 'TaskPatch', {
+        op: 'advance-task',
+        taskId: 'manual-extra',
+        hookForModel: '这个目标已经完成。',
+    }, { caller: 'chat', sourceAssistantOrder: 11 });
+    assert.equal(badAdvance.ok, false);
+    assert.equal(badAdvance.error, 'task_hook_meta_words');
+});
+
+test('task snapshots restore covering task pool and trim future snapshots', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Task snapshots' });
+    await executeTavernTaskTool(session.id, 'TaskPatch', {
+        op: 'upsert-task',
+        taskId: 'first',
+        fingerprint: 'first',
+        horizon: '第一条远景',
+        current: '第一条当前',
+        hookForUser: '第一条说明。',
+        hookForModel: '第一条软句。',
+    }, { sourceAssistantOrder: 5 });
+    await saveTavernTaskSnapshot(session.id, 5);
+    await executeTavernTaskTool(session.id, 'TaskPatch', {
+        op: 'upsert-task',
+        taskId: 'future',
+        fingerprint: 'future',
+        horizon: '未来远景',
+        current: '未来当前',
+        hookForUser: '未来说明。',
+        hookForModel: '未来软句。',
+    }, { sourceAssistantOrder: 7 });
+    await executeTavernTaskTool(session.id, 'TaskPatch', {
+        op: 'complete-task',
+        taskId: 'first',
+    }, { sourceAssistantOrder: 8 });
+    await saveTavernTaskSnapshot(session.id, 8);
+
+    const restored = await restoreTavernTasksToFloor(session.id, 5);
+    assert.deepEqual(restored.map((task) => `${task.id}:${task.status}`).sort(), ['first:active']);
+    assert.deepEqual((await listTavernTasks(session.id, { includeCompleted: true })).map((task) => task.id), ['first']);
+
+    const trimmed = await trimTavernTaskSnapshotsFromFloor(session.id, 6);
+    assert.equal(trimmed, 1);
+    assert.deepEqual((await listTavernTaskSnapshots(session.id)).map((snapshot) => snapshot.floor), [5]);
+});
+
+test('accepted state snapshot saves memory and tasks on the same floor', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Accepted snapshot' });
+    await appendTavernMessage(session.id, { role: 'user', content: '开始。' });
+    await appendTavernMessage(session.id, { role: 'assistant', content: '第一个回复。' });
+    await ensureTavernMemoryDefaults(session.id);
+    await executeTavernTaskTool(session.id, 'TaskPatch', {
+        op: 'upsert-task',
+        taskId: 'same-floor',
+        fingerprint: 'same-floor',
+        horizon: '同楼层远景',
+        current: '同楼层当前',
+        hookForUser: '同楼层说明。',
+        hookForModel: '同楼层软句。',
+    }, { sourceAssistantOrder: 1 });
+
+    const saved = await saveAcceptedStateSnapshot(session.id);
+    assert.equal(saved.floor, 1);
+    assert.equal(saved.memorySnapshotSaved, true);
+    assert.equal(saved.taskSnapshotSaved, true);
+    assert.equal((await listTavernMemorySnapshots(session.id))[0]?.floor, 1);
+    assert.equal((await listTavernTaskSnapshots(session.id))[0]?.floor, 1);
+});
+
+test('manager task snapshot rolls back failed event writes', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Manager task rollback' });
+    await appendTavernMessage(session.id, { role: 'user', content: '前情一。' });
+    await appendTavernMessage(session.id, { role: 'assistant', content: '前情二。' });
+    await appendTavernMessage(session.id, { role: 'user', content: '前情三。' });
+    await appendTavernMessage(session.id, { role: 'assistant', content: '前情四。' });
+    const userMessage = await appendTavernMessage(session.id, { role: 'user', content: '继续。' });
+    const assistantMessage = await appendTavernMessage(session.id, { role: 'assistant', content: '她提到了码头。' });
+    let calls = 0;
+
+    const result = await runXbTavernManagerAfterTurn({
+        sessionId: session.id,
+        agentConfig: {},
+        userMessage,
+        assistantMessage,
+        turn: 6,
+        sessionContract: mergeTavernSessionContract(undefined, {
+            memoryArchiving: false,
+            cartographyEngine: false,
+            questOrchestration: true,
+        }),
+        executeManagerOnce: async () => {
+            calls += 1;
+            if (calls === 1) {
+                return {
+                    provider: 'fake-manager',
+                    model: 'task-model',
+                    text: '生成事件线索。',
+                    toolCalls: [{
+                        id: 'task',
+                        name: 'TaskPatch',
+                        arguments: {
+                            op: 'upsert-task',
+                            taskId: 'rollback-task',
+                            fingerprint: 'rollback-task',
+                            horizon: '回滚远景',
+                            current: '回滚当前',
+                            hookForUser: '回滚说明。',
+                            hookForModel: '回滚软句。',
+                        },
+                    }],
+                };
+            }
+            throw new Error('manager_failed_after_task');
+        },
+    });
+
+    assert.equal(result.ok, false);
+    assert.deepEqual(await listTavernTasks(session.id, { includeCompleted: true, includeAbandoned: true }), []);
+    const run = (await listTavernManagerRuns(session.id))[0];
+    assert.equal(run?.status, 'rolled_back');
+});
+
+test('stale active tasks are abandoned internally with fingerprints', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Stale task' });
+    await executeTavernTaskTool(session.id, 'TaskPatch', {
+        op: 'upsert-task',
+        taskId: 'stale',
+        fingerprint: 'stale-fingerprint',
+        horizon: '过期远景',
+        current: '过期当前',
+        hookForUser: '过期说明。',
+        hookForModel: '过期软句。',
+    }, { sourceAssistantOrder: 5 });
+    const abandoned = await abandonStaleTavernTasks(session.id, 12, { threshold: 3 });
+    assert.equal(abandoned.length, 1);
+    const tasks = await listTavernTasks(session.id, { includeAbandoned: true });
+    assert.equal(tasks[0]?.status, 'abandoned');
+    const recreate = await executeTavernTaskTool(session.id, 'TaskPatch', {
+        op: 'upsert-task',
+        taskId: 'stale-again',
+        fingerprint: 'stale-fingerprint',
+        horizon: '过期远景',
+        current: '过期当前',
+        hookForUser: '过期说明。',
+        hookForModel: '过期软句。',
+    }, { sourceAssistantOrder: 13 });
+    assert.equal(recreate.error, 'task_fingerprint_abandoned');
 });
 
 test('tavern manager uses memory tools and records tool trace', async () => {

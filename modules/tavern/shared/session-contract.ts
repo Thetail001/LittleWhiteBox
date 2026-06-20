@@ -18,6 +18,7 @@ export interface TavernSessionContract {
 export interface TavernContractManagerPromptOptions {
     includeMemory: boolean;
     includeCartography: boolean;
+    includeQuestOrchestration: boolean;
 }
 
 export interface TavernContractRuntimeCapability {
@@ -37,6 +38,7 @@ export interface TavernSessionContractRuntime {
     includeStructuredStates: boolean;
     includeActionChecks: boolean;
     includeRandomEncounters: boolean;
+    includeQuestOrchestration: boolean;
     hasAutomaticManagerWork: boolean;
     managerPromptOptions: TavernContractManagerPromptOptions;
 }
@@ -132,7 +134,9 @@ export const TAVERN_CONTRACT_RUNTIME_CAPABILITIES: Record<TavernContractPermissi
     randomEncounters: {
         includeRandomEncounters: true,
     },
-    questOrchestration: {},
+    questOrchestration: {
+        automaticManagerWork: true,
+    },
 };
 
 export function normalizeTavernSessionContract(value: unknown): TavernSessionContract {
@@ -184,10 +188,12 @@ export function resolveTavernSessionContractRuntime(
             includeStructuredStates: current.includeStructuredStates || capability.includeStructuredStates === true,
             includeActionChecks: current.includeActionChecks || capability.includeActionChecks === true,
             includeRandomEncounters: current.includeRandomEncounters || capability.includeRandomEncounters === true,
+            includeQuestOrchestration: current.includeQuestOrchestration || key === 'questOrchestration',
             hasAutomaticManagerWork: current.hasAutomaticManagerWork || capability.automaticManagerWork === true,
             managerPromptOptions: {
                 includeMemory: current.managerPromptOptions.includeMemory || capability.managerPromptMemory === true,
                 includeCartography: current.managerPromptOptions.includeCartography || capability.managerPromptCartography === true,
+                includeQuestOrchestration: current.managerPromptOptions.includeQuestOrchestration || key === 'questOrchestration',
             },
         };
     }, {
@@ -197,10 +203,12 @@ export function resolveTavernSessionContractRuntime(
         includeStructuredStates: false,
         includeActionChecks: false,
         includeRandomEncounters: false,
+        includeQuestOrchestration: false,
         hasAutomaticManagerWork: false,
         managerPromptOptions: {
             includeMemory: false,
             includeCartography: false,
+            includeQuestOrchestration: false,
         },
     });
     return runtime;

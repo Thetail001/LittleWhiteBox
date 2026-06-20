@@ -810,7 +810,8 @@ test('tavern streaming action-check UI renders from live runtime events and keep
     assert.match(contextSource, /createNewChatSession: TavernCommand<\[\], Promise<void>>/);
     assert.match(appSource, /async function createNewChatSession\(\) \{[\s\S]*resolveRuntimeContextForSession\(selectedSessionId\.value\)[\s\S]*resetSessionPreviewState\(\);[\s\S]*await createSessionAndOpenChat\(\{ contextSnapshot: snapshotContext \}\);/);
     assert.match(chatPageSource, /function openMobileSessionsPanel\(\) \{[\s\S]*chatSidePanel\.value = 'sessions';[\s\S]*mobileChatPanel\.value = 'directory';/);
-    assert.match(chatPageSource, /class="chat-mobile-context-row"[\s\S]*title="地图"[\s\S]*title="记忆"[\s\S]*title="契约"[\s\S]*title="请求日志"/);
+    assert.match(chatPageSource, /class="chat-mobile-context-row"[\s\S]*title="地图"[\s\S]*title="记忆"[\s\S]*title="事件"[\s\S]*title="契约"/);
+    assert.doesNotMatch(chatPageSource, /class="chat-mobile-context-row"[\s\S]*title="请求日志"/);
     assert.doesNotMatch(chatPageSource, /class="chat-mobile-context-row"[\s\S]*>\s*会话\s*</);
     assert.match(chatPageSource, /:class="\{ 'is-active': mobileChatPanel === 'workspace' && chatWorkspacePanel === 'state' \}"/);
     assert.match(chatPageSource, /:class="\{ 'is-active': mobileChatPanel === 'workspace' && chatWorkspacePanel === 'memory' \}"/);
@@ -821,7 +822,7 @@ test('tavern streaming action-check UI renders from live runtime events and keep
     assert.doesNotMatch(conversationPanelSource, /<form\s+class="chat-compose"[\s\S]*class="compose-menu-shell"/);
     assert.match(conversationPanelSource, /class="compose-menu-button"[\s\S]*aria-label="聊天操作"[\s\S]*aria-controls="xb-tavern-compose-menu"[\s\S]*@click\.stop="toggleComposeMenu"/);
     assert.match(conversationPanelSource, /class="compose-menu-button"[\s\S]*<svg[\s\S]*viewBox="0 0 24 24"[\s\S]*<path d="M4 6h16"/);
-    assert.match(conversationPanelSource, /id="xb-tavern-compose-menu"[\s\S]*role="menu"[\s\S]*class="compose-menu-item"[\s\S]*新建会话[\s\S]*class="compose-menu-item"[\s\S]*会话档案[\s\S]*class="compose-menu-item"[\s\S]*玩家便签/);
+    assert.match(conversationPanelSource, /id="xb-tavern-compose-menu"[\s\S]*role="menu"[\s\S]*class="compose-menu-item"[\s\S]*新建会话[\s\S]*class="compose-menu-item"[\s\S]*会话档案[\s\S]*class="compose-menu-item"[\s\S]*玩家便签[\s\S]*class="compose-menu-item"[\s\S]*请求日志/);
     assert.match(conversationPanelSource, /defineEmits<\{[\s\S]*\(event: 'open-author-note'\): void;/);
     assert.match(conversationPanelSource, /function openAuthorNoteFromComposeMenu\(\) \{[\s\S]*closeComposeMenu\(\);[\s\S]*emit\('open-author-note'\);[\s\S]*\}/);
     assert.doesNotMatch(conversationPanelSource, /composeMenuView|isMobileAuthorNoteViewport|compose-author-note-panel|authorNoteDraft/);

@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import TavernScrollControls from '../TavernScrollControls.vue';
 import TavernMessageEditPanel from './TavernMessageEditPanel.vue';
-import { useTavernChatContext, useTavernShellContext } from '../tavern-app-context';
+import { useTavernChatContext, useTavernShellContext, useTavernWorkspaceContext } from '../tavern-app-context';
 import { useTavernEphemeralDisclosureScope } from '../useTavernEphemeralDisclosureScope';
 import { useTavernMediaQuery } from '../useTavernMediaQuery';
 import {
@@ -23,6 +23,7 @@ const emit = defineEmits<{
 
 const shell = useTavernShellContext();
 const chat = useTavernChatContext();
+const workspace = useTavernWorkspaceContext();
 const {
     activeView,
     homeThemeDark,
@@ -92,6 +93,9 @@ const {
     visibleChatMessages,
     visibleUserAvatar,
 } = chat;
+const {
+    chatWorkspacePanel,
+} = workspace;
 
 function setChatScrollRef(element: Element | null) {
     chatScrollRef.value = element instanceof HTMLElement ? element : null;
@@ -231,6 +235,15 @@ function openAuthorNoteFromComposeMenu() {
     emit('open-author-note');
 }
 
+function openRequestLogFromComposeMenu() {
+    closeComposeMenu();
+    openPromptInspector('history');
+}
+
+function openEventWorkspace() {
+    chatWorkspacePanel.value = 'event';
+}
+
 watch(
     [activeView, chatFocus, selectedSessionId],
     ([view, focus]) => {
@@ -289,11 +302,11 @@ watch(isMobileActionTrayViewport, (isMobile) => {
         <button
           type="button"
           class="prompt-inspector-trigger"
-          title="请求日志"
-          aria-label="请求日志"
-          @click="openPromptInspector('history')"
+          title="事件"
+          aria-label="事件"
+          @click="openEventWorkspace"
         >
-          日志
+          事件
         </button>
         <button
           type="button"
@@ -713,6 +726,14 @@ watch(isMobileActionTrayViewport, (isMobile) => {
               @click="openAuthorNoteFromComposeMenu"
             >
               玩家便签
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              class="compose-menu-item"
+              @click="openRequestLogFromComposeMenu"
+            >
+              请求日志
             </button>
           </div>
         </div>
