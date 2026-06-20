@@ -1069,11 +1069,13 @@ export function useTavernMarkdownTools(options: TavernMarkdownToolsOptions) {
     function buildActionCheckAriaLabel(event: TavernActionCheckRuntimeEvent) {
         const outcome = event.success ? '判定成功' : '判定失败';
         const action = String(event.action || '').trim();
+        const stakes = String(event.stakes || '').trim();
         return [
             `行动判定：${event.stat}。`,
             `掷骰 ${event.roll} 对抗难度 ${event.difficulty}。`,
             `${outcome}.`,
             action ? `行动意图：${action}。` : '',
+            stakes ? `风险：${stakes}。` : '',
         ].filter(Boolean).join(' ');
     }
 
@@ -1120,7 +1122,16 @@ export function useTavernMarkdownTools(options: TavernMarkdownToolsOptions) {
         copy.className = 'action-check-card-copy';
         copy.textContent = event.action;
 
-        card.append(head, grid, copy);
+        const children: HTMLElement[] = [head, grid, copy];
+
+        if (event.stakes) {
+            const stakes = document.createElement('span');
+            stakes.className = 'action-check-card-stakes';
+            stakes.textContent = event.stakes;
+            children.push(stakes);
+        }
+
+        card.append(...children);
         return card;
     }
 

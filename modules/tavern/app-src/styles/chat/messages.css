@@ -512,6 +512,34 @@
     font: 760 12px/1 var(--xb-font-ui);
 }
 
+.action-check-card-stakes {
+    display: block;
+    order: 2;
+    margin: 4px 16px 12px;
+    padding: 8px 12px;
+    border-left: 3px solid #8b6f36;
+    background: rgba(139, 111, 54, 0.13);
+    border-radius: 0 4px 4px 0;
+    color: var(--xb-text-body);
+    font-family: var(--xb-font-serif);
+    font-size: calc(var(--xb-tavern-reading-font-size, 15px) - 1px);
+    line-height: var(--xb-tavern-reading-line-height, 23px);
+    overflow-wrap: anywhere;
+}
+
+.action-check-card-stakes::before {
+    content: "风险";
+    display: inline-block;
+    margin-right: 8px;
+    padding: 2px 7px 3px;
+    border-radius: 3px;
+    background: rgba(139, 111, 54, 0.26);
+    color: #6b521b;
+    font: 700 10px/1 var(--xb-font-ui);
+    letter-spacing: 0.08em;
+    vertical-align: 2px;
+}
+
 .xb-os-shell.theme-dark .action-check-card {
     background:
         linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.012)),
@@ -534,6 +562,16 @@
 .xb-os-shell.theme-dark .action-check-card.is-failure .action-check-card-outcome,
 .xb-os-shell.theme-dark .action-check-card.is-failure .action-check-card-roll strong {
     color: #d88490;
+}
+
+.xb-os-shell.theme-dark .action-check-card-stakes {
+    border-left-color: #b8a36e;
+    background: rgba(184, 163, 110, 0.14);
+}
+
+.xb-os-shell.theme-dark .action-check-card-stakes::before {
+    background: rgba(184, 163, 110, 0.24);
+    color: #d9c89a;
 }
 
 .chat-bubble.from-user .xb-tavern-markdown {

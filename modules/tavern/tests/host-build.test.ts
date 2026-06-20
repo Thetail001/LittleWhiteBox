@@ -150,6 +150,7 @@ test('tavern chat font size preference scales reading typography relative to hos
     assert.match(markdownCss, /\.xb-tavern-markdown \{[\s\S]*font-size: var\(--xb-tavern-reading-font-size, 15px\);[\s\S]*line-height: var\(--xb-tavern-reading-line-height, 23px\);/);
     assert.match(composeCss, /\.chat-compose textarea \{[\s\S]*font-size: var\(--xb-tavern-reading-font-size, 15px\);[\s\S]*line-height: var\(--xb-tavern-reading-line-height, 23px\);/);
     assert.match(messagesCss, /\.action-check-card-copy \{[\s\S]*font-size: var\(--xb-tavern-reading-font-size, 15px\);[\s\S]*line-height: var\(--xb-tavern-reading-line-height, 23px\);/);
+    assert.match(messagesCss, /\.action-check-card-stakes \{[\s\S]*font-size: calc\(var\(--xb-tavern-reading-font-size, 15px\) - 1px\);[\s\S]*line-height: var\(--xb-tavern-reading-line-height, 23px\);[\s\S]*overflow-wrap: anywhere;/);
     assert.match(messagesCss, /\.message-edit-box \{[\s\S]*font-size: var\(--xb-tavern-reading-font-size, 15px\);[\s\S]*line-height: var\(--xb-tavern-reading-line-height, 23px\);/);
 
     assert.doesNotMatch(markdownCss, /font-size: var\(--xb-host-main-font-size/);

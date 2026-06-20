@@ -762,6 +762,7 @@ test('tavern streaming action-check UI renders from live runtime events and keep
     const chatPageSource = readRepoFile('modules/tavern/app-src/components/chat/TavernChatPage.vue');
     const conversationPanelSource = readRepoFile('modules/tavern/app-src/components/chat/TavernConversationPanel.vue');
     const managerPanelSource = readRepoFile('modules/tavern/app-src/components/chat/TavernManagerPanel.vue');
+    const markdownToolsSource = readRepoFile('modules/tavern/app-src/components/chat/useTavernMarkdownTools.ts');
     const workspacePanelSource = readRepoFile('modules/tavern/app-src/components/chat/TavernWorkspacePanel.vue');
     const contextSource = readRepoFile('modules/tavern/app-src/components/tavern-app-context.ts');
     const cssSource = readRepoFile('modules/tavern/app-src/styles/chat/messages.css');
@@ -774,6 +775,9 @@ test('tavern streaming action-check UI renders from live runtime events and keep
     assert.match(conversationPanelSource, /runtimeActionCheckEvents/);
     assert.match(contextSource, /runtimeUserMessageVisible: Ref<boolean>/);
     assert.match(appSource, /const runtimeUserMessageVisible = ref\(false\)/);
+    assert.match(markdownToolsSource, /const stakes = String\(event\.stakes \|\| ''\)\.trim\(\);/);
+    assert.match(markdownToolsSource, /stakes \? `风险：\$\{stakes\}。` : ''/);
+    assert.match(markdownToolsSource, /if \(event\.stakes\) \{[\s\S]*className = 'action-check-card-stakes'[\s\S]*textContent = event\.stakes/);
     assert.match(appSource, /function clearRuntimeAssistantLiveState\(\) \{[\s\S]*runtimeText\.value = '';[\s\S]*runtimeThoughts\.value = \[\];[\s\S]*runtimeActionCheckEvents\.value = \[\];[\s\S]*runtimeUserMessageVisible\.value = false;/);
     assert.match(appSource, /runtimeUserMessageVisible\.value = false;[\s\S]*runtimeProvider\.value = ''/);
     assert.match(appSource, /sessionMessages\.value = existingIndex >= 0[\s\S]*runtimeUserMessageVisible\.value = true;/);
@@ -878,6 +882,8 @@ test('tavern streaming action-check UI renders from live runtime events and keep
     assert.doesNotMatch(cssSource, /\.chat-bubble\.from-assistant\s*\{[^}]*border-left:/);
     assert.match(cssSource, /\.xb-os-shell\.theme-dark \.action-check-card-grid>span/);
     assert.doesNotMatch(cssSource, /\.xb-os-shell\.theme-dark \.action-check-card-grid>div/);
+    assert.match(cssSource, /\.action-check-card-stakes \{[\s\S]*font-size: calc\(var\(--xb-tavern-reading-font-size, 15px\) - 1px\);[\s\S]*line-height: var\(--xb-tavern-reading-line-height, 23px\);[\s\S]*overflow-wrap: anywhere;/);
+    assert.match(cssSource, /\.xb-os-shell\.theme-dark \.action-check-card-stakes::before \{[\s\S]*color: #d9c89a;/);
 });
 
 test('tavern keeps the app exit button on home only', () => {
