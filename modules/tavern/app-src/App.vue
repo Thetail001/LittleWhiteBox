@@ -59,7 +59,7 @@ import {
     type TavernTaskRecord,
 } from '../shared/session-db';
 import { getTavernAtlasStateForSession, getTavernMapStateForSession, type TavernMapStateDocumentItem } from '../shared/structured-state';
-import { listTavernTasks } from '../shared/tasks';
+import { listTavernTasks, restoreTavernTasksToFloor, trimTavernTaskSnapshotsFromFloor } from '../shared/tasks';
 import {
     normalizeTavernSessionContract,
     type TavernSessionContract,
@@ -3034,19 +3034,21 @@ function handleComposeInput(event: Event) {
         : { minHeight: 36, maxHeight: 76 });
 }
 
-async function restoreMemoryStateBeforeMessage(sessionId = '', changedOrder = 0) {
+async function restoreAcceptedStateBeforeMessage(sessionId = '', changedOrder = 0) {
     const id = String(sessionId || '').trim();
     const order = Number(changedOrder);
     if (!id || !Number.isFinite(order)) {return;}
     await restoreTavernMemoryToFloor(id, order - 1);
+    await restoreTavernTasksToFloor(id, order - 1);
     await trimTavernMemorySnapshotsFromFloor(id, order);
+    await trimTavernTaskSnapshotsFromFloor(id, order);
     await rebuildTavernMemoryDerivedIndex(id);
 }
 
-function memoryRollbackNoticeForFloor(floor: number): string {
+function acceptedStateRollbackNoticeForFloor(floor: number): string {
     const previousFloor = Math.max(0, floor - 1);
     const target = previousFloor > 0 ? `第 ${previousFloor} 楼后的状态` : '开局前状态';
-    return `会话记忆 state.md 和人物记忆会回滚到${target}。`;
+    return `会话记忆、人物记忆和事件线索会回滚到${target}。`;
 }
 
 async function saveEditMessage(message: TavernMessageRecord, options: { rerun?: boolean; content?: string } = {}) {
@@ -3069,7 +3071,7 @@ async function saveEditMessage(message: TavernMessageRecord, options: { rerun?: 
         return;
     }
     const floor = Math.max(1, Number(message.order) + 1);
-    if (!window.confirm(`保存第 ${floor} 楼的编辑？\n\n${memoryRollbackNoticeForFloor(floor)}`)) {return;}
+    if (!window.confirm(`保存第 ${floor} 楼的编辑？\n\n${acceptedStateRollbackNoticeForFloor(floor)}`)) {return;}
     const substitutedContent = await substituteEditedMessageContent(message, content);
     const regexedContent = await applyEditRegexToMessageContent(message, substitutedContent);
     const updated = await updateTavernMessage(message.sessionId, message.order, {
@@ -3078,7 +3080,7 @@ async function saveEditMessage(message: TavernMessageRecord, options: { rerun?: 
     });
     if (updated) {
         await cancelAndRollbackXbTavernManagersForMessageRange(message.sessionId, message.order);
-        await restoreMemoryStateBeforeMessage(message.sessionId, message.order);
+        await restoreAcceptedStateBeforeMessage(message.sessionId, message.order);
     }
     if (updated && selectedSessionId.value) {
         sessionMessages.value = await listTavernMessages(selectedSessionId.value);
@@ -3143,14 +3145,14 @@ async function deleteMessageTurn(message: TavernMessageRecord) {
     const ordersToDelete = findDeleteOrders(message);
     const floor = Math.max(1, Number(message.order) + 1);
     const confirmText = ordersToDelete.length > 1
-        ? `从第 ${floor} 楼开始删除后续剧情？将移除 ${ordersToDelete.length} 楼。\n\n${memoryRollbackNoticeForFloor(floor)}`
-        : `删除第 ${floor} 楼？\n\n${memoryRollbackNoticeForFloor(floor)}`;
+        ? `从第 ${floor} 楼开始删除后续剧情？将移除 ${ordersToDelete.length} 楼。\n\n${acceptedStateRollbackNoticeForFloor(floor)}`
+        : `删除第 ${floor} 楼？\n\n${acceptedStateRollbackNoticeForFloor(floor)}`;
     if (!window.confirm(confirmText)) {return;}
     const fromOrder = Math.min(...ordersToDelete);
     await cancelAndRollbackXbTavernManagersForMessageRange(message.sessionId, fromOrder);
     const deleted = await deleteTavernMessages(message.sessionId, ordersToDelete);
     if (deleted > 0) {
-        await restoreMemoryStateBeforeMessage(message.sessionId, fromOrder);
+        await restoreAcceptedStateBeforeMessage(message.sessionId, fromOrder);
     }
     if (selectedSessionId.value) {
         sessionMessages.value = await listTavernMessages(selectedSessionId.value);

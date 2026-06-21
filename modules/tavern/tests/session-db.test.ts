@@ -2469,6 +2469,50 @@ test('manager task snapshot rolls back failed event writes', async () => {
     assert.equal(run?.status, 'rolled_back');
 });
 
+test('manager rollback keeps memory conflict audit when task rollback also succeeds', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Manager rollback conflict audit' });
+    const userMessage = await appendTavernMessage(session.id, { role: 'user', content: '继续。' });
+    const assistantMessage = await appendTavernMessage(session.id, { role: 'assistant', content: '北门半开。' });
+    const run = await createTavernManagerRun({
+        sessionId: session.id,
+        trigger: 'after_turn',
+        turn: 1,
+        userOrder: userMessage.order,
+        assistantOrder: assistantMessage.order,
+        status: 'running',
+    });
+
+    const memoryWrite = await executeTavernMemoryTool(session.id, 'MemoryWrite', {
+        filePath: 'memory/state.md',
+        content: '# 会话记忆\n\n北门半开。',
+    }, { caller: 'auto', managerRunId: run.id });
+    assert.equal(memoryWrite.ok, true);
+
+    const taskWrite = await executeTavernTaskTool(session.id, 'TaskPatch', {
+        op: 'upsert-task',
+        taskId: 'rollback-audit-task',
+        fingerprint: 'rollback-audit-task',
+        horizon: '审计远景',
+        current: '审计当前',
+        doneWhen: '角色当场说出答案。',
+        hookForUser: '审计说明。',
+        hookForModel: '审计软句。',
+    }, { caller: 'auto', managerRunId: run.id, sourceAssistantOrder: 5 });
+    assert.equal(taskWrite.ok, true);
+
+    await writeTavernMemoryFile(session.id, 'memory/state.md', '# 会话记忆\n\n用户手动改过。', { source: 'manual' });
+    const rolledBack = await cancelAndRollbackXbTavernManagersForMessageRange(session.id, userMessage.order);
+
+    assert.deepEqual(rolledBack.conflicts, ['memory/state.md']);
+    assert.deepEqual(await listTavernTasks(session.id, { includeCompleted: true, includeAbandoned: true }), []);
+    const updatedRun = (await listTavernManagerRuns(session.id))[0];
+    assert.equal(updatedRun?.status, 'rolled_back');
+    assert.equal(updatedRun?.error, 'rollback_conflict:memory/state.md');
+});
+
 test('manager TaskPatch writes are counted in run summaries', async () => {
     await db.delete();
     await db.open();

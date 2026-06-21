@@ -11,6 +11,7 @@ import db, {
     tavernMemoryFilesTable,
     tavernMemorySnapshotsTable,
     tavernMemoryIndexesTable,
+    tavernManagerMemorySnapshotsTable,
     tavernMessagesTable,
     tavernSessionsTable,
     ensureTavernManagerMemorySnapshot,
@@ -945,15 +946,25 @@ export async function executeTavernMemoryTool(
             const pathInput = String(args.filePath || args.path || '');
             const path = validateWritableMemoryPath(pathInput);
             await options.beforeWriteGuard?.();
-            if (options.managerRunId) {
-                await ensureTavernManagerMemorySnapshot({ managerRunId: options.managerRunId, sessionId: id, path });
-            }
-            const file = await writeTavernMemoryFile(id, path, String(args.content || ''), {
-                source: 'manager',
-            });
-            if (options.managerRunId) {
-                await updateTavernManagerMemorySnapshotAfter({ managerRunId: options.managerRunId, sessionId: id, path: file.path });
-            }
+            const file = await db.transaction(
+                'rw',
+                tavernMemoryFilesTable,
+                tavernMemoryIndexesTable,
+                tavernManagerMemorySnapshotsTable,
+                tavernSessionsTable,
+                async () => {
+                    if (options.managerRunId) {
+                        await ensureTavernManagerMemorySnapshot({ managerRunId: options.managerRunId, sessionId: id, path });
+                    }
+                    const savedFile = await writeTavernMemoryFile(id, path, String(args.content || ''), {
+                        source: 'manager',
+                    });
+                    if (options.managerRunId) {
+                        await updateTavernManagerMemorySnapshotAfter({ managerRunId: options.managerRunId, sessionId: id, path: savedFile.path });
+                    }
+                    return savedFile;
+                },
+            ) as TavernMemoryFileRecord;
             const saved = await getTavernMemoryFile(id, file.path);
             if (!saved || saved.content !== file.content) {
                 return {
@@ -986,15 +997,24 @@ export async function executeTavernMemoryTool(
             const changed = result.content !== file.content;
             if (changed) {
                 await options.beforeWriteGuard?.();
-                if (options.managerRunId) {
-                    await ensureTavernManagerMemorySnapshot({ managerRunId: options.managerRunId, sessionId: id, path });
-                }
-                await writeTavernMemoryFile(id, path, result.content, {
-                    source: 'manager',
-                });
-                if (options.managerRunId) {
-                    await updateTavernManagerMemorySnapshotAfter({ managerRunId: options.managerRunId, sessionId: id, path });
-                }
+                await db.transaction(
+                    'rw',
+                    tavernMemoryFilesTable,
+                    tavernMemoryIndexesTable,
+                    tavernManagerMemorySnapshotsTable,
+                    tavernSessionsTable,
+                    async () => {
+                        if (options.managerRunId) {
+                            await ensureTavernManagerMemorySnapshot({ managerRunId: options.managerRunId, sessionId: id, path });
+                        }
+                        await writeTavernMemoryFile(id, path, result.content, {
+                            source: 'manager',
+                        });
+                        if (options.managerRunId) {
+                            await updateTavernManagerMemorySnapshotAfter({ managerRunId: options.managerRunId, sessionId: id, path });
+                        }
+                    },
+                );
                 const saved = await getTavernMemoryFile(id, path);
                 if (!saved || saved.content !== result.content) {
                     return {

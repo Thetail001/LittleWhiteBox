@@ -114,6 +114,17 @@ function hashText(value: unknown = ''): string {
     return `${text.length.toString(36)}:${left.toString(16)}${right.toString(16)}`;
 }
 
+function mergeTaskRollbackError(existing = '', conflicts: string[] = []): string {
+    const current = String(existing || '').trim();
+    if (!conflicts.length) {return current;}
+    const prefix = 'rollback_conflict:';
+    const currentConflicts = current.startsWith(prefix)
+        ? current.slice(prefix.length).split(',').map((item) => item.trim()).filter(Boolean)
+        : [];
+    const merged = [...new Set([...currentConflicts, ...conflicts])];
+    return `${prefix}${merged.join(',')}`;
+}
+
 async function taskPoolHash(sessionId = ''): Promise<string> {
     const [tasks, fingerprints] = await Promise.all([
         listTavernTasks(sessionId, { includeAbandoned: true, includeCompleted: true }),
@@ -342,6 +353,10 @@ export async function rollbackManagerRunTaskWrites(managerRunId = ''): Promise<{
             error: 'rollback_conflict_current_tasks_changed',
             updatedAt: now(),
         });
+        await tavernManagerRunsTable.update(runId, {
+            error: mergeTaskRollbackError(run.error, ['tasks']),
+            updatedAt: now(),
+        });
         return { rolledBack: 0, conflicts: ['tasks'], skipped: 0 };
     }
     await db.transaction('rw', tavernTasksTable, tavernTaskFingerprintStatesTable, tavernManagerTaskSnapshotsTable, tavernManagerRunsTable, async () => {
@@ -360,7 +375,6 @@ export async function rollbackManagerRunTaskWrites(managerRunId = ''): Promise<{
         });
         await tavernManagerRunsTable.update(runId, {
             status: 'rolled_back',
-            error: '',
             updatedAt: now(),
         });
     });
@@ -390,14 +404,16 @@ function summarizeTask(task: TavernTaskRecord): Pick<TavernTaskRecord, 'id' | 's
 
 async function runTaskMutation<T>(sessionId: string, options: TavernTaskPatchOptions, mutate: () => Promise<T>): Promise<T> {
     await options.beforeWriteGuard?.();
-    if (options.managerRunId) {
-        await ensureTavernManagerTaskSnapshot(options.managerRunId, sessionId);
-    }
-    const result = await mutate();
-    if (options.managerRunId) {
-        await updateTavernManagerTaskSnapshotAfter(options.managerRunId, sessionId);
-    }
-    return result;
+    return await db.transaction('rw', tavernTasksTable, tavernTaskFingerprintStatesTable, tavernManagerTaskSnapshotsTable, async () => {
+        if (options.managerRunId) {
+            await ensureTavernManagerTaskSnapshot(options.managerRunId, sessionId);
+        }
+        const result = await mutate();
+        if (options.managerRunId) {
+            await updateTavernManagerTaskSnapshotAfter(options.managerRunId, sessionId);
+        }
+        return result;
+    });
 }
 
 export async function executeTavernTaskTool(

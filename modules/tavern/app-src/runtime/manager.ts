@@ -442,14 +442,34 @@ async function rollbackManagerRunIfWroteMemory(managerRunId = ''): Promise<{
     if (!hasMemoryWrites && !hasTaskWrites) {
         return null;
     }
-    const [memoryResult, taskResult] = await Promise.all([
-        hasMemoryWrites ? rollbackManagerRunMemoryWrites(managerRunId) : Promise.resolve({ rolledBack: 0, conflicts: [], skipped: 0 }),
-        hasTaskWrites ? rollbackManagerRunTaskWrites(managerRunId) : Promise.resolve({ rolledBack: 0, conflicts: [], skipped: 0 }),
-    ]);
+    const memoryResult = hasMemoryWrites
+        ? await rollbackManagerRunMemoryWrites(managerRunId)
+        : { rolledBack: 0, conflicts: [], skipped: 0 };
+    const taskResult = hasTaskWrites
+        ? await rollbackManagerRunTaskWrites(managerRunId)
+        : { rolledBack: 0, conflicts: [], skipped: 0 };
+    const conflicts = [...memoryResult.conflicts, ...taskResult.conflicts];
+    const run = await updateTavernManagerRun(managerRunId, {});
+    if (run && conflicts.length) {
+        await updateTavernManagerRun(managerRunId, {
+            error: mergeRollbackRunError(run.error, conflicts),
+        });
+    }
     return {
         managerRun: await updateTavernManagerRun(managerRunId, {}),
-        conflicts: [...memoryResult.conflicts, ...taskResult.conflicts],
+        conflicts,
     };
+}
+
+function mergeRollbackRunError(existing = '', conflicts: string[] = []): string {
+    const current = String(existing || '').trim();
+    if (!conflicts.length) {return current;}
+    const prefix = 'rollback_conflict:';
+    const currentConflicts = current.startsWith(prefix)
+        ? current.slice(prefix.length).split(',').map((item) => item.trim()).filter(Boolean)
+        : [];
+    const merged = [...new Set([...currentConflicts, ...conflicts])];
+    return `${prefix}${merged.join(',')}`;
 }
 
 function throwIfManagerAborted(signal?: AbortSignal) {

@@ -490,6 +490,30 @@ test('tavern atlas only opens scene maps that actually exist', () => {
     assert.match(workspacePanelSource, /!!atlasDocument\.value\.activeLocationKey && !atlasActiveMapDocId\.value/);
 });
 
+test('tavern edit and delete roll back accepted memory and event state together', () => {
+    const appSource = readRepoFile('modules/tavern/app-src/App.vue');
+
+    assert.match(appSource, /restoreAcceptedStateBeforeMessage/);
+    assert.match(appSource, /restoreTavernMemoryToFloor\(id, order - 1\)/);
+    assert.match(appSource, /restoreTavernTasksToFloor\(id, order - 1\)/);
+    assert.match(appSource, /trimTavernMemorySnapshotsFromFloor\(id, order\)/);
+    assert.match(appSource, /trimTavernTaskSnapshotsFromFloor\(id, order\)/);
+    assert.match(appSource, /会话记忆、人物记忆和事件线索会回滚/);
+    assert.doesNotMatch(appSource, /restoreMemoryStateBeforeMessage|memoryRollbackNoticeForFloor/);
+});
+
+test('tavern data rollback helpers keep paired state writes inside transactions', () => {
+    const acceptedStateSource = readRepoFile('modules/tavern/shared/accepted-state.ts');
+    const taskSource = readRepoFile('modules/tavern/shared/tasks.ts');
+    const memorySource = readRepoFile('modules/tavern/shared/memory-files.ts');
+
+    assert.match(acceptedStateSource, /db\.transaction\(\s*'rw'[\s\S]*saveTavernMemorySnapshot\(id, floor\)[\s\S]*saveTavernTaskSnapshot\(id, floor\)/);
+    assert.match(taskSource, /db\.transaction\('rw', tavernTasksTable, tavernTaskFingerprintStatesTable, tavernManagerTaskSnapshotsTable/);
+    assert.match(taskSource, /ensureTavernManagerTaskSnapshot\(options\.managerRunId, sessionId\)[\s\S]*const result = await mutate\(\)[\s\S]*updateTavernManagerTaskSnapshotAfter\(options\.managerRunId, sessionId\)/);
+    assert.match(memorySource, /db\.transaction\(\s*'rw'[\s\S]*ensureTavernManagerMemorySnapshot\(\{ managerRunId: options\.managerRunId, sessionId: id, path \}\)[\s\S]*writeTavernMemoryFile\(id, path/);
+    assert.match(memorySource, /updateTavernManagerMemorySnapshotAfter\(\{ managerRunId: options\.managerRunId, sessionId: id, path/);
+});
+
 test('tavern UI context is grouped by page responsibility instead of one flat bag', () => {
     const contextSource = readRepoFile('modules/tavern/app-src/components/tavern-app-context.ts');
     const appSource = readRepoFile('modules/tavern/app-src/App.vue');
