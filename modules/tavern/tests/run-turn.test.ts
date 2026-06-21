@@ -39,6 +39,7 @@ import {
 import {
     buildContextHistory,
     buildTavernRequestSnapshot,
+    loadTavernPromptHistoryWindow,
     resolveTavernContextWindow,
     runTavernOnce,
     runXbTavernTurn,
@@ -118,7 +119,6 @@ test('xb tavern run turn saves user and assistant messages and updates session s
     assert.equal(Object.keys(session?.state?.worldEntryStates || {}).some((key) => key.includes('sticky-entry')), true);
     assert.equal(session?.state?.lastProvider, 'fake-provider');
 });
-
 test('xb tavern provider requests trim only the last assistant message content end', () => {
     type ProviderMessage = Parameters<typeof trimFinalAssistantMessageEnd>[0][number];
     const cases: Array<{
@@ -372,9 +372,9 @@ test('xb tavern run turn sends only the latest quest hook first to ST-native mem
             }),
         },
     });
-    await executeTavernTaskTool(session.id, 'TaskPatch', {
-        op: 'upsert-task',
-        taskId: 'old-hook',
+    await executeTavernTaskTool(session.id, 'EventPatch', {
+        op: 'upsert-event',
+        eventId: 'old-hook',
         fingerprint: 'old-hook',
         horizon: '旧线索远景',
         current: '旧线索当前',
@@ -382,9 +382,9 @@ test('xb tavern run turn sends only the latest quest hook first to ST-native mem
         hookForUser: '旧线索说明。',
         hookForModel: '旧码头的名字还挂在雨里。',
     }, { sourceAssistantOrder: 5 });
-    await executeTavernTaskTool(session.id, 'TaskPatch', {
-        op: 'upsert-task',
-        taskId: 'latest-hook',
+    await executeTavernTaskTool(session.id, 'EventPatch', {
+        op: 'upsert-event',
+        eventId: 'latest-hook',
         fingerprint: 'latest-hook',
         horizon: '最新线索远景',
         current: '最新线索当前',
@@ -424,6 +424,10 @@ test('xb tavern run turn sends only the latest quest hook first to ST-native mem
 test('xb tavern run turn continues and records diagnostics when manager settle times out', async () => {
     await resetDb();
     const preset = createDefaultXbTavernPreset();
+    const managerContract = mergeTavernSessionContract(undefined, {
+        memoryArchiving: true,
+        questOrchestration: true,
+    });
     const session = await createTavernSession({
         title: 'Manager settle timeout',
         characterId: 'char-timeout',
@@ -432,10 +436,7 @@ test('xb tavern run turn continues and records diagnostics when manager settle t
             character: { id: 'char-timeout', name: 'Aster', description: 'Pilot.' },
         },
         state: {
-            contract: mergeTavernSessionContract(undefined, {
-                memoryArchiving: true,
-                questOrchestration: true,
-            }),
+            contract: managerContract,
         },
     });
     for (let index = 0; index < 5; index += 1) {
@@ -466,6 +467,7 @@ test('xb tavern run turn continues and records diagnostics when manager settle t
         userMessage,
         assistantMessage,
         turn: 1,
+        sessionContract: managerContract,
         awaitCompletion: false,
         executeManagerOnce: async () => {
             markManagerStarted();
@@ -476,17 +478,17 @@ test('xb tavern run turn continues and records diagnostics when manager settle t
                 model: 'fake-model',
                 toolCalls: [{
                     id: 'late-memory',
-                    name: 'MemoryWrite',
+                    name: 'Write',
                     arguments: {
                         filePath: 'memory/state.md',
                         content: '# 会话记忆\n\n这条超时后台写入不能落库。',
                     },
                 }, {
                     id: 'late-task',
-                    name: 'TaskPatch',
+                    name: 'EventPatch',
                     arguments: {
-                        op: 'upsert-task',
-                        taskId: 'late-task',
+                        op: 'upsert-event',
+                        eventId: 'late-task',
                         fingerprint: 'late-task',
                         horizon: '超时后台远景',
                         current: '超时后台入口',
@@ -496,7 +498,7 @@ test('xb tavern run turn continues and records diagnostics when manager settle t
                     },
                 }, {
                     id: 'late-state',
-                    name: 'StatePatch',
+                    name: 'MapPatch',
                     arguments: {
                         docType: 'tavern.map',
                         docId: 'late-map',
@@ -533,16 +535,46 @@ test('xb tavern run turn continues and records diagnostics when manager settle t
     await scheduled.completion;
     assert.equal(result.error, undefined);
     assert.equal(result.assistantMessage?.content, 'RP turn continued.');
-    const diagnostics = result.buildSnapshot.diagnostics as { managerSettleTimedOut?: boolean; managerSettleTimeoutMs?: number } | undefined;
+    const diagnostics = result.buildSnapshot.diagnostics as {
+        managerSettleTimedOut?: boolean;
+        managerSettleTimeoutMs?: number;
+        managerSettleAbortedRunIds?: string[];
+    } | undefined;
     assert.equal(diagnostics?.managerSettleTimedOut, true);
     assert.equal(diagnostics?.managerSettleTimeoutMs, 5);
+    assert.deepEqual(diagnostics?.managerSettleAbortedRunIds, [scheduled.managerRunId]);
+
+    const nextScheduled = await scheduleXbTavernManagerAfterTurn({
+        sessionId: session.id,
+        agentConfig: { provider: 'fake-provider', model: 'fake-model' },
+        userMessage: result.userMessage,
+        assistantMessage: result.assistantMessage!,
+        turn: 2,
+        sessionContract: managerContract,
+        awaitCompletion: false,
+        executeManagerOnce: async () => {
+            return {
+                text: 'new manager started',
+                provider: 'fake-provider',
+                model: 'fake-model',
+                toolCalls: [],
+            };
+        },
+    });
+    const nextStartResult = await Promise.race([
+        nextScheduled.completion.then(() => 'completed' as const),
+        new Promise<'blocked'>((resolve) => setTimeout(() => resolve('blocked'), 50)),
+    ]);
+    assert.equal(nextStartResult, 'completed');
+    await nextScheduled.completion;
+
     assert.doesNotMatch((await getTavernMemoryFile(session.id, 'memory/state.md'))?.content || '', /超时后台写入不能落库/);
-    const taskResult = await executeTavernTaskTool(session.id, 'TaskPatch', {
-        op: 'complete-task',
-        taskId: 'late-task',
+    const taskResult = await executeTavernTaskTool(session.id, 'EventPatch', {
+        op: 'complete-event',
+        eventId: 'late-task',
     });
     assert.equal(taskResult.error, 'task_not_found');
-    const stateResult = await executeTavernStateTool(session.id, 'StateRead', {
+    const stateResult = await executeTavernStateTool(session.id, 'MapInspect', {
         docType: 'tavern.map',
         docId: 'late-map',
         mode: 'document',
@@ -550,8 +582,8 @@ test('xb tavern run turn continues and records diagnostics when manager settle t
     assert.equal(stateResult.error, 'state_document_not_found');
     const runs = await listTavernManagerRuns(session.id);
     const staleRun = runs.find((run) => run.id === scheduled.managerRunId);
-    assert.equal(staleRun?.status, 'superseded');
-    assert.equal(staleRun?.error, 'manager_epoch_expired');
+    assert.equal(staleRun?.status, 'cancelled');
+    assert.match(String(staleRun?.error || ''), /manager_(?:settle_timeout|aborted)/);
 });
 
 test('xb tavern session author note reaches native prompt for real and simulated requests', async () => {
@@ -1759,7 +1791,7 @@ test('xb tavern run turn can trigger manager summary with delegate config', asyn
                     text: '',
                     toolCalls: [{
                         id: 'write-state',
-                        name: 'MemoryWrite',
+                        name: 'Write',
                         arguments: {
                             filePath: 'memory/state.md',
                             content: [
@@ -1798,19 +1830,19 @@ test('xb tavern run turn can trigger manager summary with delegate config', asyn
     assert.match(managerPrompt, /## Work Loop/);
     assert.match(managerPrompt, /## Selection Strategy/);
     assert.match(managerPrompt, /## Tool Use Guide/);
-    assert.match(managerPrompt, /## Structured State/);
+    assert.match(managerPrompt, /## Map Records/);
     assert.match(managerPrompt, /memory\/state\.md/);
     assert.match(managerPrompt, /assistant reply makes a fact or state actually established/i);
     assert.doesNotMatch(managerPrompt, /建议流水路径/);
     assert.doesNotMatch(managerPrompt, /suggested turn note/i);
-    assert.match(managerPrompt, /Spatial state has two layers/i);
+    assert.match(managerPrompt, /Spatial records have two layers/i);
     assert.match(managerPrompt, /`tavern\.atlas\/main` is the single world index/i);
     assert.match(managerPrompt, /local scene map for one stable place/i);
     assert.match(managerPrompt, /Do not move the atlas player for small movement inside the same current place/i);
     assert.match(managerPrompt, /Map `activate:true` only switches or maintains the map tool/i);
-    assert.match(managerPrompt, /Before scene switches, use StateList/i);
+    assert.match(managerPrompt, /Before scene switches, use MapDocs/i);
     assert.match(managerPrompt, /for atlas use locations\/location\/links\/actors/i);
-    assert.match(managerPrompt, /Read StateRead summary first for the candidate doc, inspect `meta\.status` and `meta\.hint`/i);
+    assert.match(managerPrompt, /Read MapInspect summary first for the candidate doc, inspect `meta\.status` and `meta\.hint`/i);
     assert.match(managerPrompt, /If the chosen scene-map doc is still `uninitialized`/i);
     assert.match(managerPrompt, /one `meta \+ add` transaction/i);
     assert.match(managerPrompt, /Only update atlas when a place is confirmed/i);
@@ -1827,7 +1859,7 @@ test('xb tavern run turn can trigger manager summary with delegate config', asyn
     assert.match(managerPrompt, /enough geometry to carry the map body/i);
     assert.match(managerPrompt, /Reply with a short, clear, user-facing operation summary/i);
     assert.doesNotMatch(managerPrompt, /电纸书|ebook file-operation/i);
-    assert.match(managerPrompt, /Use MemoryGrep to ask whether a fact is already in memory/i);
+    assert.match(managerPrompt, /Use Grep with `path:.*memory\/.*` to ask whether a fact is already in memory/i);
     assert.doesNotMatch(managerPrompt, /可派生格式/);
     assert.doesNotMatch(managerPrompt, /messages userOrder\/assistantOrder/);
     assert.doesNotMatch(managerPrompt, /ChatHistory recent 读取最新消息/);
@@ -1844,11 +1876,12 @@ test('tavern manager prompt strips unauthorized module rules cleanly', () => {
         includeMemory: true,
         includeCartography: false,
     });
-    assert.match(memoryOnly, /MemoryWrite/);
+    assert.match(memoryOnly, /Edit and Write save memory changes/);
     assert.match(memoryOnly, /Maintain the current session's global long-term memory in `memory\/state\.md`/);
     assert.match(memoryOnly, /Maintain current-session character long-term memory in `memory\/characters\/<角色名>\.md`/);
     assert.match(memoryOnly, /user-editable preset only defines the file's internal format, content scope, and selection rules/);
     assert.doesNotMatch(memoryOnly, /## Structured State/);
+    assert.doesNotMatch(memoryOnly, /## Map Records/);
     assert.doesNotMatch(memoryOnly, /StateRead/);
     assert.doesNotMatch(memoryOnly, /inspect or change the map/i);
     assert.doesNotMatch(memoryOnly, /spatial relation view/i);
@@ -1858,8 +1891,8 @@ test('tavern manager prompt strips unauthorized module rules cleanly', () => {
         includeMemory: false,
         includeCartography: true,
     });
-    assert.match(mapOnly, /## Structured State/);
-    assert.match(mapOnly, /StateRead summary/);
+    assert.match(mapOnly, /## Map Records/);
+    assert.match(mapOnly, /MapInspect summary/);
     assert.doesNotMatch(mapOnly, /MemoryWrite/);
     assert.doesNotMatch(mapOnly, /memory\/session\.md/);
     assert.doesNotMatch(mapOnly, /校正记忆/);
@@ -1881,6 +1914,7 @@ test('tavern manager prompt strips unauthorized module rules cleanly', () => {
     assert.match(questOnly, /Bad examples: "莉娜似乎在刻意避开某个码头名字。"/i);
     assert.doesNotMatch(questOnly, /MemoryWrite/);
     assert.doesNotMatch(questOnly, /## Structured State/);
+    assert.doesNotMatch(questOnly, /## Map Records/);
 });
 
 test('xb tavern run turn retrieves relevant old memory beyond recent summaries', async () => {
@@ -3101,7 +3135,7 @@ test('xb tavern simulated request injects only the active map digest without ful
         presetId: preset.id,
         presetName: preset.name,
     });
-    await executeTavernStateTool(session.id, 'StatePatch', {
+    await executeTavernStateTool(session.id, 'MapPatch', {
         ops: [{
             op: 'init',
             document: {
@@ -3113,7 +3147,7 @@ test('xb tavern simulated request injects only the active map digest without ful
             },
         }],
     });
-    await executeTavernStateTool(session.id, 'StatePatch', {
+    await executeTavernStateTool(session.id, 'MapPatch', {
         docId: 'office',
         activate: true,
         ops: [{
@@ -3170,7 +3204,7 @@ test('xb tavern simulated request falls back to main map digest when active map 
         presetId: preset.id,
         presetName: preset.name,
     });
-    await executeTavernStateTool(session.id, 'StatePatch', {
+    await executeTavernStateTool(session.id, 'MapPatch', {
         docId: 'main',
         ops: [{
             op: 'meta',
@@ -3180,7 +3214,7 @@ test('xb tavern simulated request falls back to main map digest when active map 
             element: { id: 'square', at: [40, 40], rect: [90, 90], cat: 'terrain', text: 'Square' },
         }],
     });
-    await executeTavernStateTool(session.id, 'StatePatch', {
+    await executeTavernStateTool(session.id, 'MapPatch', {
         docId: 'office',
         activate: true,
         ops: [{
@@ -3239,7 +3273,7 @@ test('xb tavern simulated request injects only memory files when cartography is 
         },
     });
     await writeTavernMemoryFile(session.id, 'memory/state.md', '# 会话记忆\n\nSECRET_MEMORY_NOTE', { source: 'user' });
-    await executeTavernStateTool(session.id, 'StatePatch', {
+    await executeTavernStateTool(session.id, 'MapPatch', {
         ops: [{
             op: 'meta',
             set: {
@@ -3298,7 +3332,7 @@ test('xb tavern simulated request injects only structured state when memory arch
         },
     });
     await writeTavernMemoryFile(session.id, 'memory/state.md', '# 会话记忆\n\nSECRET_MEMORY_NOTE', { source: 'user' });
-    await executeTavernStateTool(session.id, 'StatePatch', {
+    await executeTavernStateTool(session.id, 'MapPatch', {
         ops: [{
             op: 'meta',
             set: {
@@ -4231,6 +4265,13 @@ test('xb tavern context window recovers from tail deletion using the remaining f
     });
     assert.equal(tinyHistory.contextWindowStartOrder, 0);
     assert.deepEqual(tinyHistory.historyMessages.map((message) => message.order), [0, 1, 2, 3]);
+
+    const beyondTail = resolveTavernContextWindow({
+        messages: Array.from({ length: 30 }, (_, index) => makeContextWindowMessage(index, index % 2 ? 'assistant' : 'user')),
+        contextWindowStartOrder: 999,
+    });
+    assert.equal(beyondTail.contextWindowStartOrder, 20);
+    assert.deepEqual(beyondTail.historyMessages.map((message) => message.order), [20, 21, 22, 23, 24, 25, 26, 27, 28, 29]);
 });
 
 test('xb tavern context window resets stale start order while under the max API window', () => {
@@ -4243,6 +4284,113 @@ test('xb tavern context window resets stale start order while under the max API 
     assert.deepEqual(sixTurnHistory.historyMessages.map((message) => message.order), [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
     assert.equal(sixTurnHistory.windowHistoryCount, 12);
     assert.equal(sixTurnHistory.currentUserCount, 1);
+});
+
+test('xb tavern prompt history loader matches full context window resolution from the DB tail', async () => {
+    await resetDb();
+    const session = await createTavernSession({ title: 'Prompt history window' });
+    for (let index = 0; index < 36; index += 1) {
+        await appendTavernMessage(session.id, {
+            role: index % 2 ? 'assistant' : 'user',
+            content: `stored-${index}`,
+        });
+    }
+    await appendTavernMessage(session.id, {
+        role: 'assistant',
+        content: '',
+        error: true,
+    });
+
+    const fullMessages = await listTavernMessages(session.id);
+    const expected = resolveTavernContextWindow({
+        messages: fullMessages,
+        contextWindowStartOrder: 11,
+        currentUserMessage: 'fresh-user',
+    });
+    const loaded = await loadTavernPromptHistoryWindow({
+        sessionId: session.id,
+        contextWindowStartOrder: 11,
+        currentUserMessage: 'fresh-user',
+    });
+
+    assert.equal(loaded.contextWindowStartOrder, expected.contextWindowStartOrder);
+    assert.deepEqual(loaded.historyMessages.map((message) => message.order), expected.historyMessages.map((message) => message.order));
+    assert.equal(loaded.historyMessages.at(-1)?.content, '');
+
+    const beforeExpected = resolveTavernContextWindow({
+        messages: fullMessages.filter((message) => message.order < 24),
+        contextWindowStartOrder: 0,
+        currentUserMessage: 'rerun-user',
+    });
+    const beforeLoaded = await loadTavernPromptHistoryWindow({
+        sessionId: session.id,
+        contextWindowStartOrder: 0,
+        currentUserMessage: 'rerun-user',
+        beforeOrder: 24,
+    });
+
+    assert.deepEqual(beforeLoaded.historyMessages.map((message) => message.order), beforeExpected.historyMessages.map((message) => message.order));
+
+    const firstOrderLoaded = await loadTavernPromptHistoryWindow({
+        sessionId: session.id,
+        contextWindowStartOrder: 0,
+        currentUserMessage: 'first-user',
+        beforeOrder: 0,
+    });
+    assert.deepEqual(firstOrderLoaded.historyMessages.map((message) => message.order), []);
+    assert.equal(firstOrderLoaded.currentUserCount, 1);
+});
+
+test('xb tavern prompt history loader recovers stale start orders by loading earlier history', async () => {
+    await resetDb();
+    const session = await createTavernSession({ title: 'Stale prompt history window' });
+    for (let index = 0; index < 12; index += 1) {
+        await appendTavernMessage(session.id, {
+            role: index % 2 ? 'assistant' : 'user',
+            content: `stale-${index}`,
+        });
+    }
+
+    const fullMessages = await listTavernMessages(session.id);
+    const expected = resolveTavernContextWindow({
+        messages: fullMessages,
+        contextWindowStartOrder: 10,
+        currentUserMessage: 'fresh-after-delete',
+    });
+    const nearTailLoaded = await loadTavernPromptHistoryWindow({
+        sessionId: session.id,
+        contextWindowStartOrder: 10,
+        currentUserMessage: 'fresh-after-delete',
+    });
+    const beyondTailLoaded = await loadTavernPromptHistoryWindow({
+        sessionId: session.id,
+        contextWindowStartOrder: 999,
+        currentUserMessage: 'fresh-after-delete',
+    });
+
+    assert.equal(expected.contextWindowStartOrder, 0);
+    assert.deepEqual(nearTailLoaded.historyMessages.map((message) => message.order), expected.historyMessages.map((message) => message.order));
+    assert.deepEqual(beyondTailLoaded.historyMessages.map((message) => message.order), expected.historyMessages.map((message) => message.order));
+
+    const longSession = await createTavernSession({ title: 'Long stale prompt history window' });
+    for (let index = 0; index < 36; index += 1) {
+        await appendTavernMessage(longSession.id, {
+            role: index % 2 ? 'assistant' : 'user',
+            content: `long-stale-${index}`,
+        });
+    }
+    const longFullMessages = await listTavernMessages(longSession.id);
+    const longExpected = resolveTavernContextWindow({
+        messages: longFullMessages,
+        contextWindowStartOrder: 999,
+        currentUserMessage: 'fresh-after-long-delete',
+    });
+    const longLoaded = await loadTavernPromptHistoryWindow({
+        sessionId: longSession.id,
+        contextWindowStartOrder: 999,
+        currentUserMessage: 'fresh-after-long-delete',
+    });
+    assert.deepEqual(longLoaded.historyMessages.map((message) => message.order), longExpected.historyMessages.map((message) => message.order));
 });
 
 test('xb tavern run turn trims only API history and keeps stored messages intact', async () => {

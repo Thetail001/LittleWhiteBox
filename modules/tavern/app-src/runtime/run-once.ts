@@ -33,8 +33,13 @@ import {
     appendTavernMessage,
     createTavernSession,
     deleteTavernMessages,
+    getTavernMessage,
     getTavernSession,
-    listTavernMessages,
+    listLatestTavernMessagesWithCount,
+    listLatestTavernUserMessagesBefore,
+    listTavernMessageOrdersFrom,
+    listTavernMessagesInRange,
+    listTavernMessagesInRangeWithCount,
     mergeWorldEntryStates,
     normalizeTavernSessionState,
     replaceTavernSessionState,
@@ -104,6 +109,7 @@ import {
     cancelAndRollbackXbTavernManagersForMessageRange,
     scheduleXbTavernManagerAfterTurn,
     settleTavernManagersForSession,
+    TAVERN_MANAGER_SETTLE_TIMEOUT_MS,
     type XbTavernManagerOnceOptions,
     type XbTavernManagerOnceResult,
 } from './manager';
@@ -194,6 +200,113 @@ export function resolveTavernContextWindow(input: {
         windowHistoryCount: windowUsableMessages.length,
         currentUserCount,
     };
+}
+
+async function listAllTavernMessagesInRangePaged(
+    sessionId = '',
+    startOrder = 0,
+    endOrder = Number.POSITIVE_INFINITY,
+): Promise<TavernMessageRecord[]> {
+    const pageSize = 1000;
+    const messages: TavernMessageRecord[] = [];
+    let offset = 0;
+    while (true) {
+        const page = await listTavernMessagesInRange(sessionId, startOrder, endOrder, pageSize, offset);
+        messages.push(...page);
+        if (page.length < pageSize) {break;}
+        offset += pageSize;
+    }
+    return messages;
+}
+
+function countUsableContextWindowMessages(messages: TavernMessageRecord[]) {
+    return messages.filter(isUsableContextWindowMessage).length;
+}
+
+export async function loadTavernPromptHistoryWindow(input: {
+    sessionId: string;
+    contextWindowStartOrder?: unknown;
+    currentUserMessage?: string;
+    beforeOrder?: number;
+}): Promise<TavernContextWindowResolution> {
+    const sessionId = String(input.sessionId || '').trim();
+    if (!sessionId) {
+        return resolveTavernContextWindow({
+            messages: [],
+            contextWindowStartOrder: input.contextWindowStartOrder,
+            currentUserMessage: input.currentUserMessage,
+        });
+    }
+    const finiteBefore = Number.isFinite(Number(input.beforeOrder));
+    const beforeOrder = finiteBefore ? Math.floor(Number(input.beforeOrder) || 0) : Number.POSITIVE_INFINITY;
+    if (finiteBefore && beforeOrder <= 0) {
+        return resolveTavernContextWindow({
+            messages: [],
+            contextWindowStartOrder: input.contextWindowStartOrder,
+            currentUserMessage: input.currentUserMessage,
+        });
+    }
+    const endOrder = finiteBefore ? beforeOrder - 1 : Number.POSITIVE_INFINITY;
+    const startOrder = Math.max(0, Math.floor(Number(input.contextWindowStartOrder) || 0));
+    const currentUserCount = hasUsableCurrentUserMessage(input.currentUserMessage || '') ? 1 : 0;
+    const targetUsable = Math.max(TAVERN_CONTEXT_WINDOW_MAX, TAVERN_CONTEXT_WINDOW_RETAIN + currentUserCount);
+    const pageSize = Math.max(TAVERN_CONTEXT_WINDOW_MAX * 3, 60);
+
+    if (startOrder > 0) {
+        const range = await listTavernMessagesInRangeWithCount(sessionId, startOrder, endOrder, pageSize, 0);
+        if (range.total <= pageSize) {
+            const resolved = resolveTavernContextWindow({
+                messages: range.messages,
+                contextWindowStartOrder: startOrder,
+                currentUserMessage: input.currentUserMessage,
+            });
+            if (resolved.contextWindowStartOrder >= startOrder) {
+                return resolved;
+            }
+        }
+    }
+
+    const collected = new Map<number, TavernMessageRecord>();
+    let offset = 0;
+    let finiteRangeTotal: number | null = null;
+    let finiteRangeLoadedFromEnd = 0;
+    let total = 0;
+    while (true) {
+        let page: { messages: TavernMessageRecord[]; total: number };
+        if (finiteBefore) {
+            if (finiteRangeTotal === null) {
+                const probe = await listTavernMessagesInRangeWithCount(sessionId, 0, endOrder, 1, 0);
+                finiteRangeTotal = probe.total;
+            }
+            const remaining = Math.max(0, finiteRangeTotal - finiteRangeLoadedFromEnd);
+            const limit = Math.min(pageSize, remaining);
+            const offsetFromStart = Math.max(0, finiteRangeTotal - finiteRangeLoadedFromEnd - limit);
+            page = limit > 0
+                ? await listTavernMessagesInRangeWithCount(sessionId, 0, endOrder, limit, offsetFromStart)
+                : { messages: [], total: finiteRangeTotal };
+            finiteRangeLoadedFromEnd += page.messages.length;
+        } else {
+            page = await listLatestTavernMessagesWithCount(sessionId, pageSize, offset);
+            offset += pageSize;
+        }
+        total = page.total;
+        page.messages.forEach((message) => collected.set(message.order, message));
+        const messages = [...collected.values()].sort((left, right) => left.order - right.order);
+        if (messages.length >= total || countUsableContextWindowMessages(messages) >= targetUsable) {
+            return resolveTavernContextWindow({
+                messages,
+                contextWindowStartOrder: startOrder,
+                currentUserMessage: input.currentUserMessage,
+            });
+        }
+        if (!page.messages.length) {
+            return resolveTavernContextWindow({
+                messages,
+                contextWindowStartOrder: startOrder,
+                currentUserMessage: input.currentUserMessage,
+            });
+        }
+    }
 }
 
 function isRandomEncounterCooldownActive(messages: TavernMessageRecord[] = []): boolean {
@@ -443,6 +556,7 @@ export interface TavernDiagnostics {
     worldbookErrors?: Array<{ name: string; error: string }>;
     managerSettleTimedOut?: boolean;
     managerSettleTimeoutMs?: number;
+    managerSettleAbortedRunIds?: string[];
 }
 
 export type TavernGetNativeWorldInfoRuntime = (input: {
@@ -1147,6 +1261,39 @@ function mergeBuildWorldEntryStateUpdates(
         : updates;
 }
 
+function normalizeRequestSnapshotMessages(messages: XbTavernMessage[] = []): XbTavernMessage[] {
+    return (Array.isArray(messages) ? messages : []).map((message) => {
+        const normalized: XbTavernMessage = {
+            role: message.role,
+            content: String(message.content || ''),
+        };
+        if (message.name) {normalized.name = String(message.name);}
+        if (Array.isArray(message.tool_calls) && message.tool_calls.length) {
+            normalized.tool_calls = message.tool_calls.map((toolCall) => ({
+                ...(toolCall.id ? { id: String(toolCall.id) } : {}),
+                ...(toolCall.type ? { type: String(toolCall.type) } : {}),
+                ...(toolCall.function ? {
+                    function: {
+                        name: String(toolCall.function.name || ''),
+                        arguments: String(toolCall.function.arguments || ''),
+                    },
+                } : {}),
+            }));
+        }
+        if (Array.isArray(message.toolCalls) && message.toolCalls.length) {
+            normalized.toolCalls = message.toolCalls.map((toolCall) => ({
+                ...(toolCall.id ? { id: String(toolCall.id) } : {}),
+                name: String(toolCall.name || ''),
+                arguments: String(toolCall.arguments || ''),
+            }));
+        }
+        if (message.tool_call_id) {normalized.tool_call_id = String(message.tool_call_id);}
+        if (message.toolCallId) {normalized.toolCallId = String(message.toolCallId);}
+        if (message.toolName) {normalized.toolName = String(message.toolName);}
+        return normalized;
+    });
+}
+
 export function buildTavernRequestSnapshot(
     agentConfig: Record<string, unknown> = {},
     messages: XbTavernMessage[] = [],
@@ -1160,13 +1307,15 @@ export function buildTavernRequestSnapshot(
     const providerConfig = resolveXbTavernProviderConfig(agentConfig);
     const requestInspection = override.requestInspection || null;
     const chatPresetName = String(override.chatPreset?.name || '').trim();
-    const rawMessagesJson = JSON.stringify(messages, null, 2);
+    const snapshotMessages = normalizeRequestSnapshotMessages(messages);
+    const rawMessagesJson = JSON.stringify(snapshotMessages, null, 2);
     const requestForJson = requestInspection || {
         provider: String(override.provider || providerConfig.provider || ''),
         model: String(override.model || providerConfig.model || ''),
         transport: 'unavailable',
-        request: override.requestTask || { messages },
+        request: override.requestTask || { messages: snapshotMessages },
     };
+    const rawRequestJson = JSON.stringify(requestForJson, null, 2);
     return {
         presetName: chatPresetName || providerConfig.currentPresetName,
         chatPresetName,
@@ -1175,10 +1324,10 @@ export function buildTavernRequestSnapshot(
         providerLabel: providerConfig.providerLabel,
         model: String(override.model || providerConfig.model || ''),
         toolMode: providerConfig.toolMode,
-        messageCount: messages.length,
-        messageChars: messages.reduce((sum, message) => sum + String(message.content || '').length, 0),
+        messageCount: snapshotMessages.length,
+        messageChars: snapshotMessages.reduce((sum, message) => sum + String(message.content || '').length, 0),
         rawMessagesJson,
-        rawRequestJson: JSON.stringify(requestForJson, null, 2),
+        rawRequestJson,
         requestKind: override.requestKind || 'actual',
         capturedAt: Date.now(),
         ...(hasRegexApplications(override.regexApplications) ? { regexApplications: override.regexApplications } : {}),
@@ -1535,7 +1684,6 @@ async function runTavernOnceWithAdapter(
 export async function simulateXbTavernRequest(input: XbTavernSimulateRequestInput): Promise<XbTavernSimulateRequestResult> {
     const chatPreset = resolveInputChatPreset(input);
     const session = input.sessionId ? await getTavernSession(input.sessionId) : null;
-    const sessionMessages = session ? await listTavernMessages(session.id) : [];
     const liveContext = resolveSessionContext(session, input.contextSnapshot);
     assertUsableTavernContext(liveContext);
     const sessionState = normalizeTavernSessionState(session?.state || input.runtimeState || {});
@@ -1559,8 +1707,8 @@ export async function simulateXbTavernRequest(input: XbTavernSimulateRequestInpu
     }));
     const currentUserMessage = stripTavernImageMarkers(storedUserMessage);
     const contextWindow = session
-        ? resolveTavernContextWindow({
-            messages: sessionMessages,
+        ? await loadTavernPromptHistoryWindow({
+            sessionId: session.id,
             contextWindowStartOrder: sessionState.contextWindowStartOrder,
             currentUserMessage,
         })
@@ -1889,13 +2037,13 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
         assertUsableTavernContext(input.contextSnapshot || {});
     }
     const baseSession = await ensureRunSession(input);
-    let sessionMessages = await listTavernMessages(baseSession.id);
     const liveContext = resolveSessionContext(baseSession, input.contextSnapshot);
     assertUsableTavernContext(liveContext);
     const reusedOrder = Number(input.reuseUserMessageOrder);
-    const reusedUserMessage = Number.isInteger(reusedOrder) && reusedOrder >= 0
-        ? sessionMessages.find((message) => message.order === reusedOrder && message.role === 'user' && !message.error) || null
+    const reusedCandidate = Number.isInteger(reusedOrder) && reusedOrder >= 0
+        ? await getTavernMessage(baseSession.id, reusedOrder)
         : null;
+    const reusedUserMessage = reusedCandidate?.role === 'user' && !reusedCandidate.error ? reusedCandidate : null;
     if (reusedUserMessage) {
         const changedOrder = reusedUserMessage.order + 1;
         await cancelAndRollbackXbTavernManagersForMessageRange(baseSession.id, changedOrder);
@@ -1904,33 +2052,30 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
         await trimTavernMemorySnapshotsFromFloor(baseSession.id, changedOrder);
         await trimTavernTaskSnapshotsFromFloor(baseSession.id, changedOrder);
         await rebuildTavernMemoryDerivedIndex(baseSession.id);
-        await deleteTavernMessages(
-            baseSession.id,
-            sessionMessages
-                .filter((message) => message.order > reusedUserMessage.order)
-                .map((message) => message.order),
-        );
-        sessionMessages = await listTavernMessages(baseSession.id);
+        await deleteTavernMessages(baseSession.id, await listTavernMessageOrdersFrom(baseSession.id, changedOrder));
     }
     const turnDiagnostics: TavernDiagnostics = {
         ...(input.diagnostics || {}),
     };
     if (!reusedUserMessage) {
-        const managerSettleTimeoutMs = Math.max(1, Math.floor(Number(input.managerSettleTimeoutMs) || 8000));
+        const managerSettleTimeoutMs = Math.max(1, Math.floor(Number(input.managerSettleTimeoutMs) || TAVERN_MANAGER_SETTLE_TIMEOUT_MS));
         const managerSettle = await settleTavernManagersForSession(baseSession.id, managerSettleTimeoutMs);
         if (managerSettle.timedOut) {
             turnDiagnostics.managerSettleTimedOut = true;
             turnDiagnostics.managerSettleTimeoutMs = managerSettleTimeoutMs;
+            if (managerSettle.abortedRunIds?.length) {
+                turnDiagnostics.managerSettleAbortedRunIds = managerSettle.abortedRunIds;
+            }
         }
         await saveAcceptedStateSnapshot(baseSession.id);
     }
-    const historyMessages = reusedUserMessage
-        ? sessionMessages.filter((message) => message.order < reusedUserMessage.order)
-        : sessionMessages;
     const persistedSessionState = normalizeTavernSessionState(baseSession.state || input.runtimeState || {});
+    const rebuildHistoryMessages = reusedUserMessage
+        ? await listAllTavernMessagesInRangePaged(baseSession.id, 0, reusedUserMessage.order - 1)
+        : null;
     const rebuiltSessionState = reusedUserMessage
         ? await deriveTavernSessionStateFromMessagesAsync({
-            messages: historyMessages,
+            messages: rebuildHistoryMessages || [],
             contextSnapshot: liveContext,
             chatPreset: input.chatPreset,
             historyMode: input.historyMode || 'raw',
@@ -1994,15 +2139,20 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
         }) || userMessage;
         await notifyRunCallback(() => input.onUserMessageSaved?.(baseSession.id, userMessage as TavernMessageRecord));
     }
-    const contextWindow = resolveTavernContextWindow({
-        messages: historyMessages,
+    const contextWindow = await loadTavernPromptHistoryWindow({
+        sessionId: baseSession.id,
         contextWindowStartOrder: sessionState.contextWindowStartOrder,
         currentUserMessage,
+        beforeOrder: userMessage?.order,
     });
+    const historyMessages = contextWindow.historyMessages;
+    const cooldownMessages = reusedUserMessage
+        ? await listLatestTavernUserMessagesBefore(baseSession.id, reusedUserMessage.order, RANDOM_ENCOUNTER_COOLDOWN_TURNS)
+        : await listLatestTavernUserMessagesBefore(baseSession.id, userMessage?.order ?? Number.POSITIVE_INFINITY, RANDOM_ENCOUNTER_COOLDOWN_TURNS);
     const chanceEncounterEvent = resolveRandomEncounterForTurn({
         runtime: sessionContractRuntime,
-        sessionMessages,
-        historyMessages,
+        sessionMessages: cooldownMessages,
+        historyMessages: reusedUserMessage ? cooldownMessages : historyMessages,
         reusedUserMessage,
         rerollRuntimeEvents: input.rerollRuntimeEvents,
         randomEncounterRoll: input.randomEncounterRoll,
@@ -2135,7 +2285,6 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
         presetId: String(chatPreset.id || baseSession.presetId || ''),
         presetName: String(chatPreset.name || baseSession.presetName || ''),
     }) || baseSession;
-
     let latestStreamText = '';
     const handleStreamProgress = (snapshot: TavernRunStreamSnapshot) => {
         if (typeof snapshot.text === 'string') {latestStreamText = snapshot.text;}
@@ -2293,6 +2442,7 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
                 turn: nextTurn,
                 assistantPreset: input.assistantPreset,
                 sessionContract,
+                contextSnapshot: liveContext,
                 awaitCompletion: input.awaitManager === true,
                 executeManagerOnce: input.executeManagerOnce,
                 onManagerRunSaved: async (run) => {

@@ -77,55 +77,57 @@ test('tavern contract runtime resolves module capabilities without leaking reser
     });
 });
 
-test('tavern auto manager tool policy keeps ChatHistory and module-specific tools only', () => {
+test('tavern auto manager tool policy keeps read tools and module-specific write tools only', () => {
     const memoryOnly = resolveTavernAutoManagerToolPolicy(mergeTavernSessionContract(undefined, {
         memoryArchiving: true,
         cartographyEngine: false,
     }));
-    assert.equal(memoryOnly.allowedToolNames.includes('ChatHistory'), true);
-    assert.equal(memoryOnly.allowedToolNames.includes('MemoryWrite'), true);
-    assert.equal(memoryOnly.allowedToolNames.includes('StateRead'), false);
-    assert.equal(memoryOnly.allowedToolNames.includes('TaskPatch'), false);
-    assert.equal(memoryOnly.deniedToolNames.includes('StatePatch'), true);
+    assert.equal(memoryOnly.allowedToolNames.includes('Read'), true);
+    assert.equal(memoryOnly.allowedToolNames.includes('Grep'), true);
+    assert.equal(memoryOnly.allowedToolNames.includes('Write'), true);
+    assert.equal(memoryOnly.allowedToolNames.includes('MapInspect'), false);
+    assert.equal(memoryOnly.allowedToolNames.includes('EventPatch'), false);
+    assert.equal(memoryOnly.deniedToolNames.includes('MapPatch'), true);
 
     const mapOnly = resolveTavernAutoManagerToolPolicy(mergeTavernSessionContract(undefined, {
         memoryArchiving: false,
         cartographyEngine: true,
     }));
-    assert.equal(mapOnly.allowedToolNames.includes('ChatHistory'), true);
-    assert.equal(mapOnly.allowedToolNames.includes('StatePatch'), true);
-    assert.equal(mapOnly.allowedToolNames.includes('TaskPatch'), false);
-    assert.equal(mapOnly.allowedToolNames.includes('MemoryWrite'), false);
-    assert.equal(mapOnly.deniedToolNames.includes('MemoryRead'), true);
+    assert.equal(mapOnly.allowedToolNames.includes('Read'), true);
+    assert.equal(mapOnly.allowedToolNames.includes('MapPatch'), true);
+    assert.equal(mapOnly.allowedToolNames.includes('EventPatch'), false);
+    assert.equal(mapOnly.allowedToolNames.includes('Write'), false);
+    assert.equal(mapOnly.deniedToolNames.includes('Edit'), true);
 
     const questOnly = resolveTavernAutoManagerToolPolicy(mergeTavernSessionContract(undefined, {
         memoryArchiving: false,
         cartographyEngine: false,
         questOrchestration: true,
     }));
-    assert.equal(questOnly.allowedToolNames.includes('ChatHistory'), true);
-    assert.equal(questOnly.allowedToolNames.includes('TaskPatch'), true);
-    assert.equal(questOnly.allowedToolNames.includes('MemoryWrite'), false);
-    assert.equal(questOnly.allowedToolNames.includes('StatePatch'), false);
+    assert.equal(questOnly.allowedToolNames.includes('Read'), true);
+    assert.equal(questOnly.allowedToolNames.includes('EventPatch'), true);
+    assert.equal(questOnly.allowedToolNames.includes('Write'), false);
+    assert.equal(questOnly.allowedToolNames.includes('MapPatch'), false);
 
     const disabled = resolveTavernAutoManagerToolPolicy(mergeTavernSessionContract(undefined, {
         memoryArchiving: false,
         cartographyEngine: false,
     }));
-    assert.deepEqual(disabled.allowedToolNames, ['ChatHistory']);
-    assert.equal(isAutoManagerToolAllowed('MemoryWrite', disabled.runtime.contract), false);
-    assert.equal(isAutoManagerToolAllowed('StatePatch', disabled.runtime.contract), false);
-    assert.equal(isAutoManagerToolAllowed('TaskPatch', disabled.runtime.contract), false);
+    assert.deepEqual(disabled.allowedToolNames, ['LS', 'Grep', 'Read']);
+    assert.equal(isAutoManagerToolAllowed('Write', disabled.runtime.contract), false);
+    assert.equal(isAutoManagerToolAllowed('MapPatch', disabled.runtime.contract), false);
+    assert.equal(isAutoManagerToolAllowed('EventPatch', disabled.runtime.contract), false);
+    assert.equal(isAutoManagerToolAllowed('Read', disabled.runtime.contract), true);
 
-    const memoryDenied = buildDeniedAutoManagerToolResult('MemoryWrite', disabled.runtime.contract);
+    const memoryDenied = buildDeniedAutoManagerToolResult('Write', disabled.runtime.contract);
     assert.equal(memoryDenied.ok, false);
     assert.match(memoryDenied.summary, /契约未授权 记忆存档/);
 
-    const stateDenied = buildDeniedAutoManagerToolResult('StatePatch', disabled.runtime.contract);
+    const stateDenied = buildDeniedAutoManagerToolResult('MapPatch', disabled.runtime.contract);
     assert.equal(stateDenied.ok, false);
     assert.match(stateDenied.summary, /契约未授权 制图引擎/);
 
-    const taskDenied = buildDeniedAutoManagerToolResult('TaskPatch', disabled.runtime.contract);
+    const taskDenied = buildDeniedAutoManagerToolResult('EventPatch', disabled.runtime.contract);
     assert.equal(taskDenied.ok, false);
     assert.match(taskDenied.summary, /契约未授权 织线者/);
 });

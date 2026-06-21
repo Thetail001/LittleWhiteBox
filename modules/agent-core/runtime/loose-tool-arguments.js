@@ -125,7 +125,7 @@ function parseLoosePrimitive(value = '') {
 }
 
 const LOOSE_ARGUMENT_KEYS_BY_TOOL = {
-    Read: ['filePath', 'path', 'scope', 'fromLine', 'toLine', 'tail', 'outputMode', 'contentFormat'],
+    Read: ['filePath', 'path', 'scope', 'fromLine', 'toLine', 'tail', 'offset', 'limit', 'outputMode', 'contentFormat'],
     Write: ['filePath', 'path', 'content'],
     Edit: ['filePath', 'path', 'edits'],
     Delete: ['filePath', 'path'],
@@ -134,6 +134,11 @@ const LOOSE_ARGUMENT_KEYS_BY_TOOL = {
     ImportMaterial: ['title', 'content', 'source'],
     Glob: ['pattern', 'path', 'scope'],
     Grep: ['pattern', 'query', 'path', 'scope', 'include', 'outputMode', 'limit', 'offset', 'contextLines', 'useRegex'],
+    MapDocs: ['docType', 'docId', 'limit', 'offset'],
+    MapInspect: ['docType', 'docId', 'mode', 'elementId', 'locationKey', 'actorKey', 'from', 'to', 'kind', 'status', 'query', 'parent', 'limit', 'offset'],
+    MapPatch: ['docType', 'docId', 'expectedRevision', 'activate', 'dryRun', 'ops'],
+    EventInspect: ['mode', 'eventId', 'id', 'status', 'limit', 'offset'],
+    EventPatch: ['op', 'eventId', 'id', 'fingerprint', 'horizon', 'current', 'doneWhen', 'hookForUser', 'hookForModel', 'status'],
     MemoryRead: ['filePath', 'path', 'offset', 'limit', 'tail'],
     MemoryWrite: ['filePath', 'path', 'content'],
     MemoryEdit: ['filePath', 'path', 'edits'],
@@ -178,6 +183,20 @@ const GENERIC_LOOSE_ARGUMENT_KEYS = [
     'useRegex',
     'regex',
     'mode',
+    'docType',
+    'docId',
+    'expectedRevision',
+    'activate',
+    'dryRun',
+    'ops',
+    'op',
+    'eventId',
+    'fingerprint',
+    'horizon',
+    'current',
+    'doneWhen',
+    'hookForUser',
+    'hookForModel',
     'startOrder',
     'endOrder',
     'full',
@@ -192,6 +211,25 @@ function extractFirstLooseField(source = '', keys = [], nextKeys = []) {
 }
 
 function parseKnownLooseArgumentsObject(source = '', toolName = '') {
+    if (toolName === 'Read') {
+        const keys = LOOSE_ARGUMENT_KEYS_BY_TOOL.Read;
+        const args = {};
+        keys.forEach((key, index) => {
+            const value = extractLooseField(source, key, keys.slice(index + 1));
+            if (value === undefined) return;
+            args[key] = parseLoosePrimitive(value);
+        });
+        if (args.filePath === undefined && args.path !== undefined) {
+            args.filePath = args.path;
+            delete args.path;
+        }
+        if (args.filePath === undefined && args.scope !== undefined) {
+            args.filePath = args.scope;
+            delete args.scope;
+        }
+        return Object.keys(args).length ? args : null;
+    }
+
     if (toolName === 'Write') {
         const args = {};
         const filePath = extractFirstLooseField(source, ['filePath', 'path'], ['content']);
@@ -213,8 +251,8 @@ function parseKnownLooseArgumentsObject(source = '', toolName = '') {
     if (toolName === 'Grep') {
         const keys = LOOSE_ARGUMENT_KEYS_BY_TOOL.Grep;
         const args = {};
-        keys.forEach((key, index) => {
-            const value = extractLooseField(source, key, keys.slice(index + 1));
+        keys.forEach((key) => {
+            const value = extractLooseField(source, key, keys.filter((item) => item !== key));
             if (value === undefined) return;
             args[key] = parseLoosePrimitive(value);
         });

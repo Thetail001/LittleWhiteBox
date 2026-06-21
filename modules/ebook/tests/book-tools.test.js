@@ -2700,6 +2700,91 @@ test('Studio file section models keep unchanged file signatures reusable', () =>
     assert.match(sourcesGroup.html, /data-file-group-empty="true"/);
 });
 
+test('Chapter sort toggle refreshes file surface without rebuilding the shell', () => {
+    const state = {
+        chapterSortDescending: false,
+    };
+    let fullRenders = 0;
+    let fileSurfaces = 0;
+    const controller = createBookController({
+        state,
+        render() {
+            fullRenders += 1;
+        },
+        renderFilesSurface() {
+            fileSurfaces += 1;
+            return true;
+        },
+        requestHost() {},
+        showToast() {},
+    });
+
+    controller.toggleChapterSortOrder();
+
+    assert.equal(state.chapterSortDescending, true);
+    assert.equal(fileSurfaces, 1);
+    assert.equal(fullRenders, 0);
+});
+
+test('Chapter sort toggle uses delegated binding after the file group is replaced', () => {
+    const state = {};
+    let toggles = 0;
+    let prevented = 0;
+    const listeners = {};
+    const sortButton = {
+        closest(selector) {
+            return selector === '[data-chapter-sort-toggle]' ? this : null;
+        },
+    };
+    const root = {
+        querySelectorAll() {
+            return [];
+        },
+        querySelector() {
+            return null;
+        },
+        contains(node) {
+            return node === sortButton;
+        },
+        addEventListener(eventName, handler) {
+            listeners[eventName] = handler;
+        },
+        removeEventListener() {},
+    };
+
+    bindEbookEvents({
+        root,
+        state,
+        render() {},
+        postToHost() {},
+        bookController: {
+            toggleChapterSortOrder() {
+                toggles += 1;
+            },
+        },
+        agentRunner: {},
+        persistConversation() {},
+        clearConversation() {},
+        showToast() {},
+    });
+
+    listeners.click({
+        target: sortButton,
+        preventDefault() {
+            prevented += 1;
+        },
+    });
+    listeners.click({
+        target: sortButton,
+        preventDefault() {
+            prevented += 1;
+        },
+    });
+
+    assert.equal(toggles, 2);
+    assert.equal(prevented, 2);
+});
+
 test('Reader renders a mobile table-of-contents drawer', () => {
     const state = {
         book: { id: 'book-reader-toc', title: '目录测试' },

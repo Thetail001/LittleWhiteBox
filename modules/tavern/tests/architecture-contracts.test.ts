@@ -301,8 +301,41 @@ test('tavern request log is sourced from runtime request snapshots', () => {
     assert.match(nativePromptSource, /nativePromptAbortControllers/);
     assert.match(nativePromptSource, /export function cancelTavernNativeChatPrompt/);
     assert.match(hostSource, /cancelTavernNativeChatPrompt\(requestId\)/);
-    assert.match(runtimeSource, /rawRequestJson: JSON\.stringify\(requestForJson, null, 2\)/);
+    assert.match(runtimeSource, /const rawRequestJson = JSON\.stringify\(requestForJson, null, 2\)/);
+    assert.match(runtimeSource, /rawRequestJson,/);
     assert.match(runtimeSource, /requestSnapshot = \(await inspectTavernRequest\(/);
+});
+
+test('tavern chat hot paths use message windows instead of full session scans', () => {
+    const appSource = readRepoFile('modules/tavern/app-src/App.vue');
+    const runtimeSource = readRepoFile('modules/tavern/app-src/runtime/run-once.ts');
+    const sessionDbSource = readRepoFile('modules/tavern/shared/session-db.ts');
+    const simulateBody = runtimeSource.slice(
+        runtimeSource.indexOf('export async function simulateXbTavernRequest'),
+        runtimeSource.indexOf('function safeJsonParse'),
+    );
+    const runTurnBody = runtimeSource.slice(runtimeSource.indexOf('export async function runXbTavernTurn'));
+    const listOrdersBody = sessionDbSource.slice(
+        sessionDbSource.indexOf('export async function listTavernMessageOrdersFrom'),
+        sessionDbSource.indexOf('export async function listLatestTavernUserMessages'),
+    );
+
+    assert.match(appSource, /const loadedSessionMessages = ref<TavernMessageRecord\[\]>\(\[\]\);/);
+    assert.match(appSource, /selectedSessionMessageTotal/);
+    assert.match(appSource, /loadSelectedSessionMessageWindow/);
+    assert.match(appSource, /async function rebuildSelectedSessionRuntimeState\(\)[\s\S]*await listTavernMessages\(selectedSessionId\.value\)/);
+    assert.doesNotMatch(appSource, /async function selectSession[\s\S]{0,320}listTavernMessages\(/);
+    assert.doesNotMatch(appSource, /async function refreshSessions[\s\S]{0,520}listTavernMessages\(/);
+    assert.doesNotMatch(appSource, /async function deleteMessageTurn[\s\S]{0,900}listTavernMessages\(/);
+    assert.match(appSource, /listTavernMessageOrdersFrom\(message\.sessionId, message\.order\)/);
+    assert.match(appSource, /getLatestTavernUserMessageAtOrBefore\(message\.sessionId, message\.order\)/);
+    assert.doesNotMatch(simulateBody, /listTavernMessages\(/);
+    assert.match(simulateBody, /loadTavernPromptHistoryWindow\(/);
+    assert.doesNotMatch(runTurnBody, /listTavernMessages\(/);
+    assert.match(runTurnBody, /loadTavernPromptHistoryWindow\(/);
+    assert.match(runTurnBody, /listTavernMessageOrdersFrom\(baseSession\.id, changedOrder\)/);
+    assert.match(listOrdersBody, /\.primaryKeys\(\)/);
+    assert.doesNotMatch(listOrdersBody, /\.toArray\(\)/);
 });
 
 test('tavern home only resumes an explicitly selected character session', () => {
@@ -822,9 +855,9 @@ test('tavern streaming action-check UI renders from live runtime events and keep
     assert.match(markdownToolsSource, /if \(event\.stakes\) \{[\s\S]*className = 'action-check-card-stakes'[\s\S]*textContent = event\.stakes/);
     assert.match(appSource, /function clearRuntimeAssistantLiveState\(\) \{[\s\S]*runtimeText\.value = '';[\s\S]*runtimeThoughts\.value = \[\];[\s\S]*runtimeActionCheckEvents\.value = \[\];[\s\S]*runtimeUserMessageVisible\.value = false;/);
     assert.match(appSource, /runtimeUserMessageVisible\.value = false;[\s\S]*runtimeProvider\.value = ''/);
-    assert.match(appSource, /sessionMessages\.value = existingIndex >= 0[\s\S]*runtimeUserMessageVisible\.value = true;/);
-    assert.match(appSource, /onUserMessageSaved: async \(sessionId, message\) => \{[\s\S]*sessionMessages\.value = existingIndex >= 0[\s\S]*runtimePendingUserMessage\.value = '';[\s\S]*await setSelectedTavernSessionId\(sessionId\)/);
-    assert.match(appSource, /onAssistantMessageSaved: async \(sessionId, message\) => \{[\s\S]*sessionMessages\.value = existingIndex >= 0[\s\S]*clearRuntimeAssistantLiveState\(\);/);
+    assert.match(appSource, /loadedSessionMessages\.value = existingIndex >= 0[\s\S]*runtimeUserMessageVisible\.value = true;/);
+    assert.match(appSource, /onUserMessageSaved: async \(sessionId, message\) => \{[\s\S]*loadedSessionMessages\.value = existingIndex >= 0[\s\S]*runtimePendingUserMessage\.value = '';[\s\S]*await setSelectedTavernSessionId\(sessionId\)/);
+    assert.match(appSource, /onAssistantMessageSaved: async \(sessionId, message\) => \{[\s\S]*loadedSessionMessages\.value = existingIndex >= 0[\s\S]*clearRuntimeAssistantLiveState\(\);/);
     assert.match(conversationPanelSource, /const liveAssistantCanRender = computed\(\(\) => isRunning\.value && runtimeUserMessageVisible\.value\)/);
     assert.match(conversationPanelSource, /v-if="liveAssistantCanRender && liveAssistantVisible"[\s\S]*data-chat-anchor-key="streaming:content"/);
     assert.match(conversationPanelSource, /v-if="liveAssistantCanRender && !liveAssistantVisible"[\s\S]*data-chat-anchor-key="streaming:empty"/);
@@ -1170,7 +1203,7 @@ test('tavern RP display and edit save use native regex phases without slash comm
     assert.doesNotMatch(appSource, /scheduleRuntimeDisplayRegexText\('runtime:message', request\);\s*return text;/);
     assert.match(appSource, /placement: 'reasoning'[\s\S]*options: \{\s*isMarkdown: true,\s*depth,/);
     assert.match(appSource, /options: \{\s*isMarkdown: true,\s*depth,\s*characterOverride,/);
-    assert.match(appSource, /const sorted = \[\.\.\.sessionMessages\.value\]\s*\.filter\(\(message\) => isNormalRoleplayDisplayMessage\(message\)\)/);
+    assert.match(appSource, /const displayMessages = loadedSessionMessages\.value\.filter\(\(message\) => isNormalRoleplayDisplayMessage\(message\)\);[\s\S]*const total = displayMessages\.length;[\s\S]*displayMessages\.reduce<Record<string, number>>/);
     assert.match(appSource, /function isNormalRoleplayDisplayMessage\(message: TavernMessageRecord\): boolean[\s\S]*&& !message\.error[\s\S]*String\(message\.content \|\| ''\)\.trim\(\)/);
     assert.doesNotMatch(appSource, /catch \(error\) \{[\s\S]{0,160}rememberDisplayRegexText\(input\.key, input\.text\)/);
     assert.match(appSource, /async function applyEditRegexToMessageContent/);

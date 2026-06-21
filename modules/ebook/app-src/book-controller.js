@@ -255,6 +255,7 @@ export function createBookController(deps = {}) {
         state,
         render,
         renderStudioSurface,
+        renderFilesSurface,
         requestHost,
         showToast,
         conversationStore,
@@ -373,6 +374,7 @@ export function createBookController(deps = {}) {
 
     function toggleChapterSortOrder() {
         state.chapterSortDescending = !state.chapterSortDescending;
+        if (typeof renderFilesSurface === 'function' && renderFilesSurface()) return;
         render();
     }
 

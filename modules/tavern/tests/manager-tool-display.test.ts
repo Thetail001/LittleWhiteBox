@@ -36,26 +36,26 @@ test('manager chat display groups consecutive tool protocol rounds into one turn
             order: 1,
             role: 'assistant',
             content: '先读状态。',
-            toolCalls: [{ id: 'read-state', name: 'MemoryRead', arguments: '{"path":"memory/state.md"}' }],
+            toolCalls: [{ id: 'read-state', name: 'Read', arguments: '{"filePath":"memory/state.md"}' }],
         }),
         managerMessage({
             order: 2,
             role: 'tool',
             toolCallId: 'read-state',
-            toolName: 'MemoryRead',
+            toolName: 'Read',
             content: '{"ok":true,"summary":"读到了状态。"}',
         }),
         managerMessage({
             order: 3,
             role: 'assistant',
             content: '再写入。',
-            toolCalls: [{ id: 'write-state', name: 'MemoryWrite', arguments: '{"filePath":"memory/state.md"}' }],
+            toolCalls: [{ id: 'write-state', name: 'Write', arguments: '{"filePath":"memory/state.md"}' }],
         }),
         managerMessage({
             order: 4,
             role: 'tool',
             toolCallId: 'write-state',
-            toolName: 'MemoryWrite',
+            toolName: 'Write',
             content: '{"ok":true,"summary":"已写入状态。"}',
         }),
         managerMessage({ order: 5, role: 'assistant', content: '完成。' }),
@@ -71,7 +71,7 @@ test('manager chat display groups consecutive tool protocol rounds into one turn
     assert.equal(items[1].rounds.length, 2);
     assert.equal(items[1].calls.length, 2);
     assert.equal(managerToolTurnSummary(items[1]), '2 轮 · 工具调用 2 次 · 全部成功');
-    assert.equal(managerToolTurnPreview(items[1]), 'MemoryRead、MemoryWrite');
+    assert.equal(managerToolTurnPreview(items[1]), 'Read、Write');
 });
 
 test('manager stream tool draft state preserves draft across thought-only chunks and clears on final text', () => {
@@ -79,7 +79,7 @@ test('manager stream tool draft state preserves draft across thought-only chunks
     const first = state.update({
         text: '',
         toolCallDraft: true,
-        toolCalls: [{ id: 'draft-read', name: 'MemoryRead', arguments: '{}' }],
+        toolCalls: [{ id: 'draft-read', name: 'Read', arguments: '{}' }],
     });
     assert.equal(first.content, '正在准备工具调用...');
     assert.equal(first.toolCalls.length, 1);
@@ -112,7 +112,7 @@ test('manager chat display treats aborted or errored draft messages as normal me
             role: 'assistant',
             content: '已停止。',
             finishReason: 'aborted',
-            toolCalls: [{ id: 'draft-read', name: 'MemoryRead', arguments: '{"path":"memory/state.md"}' }],
+            toolCalls: [{ id: 'draft-read', name: 'Read', arguments: '{"filePath":"memory/state.md"}' }],
         }),
         managerMessage({
             order: 2,
@@ -120,7 +120,7 @@ test('manager chat display treats aborted or errored draft messages as normal me
             content: 'provider failed',
             error: true,
             finishReason: 'error',
-            toolCalls: [{ id: 'draft-write', name: 'MemoryWrite', arguments: '{"filePath":"memory/state.md"}' }],
+            toolCalls: [{ id: 'draft-write', name: 'Write', arguments: '{"filePath":"memory/state.md"}' }],
         }),
     ]);
 

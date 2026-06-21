@@ -2,9 +2,12 @@ import { applyTextEdits } from '../../agent-core/tools/text-edit.js';
 
 import { getTavernStateToolDefinitions } from './structured-state';
 import { getTavernTaskToolDefinitions } from './tasks';
+import type { XbTavernContext, XbTavernWorldBook, XbTavernWorldEntry } from './message-assembler';
 import db, {
+    getTavernMessage,
     getLatestTavernAssistantOrder,
     getLatestTavernMessage,
+    listTavernMessageOrdersFrom,
     listTavernMessages,
     listLatestTavernMessagesWithCount,
     listTavernMessagesInRangeWithCount,
@@ -36,6 +39,14 @@ export const TAVERN_MEMORY_TOOL_NAMES = {
     CHAT_HISTORY: 'ChatHistory',
 } as const;
 
+export const TAVERN_SOURCE_FILE_TOOL_NAMES = {
+    LS: 'LS',
+    GREP: 'Grep',
+    READ: 'Read',
+    WRITE: 'Write',
+    EDIT: 'Edit',
+} as const;
+
 export type TavernManagerToolCaller = 'auto' | 'chat';
 
 export interface TavernMemoryToolResult {
@@ -52,6 +63,12 @@ export interface TavernMemoryToolResult {
     truncated?: boolean;
     nextOffset?: number;
     matches?: Array<{ path: string; line?: number; text?: string; context?: string; count?: number }>;
+    entries?: Array<{ name: string; path: string; type: 'directory' | 'file'; readonly?: boolean }>;
+    results?: Array<{ path: string; lineNumber?: number; line?: string; context?: string; count?: number }>;
+    pattern?: string;
+    outputMode?: string;
+    searchedFileCount?: number;
+    bytes?: number;
     messages?: Array<{
         order: number;
         role: string;
@@ -657,6 +674,44 @@ function getToolPath(args: Record<string, unknown>): string {
     return normalizeTavernMemoryPath(args.filePath || args.path || '');
 }
 
+function normalizeTavernSourcePath(value: unknown = ''): string {
+    return String(value || '').replace(/\\/g, '/').replace(/^\/+/, '').trim();
+}
+
+function normalizeTavernSourceDirectoryPath(value: unknown = 'memory/'): string {
+    const path = normalizeTavernSourcePath(value || '');
+    if (!path) {throw new Error('source_path_required');}
+    const directory = path.endsWith('/') ? path : `${path}/`;
+    if (directory.includes('..')) {throw new Error('source_path_invalid');}
+    if (!['chat/', 'worldbooks/', 'memory/'].some((prefix) => directory === prefix || directory.startsWith(prefix))) {
+        throw new Error('source_path_scope_required');
+    }
+    return directory;
+}
+
+function sanitizeTavernSourceSegment(value: unknown = '', fallback = 'item'): string {
+    const text = String(value || '').trim()
+        .replace(/[\\/:*?"<>|#%{}[\]^~`]+/g, '_')
+        .replace(/\s+/g, '_')
+        .replace(/^_+|_+$/g, '');
+    return text || fallback;
+}
+
+function normalizeTavernSourceFilePath(value: unknown = ''): string {
+    const path = normalizeTavernSourcePath(value);
+    if (!path) {throw new Error('source_path_required');}
+    if (path.endsWith('/')) {throw new Error('source_file_path_required');}
+    if (path.includes('..')) {throw new Error('source_path_invalid');}
+    if (path.startsWith('memory/')) {return normalizeTavernMemoryPath(path);}
+    if (path === 'chat/transcript.md' || /^chat\/messages\/\d+\.md$/.test(path)) {return path;}
+    if (/^worldbooks\/(?:character|global|chat|entries)\//.test(path) && path.endsWith('.md')) {return path;}
+    throw new Error('source_file_path_invalid');
+}
+
+function isTavernSourceWritablePath(path = ''): boolean {
+    return path === 'memory/state.md' || isCharacterMemoryPath(path);
+}
+
 function validateWritableMemoryPath(path = ''): string {
     const normalized = normalizeTavernMemoryPath(path);
     const characterName = getCharacterNameFromMemoryPath(normalized);
@@ -664,6 +719,628 @@ function validateWritableMemoryPath(path = ''): string {
         throw new Error('memory_character_user_reserved');
     }
     return normalized;
+}
+
+function collectTavernDirectoryEntries(paths: string[] = [], directoryPath = 'memory/') {
+    const dir = normalizeTavernSourceDirectoryPath(directoryPath);
+    const entryMap = new Map<string, { name: string; path: string; type: 'directory' | 'file'; readonly?: boolean }>();
+    const defaultDirectories = [
+        'chat/',
+        'chat/messages/',
+        'worldbooks/',
+        'worldbooks/character/',
+        'worldbooks/global/',
+        'worldbooks/chat/',
+        'worldbooks/entries/',
+        'memory/',
+        'memory/characters/',
+    ];
+    defaultDirectories.forEach((directory) => {
+        if (!directory.startsWith(dir) || directory === dir) {return;}
+        const rest = directory.slice(dir.length);
+        const [first] = rest.split('/');
+        if (!first) {return;}
+        const path = `${dir}${first}/`;
+        entryMap.set(path, {
+            name: first,
+            path,
+            type: 'directory',
+            readonly: !path.startsWith('memory/'),
+        });
+    });
+    paths.forEach((filePath) => {
+        if (!filePath.startsWith(dir) || filePath === dir) {return;}
+        const rest = filePath.slice(dir.length);
+        const [first] = rest.split('/');
+        if (!first) {return;}
+        const isDirectory = rest.includes('/');
+        const path = `${dir}${first}${isDirectory ? '/' : ''}`;
+        entryMap.set(path, {
+            name: first,
+            path,
+            type: isDirectory ? 'directory' : 'file',
+            readonly: !path.startsWith('memory/'),
+        });
+    });
+    return [...entryMap.values()].sort((left, right) => {
+        if (left.type !== right.type) {return left.type === 'directory' ? -1 : 1;}
+        return left.path.localeCompare(right.path, 'zh-CN');
+    });
+}
+
+function formatWorldbookEntryFileContent(book: XbTavernWorldBook, entry: XbTavernWorldEntry, index = 0): string {
+    const title = normalizeInline(entry.comment || entry.title || entry.name || `entry-${index + 1}`, 200);
+    const keys = Array.isArray(entry.key) ? entry.key.join(', ') : String(entry.key || '');
+    const secondaryKeys = Array.isArray(entry.keysecondary)
+        ? entry.keysecondary.join(', ')
+        : Array.isArray(entry.secondary_keys)
+            ? entry.secondary_keys.join(', ')
+            : String(entry.keysecondary || entry.secondary_keys || '');
+    const metaLines = [
+        `# ${title}`,
+        '',
+        `Book: ${normalizeInline(book.name, 200)}`,
+        `Source: ${normalizeInline(entry.worldSourceType || book.worldSourceType || 'worldbook', 80)}`,
+        `UID: ${normalizeInline(entry.uid ?? entry.id ?? index, 120)}`,
+        keys ? `Keys: ${keys}` : '',
+        secondaryKeys ? `Secondary keys: ${secondaryKeys}` : '',
+        Number.isFinite(Number(entry.order)) ? `Order: ${Number(entry.order)}` : '',
+        entry.position !== undefined ? `Position: ${String(entry.position)}` : '',
+        '',
+        '## Content',
+        normalizeBody(entry.content || ''),
+    ].filter((line) => line !== '');
+    return metaLines.join('\n');
+}
+
+function listWorldbookSourceFiles(context: XbTavernContext = {}): Array<{ path: string; content: string; readonly: true }> {
+    const books = Array.isArray(context.worldBooks) ? context.worldBooks : [];
+    const files: Array<{ path: string; content: string; readonly: true }> = [];
+    books.forEach((book, bookIndex) => {
+        const bookName = sanitizeTavernSourceSegment(book.name, `book-${bookIndex + 1}`);
+        const sourceType = String(book.worldSourceType || 'entries').trim();
+        const bucket = sourceType === 'character' || sourceType === 'global' || sourceType === 'chat'
+            ? sourceType
+            : 'entries';
+        (Array.isArray(book.entries) ? book.entries : []).forEach((entry, entryIndex) => {
+            const content = normalizeBody(entry.content || '');
+            if (!content) {return;}
+            const uid = sanitizeTavernSourceSegment(entry.uid ?? entry.id ?? entry.comment ?? entryIndex, `entry-${entryIndex + 1}`);
+            files.push({
+                path: `worldbooks/${bucket}/${bookName}/${uid}.md`,
+                content: formatWorldbookEntryFileContent(book, entry, entryIndex),
+                readonly: true,
+            });
+        });
+    });
+    if (!files.length && Array.isArray(context.worldEntries)) {
+        context.worldEntries.forEach((entry, entryIndex) => {
+            const content = normalizeBody(entry.content || '');
+            if (!content) {return;}
+            const bookName = sanitizeTavernSourceSegment(entry.sourceWorldBook || 'worldEntries', 'worldEntries');
+            const uid = sanitizeTavernSourceSegment(entry.uid ?? entry.id ?? entry.comment ?? entryIndex, `entry-${entryIndex + 1}`);
+            files.push({
+                path: `worldbooks/entries/${bookName}/${uid}.md`,
+                content: formatWorldbookEntryFileContent({ name: bookName, entries: [entry] }, entry, entryIndex),
+                readonly: true,
+            });
+        });
+    }
+    return files.sort((left, right) => left.path.localeCompare(right.path, 'zh-CN'));
+}
+
+async function listTavernSourceFilePaths(sessionId = '', context: XbTavernContext = {}): Promise<string[]> {
+    const memoryFiles = await listTavernMemoryFiles(sessionId, { includeStale: true });
+    const messageOrders = await listTavernMessageOrdersFrom(sessionId, 0);
+    return [
+        'chat/transcript.md',
+        ...messageOrders.map((order) => `chat/messages/${order}.md`),
+        ...listWorldbookSourceFiles(context).map((file) => file.path),
+        ...memoryFiles.map((file) => file.path),
+    ].sort((left, right) => left.localeCompare(right, 'zh-CN'));
+}
+
+function normalizeGrepOutputMode(value: unknown = ''): 'content' | 'files_with_matches' | 'count' {
+    const text = String(value || 'content').trim();
+    const key = text.replace(/[\s-]/g, '_').replace(/[A-Z]/g, (char) => `_${char.toLowerCase()}`).replace(/_+/g, '_').replace(/^_+|_+$/g, '');
+    if (key === 'files_with_matches' || key === 'fileswithmatches') {return 'files_with_matches';}
+    if (key === 'count') {return 'count';}
+    return 'content';
+}
+
+function buildSourceSearchRegExp(pattern = '', useRegex = false): RegExp {
+    const text = String(pattern || '');
+    if (!text) {throw new Error('grep_pattern_required');}
+    if (useRegex === true) {return new RegExp(text, 'iu');}
+    return new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'iu');
+}
+
+function sourcePathInScope(path = '', rawScope = '', include = ''): boolean {
+    const scope = normalizeTavernSourcePath(rawScope || '');
+    if (scope) {
+        if (scope.endsWith('/')) {
+            if (!path.startsWith(scope)) {return false;}
+        } else if (path !== scope) {
+            return false;
+        }
+    }
+    const includeText = String(include || '').trim();
+    if (!includeText) {return true;}
+    if (!/[/*?[\]{}]/.test(includeText)) {
+        return path === includeText || path.endsWith(`/${includeText.replace(/^\/+/, '')}`);
+    }
+    const glob = includeText
+        .replace(/\*\*/g, '\0DOUBLE_STAR\0');
+    const escaped = glob
+        .replace(/[|\\{}()[\]^$+?.]/g, '\\$&')
+        .replace(/\0DOUBLE_STAR\0/g, '.*')
+        .replace(/\*/g, '[^/]*')
+        .replace(/\?/g, '[^/]');
+    return new RegExp(`^${escaped.startsWith('chat/') || escaped.startsWith('worldbooks/') || escaped.startsWith('memory/') ? escaped : `(?:chat|worldbooks|memory)/${escaped}`}$`).test(path);
+}
+
+function grepTextFile(
+    rows: Array<{ path: string; lineNumber?: number; line?: string; context?: string; count?: number }>,
+    file: { path: string; content: string },
+    regexp: RegExp,
+    outputMode: 'content' | 'files_with_matches' | 'count',
+    contextLines = 0,
+) {
+    const lines = splitLines(file.content);
+    let matchCount = 0;
+    lines.forEach((line, index) => {
+        regexp.lastIndex = 0;
+        if (!regexp.test(line)) {return;}
+        matchCount += 1;
+        if (outputMode === 'content') {
+            const start = Math.max(0, index - contextLines);
+            const end = Math.min(lines.length, index + contextLines + 1);
+            rows.push({
+                path: file.path,
+                lineNumber: index + 1,
+                line,
+                context: numberLines(lines.slice(start, end), start + 1),
+            });
+        }
+    });
+    if (outputMode === 'files_with_matches' && matchCount > 0) {
+        rows.push({ path: file.path });
+    } else if (outputMode === 'count' && matchCount > 0) {
+        rows.push({ path: file.path, count: matchCount });
+    }
+}
+
+export function getTavernSourceFileToolDefinitions(): Array<{ type: 'function'; function: { name: string; description: string; parameters: unknown } }> {
+    return [
+        {
+            type: 'function',
+            function: {
+                name: TAVERN_SOURCE_FILE_TOOL_NAMES.LS,
+                description: [
+                    'List first-level files and directories in Tavern text sources.',
+                    'Returns directory entries only. Does not recurse and does not read file contents.',
+                    'Use before reading or editing when you need to locate chat evidence, worldbook entries, or memory files.',
+                    'Directories are `chat/`, `worldbooks/`, and `memory/`. `chat/` and `worldbooks/` are read-only; `memory/` is writable when memory archiving is authorized.',
+                ].join('\n'),
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        path: { type: 'string', description: 'Directory path, for example `chat/`, `worldbooks/`, `memory/`, or `memory/characters/`.' },
+                        offset: { type: 'number', description: '1-based directory entry offset. Default 1.' },
+                        limit: { type: 'number', description: 'Maximum entries to return. Default 100, max 300.' },
+                    },
+                    required: ['path'],
+                    additionalProperties: false,
+                },
+            },
+        },
+        {
+            type: 'function',
+            function: {
+                name: TAVERN_SOURCE_FILE_TOOL_NAMES.GREP,
+                description: [
+                    'Search text inside Tavern text sources.',
+                    'Uses literal text search by default and returns matching files plus line-level snippets.',
+                    'Use before reading many files to locate facts, names, dialogue, places, worldbook lore, memory notes, or source evidence.',
+                    '`path` can be a directory like `chat/`, `worldbooks/`, `memory/characters/`, or one exact file. `include` limits the file glob/name. For regex search, explicitly pass `useRegex: true`.',
+                ].join('\n'),
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        pattern: { type: 'string', description: 'Search pattern. Treated as literal text by default; use `useRegex: true` only when intentionally using regex.' },
+                        path: { type: 'string', description: 'Optional search scope, directory or exact file.' },
+                        include: { type: 'string', description: 'Optional file glob/name filter, for example `*.md`, `memory/characters/*.md`, or `12.md`.' },
+                        outputMode: { type: 'string', enum: ['content', 'files_with_matches', 'count'], description: '`content` returns matched lines, `files_with_matches` returns files only, and `count` returns match counts. Default content.' },
+                        limit: { type: 'number', description: 'Maximum results to return. Default 100, max 100.' },
+                        offset: { type: 'number', description: 'Skip this many results before returning matches. Default 0.' },
+                        contextLines: { type: 'number', description: 'Context lines before and after each match. Default 0, max 5.' },
+                        useRegex: { type: 'boolean', description: 'Whether to treat pattern as a regex. Default false; omit it for literal text search.' },
+                    },
+                    required: ['pattern'],
+                    additionalProperties: false,
+                },
+            },
+        },
+        {
+            type: 'function',
+            function: {
+                name: TAVERN_SOURCE_FILE_TOOL_NAMES.READ,
+                description: [
+                    'Read a Tavern text source file, or list a directory.',
+                    'For files, returns line-numbered content. For directories, returns directory entries. Large files include continuation hints.',
+                    'Use `tail` by itself when you need the end of a file.',
+                    'The argument name is `filePath`, not `path`. File paths look like `chat/messages/12.md`, `worldbooks/character/book/uid.md`, or `memory/state.md`.',
+                ].join('\n'),
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        filePath: { type: 'string', description: 'File or directory path. Do not pass path.' },
+                        offset: { type: 'number', description: '1-based line or directory-entry offset. Default 1.' },
+                        limit: { type: 'number', description: 'Maximum lines or entries. Default 1200, max 2000.' },
+                        tail: { type: 'number', description: 'Return the final N lines of a file. Use by itself; do not combine with offset/limit.' },
+                    },
+                    required: ['filePath'],
+                    additionalProperties: false,
+                },
+            },
+        },
+        {
+            type: 'function',
+            function: {
+                name: TAVERN_SOURCE_FILE_TOOL_NAMES.WRITE,
+                description: [
+                    'Write a complete Tavern memory Markdown file.',
+                    'Only `memory/state.md` and `memory/characters/<角色名>.md` are writable. `chat/` and `worldbooks/` are read-only evidence sources.',
+                    'Use for creating files, complete rewrites, or rewrites where most content is new.',
+                    'Read the target file first. Write overwrites the entire file, so include all original content you want to keep.',
+                    'The argument names are `filePath` and `content`.',
+                ].join('\n'),
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        filePath: { type: 'string', description: 'Writable memory file path: `memory/state.md` or `memory/characters/<角色名>.md`.' },
+                        content: { type: 'string', description: 'Full file content to write.' },
+                    },
+                    required: ['filePath', 'content'],
+                    additionalProperties: false,
+                },
+            },
+        },
+        {
+            type: 'function',
+            function: {
+                name: TAVERN_SOURCE_FILE_TOOL_NAMES.EDIT,
+                description: [
+                    'Edit one existing Tavern memory Markdown file by replacing original text fragments, replacing inclusive line ranges, inserting text at line positions, or removing text with empty replacements.',
+                    'One call edits one file. Only `memory/state.md` and `memory/characters/<角色名>.md` are writable.',
+                    'Use oldString/newString for local revisions. Use startLine/endLine/newString for contiguous passage replacement where copying oldString would be fragile. Use insertAtLine/newString to add text before a line or at the end. Use Write for complete rewrites.',
+                    'Read the target file first unless the exact current text is already available in the conversation or a recent tool result. Line-range and insertion edits must use line numbers from the latest Read result.',
+                    'Put multiple edits in the edits array. Line-range and insertion items may share one call when they use line numbers from the same Read result. Keep oldString edits separate from line-number edits unless the whole change can be expressed with line numbers.',
+                    'The `edits` argument must be a non-empty JSON array, not a JSON-stringified string. Correct: `"edits":[{"startLine":10,"endLine":50,"newString":"..."}]`.',
+                    'Each edit item should choose exactly one mode. If stray optional fields appear, Edit normalizes by priority: complete startLine/endLine wins, then insertAtLine, then oldString.',
+                    'Do not issue multiple Edit tool calls for the same file in one assistant turn. Combine same-file changes into one call.',
+                    '',
+                    '## Matching Rules',
+                    'oldString must be an exact fragment present in the file, including spaces and newlines. To remove a matched fragment, set newString to an empty string.',
+                    'Common punctuation equivalence is supported, such as straight/curly quotes and ASCII/full-width punctuation. Replacements preserve the file punctuation style when possible.',
+                    'For long oldString fragments, Edit can tolerate whitespace-only differences such as indentation, line wrapping, or extra/missing blank lines.',
+                    'Each oldString must be unique by default. Multiple matches return line numbers and context.',
+                    'Line-range edits use 1-based inclusive startLine/endLine from Read output. Insertion uses 1-based insertAtLine; use totalLines + 1 to append.',
+                    'Line-range and insertion edits are applied by original Read line numbers from bottom to top automatically; do not adjust later line numbers yourself.',
+                ].join('\n'),
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        filePath: { type: 'string', description: 'Writable memory file path: `memory/state.md` or `memory/characters/<角色名>.md`.' },
+                        edits: {
+                            type: 'array',
+                                description: 'Real, non-empty JSON array, not a quoted JSON string. Each item should use exactly one mode: oldString/newString, startLine/endLine/newString, or insertAtLine/newString. Stray optional fields are ignored by mode priority.',
+                            items: {
+                                type: 'object',
+                                properties: {
+                                    oldString: { type: 'string', description: 'Original text fragment to replace. Must match exactly, with punctuation/long-whitespace tolerance.' },
+                                    startLine: { type: 'number', description: '1-based inclusive start line from the latest Read result.' },
+                                    endLine: { type: 'number', description: '1-based inclusive end line from the latest Read result.' },
+                                    insertAtLine: { type: 'number', description: '1-based insertion point from the latest Read result. Use totalLines + 1 to append.' },
+                                    newString: { type: 'string', description: 'Replacement, inserted text, or an empty string to delete the matched fragment or line range.' },
+                                    replaceAll: { type: 'boolean', description: 'Whether to replace all matches. Default false.' },
+                                },
+                                required: ['newString'],
+                                additionalProperties: false,
+                            },
+                        },
+                    },
+                    required: ['filePath', 'edits'],
+                    additionalProperties: false,
+                },
+            },
+        },
+    ];
+}
+
+async function readTavernTranscriptFile(sessionId = '', args: Record<string, unknown> = {}): Promise<TavernMemoryToolResult> {
+    const tail = Math.floor(Number(args.tail) || 0);
+    const offset = toPositiveInteger(args.offset, 1);
+    const limit = clampLimit(args.limit, DEFAULT_MEMORY_READ_LIMIT, MAX_MEMORY_READ_LIMIT);
+    const lines: string[] = [];
+    let totalMessages = 0;
+    if (tail > 0) {
+        let pageOffset = 0;
+        while (lines.length < Math.min(MAX_MEMORY_READ_LIMIT, tail)) {
+            const page = await listLatestTavernMessagesWithCount(sessionId, 100, pageOffset);
+            totalMessages = page.total;
+            if (!page.messages.length) {break;}
+            const pageLines = page.messages.flatMap((message) => [
+                `## order ${message.order} ${message.role}`,
+                normalizeBody(message.content || ''),
+                '',
+            ]);
+            lines.unshift(...pageLines);
+            pageOffset += page.messages.length;
+            if (pageOffset >= page.total) {break;}
+        }
+        const selected = lines.slice(Math.max(0, lines.length - Math.min(MAX_MEMORY_READ_LIMIT, tail)));
+        const startLine = Math.max(1, lines.length - selected.length + 1);
+        return {
+            ok: true,
+            path: 'chat/transcript.md',
+            content: numberLines(selected, startLine),
+            numberedContent: numberLines(selected, startLine),
+            lineStart: startLine,
+            lineEnd: startLine + selected.length - 1,
+            totalLines: lines.length,
+            truncated: lines.length > selected.length,
+            nextOffset: 0,
+            summary: `读取 chat/transcript.md 末尾 ${selected.length} 行（${totalMessages} 条消息）。`,
+        };
+    }
+
+    let messageOffset = 0;
+    let skippedLines = 0;
+    while (lines.length < limit) {
+        const page = await listTavernMessagesInRangeWithCount(sessionId, 0, Number.POSITIVE_INFINITY, 200, messageOffset);
+        totalMessages = page.total;
+        if (!page.messages.length) {break;}
+        for (const message of page.messages) {
+            const block = [
+                `## order ${message.order} ${message.role}`,
+                normalizeBody(message.content || ''),
+                '',
+            ];
+            if (skippedLines + block.length < offset) {
+                skippedLines += block.length;
+                continue;
+            }
+            const start = Math.max(0, offset - skippedLines - 1);
+            lines.push(...block.slice(start));
+            skippedLines += block.length;
+            if (lines.length >= limit) {break;}
+        }
+        messageOffset += page.messages.length;
+        if (messageOffset >= page.total) {break;}
+    }
+    const selected = lines.slice(0, limit);
+    return {
+        ok: true,
+        path: 'chat/transcript.md',
+        content: numberLines(selected, offset),
+        numberedContent: numberLines(selected, offset),
+        lineStart: offset,
+        lineEnd: offset + selected.length - 1,
+        totalLines: offset + selected.length - 1,
+        truncated: selected.length >= limit,
+        nextOffset: selected.length >= limit ? offset + selected.length : 0,
+        summary: `读取 chat/transcript.md 第 ${offset}-${offset + selected.length - 1} 行（${totalMessages} 条消息）。`,
+    };
+}
+
+async function readTavernSourceFile(
+    sessionId = '',
+    filePath = '',
+    args: Record<string, unknown> = {},
+    context: XbTavernContext = {},
+): Promise<TavernMemoryToolResult> {
+    if (filePath === 'chat/transcript.md') {
+        return readTavernTranscriptFile(sessionId, args);
+    }
+    const chatMessageMatch = filePath.match(/^chat\/messages\/(\d+)\.md$/);
+    if (chatMessageMatch) {
+        const message = await getTavernMessage(sessionId, Number(chatMessageMatch[1]));
+        if (!message) {return { ok: false, path: filePath, summary: `${filePath} 不存在。`, error: 'source_file_not_found' };}
+        const content = [
+            `# Message ${message.order}`,
+            '',
+            `Role: ${message.role}`,
+            message.name ? `Name: ${message.name}` : '',
+            message.error ? 'Error: true' : '',
+            '',
+            '## Content',
+            normalizeBody(message.content || ''),
+            ...(Array.isArray(message.thoughts) && message.thoughts.length
+                ? ['', '## Thoughts', ...message.thoughts.map((thought, index) => `### ${normalizeInline(thought?.label || `思考 ${index + 1}`, 120)}\n${normalizeBody(thought?.text || '')}`)]
+                : []),
+        ].filter((line) => line !== '').join('\n');
+        return readVirtualTextFile(filePath, content, args);
+    }
+    const worldbook = listWorldbookSourceFiles(context).find((file) => file.path === filePath);
+    if (worldbook) {
+        return readVirtualTextFile(filePath, worldbook.content, args);
+    }
+    if (filePath.startsWith('memory/')) {
+        const file = await getTavernMemoryFile(sessionId, filePath);
+        if (!file) {
+            return { ok: false, summary: `${filePath} 不存在。`, path: filePath, error: 'memory_file_not_found' };
+        }
+        return readVirtualTextFile(filePath, file.content, args);
+    }
+    return { ok: false, path: filePath, summary: `${filePath} 不存在。`, error: 'source_file_not_found' };
+}
+
+function readVirtualTextFile(filePath = '', content = '', args: Record<string, unknown> = {}): TavernMemoryToolResult {
+    const lines = splitLines(content);
+    const tail = Math.floor(Number(args.tail) || 0);
+    let startLine = toPositiveInteger(args.offset, 1);
+    let limit = clampLimit(args.limit, DEFAULT_MEMORY_READ_LIMIT, MAX_MEMORY_READ_LIMIT);
+    if (tail > 0) {
+        limit = Math.min(MAX_MEMORY_READ_LIMIT, tail);
+        startLine = Math.max(1, lines.length - limit + 1);
+    }
+    const startIndex = Math.max(0, startLine - 1);
+    const selected = lines.slice(startIndex, startIndex + limit);
+    const nextOffset = startIndex + limit < lines.length ? startIndex + limit + 1 : 0;
+    return {
+        ok: true,
+        path: filePath,
+        lineStart: startIndex + 1,
+        lineEnd: startIndex + selected.length,
+        totalLines: lines.length,
+        content: numberLines(selected, startIndex + 1),
+        numberedContent: numberLines(selected, startIndex + 1),
+        truncated: nextOffset > 0,
+        nextOffset,
+        summary: `读取 ${filePath} 第 ${startIndex + 1}-${startIndex + selected.length} 行，共 ${lines.length} 行。`,
+    };
+}
+
+export async function executeTavernSourceFileTool(
+    sessionId = '',
+    toolName = '',
+    args: Record<string, unknown> = {},
+    options: {
+        caller?: TavernManagerToolCaller;
+        managerRunId?: string;
+        turn?: number;
+        sourceUserOrder?: number;
+        sourceAssistantOrder?: number;
+        beforeWriteGuard?: () => Promise<void> | void;
+        contextSnapshot?: XbTavernContext;
+    } = {},
+): Promise<TavernMemoryToolResult> {
+    const id = String(sessionId || '').trim();
+    if (!id) {return { ok: false, summary: '缺少 sessionId。', error: 'source_session_required' };}
+    const context = options.contextSnapshot || {};
+    try {
+        if (toolName === TAVERN_SOURCE_FILE_TOOL_NAMES.LS) {
+            const directory = normalizeTavernSourceDirectoryPath(args.path || 'memory/');
+            const entries = collectTavernDirectoryEntries(await listTavernSourceFilePaths(id, context), directory);
+            const offset = toPositiveInteger(args.offset, 1);
+            const limit = Math.min(300, Math.max(1, Math.floor(Number(args.limit) || 100)));
+            const page = entries.slice(offset - 1, offset - 1 + limit);
+            return {
+                ok: true,
+                path: directory,
+                entries: page,
+                count: entries.length,
+                truncated: offset - 1 + limit < entries.length,
+                nextOffset: offset - 1 + limit < entries.length ? offset + limit : 0,
+                summary: `${directory} 下有 ${entries.length} 项，返回 ${page.length} 项。`,
+            };
+        }
+        if (toolName === TAVERN_SOURCE_FILE_TOOL_NAMES.READ) {
+            const rawPath = normalizeTavernSourcePath(args.filePath || '');
+            if (!rawPath) {throw new Error('source_path_required');}
+            if (rawPath.endsWith('/')) {
+                return executeTavernSourceFileTool(id, TAVERN_SOURCE_FILE_TOOL_NAMES.LS, {
+                    path: rawPath,
+                    offset: args.offset,
+                    limit: args.limit,
+                }, options);
+            }
+            return readTavernSourceFile(id, normalizeTavernSourceFilePath(rawPath), args, context);
+        }
+        if (toolName === TAVERN_SOURCE_FILE_TOOL_NAMES.GREP) {
+            const pattern = String(args.pattern ?? args.query ?? '').trim();
+            if (!pattern) {return { ok: false, summary: '缺少搜索词。', error: 'grep_pattern_required' };}
+            const regexp = buildSourceSearchRegExp(pattern, args.useRegex === true);
+            const outputMode = normalizeGrepOutputMode(args.outputMode);
+            const limit = Math.min(MAX_MEMORY_GREP_LIMIT, Math.max(1, Math.floor(Number(args.limit) || MAX_MEMORY_GREP_LIMIT)));
+            const offset = toNonNegativeInteger(args.offset, 0);
+            const contextLines = Math.min(5, toNonNegativeInteger(args.contextLines, 0));
+            const scope = normalizeTavernSourcePath(args.path || args.scope || '');
+            const include = String(args.include || '').trim();
+            const rows: Array<{ path: string; lineNumber?: number; line?: string; context?: string; count?: number }> = [];
+            let searchedFileCount = 0;
+            for (const file of listWorldbookSourceFiles(context)) {
+                if (!sourcePathInScope(file.path, scope, include)) {continue;}
+                searchedFileCount += 1;
+                grepTextFile(rows, file, regexp, outputMode, contextLines);
+            }
+            const memoryFiles = await listTavernMemoryFiles(id, { includeStale: true });
+            memoryFiles.forEach((file) => {
+                if (!sourcePathInScope(file.path, scope, include)) {return;}
+                searchedFileCount += 1;
+                grepTextFile(rows, { path: file.path, content: file.content }, regexp, outputMode, contextLines);
+            });
+            if (!scope || sourcePathInScope('chat/transcript.md', scope, include) || scope.startsWith('chat/')) {
+                const pageSize = 500;
+                let rangeOffset = 0;
+                while (true) {
+                    const page = await listTavernMessagesInRangeWithCount(id, 0, Number.POSITIVE_INFINITY, pageSize, rangeOffset);
+                    if (!page.messages.length) {break;}
+                    page.messages.forEach((message) => {
+                        const path = `chat/messages/${message.order}.md`;
+                        if (!sourcePathInScope(path, scope, include) && !sourcePathInScope('chat/transcript.md', scope, include)) {return;}
+                        searchedFileCount += 1;
+                        grepTextFile(rows, { path, content: normalizeBody(message.content || '') }, regexp, outputMode, contextLines);
+                    });
+                    rangeOffset += page.messages.length;
+                    if (rangeOffset >= page.total) {break;}
+                }
+            }
+            const page = rows.slice(offset, offset + limit);
+            return {
+                ok: true,
+                pattern,
+                path: scope,
+                outputMode,
+                searchedFileCount,
+                count: rows.length,
+                results: page,
+                matches: page.map((row) => ({
+                    path: row.path,
+                    line: row.lineNumber,
+                    text: row.line,
+                    context: row.context,
+                    count: row.count,
+                })),
+                truncated: offset + limit < rows.length,
+                nextOffset: offset + limit < rows.length ? offset + limit : 0,
+                summary: `搜索到 ${rows.length} 项，返回 ${page.length} 项。`,
+            };
+        }
+        if (toolName === TAVERN_SOURCE_FILE_TOOL_NAMES.WRITE) {
+            const path = normalizeTavernSourceFilePath(args.filePath || args.path || '');
+            if (!isTavernSourceWritablePath(path)) {
+                return { ok: false, path, changed: false, summary: `${path} 是只读资料，不能写入。`, error: 'source_file_read_only' };
+            }
+            const result = await executeTavernMemoryTool(id, TAVERN_MEMORY_TOOL_NAMES.WRITE, {
+                filePath: path,
+                content: String(args.content || ''),
+            }, options);
+            return {
+                ...result,
+                bytes: result.ok ? new TextEncoder().encode(String(args.content || '')).length : undefined,
+            };
+        }
+        if (toolName === TAVERN_SOURCE_FILE_TOOL_NAMES.EDIT) {
+            const path = normalizeTavernSourceFilePath(args.filePath || args.path || '');
+            if (!isTavernSourceWritablePath(path)) {
+                return { ok: false, path, changed: false, summary: `${path} 是只读资料，不能编辑。`, error: 'source_file_read_only' };
+            }
+            return executeTavernMemoryTool(id, TAVERN_MEMORY_TOOL_NAMES.EDIT, {
+                filePath: path,
+                edits: args.edits,
+            }, options);
+        }
+        return { ok: false, summary: `${toolName} 不可用。`, error: 'source_tool_not_available' };
+    } catch (error) {
+        if (isManagerControlError(error)) {throw error;}
+        return {
+            ok: false,
+            summary: error instanceof Error ? error.message : String(error || 'source_tool_failed'),
+            error: error instanceof Error ? error.message : String(error || 'source_tool_failed'),
+        };
+    }
 }
 
 export function getTavernMemoryToolDefinitions(): Array<{ type: 'function'; function: { name: string; description: string; parameters: unknown } }> {
@@ -829,47 +1506,9 @@ export function getTavernMemoryToolDefinitions(): Array<{ type: 'function'; func
 
 export function getTavernManagerToolDefinitions(): Array<{ type: 'function'; function: { name: string; description: string; parameters: unknown } }> {
     return [
-        ...getTavernMemoryToolDefinitions(),
+        ...getTavernSourceFileToolDefinitions(),
         ...getTavernStateToolDefinitions(),
         ...getTavernTaskToolDefinitions(),
-        {
-            type: 'function',
-            function: {
-                name: TAVERN_MEMORY_TOOL_NAMES.CHAT_HISTORY,
-                description: [
-                    'Read original RP chat history for the current session.',
-                    'This is read-only and returns message order, role, and snippet or full content.',
-                    'Best for checking what actually happened in the RP before correcting memory files.',
-                    'Message order is an evidence coordinate, not in-world story time.',
-                    'Use recent for current continuity, range when you know message order, and grep when you only know a keyword.',
-                    'recent reads the latest messages; offset pages backward from the newest messages.',
-                    'range reads message order ascending; if startOrder is provided and endOrder is omitted, the range continues through the latest message.',
-                    'grep searches message content and returns ascending earliest matches; offset/limit continue through later matches.',
-                    'Results include count/truncated/nextOffset for pagination. Set full:true to return the complete single-message content and thoughts without truncation, when exact wording or evidence matters.',
-                    'This does not search memory Markdown files. Use MemoryGrep for memory files.',
-                ].join('\n'),
-                parameters: {
-                    type: 'object',
-                    properties: {
-                        mode: {
-                            type: 'string',
-                            enum: ['recent', 'range', 'grep'],
-                            description: 'recent reads the latest messages; range reads messages by order; grep searches message content by keyword.',
-                        },
-                        limit: { type: 'number', minimum: 1, maximum: 100, description: 'Maximum messages to return. Defaults to 12.' },
-                        offset: { type: 'number', minimum: 0, description: 'Pagination offset. In recent mode it pages backward from the newest messages; in range/grep it skips earlier ascending results.' },
-                        startOrder: { type: 'number', minimum: 0, description: 'First message order for range mode. If endOrder is omitted, the range continues through the latest message.' },
-                        endOrder: { type: 'number', minimum: 0, description: 'Last message order for range mode, inclusive. Omit to read from startOrder through the latest message.' },
-                        pattern: { type: 'string', description: 'Keyword for grep mode. Plain text by default.' },
-                        regex: { type: 'boolean', description: 'Set true only when pattern is intended as a regular expression.' },
-                        useRegex: { type: 'boolean', description: 'Alias for regex; kept for JSON compatibility with ebook-style calls.' },
-                        full: { type: 'boolean', description: 'Return full message content instead of snippets when exact wording or source evidence matters.' },
-                    },
-                    required: ['mode'],
-                    additionalProperties: false,
-                },
-            },
-        },
     ];
 }
 

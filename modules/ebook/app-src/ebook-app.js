@@ -853,6 +853,7 @@ export function createEbookApp(options = {}) {
         state,
         render,
         renderStudioSurface,
+        renderFilesSurface,
         requestHost: hostBridge.requestHost,
         showToast,
         conversationStore,

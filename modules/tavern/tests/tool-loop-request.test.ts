@@ -11,7 +11,7 @@ test('tool loop request plan keeps full prompt rounds on non-session providers',
     const plan = resolveTavernToolLoopRequestPlan({
         supportsSessionToolLoop: false,
         messages,
-        toolResponses: [{ id: 'read-1', name: 'MemoryRead', response: { ok: true } }],
+        toolResponses: [{ id: 'read-1', name: 'Read', response: { ok: true } }],
         finalAnswerReminderText: 'finish now',
     });
 

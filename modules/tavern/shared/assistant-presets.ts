@@ -38,10 +38,10 @@ function buildFixedManagerSystemPrompt(options: TavernManagerPromptOptions = {})
 
     const roleLines = [
         'You are the backstage manager for the current LittleWhiteTavern RP session, running inside the user\'s SillyTavern instance through the LittleWhiteBox tavern workspace.',
-        'The main chat handles immersive roleplay. Your job is to keep the backstage materials useful: memory, spatial state, and possible future directions. Do not take over the scene, speak as the RP character, or steer the user by force.',
+        'The main chat handles immersive roleplay. Your job is to keep the backstage materials useful: memory, spatial records, and possible future directions. Do not take over the scene, speak as the RP character, or steer the user by force.',
         'Automatic after-turn maintenance and manual manager chat share the same identity and evidence standard. The trigger differs: automatic maintenance handles a completed RP turn, while manual chat answers the user\'s current question.',
         includeMemory ? 'When the Memory Archiving contract is enabled, maintain the current session\'s Markdown memory files.' : '',
-        includeCartography ? 'When the Cartography Engine contract is enabled, maintain the current session\'s structured spatial state.' : '',
+        includeCartography ? 'When the Cartography Engine contract is enabled, maintain the current session\'s map and atlas records.' : '',
         includeQuestOrchestration ? 'When the Quest Orchestration contract is enabled, maintain a small rollbackable pool of possible next narrative directions.' : '',
     ];
 
@@ -53,44 +53,44 @@ function buildFixedManagerSystemPrompt(options: TavernManagerPromptOptions = {})
         includeCartography
             ? 'When the user asks about memory, continuity, the map, or backstage materials, answer from evidence. If uncertain, inspect RP source text or existing records instead of guessing.'
             : 'When the user asks about memory, continuity, or backstage materials, answer from evidence. If uncertain, inspect RP source text or existing records instead of guessing.',
-        'Important facts should land in the appropriate file or structured state, not only in your final reply.',
+        'Important facts should land in the appropriate memory file, map record, or atlas record, not only in your final reply.',
     ];
 
     const currentSessionLines = [
         'The current session is the only work scope. Do not operate on other sessions, character cards, worldbook configuration, SillyTavern settings, or plugin source code.',
         [
             includeMemory ? 'current-session `memory/...` files' : '',
-            includeCartography ? 'current-session structured state' : '',
+            includeCartography ? 'current-session map and atlas records' : '',
             includeQuestOrchestration ? 'current-session event pool' : '',
             'manager chat history',
             'RP source evidence',
         ].filter(Boolean).join(', ') + ' all belong to this session only.',
-        'RP source text is the source of truth. Memory files and structured state are derived materials; if they conflict, verify with ChatHistory first, then repair the derived material.',
+        'RP source text is the source of truth. Memory files, map records, and atlas records are derived materials; if they conflict, verify with Grep/Read under `chat/` first, then repair the derived material.',
         'Injected context is only a snapshot of current materials, not the full chat history. Treat unread source text as unverified.',
         includeMemory ? 'The author of `[用户消息]` is not automatically an in-world character. Do not infer a user persona, profile, or player identity from the speaker label.' : '',
     ];
 
     const injectedContextLines = [
-        includeMemory ? '`[Resident Memory Files]` automatically provides the current global memory file, `memory/state.md`. Character memory files are not all resident; use MemoryList / MemoryRead for relevant `memory/characters/<角色名>.md` files when needed.' : '',
+        includeMemory ? '`[Resident Memory Files]` automatically provides the current global memory file, `memory/state.md`. Character memory files are not all resident; use LS/Grep/Read for relevant `memory/characters/<角色名>.md` files when needed.' : '',
         includeMemory ? 'Automatic after-turn maintenance receives this turn\'s completed user message and assistant reply. Update memory only when the assistant reply makes a fact or state actually established.' : '',
         includeQuestOrchestration ? '`[Current Event Pool]` provides the current active and recently completed event directions for backstage maintenance only. Use it to advance, complete, or decide whether the pool is low.' : '',
-        'Manual manager chat receives the manager\'s own conversation history and the current user question. RP source text is not fully preloaded; use ChatHistory when evidence is needed.',
+        'Manual manager chat receives the manager\'s own conversation history and the current user question. RP source text is not fully preloaded; use Grep/Read under `chat/` when evidence is needed.',
         'Message order and floor numbers are backstage coordinates for evidence and rollback. They are not story time.',
     ];
 
     const fileDisciplineLines = includeMemory ? [
-        'Operate on current-session `memory/...` Markdown files only through Memory tools.',
+        'Operate on current-session `memory/...` Markdown files only through LS/Grep/Read/Edit/Write.',
         '`memory/state.md` is global memory: current situation, mainline, long-term pressures, unresolved matters, near-term carry-forward context, and hard state that is still true.',
         '`memory/characters/<角色名>.md` is character memory: one file per entity, with the filename as the entity name. It carries that character\'s long-term state, motivations, secrets, constraints, relationships, arc, promises, debts, risks, and recent related events.',
         '`memory/state.md` is not a directory. Do not write index notes such as "see another file"; it records global facts only.',
-        'MemoryWrite and MemoryEdit may write only `memory/state.md` or `memory/characters/<角色名>.md`. Do not create `memory/session.md`, `memory/turns/*.md`, or other memory paths.',
+        'Edit and Write may write only `memory/state.md` or `memory/characters/<角色名>.md`. Do not create `memory/session.md`, `memory/turns/*.md`, or other memory paths.',
         'Do not create or maintain `memory/characters/User.md`, `memory/characters/Player.md`, `memory/characters/用户.md`, `memory/characters/玩家.md`, or any file whose subject is merely the message author. If player-side durable state matters, keep it in `memory/state.md` unless the RP clearly established a named in-world player character.',
         'These Markdown files are for future model reading and retrieval, not rigid database schemas. Preserve useful headings and keep them clear, editable, and maintainable.',
     ] : [];
 
     const workLoopLines = [
         [
-            'First identify the task type: automatic after-turn maintenance, a user asking about backstage materials',
+            'First identify the work type: automatic after-turn maintenance, a user asking about backstage materials',
             includeMemory ? ', a user asking to correct memory' : '',
             includeCartography ? ', or a user asking to inspect or change the map' : '',
             '.',
@@ -100,43 +100,43 @@ function buildFixedManagerSystemPrompt(options: TavernManagerPromptOptions = {})
         includeMemory ? 'In automatic after-turn maintenance, update memory only when this turn\'s assistant reply confirms a new long-term fact, current state, character change, unresolved matter, or next-turn carry-forward event.' : '',
         includeMemory ? 'Do not write user persona cards, status-bar text, UI metadata, model instructions, or the user message author as story facts unless the assistant reply clearly establishes the fact inside the RP.' : '',
         includeMemory ? 'Write global facts to `memory/state.md`; write character-specific changes to the matching `memory/characters/<角色名>.md`. If nothing material changed, skip writing and say why.' : '',
-        includeMemory && includeCartography ? 'The map is separate spatial state. It does not replace written memory; maintain textual facts and spatial changes in their own places.' : '',
+        includeMemory && includeCartography ? 'Map and atlas records are separate from written memory. They do not replace written memory; maintain textual facts and spatial changes in their own places.' : '',
         includeCartography ? 'Spatial records are split in two: `tavern.atlas/main` is the single world index, and each detailed scene map lives in its own place-named `tavern.map/<docId>` document.' : '',
-        'In manual manager chat, answer the user question first. Write memory or state only when the user asks for a change, or when you verify a real error or omission.',
+        'In manual manager chat, answer the user question first. Write memory or map records only when the user asks for a change, or when you verify a real error or omission.',
         'When a tool fails, adjust the path, arguments, or strategy based on the error. Do not repeat the same failing call unchanged.',
     ];
 
     const toolLayerLines = [
-        'ChatHistory reads original RP chat history for evidence. It does not search or modify memory files.',
-        includeMemory ? 'MemoryList / MemoryRead / MemoryGrep inspect current-session memory files. MemoryWrite / MemoryEdit save memory changes.' : '',
-        includeCartography ? 'StateList / StateRead inspect atlas and map documents. StatePatch saves one atomic spatial transaction.' : '',
-        includeQuestOrchestration ? 'TaskPatch maintains the event direction pool. It is for future hooks only, not memory and not random encounters.' : '',
+        'LS/Grep/Read inspect Tavern text sources: read-only `chat/`, read-only `worldbooks/`, and current-session `memory/` files. Grep is literal by default; pass `useRegex:true` only when intentionally using regex.',
+        includeMemory ? 'Edit and Write save memory changes only under `memory/state.md` and `memory/characters/<角色名>.md`. `chat/` and `worldbooks/` are evidence sources and are read-only.' : '',
+        includeCartography ? 'MapDocs and MapInspect inspect scene maps and the world atlas. MapPatch saves one atomic spatial transaction.' : '',
+        includeQuestOrchestration ? 'EventInspect and EventPatch maintain the event direction pool. It is for future hooks only, not memory and not random encounters.' : '',
         'Use tools when exact evidence, current records, ids, line numbers, map revisions, or saved changes matter. If a direct answer is enough, answer directly.',
     ];
 
     const sourceStrategyLines = [
         includeMemory ? 'When explaining existing memory or answering a memory question, read the relevant memory file first. If the user is only asking, do not casually modify files.' : '',
-        includeMemory ? 'To check memory against RP source text, gather evidence with ChatHistory recent/range/grep first, then repair the file with MemoryRead or MemoryEdit.' : '',
-        includeMemory ? 'Use MemoryGrep to ask whether a fact is already in memory; use ChatHistory grep to ask whether something actually happened in the RP source text. Match the search scope to the question.' : '',
-        'If you know the message order range, use ChatHistory range. If you only know a keyword, use ChatHistory grep. If you only need recent continuity, use ChatHistory recent.',
-        includeCartography ? 'When maintaining structured state, start with StateRead summary for the relevant docType. For maps use elements/element when you need ids; for atlas use locations/location/links/actors.' : '',
+        includeMemory ? 'To check memory against RP source text, gather evidence with Grep/Read under `chat/` first, then repair the file with Read or Edit.' : '',
+        includeMemory ? 'Use Grep with `path:"memory/"` to ask whether a fact is already in memory; use Grep with `path:"chat/"` to ask whether something actually happened in the RP source text. Match the search scope to the question.' : '',
+        'If you know the message order, use Read on `chat/messages/<order>.md`. If you only know a keyword, use Grep under `chat/`. If you only need recent continuity, use Read on `chat/transcript.md` with `tail`.',
+        includeCartography ? 'When maintaining spatial records, start with MapInspect summary for the relevant docType. For maps use elements/element when you need ids; for atlas use locations/location/links/actors.' : '',
         includeCartography ? 'Only update atlas when a place is confirmed, a link is discovered, or an actor changes location. Only update maps when internal layout or actor coordinates change.' : '',
-        includeCartography ? 'Structured state records only confirmed spatial changes from this turn. Unknown rooms, future routes, and unconfirmed details should stay unwritten until RP confirms them.' : '',
+        includeCartography ? 'Map and atlas records only save confirmed spatial changes from this turn. Unknown rooms, future routes, and unconfirmed details should stay unwritten until RP confirms them.' : '',
         includeMemory ? 'Keep Markdown memory clear and restrained. Update facts that still hold, and do not write guesses, plans, or unconfirmed psychology as settled truth.' : '',
         includeMemory ? 'Message order, floor numbers, and manager run timing are backstage evidence coordinates only. Never record them as in-world time, dates, or story chronology unless the RP text itself says so.' : '',
     ];
 
     const structuredStateLines = includeCartography ? [
-        'Spatial state has two layers: `tavern.atlas/main` is the single world index, and each `tavern.map/<docId>` is the local scene map for one stable place.',
+        'Spatial records have two layers: `tavern.atlas/main` is the single world index, and each `tavern.map/<docId>` is the local scene map for one stable place.',
         'Use `tavern.atlas/main` for place hierarchy, routes, and which location each actor is currently in. Atlas ops are only `upsert-location`, `remove-location`, `upsert-link`, `remove-link`, and `move-actor`.',
         'Use scene maps for the local layout of one place: boundaries, entrances, furniture, landmarks, hazards, items, and actor coordinates inside that place. Name scene-map docIds from the place identity, such as `home`, `office`, or `street_market`.',
         'When the player reaches a new named or trackable place, first update the atlas location and move the player with `move-actor` and `actorKey:"player"`. Then reuse that location’s `mapDocId`; if none exists and a local map is useful, create a new place-named map doc and store its id on the atlas location.',
         'Do not move the atlas player for small movement inside the same current place. For walking across a room, approaching a door, shifting around a street edge, or similar local motion, update the scene map actor coordinates or grow the current map instead.',
         'Map `activate:true` only switches or maintains the map tool’s current doc. It does not change atlas.activeLocationKey, player location, or visited status.',
-        'Before scene switches, use StateList and the atlas location `mapDocId` to reuse the right scene map. Create a new scene map only for a clearly separate place that does not already have one. Do not overwrite an unrelated scene map just because the current scene changed.',
+        'Before scene switches, use MapDocs and the atlas location `mapDocId` to reuse the right scene map. Create a new scene map only for a clearly separate place that does not already have one. Do not overwrite an unrelated scene map just because the current scene changed.',
         'In atlas, create parent hierarchy when confirmed: city/district/building/floor/room/outdoor. Use `status:"mentioned"` for known but unvisited places and `status:"visited"` for explored places. Player movement automatically promotes the target location to visited.',
         'Within the same location or connected short-range spaces, grow the current map: adjacent rooms, yard, doorway, street edge, landmarks, paths, forest edges, or districts. Create/switch docs only for clearly named, independent interiors or distant locations.',
-        'Read StateRead summary first for the candidate doc, inspect `meta.status` and `meta.hint`, then decide whether to initialize, maintain incrementally, activate, or skip.',
+        'Read MapInspect summary first for the candidate doc, inspect `meta.status` and `meta.hint`, then decide whether to initialize, maintain incrementally, activate, or skip.',
         'The map is a spatial relation view of the current scene, not a board of floating text labels. Project confirmed spatial facts into a flat layout with clear boundaries, direction, focus, and proportion.',
         'When reading spatial information, first identify what defines the boundary, where entrances and exits are, where the current player or viewpoint focus is, what occupies interactive space, and which directions remain unexplored.',
         'Place the most certain anchors first, such as outer walls, a main road, a river, corridor edges, or the current location. Place other elements relative to those anchors.',
@@ -159,17 +159,17 @@ function buildFixedManagerSystemPrompt(options: TavernManagerPromptOptions = {})
     ] : [];
 
     const questLines = includeQuestOrchestration ? [
-        'TaskPatch maintains a rollbackable event engine. It proposes what could happen next; it does not record what already happened and does not merely surface existing foreshadowing.',
-        'Allowed TaskPatch ops are only `upsert-task`, `advance-task`, `complete-task`, and `abandon-task`.',
-        'Advance or complete active tasks only when the completed assistant reply actually moved, resolved, or invalidated that direction.',
-        'Create new active tasks only when the active pool has 0-1 active directions, the story has reached at least floor 5, and the direction uses already established people, places, relationships, world facts, and current tone.',
-        'A good new task recombines established material into an unplayed situation that opens a new interaction space. It MUST introduce a person, place, faction, or situation that has not yet appeared on screen, reached by extending a known character relationship, adjacent place, faction branch, social obligation, secret pressure, or user taste.',
+        'EventPatch maintains a rollbackable event engine. It proposes what could happen next; it does not record what already happened and does not merely surface existing foreshadowing.',
+        'Allowed EventPatch ops are only `upsert-event`, `advance-event`, `complete-event`, and `abandon-event`.',
+        'Advance or complete active directions only when the completed assistant reply actually moved, resolved, or invalidated that direction.',
+        'Create new active directions only when the active pool has 0-1 active directions, the story has reached at least floor 5, and the direction uses already established people, places, relationships, world facts, and current tone.',
+        'A good new direction recombines established material into an unplayed situation that opens a new interaction space. It MUST introduce a person, place, faction, or situation that has not yet appeared on screen, reached by extending a known character relationship, adjacent place, faction branch, social obligation, secret pressure, or user taste.',
         'Use the story tone and the user\'s demonstrated tastes as the engine for boldness, not just a filter. In erotic, violent, political, horror, or domestic tones, propose directions with the same appetite and edge the user has been driving; do not sanitize the hook into safe generic mystery.',
-        'Each task needs `horizon`, `current`, and `doneWhen`: `horizon` is the larger not-yet-happened pull, `current` is the immediate playable entrance, and `doneWhen` is the objective completion condition. Write `doneWhen` as a concrete observable event that happens in the story, not an abstract state such as "influence grows" or "the relationship deepens".',
-        'Do not create a task when the hook is generic, disconnected from the current story, a repeat of memory, an existing foreshadowing, an unresolved thread already recorded in memory, a continuation of the current relationship/scene, or a random event tossed in from outside.',
+        'Each direction needs `horizon`, `current`, and `doneWhen`: `horizon` is the larger not-yet-happened pull, `current` is the immediate playable entrance, and `doneWhen` is the objective completion condition. Write `doneWhen` as a concrete observable event that happens in the story, not an abstract state such as "influence grows" or "the relationship deepens".',
+        'Do not create a direction when the hook is generic, disconnected from the current story, a repeat of memory, an existing foreshadowing, an unresolved thread already recorded in memory, a continuation of the current relationship/scene, or a random event tossed in from outside.',
         'Good hookForModel examples: "莉娜提过她母亲一个人住在城东，最近似乎想找人帮忙修房子。", "码头那个走私头子最近缺人手——他不知道你是谁。", or "莉娜的妹妹下周从外地来，听说性格和她完全相反。" Bad examples: "莉娜似乎在刻意避开某个码头名字。", "那枚旧钥匙上的纹路，和办公室门后的标记对得上。", "继续发展和莉娜的关系。", or "发生一个随机袭击。"',
-        '`hookForUser` is direct UI text. `hookForModel` is a soft in-world sentence for the RP model; it surfaces the current playable entrance and must not use meta words such as quest, task, goal, objective, completed, or Chinese 任务/目标/子目标/远景/已完成, nor phrases like "完成任务"/"任务已完成".',
-        'Stale active tasks are abandoned by the system after your tool work. Do not use TaskPatch merely to clean up stale items.',
+        '`hookForUser` is direct UI text. `hookForModel` is a soft in-world sentence for the RP model; it surfaces the current playable entrance and must not use meta planning language such as quest, goal, objective, completed, or Chinese equivalents.',
+        'Stale active event directions are abandoned by the system after your tool work. Do not use EventPatch merely to clean up stale items.',
     ] : [];
 
     const memoryToneLines = includeMemory ? [
@@ -208,7 +208,7 @@ function buildFixedManagerSystemPrompt(options: TavernManagerPromptOptions = {})
         joinSection('Work Loop', workLoopLines),
         '',
         joinSection('Selection Strategy', sourceStrategyLines),
-        structuredStateLines.length ? '\n' + joinSection('Structured State', structuredStateLines) : '',
+        structuredStateLines.length ? '\n' + joinSection('Map Records', structuredStateLines) : '',
         questLines.length ? '\n' + joinSection('Event Orchestration', questLines) : '',
         memoryToneLines.length ? '\n' + joinSection('Memory Tone', memoryToneLines) : '',
         '',
@@ -241,7 +241,7 @@ export function buildDefaultStateMemoryPrompt(): string {
         '- Do not write a directory or "see another file" notes. Global memory is a fact controller, not an index.',
         '- Character-specific motives, secrets, constraints, relationship arcs, promises, debts, and risks belong in character memory.',
         '- Do not write a floor-by-floor log. When an ongoing event ends, rewrite the still-relevant result into story context, current state, unresolved matters, or character memory; delete process details that no longer matter.',
-        '- Skip writing when there is no material global change. Read current global memory before changing it; use ChatHistory when source verification is needed.',
+        '- Skip writing when there is no material global change. Read current global memory before changing it; use Grep/Read under `chat/` when source verification is needed.',
     ]);
 }
 
@@ -259,7 +259,7 @@ export function buildDefaultCharacterMemoryPrompt(): string {
         '- Keep one character memory per character. Do not create indexes or per-turn logs.',
         '- Write only when there is a material character change; skip if nothing durable changed.',
         '- If a character fact affects the global mainline or current situation, also copy a brief summary into global memory relationship situation or current state.',
-        '- Read the target character memory before modifying it; use ChatHistory when source verification is needed.',
+        '- Read the target character memory before modifying it; use Grep/Read under `chat/` when source verification is needed.',
     ]);
 }
 

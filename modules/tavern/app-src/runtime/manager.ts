@@ -6,14 +6,15 @@ import {
     hasVisibleText,
     resolveResultToolCalls,
 } from '../../../agent-core/runtime/protocol.js';
-import type { XbTavernMessage } from '../../shared/message-assembler';
+import type { XbTavernContext, XbTavernMessage } from '../../shared/message-assembler';
 import { buildTavernManagerSystemPrompt, type TavernAssistantPreset } from '../../shared/assistant-presets';
 import {
     ensureTavernMemoryDefaults,
-    executeTavernMemoryTool,
+    executeTavernSourceFileTool,
     getTavernManagerToolDefinitions,
     listTavernMemoryFiles,
     rebuildTavernMemoryDerivedIndex,
+    TAVERN_SOURCE_FILE_TOOL_NAMES,
     type TavernMemoryToolResult,
 } from '../../shared/memory-files';
 import { cleanSourceTextForManager } from '../../shared/memory-retrieval';
@@ -108,6 +109,7 @@ export interface XbTavernManagerRunInput {
     managerRunId?: string;
     autoManagerEpoch?: number;
     sessionContract?: TavernSessionContract;
+    contextSnapshot?: XbTavernContext;
     assistantPreset?: TavernAssistantPreset;
     signal?: AbortSignal;
     executeManagerOnce?: (options: XbTavernManagerOnceOptions) => Promise<XbTavernManagerOnceResult>;
@@ -181,6 +183,7 @@ export const TAVERN_MANAGER_MAX_CONTEXT_TOKENS = 188000;
 export const TAVERN_MANAGER_SUMMARY_TRIGGER_TOKENS = 158000;
 export const TAVERN_MANAGER_DEFAULT_PRESERVED_TURNS = 2;
 export const TAVERN_MANAGER_MIN_PRESERVED_TURNS = 1;
+export const TAVERN_MANAGER_SETTLE_TIMEOUT_MS = 20000;
 
 const managerQueues = new Map<string, Promise<unknown>>();
 const activeAutoManagerRuns = new Map<string, {
@@ -270,11 +273,11 @@ function buildAutoManagerUserPrompt(input: {
         requirements.push(`${step}. This contract authorizes only the map system. Do not write memory Markdown.`);
         step += 1;
     } else if (!allowQuest) {
-        requirements.push(`${step}. This contract authorizes neither background memory nor map maintenance. Do not write memory or State; clearly say that you skipped it.`);
+        requirements.push(`${step}. This contract authorizes neither background memory nor map maintenance. Do not write memory or map records; clearly say that you skipped it.`);
         step += 1;
     }
     if (allowQuest) {
-        requirements.push(`${step}. Maintain the event pool with TaskPatch only when useful: advance or complete active directions that the reply actually addressed; after floor ${TAVERN_TASK_MIN_GENERATION_FLOOR}, create fresh active directions only when the active pool has 0-1 items. A fresh direction must recombine established material into a not-yet-played person, place, faction, or situation, with a larger horizon, an immediate current entrance, and a doneWhen completion condition written as a concrete observable event in the story, not an abstract state. Use the user’s demonstrated tastes as the engine for boldness; do not use TaskPatch for old facts, existing foreshadowing, obvious continuations, or generic random events.`);
+        requirements.push(`${step}. Maintain the event pool with EventInspect/EventPatch only when useful: advance or complete active directions that the reply actually addressed; after floor ${TAVERN_TASK_MIN_GENERATION_FLOOR}, create fresh active directions only when the active pool has 0-1 items. A fresh direction must recombine established material into a not-yet-played person, place, faction, or situation, with a larger horizon, an immediate current entrance, and a doneWhen completion condition written as a concrete observable event in the story, not an abstract state. Use the user’s demonstrated tastes as the engine for boldness; do not use EventPatch for old facts, existing foreshadowing, obvious continuations, or generic random events.`);
         step += 1;
     }
     requirements.push(`${step}. Close with a short result: say what you wrote, skipped, or left pending.`);
@@ -391,6 +394,10 @@ function isTaskToolName(name = ''): boolean {
     return Object.values(TAVERN_TASK_TOOL_NAMES).includes(name as typeof TAVERN_TASK_TOOL_NAMES[keyof typeof TAVERN_TASK_TOOL_NAMES]);
 }
 
+function isSourceFileToolName(name = ''): boolean {
+    return Object.values(TAVERN_SOURCE_FILE_TOOL_NAMES).includes(name as typeof TAVERN_SOURCE_FILE_TOOL_NAMES[keyof typeof TAVERN_SOURCE_FILE_TOOL_NAMES]);
+}
+
 function hasFailedTool(toolTrace: Array<Record<string, unknown>> = []): boolean {
     return toolTrace.some((item) => item.ok === false);
 }
@@ -483,6 +490,23 @@ function throwIfManagerAborted(signal?: AbortSignal) {
     throw error;
 }
 
+async function abortAutoManagerRunsForSession(sessionId = '', error = 'manager_settle_timeout'): Promise<string[]> {
+    const id = String(sessionId || '').trim();
+    if (!id) {return [];}
+    const runIds: string[] = [];
+    activeAutoManagerRuns.forEach((run, runId) => {
+        if (run.sessionId !== id) {return;}
+        runIds.push(runId);
+        run.controller.abort();
+    });
+    runIds.forEach((runId) => activeAutoManagerRuns.delete(runId));
+    await Promise.all(runIds.map((runId) => updateTavernManagerRun(runId, {
+        status: 'cancelled',
+        error,
+    })));
+    return runIds;
+}
+
 async function runManagerAgentWithTools(input: {
     sessionId: string;
     agentConfig: Record<string, unknown>;
@@ -494,6 +518,7 @@ async function runManagerAgentWithTools(input: {
     assistantOrder?: number;
     beforeWriteGuard?: () => Promise<void> | void;
     sessionContract?: TavernSessionContract;
+    contextSnapshot?: XbTavernContext;
     signal?: AbortSignal;
     executeManagerOnce?: (options: XbTavernManagerOnceOptions) => Promise<XbTavernManagerOnceResult>;
     onStreamProgress?: (snapshot: TavernManagerStreamSnapshot) => void;
@@ -669,33 +694,41 @@ async function runManagerAgentWithTools(input: {
             await persistRunningManagerToolTrace(input.managerRunId, toolTrace);
             const toolResult = input.caller === 'auto' && !isAutoManagerToolAllowed(toolCall.name, input.sessionContract)
                 ? buildDeniedAutoManagerToolResult(toolCall.name, input.sessionContract)
-                : isStateToolName(toolCall.name)
-                    ? await executeTavernStateTool(input.sessionId, toolCall.name, args, {
-                        caller: input.caller,
-                        managerRunId: input.managerRunId,
-                        sourceUserOrder: input.userOrder,
-                        sourceAssistantOrder: input.assistantOrder,
-                        beforeWriteGuard: input.beforeWriteGuard,
-                    })
-                    : isTaskToolName(toolCall.name)
-                        ? await executeTavernTaskTool(input.sessionId, toolCall.name, args, {
-                            caller: input.caller,
-                            managerRunId: input.managerRunId,
-                            sourceUserOrder: input.userOrder,
-                            sourceAssistantOrder: input.assistantOrder,
-                            beforeWriteGuard: input.beforeWriteGuard,
-                        })
-                        : await executeTavernMemoryTool(input.sessionId, toolCall.name, args, {
+                : isSourceFileToolName(toolCall.name)
+                    ? await executeTavernSourceFileTool(input.sessionId, toolCall.name, args, {
                         caller: input.caller,
                         managerRunId: input.managerRunId,
                         turn: input.turn,
                         sourceUserOrder: input.userOrder,
                         sourceAssistantOrder: input.assistantOrder,
                         beforeWriteGuard: input.beforeWriteGuard,
-                    });
+                        contextSnapshot: input.contextSnapshot,
+                    })
+                    : isStateToolName(toolCall.name)
+                        ? await executeTavernStateTool(input.sessionId, toolCall.name, args, {
+                            caller: input.caller,
+                            managerRunId: input.managerRunId,
+                            sourceUserOrder: input.userOrder,
+                            sourceAssistantOrder: input.assistantOrder,
+                            beforeWriteGuard: input.beforeWriteGuard,
+                        })
+                        : isTaskToolName(toolCall.name)
+                            ? await executeTavernTaskTool(input.sessionId, toolCall.name, args, {
+                                caller: input.caller,
+                                managerRunId: input.managerRunId,
+                                sourceUserOrder: input.userOrder,
+                                sourceAssistantOrder: input.assistantOrder,
+                                beforeWriteGuard: input.beforeWriteGuard,
+                            })
+                            : {
+                                ok: false,
+                                summary: `${toolCall.name || 'tool'} 不可用。`,
+                                changed: false,
+                                error: 'manager_tool_not_available',
+                            } as TavernMemoryToolResult;
             const resultPath = 'path' in toolResult ? toolResult.path : '';
             const resultStateKey = 'docType' in toolResult && toolResult.docType ? `${toolResult.docType}/${toolResult.docId || ''}` : '';
-            const resultTaskKey = 'taskId' in toolResult && toolResult.taskId ? `task/${toolResult.taskId}` : '';
+            const resultTaskKey = 'eventId' in toolResult && toolResult.eventId ? `event/${toolResult.eventId}` : '';
             if (toolResult.changed && resultPath) {
                 changedFiles.add(resultPath);
             }
@@ -941,6 +974,7 @@ async function runManagerTask(input: {
     requireChangedFiles: boolean;
     beforeWriteGuard?: () => Promise<void> | void;
     sessionContract?: TavernSessionContract;
+    contextSnapshot?: XbTavernContext;
     signal?: AbortSignal;
     executeManagerOnce?: (options: XbTavernManagerOnceOptions) => Promise<XbTavernManagerOnceResult>;
     onStreamProgress?: (snapshot: TavernManagerStreamSnapshot) => void;
@@ -992,6 +1026,7 @@ async function runManagerTask(input: {
             assistantOrder: input.assistantOrder,
             beforeWriteGuard: input.beforeWriteGuard,
             sessionContract: input.sessionContract,
+            contextSnapshot: input.contextSnapshot,
             signal: input.signal,
             executeManagerOnce: input.executeManagerOnce,
             onStreamProgress: input.onStreamProgress,
@@ -1288,6 +1323,7 @@ export async function runXbTavernManagerAfterTurn(input: XbTavernManagerRunInput
                 await assertManagerSourceMessagesCurrent(input);
             },
             sessionContract: input.sessionContract,
+            contextSnapshot: input.contextSnapshot || input.assistantMessage.contextSnapshot || input.userMessage.contextSnapshot || {},
             signal: input.signal,
             executeManagerOnce: input.executeManagerOnce,
             onProtocolEvent: input.onProtocolEvent,
@@ -1314,7 +1350,7 @@ export async function runXbTavernManagerAfterTurn(input: XbTavernManagerRunInput
             if (abandonedTasks.length) {
                 changedTasks = [...new Set([
                     ...changedTasks,
-                    ...abandonedTasks.map((task) => `task/${task.id}`),
+                    ...abandonedTasks.map((task) => `event/${task.id}`),
                 ])];
                 const staleSummary = `系统已放弃 ${abandonedTasks.length} 条过期事件线索。`;
                 const outputText = String(completedRun.outputText || '').trim();
@@ -1450,7 +1486,7 @@ export async function scheduleXbTavernManagerAfterTurn(input: XbTavernManagerRun
         .catch(async (error) => {
             const errorText = error instanceof Error ? error.message : String(error || 'manager_failed');
             const failed = await updateTavernManagerRun(queued.id, {
-                status: managerFailureStatus(error, input.signal),
+                status: managerFailureStatus(error, controller.signal),
                 error: errorText,
             }) || queued;
             await input.onManagerRunSaved?.(failed);
@@ -1476,15 +1512,16 @@ export async function scheduleXbTavernManagerAfterTurn(input: XbTavernManagerRun
     };
 }
 
-export async function settleTavernManagersForSession(sessionId = '', timeoutMs = 8000): Promise<{
+export async function settleTavernManagersForSession(sessionId = '', timeoutMs = TAVERN_MANAGER_SETTLE_TIMEOUT_MS): Promise<{
     settled: boolean;
     timedOut: boolean;
+    abortedRunIds?: string[];
 }> {
     const id = String(sessionId || '').trim();
     if (!id) {return { settled: true, timedOut: false };}
     const queue = managerQueues.get(id);
     if (!queue) {return { settled: true, timedOut: false };}
-    const timeout = Math.max(1, Number(timeoutMs) || 8000);
+    const timeout = Math.max(1, Number(timeoutMs) || TAVERN_MANAGER_SETTLE_TIMEOUT_MS);
     let timer: ReturnType<typeof setTimeout> | null = null;
     const timeoutPromise = new Promise<'timeout'>((resolve) => {
         timer = setTimeout(() => resolve('timeout'), timeout);
@@ -1494,12 +1531,18 @@ export async function settleTavernManagersForSession(sessionId = '', timeoutMs =
         timeoutPromise,
     ]);
     if (timer) {clearTimeout(timer);}
+    let abortedRunIds: string[] = [];
     if (result === 'timeout') {
         await advanceTavernAutoManagerEpoch(id);
+        abortedRunIds = await abortAutoManagerRunsForSession(id);
+        if (managerQueues.get(id) === queue) {
+            managerQueues.delete(id);
+        }
     }
     return {
         settled: result === 'settled',
         timedOut: result === 'timeout',
+        ...(abortedRunIds.length ? { abortedRunIds } : {}),
     };
 }
 

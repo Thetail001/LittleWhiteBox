@@ -43,16 +43,21 @@ const {
 const {
     chatAutoScroll,
     chatLayout,
+    chatMessageWindow,
     chatScrollRef,
     currentAuthorNote,
     saveCurrentAuthorNote,
     chatSidePanel,
+    messageKey,
     updateChatScrollButtons,
+    visibleChatMessages,
 } = chat;
 const {
     managerAutoScroll,
+    managerMessageWindow,
     managerScrollRef,
     updateManagerScrollButtons,
+    visibleManagerChatItems,
 } = manager;
 const {
     chatWorkspacePanel,
@@ -70,6 +75,8 @@ const {
 
 let pendingChatScrollSnapshot: ElementScrollSnapshot | null = null;
 let pendingManagerScrollSnapshot: ElementScrollSnapshot | null = null;
+let chatScrollAnchorDirty = true;
+let managerScrollAnchorDirty = true;
 const contractModalOpen = ref(false);
 const quickSettingsOpen = ref<'api' | 'chatPreset' | 'worldbooks' | null>(null);
 const contractSaving = ref(false);
@@ -86,6 +93,18 @@ const isMobileChatViewport = useTavernMediaQuery('(max-width: 760px)');
 const contractDraftDirty = computed(() => JSON.stringify(contractDraft.value) !== JSON.stringify(sessionContract.value));
 const shouldMountChatDirectory = computed(() => !isMobileChatViewport.value || mobileChatPanel.value === 'directory');
 const shouldMountChatWorkspace = computed(() => !isMobileChatViewport.value || mobileChatPanel.value === 'workspace');
+const chatPaneVisible = computed(() => activeView.value === 'chat' && chatFocus.value === 'chat');
+const managerPaneVisible = computed(() => activeView.value === 'chat' && chatFocus.value === 'manager');
+const chatScrollAnchorSignature = computed(() => [
+    chatMessageWindow.value.startIndex,
+    chatMessageWindow.value.visibleCount,
+    ...visibleChatMessages.value.map((message) => `${messageKey(message)}:${message.error ? 1 : 0}:${String(message.content || '').length}`),
+].join('|'));
+const managerScrollAnchorSignature = computed(() => [
+    managerMessageWindow.value.startIndex,
+    managerMessageWindow.value.visibleCount,
+    ...visibleManagerChatItems.value.map((item) => `${item.kind}:${item.key}`),
+].join('|'));
 
 const authorNotePositionOptions = [
     { value: XBTavernAuthorNotePosition.AFTER_MAIN, label: '主提示词后' },
@@ -264,40 +283,61 @@ watch(() => selectedSessionId.value, () => {
     authorNoteDraft.value = normalizeXbTavernAuthorNote(currentAuthorNote.value);
 });
 
+watch(chatScrollAnchorSignature, () => {
+    chatScrollAnchorDirty = true;
+}, { flush: 'sync' });
+
+watch(managerScrollAnchorSignature, () => {
+    managerScrollAnchorDirty = true;
+}, { flush: 'sync' });
+
 onBeforeUpdate(() => {
-    pendingChatScrollSnapshot = captureElementScrollState(chatScrollRef.value, {
-        itemSelector: '.chat-bubble[data-chat-anchor-key], .chat-history-gate[data-chat-anchor-key]',
-        datasetKey: 'chatAnchorKey',
-    });
-    pendingManagerScrollSnapshot = captureElementScrollState(managerScrollRef.value, {
-        itemSelector: '[data-manager-anchor-key]',
-        datasetKey: 'managerAnchorKey',
-    });
+    pendingChatScrollSnapshot = null;
+    pendingManagerScrollSnapshot = null;
+    if (chatPaneVisible.value && chatScrollAnchorDirty) {
+        pendingChatScrollSnapshot = captureElementScrollState(chatScrollRef.value, {
+            itemSelector: '.chat-bubble[data-chat-anchor-key], .chat-history-gate[data-chat-anchor-key]',
+            datasetKey: 'chatAnchorKey',
+        });
+        return;
+    }
+    if (managerPaneVisible.value && managerScrollAnchorDirty) {
+        pendingManagerScrollSnapshot = captureElementScrollState(managerScrollRef.value, {
+            itemSelector: '[data-manager-anchor-key]',
+            datasetKey: 'managerAnchorKey',
+        });
+    }
 });
 
 onUpdated(() => {
-    const shouldAutoScrollChat = activeView.value === 'chat' && chatFocus.value === 'chat' && chatAutoScroll.value !== false;
-    const shouldAutoScrollManager = activeView.value === 'chat' && chatFocus.value === 'manager' && managerAutoScroll.value !== false;
-    restoreElementScrollState(chatScrollRef.value, pendingChatScrollSnapshot, {
-        itemSelector: '.chat-bubble[data-chat-anchor-key], .chat-history-gate[data-chat-anchor-key]',
-        datasetKey: 'chatAnchorKey',
-    }, {
-        forceBottom: shouldAutoScrollChat,
-        defaultToBottom: shouldAutoScrollChat,
-        preserveScrollTop: !shouldAutoScrollChat,
-    });
-    restoreElementScrollState(managerScrollRef.value, pendingManagerScrollSnapshot, {
-        itemSelector: '[data-manager-anchor-key]',
-        datasetKey: 'managerAnchorKey',
-    }, {
-        forceBottom: shouldAutoScrollManager,
-        defaultToBottom: shouldAutoScrollManager,
-        preserveScrollTop: !shouldAutoScrollManager,
-    });
+    const shouldAutoScrollChat = chatPaneVisible.value && chatAutoScroll.value !== false;
+    const shouldAutoScrollManager = managerPaneVisible.value && managerAutoScroll.value !== false;
+    if (pendingChatScrollSnapshot) {
+        restoreElementScrollState(chatScrollRef.value, pendingChatScrollSnapshot, {
+            itemSelector: '.chat-bubble[data-chat-anchor-key], .chat-history-gate[data-chat-anchor-key]',
+            datasetKey: 'chatAnchorKey',
+        }, {
+            forceBottom: shouldAutoScrollChat,
+            defaultToBottom: shouldAutoScrollChat,
+            preserveScrollTop: !shouldAutoScrollChat,
+        });
+        chatScrollAnchorDirty = false;
+        updateChatScrollButtons();
+    }
+    if (pendingManagerScrollSnapshot) {
+        restoreElementScrollState(managerScrollRef.value, pendingManagerScrollSnapshot, {
+            itemSelector: '[data-manager-anchor-key]',
+            datasetKey: 'managerAnchorKey',
+        }, {
+            forceBottom: shouldAutoScrollManager,
+            defaultToBottom: shouldAutoScrollManager,
+            preserveScrollTop: !shouldAutoScrollManager,
+        });
+        managerScrollAnchorDirty = false;
+        updateManagerScrollButtons();
+    }
     pendingChatScrollSnapshot = null;
     pendingManagerScrollSnapshot = null;
-    updateChatScrollButtons();
-    updateManagerScrollButtons();
 });
 </script>
 

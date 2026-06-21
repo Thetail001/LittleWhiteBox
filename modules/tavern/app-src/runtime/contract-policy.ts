@@ -4,12 +4,19 @@ import {
     type TavernSessionContract,
     type TavernSessionContractRuntime,
 } from '../../shared/session-contract';
-import { TAVERN_MEMORY_TOOL_NAMES, type TavernMemoryToolResult } from '../../shared/memory-files';
+import { TAVERN_SOURCE_FILE_TOOL_NAMES, type TavernMemoryToolResult } from '../../shared/memory-files';
 import { TAVERN_STATE_TOOL_NAMES, type TavernStateToolResult } from '../../shared/structured-state';
 import { TAVERN_TASK_TOOL_NAMES, type TavernTaskToolResult } from '../../shared/tasks';
 
-const MEMORY_TOOL_NAMES: string[] = Object.values(TAVERN_MEMORY_TOOL_NAMES)
-    .filter((name) => name !== TAVERN_MEMORY_TOOL_NAMES.CHAT_HISTORY);
+const SOURCE_READ_TOOL_NAMES: string[] = [
+    TAVERN_SOURCE_FILE_TOOL_NAMES.LS,
+    TAVERN_SOURCE_FILE_TOOL_NAMES.GREP,
+    TAVERN_SOURCE_FILE_TOOL_NAMES.READ,
+];
+const SOURCE_WRITE_TOOL_NAMES: string[] = [
+    TAVERN_SOURCE_FILE_TOOL_NAMES.EDIT,
+    TAVERN_SOURCE_FILE_TOOL_NAMES.WRITE,
+];
 const STATE_TOOL_NAMES: string[] = Object.values(TAVERN_STATE_TOOL_NAMES);
 const TASK_TOOL_NAMES: string[] = Object.values(TAVERN_TASK_TOOL_NAMES);
 
@@ -21,8 +28,8 @@ export interface TavernAutoManagerToolPolicy {
 
 function getAutoManagerToolModuleKey(toolName = ''): 'memoryArchiving' | 'cartographyEngine' | 'questOrchestration' | null {
     const name = String(toolName || '').trim();
-    if (!name || name === TAVERN_MEMORY_TOOL_NAMES.CHAT_HISTORY) {return null;}
-    if (MEMORY_TOOL_NAMES.includes(name)) {return 'memoryArchiving';}
+    if (!name || SOURCE_READ_TOOL_NAMES.includes(name)) {return null;}
+    if (SOURCE_WRITE_TOOL_NAMES.includes(name)) {return 'memoryArchiving';}
     if (STATE_TOOL_NAMES.includes(name)) {return 'cartographyEngine';}
     if (TASK_TOOL_NAMES.includes(name)) {return 'questOrchestration';}
     return null;
@@ -40,9 +47,9 @@ export function resolveTavernAutoManagerToolPolicy(
     contract?: Partial<TavernSessionContract> | null,
 ): TavernAutoManagerToolPolicy {
     const runtime = resolveTavernSessionContractRuntime(contract);
-    const allowedToolNames: string[] = [TAVERN_MEMORY_TOOL_NAMES.CHAT_HISTORY];
+    const allowedToolNames: string[] = [...SOURCE_READ_TOOL_NAMES];
     if (runtime.includeMemoryFiles) {
-        allowedToolNames.push(...MEMORY_TOOL_NAMES);
+        allowedToolNames.push(...SOURCE_WRITE_TOOL_NAMES);
     }
     if (runtime.includeStructuredStates) {
         allowedToolNames.push(...STATE_TOOL_NAMES);
@@ -51,7 +58,7 @@ export function resolveTavernAutoManagerToolPolicy(
         allowedToolNames.push(...TASK_TOOL_NAMES);
     }
     const allowed = new Set(allowedToolNames);
-    const deniedToolNames = [...MEMORY_TOOL_NAMES, ...STATE_TOOL_NAMES, ...TASK_TOOL_NAMES].filter((name) => !allowed.has(name));
+    const deniedToolNames = [...SOURCE_WRITE_TOOL_NAMES, ...STATE_TOOL_NAMES, ...TASK_TOOL_NAMES].filter((name) => !allowed.has(name));
     return {
         runtime,
         allowedToolNames: [...allowed],

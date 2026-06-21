@@ -34,10 +34,15 @@ import {
     deleteTavernSession,
     deleteTavernManagerMessages,
     deleteTavernMessages,
+    getLatestTavernAssistantOrder,
+    getLatestTavernUserMessageAtOrBefore,
+    getTavernMessage,
     listTavernManagerMessages,
     getSelectedTavernSessionId,
     listTavernManagerRuns,
+    listTavernMessageOrdersFrom,
     listTavernMessages,
+    loadTavernMessageWindow,
     listTavernSessions,
     normalizeTavernSessionState,
     replaceTavernSessionState,
@@ -220,7 +225,11 @@ const drawProgressText = ref('');
 let drawCooldownTimer: number | null = null;
 const sessions = ref<TavernSessionRecord[]>([]);
 const selectedSessionId = ref('');
-const sessionMessages = ref<TavernMessageRecord[]>([]);
+const loadedSessionMessages = ref<TavernMessageRecord[]>([]);
+const selectedSessionMessageTotal = ref(0);
+const loadedSessionMessageStartOrder = ref<number | null>(null);
+const loadedSessionMessageEndOrder = ref<number | null>(null);
+const selectedSessionLatestAssistantOrder = ref(-1);
 const sessionMessageCounts = ref<Record<string, number>>({});
 const managerRuns = ref<TavernManagerRunRecord[]>([]);
 const tavernTasks = ref<TavernTaskRecord[]>([]);
@@ -379,7 +388,7 @@ const chatComposeTextareaRef = ref<HTMLTextAreaElement | null>(null);
 const managerComposeTextareaRef = ref<HTMLTextAreaElement | null>(null);
 const characterArchivePageRef = ref<InstanceType<typeof TavernCharacterSelectPage> | null>(null);
 const chatScrollPane = useTavernScrollPane({
-    totalItems: () => chatMessages.value.length,
+    totalItems: () => selectedSessionMessageTotal.value,
     defaultLimit: hiddenOutsideCount,
     loadBatchSize,
 });
@@ -451,7 +460,7 @@ let displayRegexCacheGeneration = 0;
 const effectiveContext = computed<XbTavernContext>(() => ({
     ...context.value,
     history: selectedSessionId.value
-        ? buildContextHistory(sessionMessages.value)
+        ? buildContextHistory(loadedSessionMessages.value)
         : context.value.history,
 }));
 const currentWorldbookCharacterId = computed(() => (
@@ -669,21 +678,35 @@ const displayCharacterName = computed(() => (
 ));
 const lastRequestSnapshot = computed(() => selectedSession.value?.state?.lastRequestSnapshot as RequestAuditSnapshot | undefined);
 const lastRequestRawJson = computed(() => String(lastRequestSnapshot.value?.rawRequestJson || lastRequestSnapshot.value?.rawMessagesJson || ''));
-const chatMessages = computed(() => sessionMessages.value);
-const currentAssistantFloor = computed(() => Math.max(
-    -1,
-    ...sessionMessages.value
-        .filter((message) => message.role === 'assistant' && message.error !== true)
-        .map((message) => Number(message.order))
-        .filter((order) => Number.isFinite(order)),
-));
-const chatMessageWindow = computed(() => getMessageWindow({
-    uiMessageWindowLimit: chatMessageWindowLimit.value,
-}, chatMessages.value.length, { defaultLimit: hiddenOutsideCount.value }));
-const visibleChatMessages = computed(() => chatMessages.value.slice(chatMessageWindow.value.startIndex));
+const chatMessages = computed(() => loadedSessionMessages.value);
+function latestMessageInMemory(messages: TavernMessageRecord[]) {
+    let latest: TavernMessageRecord | null = null;
+    messages.forEach((message) => {
+        if (!latest || message.order > latest.order) {
+            latest = message;
+        }
+    });
+    return latest;
+}
+
+const latestSessionMessage = computed(() => latestMessageInMemory(loadedSessionMessages.value));
+const currentAssistantFloor = computed(() => selectedSessionLatestAssistantOrder.value);
+const chatMessageWindow = computed(() => {
+    const total = Math.max(0, Math.floor(Number(selectedSessionMessageTotal.value) || 0));
+    const visibleCount = loadedSessionMessages.value.length;
+    const hiddenBefore = Math.max(0, total - visibleCount);
+    return {
+        startIndex: hiddenBefore,
+        hiddenBefore,
+        visibleCount,
+        limit: chatMessageWindowLimit.value,
+        total,
+    };
+});
+const visibleChatMessages = computed(() => loadedSessionMessages.value);
 const latestErrorMessage = computed(() => composeErrorMessage.value);
 const latestSavedChatError = computed(() => {
-    const lastMessage = [...sessionMessages.value].sort((left, right) => left.order - right.order).at(-1);
+    const lastMessage = latestSessionMessage.value;
     return lastMessage?.error ? `${lastMessage.sessionId}:${lastMessage.order}:${lastMessage.content || ''}` : '';
 });
 const {
@@ -750,7 +773,7 @@ function forgetSessionMessageCount(sessionId = '') {
 function sessionFloorCount(session?: TavernSessionRecord | null) {
     const id = String(session?.id || '').trim();
     if (!id) {return 0;}
-    if (id === selectedSessionId.value) {return chatMessages.value.length;}
+    if (id === selectedSessionId.value) {return selectedSessionMessageTotal.value;}
     return Math.max(0, Number(sessionMessageCounts.value[id]) || 0);
 }
 
@@ -920,11 +943,10 @@ const visibleChatMarkdownSignature = computed(() => visibleChatMessages.value
     .map((message) => `${message.sessionId}:${message.order}:${message.error ? 1 : 0}:${markdownSignature(message.content)}`)
     .join('|'));
 const messageDisplayDepthByKey = computed(() => {
-    const sorted = [...sessionMessages.value]
-        .filter((message) => isNormalRoleplayDisplayMessage(message))
-        .sort((left, right) => left.order - right.order);
-    return sorted.reduce<Record<string, number>>((depthByKey, message, index) => {
-        depthByKey[messageKey(message)] = Math.max(0, sorted.length - index - 1);
+    const displayMessages = loadedSessionMessages.value.filter((message) => isNormalRoleplayDisplayMessage(message));
+    const total = displayMessages.length;
+    return displayMessages.reduce<Record<string, number>>((depthByKey, message, index) => {
+        depthByKey[messageKey(message)] = Math.max(0, total - index - 1);
         return depthByKey;
     }, {});
 });
@@ -1040,7 +1062,7 @@ watch(memoryFileSearchText, () => {
 
 watch([
     () => selectedSessionId.value,
-    () => sessionMessages.value.length,
+    () => selectedSessionMessageTotal.value,
 ], ([sessionId, count]) => {
     rememberSessionMessageCount(String(sessionId || ''), Number(count) || 0);
 });
@@ -1427,7 +1449,7 @@ function runtimeDisplayRegexCacheKey(
         actionCheckSignature?: string;
     },
 ) {
-    const latestOrder = [...sessionMessages.value].sort((left, right) => left.order - right.order).at(-1)?.order ?? -1;
+    const latestOrder = latestSessionMessage.value?.order ?? -1;
     return [
         'runtime',
         kind,
@@ -2191,6 +2213,41 @@ async function enterSelectedCharacter() {
     await selectCharacterAndCreateSession(targetId);
 }
 
+let selectedMessageWindowLoadSequence = 0;
+
+function clearLoadedSessionMessageWindow() {
+    loadedSessionMessages.value = [];
+    selectedSessionMessageTotal.value = 0;
+    loadedSessionMessageStartOrder.value = null;
+    loadedSessionMessageEndOrder.value = null;
+    selectedSessionLatestAssistantOrder.value = -1;
+}
+
+async function loadSelectedSessionMessageWindow(options: { reset?: boolean; sessionId?: string } = {}) {
+    const sessionId = String(options.sessionId || selectedSessionId.value || '').trim();
+    const sequence = selectedMessageWindowLoadSequence + 1;
+    selectedMessageWindowLoadSequence = sequence;
+    if (!sessionId) {
+        clearLoadedSessionMessageWindow();
+        return;
+    }
+    if (options.reset) {
+        resetChatMessageWindowState();
+    }
+    const limit = Math.max(1, Math.floor(Number(chatMessageWindowLimit.value) || hiddenOutsideCount.value || 1));
+    const [windowResult, latestAssistantOrder] = await Promise.all([
+        loadTavernMessageWindow(sessionId, limit),
+        getLatestTavernAssistantOrder(sessionId),
+    ]);
+    if (sequence !== selectedMessageWindowLoadSequence || sessionId !== selectedSessionId.value) {return;}
+    loadedSessionMessages.value = windowResult.messages;
+    selectedSessionMessageTotal.value = windowResult.total;
+    loadedSessionMessageStartOrder.value = windowResult.loadedStartOrder;
+    loadedSessionMessageEndOrder.value = windowResult.loadedEndOrder;
+    selectedSessionLatestAssistantOrder.value = latestAssistantOrder ?? -1;
+    rememberSessionMessageCount(sessionId, windowResult.total);
+}
+
 async function refreshSessions() {
     sessions.value = await listTavernSessions();
     const storedSessionId = String(await getSelectedTavernSessionId() || '').trim();
@@ -2200,7 +2257,7 @@ async function refreshSessions() {
     if (storedSessionId && !selectedSessionId.value) {
         await setSelectedTavernSessionId('');
     }
-    sessionMessages.value = selectedSessionId.value ? await listTavernMessages(selectedSessionId.value) : [];
+    await loadSelectedSessionMessageWindow();
     await refreshManagerRecords(selectedSessionId.value);
     if (selectedSessionId.value) {
         void syncSessionCharacterContext({ sessionId: selectedSessionId.value });
@@ -2301,9 +2358,10 @@ async function pollLiveManagerRecords() {
     }
 }
 
-async function rebuildSelectedSessionRuntimeState(messages: TavernMessageRecord[] = sessionMessages.value) {
+async function rebuildSelectedSessionRuntimeState() {
     if (!selectedSessionId.value) {return;}
     const currentSessionState = normalizeTavernSessionState(selectedSession.value?.state || {});
+    const messages = await listTavernMessages(selectedSessionId.value);
     const runtimeContext = await resolveRuntimeContextForSession(selectedSessionId.value);
     const state = await deriveTavernSessionStateFromMessagesAsync({
         messages,
@@ -2460,7 +2518,7 @@ async function selectCharacterAndCreateSession(characterId: string) {
     selectedCharacterPreviewId.value = targetId;
     selectedCharacterGreetingIndex.value = greetingIndex;
     selectedSessionId.value = '';
-    sessionMessages.value = [];
+    clearLoadedSessionMessageWindow();
     await setSelectedTavernSessionId('');
     await refreshManagerRecords('');
     resetSessionPreviewState();
@@ -2477,7 +2535,7 @@ async function selectSession(sessionId: string) {
     invalidateMemoryFileRecordLoad();
     selectedSessionId.value = sessionId;
     await setSelectedTavernSessionId(sessionId);
-    sessionMessages.value = await listTavernMessages(sessionId);
+    await loadSelectedSessionMessageWindow({ reset: true, sessionId });
     await refreshManagerRecords(sessionId);
     void syncSessionCharacterContext({ sessionId, force: true });
     activeView.value = 'chat';
@@ -2529,7 +2587,7 @@ async function removeSession(sessionId: string, event?: Event) {
         return;
     }
     selectedSessionId.value = '';
-    sessionMessages.value = [];
+    clearLoadedSessionMessageWindow();
     await setSelectedTavernSessionId('');
     await refreshSessions();
     if (deletedCharacterId) {
@@ -2631,10 +2689,13 @@ async function retryManagerRun(run: TavernManagerRunRecord) {
     retryingManagerRunId.value = runId;
     managerActionStatus.value = '记忆正在重试。';
     try {
-        const messages = await listTavernMessages(selectedSessionId.value);
-        const userMessage = messages.find((message) => message.order === run.userOrder && message.role === 'user');
-        const assistantMessage = messages.find((message) => message.order === run.assistantOrder && message.role === 'assistant' && !message.error);
-        if (!userMessage || !assistantMessage) {
+        const [userMessage, assistantMessage] = await Promise.all([
+            getTavernMessage(selectedSessionId.value, run.userOrder),
+            getTavernMessage(selectedSessionId.value, run.assistantOrder),
+        ]);
+        const validUserMessage = userMessage?.role === 'user' ? userMessage : null;
+        const validAssistantMessage = assistantMessage?.role === 'assistant' && !assistantMessage.error ? assistantMessage : null;
+        if (!validUserMessage || !validAssistantMessage) {
             managerActionStatus.value = '原文楼层不存在，无法重试。';
             await refreshManagerRecords();
             return;
@@ -2642,8 +2703,8 @@ async function retryManagerRun(run: TavernManagerRunRecord) {
         const result = await runXbTavernManagerAfterTurn({
             sessionId: selectedSessionId.value,
             agentConfig: agentConfig.value,
-            userMessage,
-            assistantMessage,
+            userMessage: validUserMessage,
+            assistantMessage: validAssistantMessage,
             turn: run.turn,
             trigger: 'manual_retry',
             assistantPreset: activeAssistantPreset.value,
@@ -2729,12 +2790,11 @@ function canEditManagerMessage(message: TavernManagerMessageRecord) {
 
 function canRerunMessage(message: TavernMessageRecord) {
     if (isRunning.value) {return false;}
-    const sorted = [...sessionMessages.value].sort((left, right) => left.order - right.order);
-    const latest = sorted.at(-1);
+    const latest = latestSessionMessage.value;
     if (!latest || latest.sessionId !== message.sessionId || latest.order !== message.order) {return false;}
     if (message.role === 'user') {return true;}
     if (message.role !== 'assistant') {return false;}
-    return sorted.slice(0, -1).some((item) => item.role === 'user');
+    return true;
 }
 
 function canRerunManagerMessage(message: TavernManagerMessageRecord) {
@@ -2938,7 +2998,7 @@ async function drawMessage(message: TavernMessageRecord) {
         }
         const updated = await updateTavernMessage(message.sessionId, message.order, { content: insertion.content });
         if (updated && selectedSessionId.value === message.sessionId) {
-            sessionMessages.value = await listTavernMessages(message.sessionId);
+            await loadSelectedSessionMessageWindow({ sessionId: message.sessionId });
         }
         const fallbackText = insertion.appended ? `，${insertion.appended} 张追加到末尾` : '';
         showDrawMessageStatus(message, `${DRAW_COMPLETION_NOTICE_TEXT}${fallbackText}`, 'success', 2600);
@@ -3083,7 +3143,7 @@ async function saveEditMessage(message: TavernMessageRecord, options: { rerun?: 
         await restoreAcceptedStateBeforeMessage(message.sessionId, message.order);
     }
     if (updated && selectedSessionId.value) {
-        sessionMessages.value = await listTavernMessages(selectedSessionId.value);
+        await loadSelectedSessionMessageWindow({ sessionId: selectedSessionId.value });
         await refreshManagerRecords(selectedSessionId.value);
     }
     cancelEditMessage();
@@ -3133,16 +3193,14 @@ async function saveEditManagerMessage(message: TavernManagerMessageRecord, optio
     }
 }
 
-function findDeleteOrders(message: TavernMessageRecord) {
-    const sorted = [...sessionMessages.value].sort((left, right) => left.order - right.order);
-    const startIndex = sorted.findIndex((item) => item.order === message.order);
-    if (startIndex < 0) {return [message.order];}
-    return sorted.slice(startIndex).map((item) => item.order);
+async function findDeleteOrders(message: TavernMessageRecord) {
+    const orders = await listTavernMessageOrdersFrom(message.sessionId, message.order);
+    return orders.length ? orders : [message.order];
 }
 
 async function deleteMessageTurn(message: TavernMessageRecord) {
     if (isRunning.value) {return;}
-    const ordersToDelete = findDeleteOrders(message);
+    const ordersToDelete = await findDeleteOrders(message);
     const floor = Math.max(1, Number(message.order) + 1);
     const confirmText = ordersToDelete.length > 1
         ? `从第 ${floor} 楼开始删除后续剧情？将移除 ${ordersToDelete.length} 楼。\n\n${acceptedStateRollbackNoticeForFloor(floor)}`
@@ -3155,7 +3213,7 @@ async function deleteMessageTurn(message: TavernMessageRecord) {
         await restoreAcceptedStateBeforeMessage(message.sessionId, fromOrder);
     }
     if (selectedSessionId.value) {
-        sessionMessages.value = await listTavernMessages(selectedSessionId.value);
+        await loadSelectedSessionMessageWindow({ sessionId: selectedSessionId.value });
         await refreshManagerRecords(selectedSessionId.value);
     }
     if (deleted > 0) {
@@ -3172,11 +3230,9 @@ async function rerunFromMessage(message: TavernMessageRecord) {
         flashMessageAction(message, 'rerun', false);
         return;
     }
-    const sorted = [...sessionMessages.value].sort((left, right) => left.order - right.order);
-    const index = sorted.findIndex((item) => item.order === message.order);
     const userMessage = message.role === 'user'
         ? message
-        : [...sorted.slice(0, Math.max(0, index + 1))].reverse().find((item) => item.role === 'user');
+        : await getLatestTavernUserMessageAtOrBefore(message.sessionId, message.order);
     if (!userMessage) {
         flashMessageAction(message, 'rerun', false);
         return;
@@ -3892,10 +3948,10 @@ async function runOnce(options: { messageText?: string; reuseUserMessageOrder?: 
             },
             onUserMessageSaved: async (sessionId, message) => {
                 selectedSessionId.value = sessionId;
-                const existingIndex = sessionMessages.value.findIndex((item) => item.sessionId === message.sessionId && item.order === message.order);
-                sessionMessages.value = existingIndex >= 0
-                    ? sessionMessages.value.map((item, index) => index === existingIndex ? message : item)
-                    : [...sessionMessages.value, message].sort((left, right) => left.order - right.order);
+                const existingIndex = loadedSessionMessages.value.findIndex((item) => item.sessionId === message.sessionId && item.order === message.order);
+                loadedSessionMessages.value = existingIndex >= 0
+                    ? loadedSessionMessages.value.map((item, index) => index === existingIndex ? message : item)
+                    : [...loadedSessionMessages.value, message].sort((left, right) => left.order - right.order);
                 runtimeUserMessageVisible.value = true;
                 runtimePendingUserMessage.value = '';
                 currentUserMessage.value = '';
@@ -3907,10 +3963,10 @@ async function runOnce(options: { messageText?: string; reuseUserMessageOrder?: 
             },
             onAssistantMessageSaved: async (sessionId, message) => {
                 selectedSessionId.value = sessionId;
-                const existingIndex = sessionMessages.value.findIndex((item) => item.sessionId === message.sessionId && item.order === message.order);
-                sessionMessages.value = existingIndex >= 0
-                    ? sessionMessages.value.map((item, index) => index === existingIndex ? message : item)
-                    : [...sessionMessages.value, message].sort((left, right) => left.order - right.order);
+                const existingIndex = loadedSessionMessages.value.findIndex((item) => item.sessionId === message.sessionId && item.order === message.order);
+                loadedSessionMessages.value = existingIndex >= 0
+                    ? loadedSessionMessages.value.map((item, index) => index === existingIndex ? message : item)
+                    : [...loadedSessionMessages.value, message].sort((left, right) => left.order - right.order);
                 clearRuntimeAssistantLiveState();
                 await refreshSessions();
                 scrollChatToBottom();
@@ -3988,6 +4044,12 @@ watch([
 watch([() => activeView.value, () => chatFocus.value], () => {
     if (activeView.value === 'chat' && chatFocus.value === 'chat') {
         scrollChatToBottom(true);
+    }
+});
+
+watch(() => chatMessageWindowLimit.value, () => {
+    if (selectedSessionId.value) {
+        void loadSelectedSessionMessageWindow();
     }
 });
 

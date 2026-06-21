@@ -37,10 +37,24 @@ import {
 } from './map-icon-names';
 
 export const TAVERN_STATE_TOOL_NAMES = {
+    LIST: 'MapDocs',
+    READ: 'MapInspect',
+    PATCH: 'MapPatch',
+} as const;
+
+const LEGACY_TAVERN_STATE_TOOL_NAMES = {
     LIST: 'StateList',
     READ: 'StateRead',
     PATCH: 'StatePatch',
 } as const;
+
+function normalizeTavernStateToolName(toolName = ''): string {
+    const name = String(toolName || '').trim();
+    if (name === LEGACY_TAVERN_STATE_TOOL_NAMES.LIST) {return TAVERN_STATE_TOOL_NAMES.LIST;}
+    if (name === LEGACY_TAVERN_STATE_TOOL_NAMES.READ) {return TAVERN_STATE_TOOL_NAMES.READ;}
+    if (name === LEGACY_TAVERN_STATE_TOOL_NAMES.PATCH) {return TAVERN_STATE_TOOL_NAMES.PATCH;}
+    return name;
+}
 
 export type TavernMapElementCategory =
     | 'wall'
@@ -1085,7 +1099,7 @@ function describeMapPatchError(error = ''): string {
     case 'map_element_duplicate':
         return `${id} is duplicated. Use a stable unique id.`;
     case 'map_element_not_found':
-        return `${id} does not exist. Use StateRead summary/elements first to find existing ids.`;
+        return `${id} does not exist. Use MapInspect summary/elements first to find existing ids.`;
     case 'map_element_already_exists':
         return `${id} already exists. Use \`modify\` to change it. If it is already identical, do not repeat the \`add\`.`;
     case 'map_element_id_cannot_change':
@@ -1119,7 +1133,7 @@ function describeMapPatchError(error = ''): string {
     case 'atlas_link_kind_invalid':
         return 'Invalid atlas link kind. Use door/stairs/elevator/path/road/portal/passage.';
     case 'atlas_link_not_found':
-        return `${id} does not exist. Use StateRead links first.`;
+        return `${id} does not exist. Use MapInspect links first.`;
     case 'atlas_location_has_children':
     case 'atlas_location_has_links':
     case 'atlas_location_has_actors':
@@ -1902,10 +1916,10 @@ export function getTavernStateToolDefinitions(): Array<{ type: 'function'; funct
             function: {
                 name: TAVERN_STATE_TOOL_NAMES.LIST,
                 description: [
-                    'List structured state documents in the current RP session.',
+                    'List structured map documents in the current RP session.',
                     'Returns document entries only. It does not read full state, elements, or patch history.',
-                    'Use before StateRead when you need available map documents, or when you need the atlas world index.',
-                    'Structured state scope is fixed to this tavern session; it cannot inspect memory Markdown, RP chat history, character cards, world books, settings, or plugin source code.',
+                    'Use before MapInspect when you need available scene-map documents, or when you need the atlas world index.',
+                    'Map scope is fixed to this tavern session; it cannot inspect text sources, memory Markdown, RP chat history, character cards, world books, settings, or plugin source code.',
                 ].join('\n'),
                 parameters: {
                     type: 'object',
@@ -1921,11 +1935,11 @@ export function getTavernStateToolDefinitions(): Array<{ type: 'function'; funct
             function: {
                 name: TAVERN_STATE_TOOL_NAMES.READ,
                 description: [
-                    'Read a structured state document in the current RP session.',
+                    'Inspect a structured scene map or world atlas document in the current RP session.',
                     'Use `summary` first when choosing what to patch, checking revision, or deciding whether a map/atlas update is needed.',
                     'For `tavern.map`, use `summary` first, `elements` to browse map elements, `element` for one id, `document` for the full map, and `history` for saved map patch transactions.',
                     'For `tavern.atlas`, use `summary`, `document`, `locations`, `location`, `links`, `actors`, or `history`. Atlas does not have map elements.',
-                    'This reads structured spatial state only. Use ChatHistory for RP source evidence and MemoryRead/MemoryGrep for written memory.',
+                    'This inspects structured spatial data only. Use LS/Grep/Read for text evidence, memory files, chat history, and worldbook material.',
                 ].join('\n'),
                 parameters: {
                     type: 'object',
@@ -1957,10 +1971,10 @@ export function getTavernStateToolDefinitions(): Array<{ type: 'function'; funct
             function: {
                 name: TAVERN_STATE_TOOL_NAMES.PATCH,
                 description: [
-                    'Apply one structured state patch transaction to the current RP session.',
+                    'Apply one structured map/atlas patch transaction to the current RP session.',
                     'Use this only for confirmed spatial changes from RP source text or a user-requested correction. If nothing spatial changed, do not patch.',
-                    'Read StateRead summary first unless you already have the current doc, ids, and revision from this turn. Use `baseRevision` when you are protecting against concurrent changes.',
-                    'For `tavern.map`, canonical ops are `meta`, `add`, `modify`, and `remove`. One StatePatch call is one atomic transaction and becomes exactly one revision when it saves.',
+                    'Read MapInspect summary first unless you already have the current doc, ids, and revision from this turn. Use `baseRevision` when you are protecting against concurrent changes.',
+                    'For `tavern.map`, canonical ops are `meta`, `add`, `modify`, and `remove`. One MapPatch call is one atomic transaction and becomes exactly one revision when it saves.',
                     'Use `meta` to update document fields such as name, viewBox, theme, status, or hint. Use `add` to create elements, `modify` to change existing ids, and `remove` to delete ids.',
                     'Each element has `id` and `cat`, plus exactly one shape field: `rect`, `circle`, `path`, `curve`, `icon`, or `text`. Most elements use `at:[x,y]`; `path` and `curve` may omit `at` and use the first point as the anchor.',
                     'For `cat:"actor"`, optional `actorKey` is the full-session identity key. If omitted, the element id is used. The runtime keeps only the latest actor with the same final key across all map documents.',
@@ -1979,7 +1993,7 @@ export function getTavernStateToolDefinitions(): Array<{ type: 'function'; funct
                     properties: {
                         docType: { type: 'string', enum: [MAP_DOC_TYPE, ATLAS_DOC_TYPE], description: 'Structured document type. Use `tavern.map` for scene maps or `tavern.atlas` for the world index.' },
                         docId: { type: 'string', description: 'Structured document id. For scene maps, prefer an explicit stable place-named docId; omit only when intentionally maintaining the currently active scene-map doc. Atlas always uses `main`.' },
-                        baseRevision: { type: 'number', description: 'Optional optimistic revision check from StateRead summary/document.' },
+                        baseRevision: { type: 'number', description: 'Optional optimistic revision check from MapInspect summary/document.' },
                         dryRun: { type: 'boolean', description: 'Validate and simulate the transaction without saving or incrementing the revision.' },
                         activate: { type: 'boolean', description: 'Set this map document as the current scene after the transaction. With `ops:[]`, this only switches the active map.' },
                         desc: { type: 'string', description: 'Short one-line summary of this turn’s spatial update.' },
@@ -2029,6 +2043,7 @@ export async function executeTavernStateTool(
     } = {},
 ): Promise<TavernStateToolResult> {
     const id = String(sessionId || '').trim();
+    const normalizedToolName = normalizeTavernStateToolName(toolName);
     if (!id) {return { ok: false, summary: 'Missing sessionId.', error: 'state_session_required' };}
     try {
         const explicitDocType = normalizeText(args.docType, 40);
@@ -2036,14 +2051,14 @@ export async function executeTavernStateTool(
         const docType = normalizeDocType(explicitDocType || MAP_DOC_TYPE);
         const explicitDocId = normalizeText(args.docId, 80);
         const docId = normalizeStateDocIdForType(docType, explicitDocId || (
-            docType === MAP_DOC_TYPE && (toolName === TAVERN_STATE_TOOL_NAMES.READ || toolName === TAVERN_STATE_TOOL_NAMES.PATCH)
+            docType === MAP_DOC_TYPE && (normalizedToolName === TAVERN_STATE_TOOL_NAMES.READ || normalizedToolName === TAVERN_STATE_TOOL_NAMES.PATCH)
                 ? (await resolveTavernActiveMapDocument(id)).activeDocId
                 : docType === ATLAS_DOC_TYPE
                     ? DEFAULT_ATLAS_DOC_ID
                     : DEFAULT_DOC_ID
         ));
 
-        if (toolName === TAVERN_STATE_TOOL_NAMES.LIST) {
+        if (normalizedToolName === TAVERN_STATE_TOOL_NAMES.LIST) {
             const listAllDocTypes = !hasExplicitDocType;
             const activeMapState = listAllDocTypes || docType === MAP_DOC_TYPE
                 ? await resolveTavernActiveMapDocument(id, { includeStale: true })
@@ -2062,7 +2077,7 @@ export async function executeTavernStateTool(
             });
             return {
                 ok: true,
-                summary: `Found ${sorted.length} structured state document(s).`,
+                summary: `Found ${sorted.length} map/atlas document(s).`,
                 count: sorted.length,
                 docId: activeMapDocId,
                 documents: sorted.map((document) => ({
@@ -2080,7 +2095,7 @@ export async function executeTavernStateTool(
             };
         }
 
-        if (toolName === TAVERN_STATE_TOOL_NAMES.READ) {
+        if (normalizedToolName === TAVERN_STATE_TOOL_NAMES.READ) {
             const mode = String(args.mode || 'summary').trim() || 'summary';
             if (docType === ATLAS_DOC_TYPE) {
                 const record = await getSeededAtlasDocumentRecord(id);
@@ -2200,7 +2215,7 @@ export async function executeTavernStateTool(
                         patches: page,
                     };
                 }
-                return { ok: false, summary: `Unsupported atlas StateRead mode: ${mode}`, docType, docId, error: 'state_read_mode_invalid' };
+                return { ok: false, summary: `Unsupported atlas MapInspect mode: ${mode}`, docType, docId, error: 'state_read_mode_invalid' };
             }
             const record = await getSeededMapDocumentRecord(id, docType, docId);
             if (!record) {
@@ -2282,17 +2297,17 @@ export async function executeTavernStateTool(
                     patches: page,
                 };
             }
-            return { ok: false, summary: `Unsupported StateRead mode: ${mode}`, docType, docId, error: 'state_read_mode_invalid' };
+            return { ok: false, summary: `Unsupported MapInspect mode: ${mode}`, docType, docId, error: 'state_read_mode_invalid' };
         }
 
-        if (toolName === TAVERN_STATE_TOOL_NAMES.PATCH) {
+        if (normalizedToolName === TAVERN_STATE_TOOL_NAMES.PATCH) {
             if (!Array.isArray(args.ops)) {
-                return { ok: false, summary: 'StatePatch ops must be a real array.', docType, docId, error: 'state_patch_ops_must_be_array' };
+                return { ok: false, summary: 'MapPatch ops must be a real array.', docType, docId, error: 'state_patch_ops_must_be_array' };
             }
             const ops = args.ops as unknown[];
             const activate = args.activate === true;
             if (!ops.length && !activate) {
-                return { ok: false, summary: 'StatePatch ops are required unless activate:true is used to switch active map.', docType, docId, error: 'state_patch_ops_required' };
+                return { ok: false, summary: 'MapPatch ops are required unless activate:true is used to switch active map.', docType, docId, error: 'state_patch_ops_required' };
             }
             if (docType === ATLAS_DOC_TYPE && activate) {
                 return { ok: false, summary: 'Atlas has no activate:true operation. Move the player with move-actor(actorKey:"player").', docType, docId, error: 'atlas_activate_not_supported' };
@@ -2311,7 +2326,7 @@ export async function executeTavernStateTool(
                         if (Number.isFinite(Number(args.baseRevision)) && Number(args.baseRevision) !== currentRevision) {
                             return {
                                 ok: false,
-                                summary: `Revision changed: current is ${currentRevision}, but this call was based on ${Number(args.baseRevision)}. Run StateRead again before patching.`,
+                                summary: `Revision changed: current is ${currentRevision}, but this call was based on ${Number(args.baseRevision)}. Run MapInspect again before patching.`,
                                 docType,
                                 docId,
                                 revision: currentRevision,
@@ -2437,7 +2452,7 @@ export async function executeTavernStateTool(
                     if (Number.isFinite(Number(args.baseRevision)) && Number(args.baseRevision) !== currentRevision) {
                         return {
                             ok: false,
-                            summary: `Revision changed: current is ${currentRevision}, but this call was based on ${Number(args.baseRevision)}. Run StateRead again before patching.`,
+                            summary: `Revision changed: current is ${currentRevision}, but this call was based on ${Number(args.baseRevision)}. Run MapInspect again before patching.`,
                             docType,
                             docId,
                             revision: currentRevision,
@@ -2474,7 +2489,7 @@ export async function executeTavernStateTool(
                         const failureSummary = summarizePatchFailures(patch.failed);
                         return {
                             ok: false,
-                            summary: `StatePatch was not saved: ${patch.failed.length} op(s) failed.${failureSummary ? ` ${failureSummary}` : ''}`,
+                            summary: `MapPatch was not saved: ${patch.failed.length} op(s) failed.${failureSummary ? ` ${failureSummary}` : ''}`,
                             docType,
                             docId,
                             revision: currentRevision,
@@ -2582,7 +2597,7 @@ export async function executeTavernStateTool(
                         sourceUserOrder: options.sourceUserOrder,
                         sourceAssistantOrder: options.sourceAssistantOrder,
                         source: options.caller || 'auto',
-                        summary: normalizeText(args.desc || `StatePatch ${nextRevision}`, 400),
+                        summary: normalizeText(args.desc || `MapPatch ${nextRevision}`, 400),
                         ops: effectiveOps,
                         changedIds,
                         removedElements,

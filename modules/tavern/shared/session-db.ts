@@ -560,6 +560,7 @@ type DexieRangeCollection<T> = {
     first(): Promise<T | undefined>;
     count(): Promise<number>;
     toArray(): Promise<T[]>;
+    primaryKeys(): Promise<unknown[]>;
 };
 
 type DexieRangeTable<T> = {
@@ -1193,6 +1194,26 @@ export async function listLatestTavernMessagesWithCount(
     });
 }
 
+export interface TavernMessageWindowLoadResult {
+    messages: TavernMessageRecord[];
+    total: number;
+    loadedStartOrder: number | null;
+    loadedEndOrder: number | null;
+}
+
+export async function loadTavernMessageWindow(
+    sessionId = '',
+    limit = 12,
+    offsetFromEnd = 0,
+): Promise<TavernMessageWindowLoadResult> {
+    const result = await listLatestTavernMessagesWithCount(sessionId, limit, offsetFromEnd);
+    return {
+        ...result,
+        loadedStartOrder: result.messages[0]?.order ?? null,
+        loadedEndOrder: result.messages.at(-1)?.order ?? null,
+    };
+}
+
 export async function listTavernMessagesInRange(
     sessionId = '',
     startOrder = 0,
@@ -1248,6 +1269,76 @@ export async function listTavernMessagesInRangeWithCount(
             total,
         };
     });
+}
+
+export async function listTavernMessageOrdersFrom(sessionId = '', fromOrder = 0): Promise<number[]> {
+    const id = String(sessionId || '').trim();
+    const start = Math.max(0, Math.floor(Number(fromOrder) || 0));
+    if (!id) {return [];}
+    const keys = await (tavernMessagesTable as unknown as DexieRangeTable<TavernMessageRecord>)
+        .where('[sessionId+order]')
+        .between([id, start], [id, DexieRangeKeys.maxKey], true, true)
+        .primaryKeys();
+    return keys
+        .map((key) => Array.isArray(key) ? key[1] : undefined)
+        .map((order) => Math.floor(Number(order)))
+        .filter((order) => Number.isInteger(order) && order >= 0);
+}
+
+export async function listLatestTavernUserMessages(
+    sessionId = '',
+    limit = 5,
+): Promise<TavernMessageRecord[]> {
+    const id = String(sessionId || '').trim();
+    if (!id) {return [];}
+    const safeLimit = Math.max(1, Math.min(100, Math.floor(Number(limit) || 5)));
+    const rows = await (tavernMessagesTable as unknown as DexieRangeTable<TavernMessageRecord>)
+        .where('[sessionId+order]')
+        .between([id, DexieRangeKeys.minKey], [id, DexieRangeKeys.maxKey])
+        .reverse()
+        .filter((message) => message.role === 'user')
+        .limit(safeLimit)
+        .toArray();
+    return rows.reverse().map(normalizeStoredTavernMessageRecord);
+}
+
+export async function listLatestTavernUserMessagesBefore(
+    sessionId = '',
+    beforeOrder = Number.POSITIVE_INFINITY,
+    limit = 5,
+): Promise<TavernMessageRecord[]> {
+    const id = String(sessionId || '').trim();
+    if (!id) {return [];}
+    const safeLimit = Math.max(1, Math.min(100, Math.floor(Number(limit) || 5)));
+    const finiteBefore = Number.isFinite(Number(beforeOrder));
+    const before = Math.floor(Number(beforeOrder) || 0);
+    if (finiteBefore && before <= 0) {return [];}
+    const upperOrder = finiteBefore ? Math.max(0, before - 1) : DexieRangeKeys.maxKey;
+    const rows = await (tavernMessagesTable as unknown as DexieRangeTable<TavernMessageRecord>)
+        .where('[sessionId+order]')
+        .between([id, DexieRangeKeys.minKey], [id, upperOrder], true, true)
+        .reverse()
+        .filter((message) => message.role === 'user')
+        .limit(safeLimit)
+        .toArray();
+    return rows.reverse().map(normalizeStoredTavernMessageRecord);
+}
+
+export async function getLatestTavernUserMessageAtOrBefore(
+    sessionId = '',
+    order = Number.POSITIVE_INFINITY,
+): Promise<TavernMessageRecord | null> {
+    const id = String(sessionId || '').trim();
+    if (!id) {return null;}
+    const finiteOrder = Number.isFinite(Number(order));
+    const upperOrder = finiteOrder ? Math.max(0, Math.floor(Number(order) || 0)) : DexieRangeKeys.maxKey;
+    const row = await (tavernMessagesTable as unknown as DexieRangeTable<TavernMessageRecord>)
+        .where('[sessionId+order]')
+        .between([id, DexieRangeKeys.minKey], [id, upperOrder], true, true)
+        .reverse()
+        .filter((message) => message.role === 'user')
+        .first();
+    return row ? normalizeStoredTavernMessageRecord(row) : null;
 }
 
 export async function countTavernMessagesInRange(
