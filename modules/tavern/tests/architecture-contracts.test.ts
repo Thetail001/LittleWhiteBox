@@ -876,10 +876,16 @@ test('tavern roleplay html previews use stable code anchors and a local iframe b
     const markdownSource = readRepoFile('modules/agent-core/ui/message-markdown.js');
 
     assert.match(markdownSource, /function preprocessMarkdownInput\(raw = '', options = \{\}\)/);
+    assert.match(markdownSource, /function patchShowdownHtmlSpans\(\)[\s\S]*showdown\.subParser\('unhashHTMLSpans'/);
+    assert.match(markdownSource, /patchShowdownHtmlSpans\(\);[\s\S]*markdownConverter = new showdown\.Converter/);
     assert.match(markdownSource, /const htmlFenceMode = options\.htmlFenceMode === 'code' \? 'code' : 'placeholder';/);
+    assert.match(markdownSource, /const protectRawHtmlBoundaries = options\.protectRawHtmlBoundaries !== false;/);
     assert.match(markdownSource, /shouldFoldAsHtml && htmlFenceMode !== 'code'/);
-    assert.match(markdownToolsSource, /renderOptions\.roleplay \? \{ htmlFenceMode: 'code' \} : \{\}/);
+    assert.match(markdownToolsSource, /renderOptions\.roleplay \? \{ htmlFenceMode: 'code', protectRawHtmlBoundaries: false \} : \{\}/);
+    assert.match(markdownToolsSource, /const TAVERN_HTML_CODE_LANGUAGES = new Set\(\['html', 'htm', 'xhtml', 'xml', 'svg', 'vue', 'svelte'\]\);/);
     assert.match(markdownToolsSource, /function enhanceTavernHtmlCodeBlocks\(root: HTMLElement\)/);
+    assert.match(markdownToolsSource, /function isExplicitTavernHtmlCodeBlock\(codeBlock: HTMLElement\)[\s\S]*TAVERN_HTML_CODE_LANGUAGES\.has\(normalized\);/);
+    assert.match(markdownToolsSource, /if \(!isExplicitTavernHtmlCodeBlock\(codeBlock\)\) \{[\s\S]*cleanupTavernHtmlPre\(pre\);[\s\S]*return;[\s\S]*\}/);
     assert.match(markdownToolsSource, /function extractTavernExternalHtmlUrl\(content = ''\)[\s\S]*\/\^https\?:\\\/\\\/\[\^\\s\]\+\$\/i[\s\S]*xb-src:/);
     assert.match(markdownToolsSource, /async function loadTavernExternalHtmlUrl\(iframe: HTMLIFrameElement, url: string\)[\s\S]*iframe\.srcdoc = '<!DOCTYPE html><html><body style="display:flex;justify-content:center;align-items:center;height:100px;color:#888;font-family:sans-serif;background:transparent">加载中\.\.\.<\/body><\/html>';[\s\S]*iframe\.src = url;[\s\S]*iframe\.style\.minHeight = '800px';[\s\S]*iframe\.setAttribute\('scrolling', 'auto'\);/);
     assert.match(markdownToolsSource, /async function replaceTavernHtmlRenderVariables\(html = ''\)[\s\S]*requestHost\('xb-tavern:replace-html-render-vars', \{ payload: \{ html: source \} \}\)/);

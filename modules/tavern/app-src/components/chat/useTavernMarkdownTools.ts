@@ -49,6 +49,7 @@ export function preprocessTavernRoleplayMarkdown(text = '', options: TavernRolep
 const TAVERN_HTML_IFRAME_SELECTOR = 'iframe.xb-tavern-html-iframe';
 const TAVERN_HTML_PRE_SELECTOR = 'pre[data-xb-tavern-html-final="true"]';
 const TAVERN_HTML_GENERATE_RELAY_TIMEOUT_MS = 300_000;
+const TAVERN_HTML_CODE_LANGUAGES = new Set(['html', 'htm', 'xhtml', 'xml', 'svg', 'vue', 'svelte']);
 const TAVERN_HTML_FRAGMENT_START_REGEX = /^\s*(?:<!--[\s\S]*?-->\s*)*<(?:style|link|meta|svg|iframe|canvas|img|video|audio|picture|div|section|main|article|header|footer|nav|aside|p|span|button|input|textarea|select|label|ul|ol|li|table|thead|tbody|tr|td|th|form|figure|figcaption|details|summary|dialog|h[1-6])\b/i;
 const TAVERN_HTML_GENERATE_RESPONSE_TYPES = new Set([
     'generatePromptPreview',
@@ -178,7 +179,7 @@ export function useTavernMarkdownTools(options: TavernMarkdownToolsOptions) {
         const raw = renderOptions.roleplay
             ? preprocessTavernRoleplayMarkdown(text, renderOptions)
             : String(text || '');
-        const markdownOptions = renderOptions.roleplay ? { htmlFenceMode: 'code' } : {};
+        const markdownOptions = renderOptions.roleplay ? { htmlFenceMode: 'code', protectRawHtmlBoundaries: false } : {};
         const canCache = !/(^|\n)(`{3,}|~{3,})[ \t]*(html|htm|xhtml|xml|svg|vue|svelte)?\b/i.test(raw)
             && !renderOptions.roleplay;
         const cacheKey = markdownSignature(raw);
@@ -484,6 +485,10 @@ export function useTavernMarkdownTools(options: TavernMarkdownToolsOptions) {
         root.querySelectorAll<HTMLElement>('pre > code').forEach((codeBlock) => {
             const pre = codeBlock.parentElement as HTMLPreElement | null;
             if (!pre) {return;}
+            if (!isExplicitTavernHtmlCodeBlock(codeBlock)) {
+                cleanupTavernHtmlPre(pre);
+                return;
+            }
             const html = codeBlock.textContent || '';
             if (!looksLikeTavernHtmlFrameContent(html)) {
                 cleanupTavernHtmlPre(pre);
@@ -502,6 +507,13 @@ export function useTavernMarkdownTools(options: TavernMarkdownToolsOptions) {
                 && !!wrapper.querySelector(TAVERN_HTML_IFRAME_SELECTOR);
             if (!externalUrl && same) {return;}
             renderTavernHtmlPre(pre, html, hash);
+        });
+    }
+
+    function isExplicitTavernHtmlCodeBlock(codeBlock: HTMLElement) {
+        return Array.from(codeBlock.classList).some((className) => {
+            const normalized = String(className || '').replace(/^custom-/, '').replace(/^language-/, '').toLowerCase();
+            return TAVERN_HTML_CODE_LANGUAGES.has(normalized);
         });
     }
 

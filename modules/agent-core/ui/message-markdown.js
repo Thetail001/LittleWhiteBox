@@ -1,6 +1,7 @@
 import showdown from 'showdown';
 
 let markdownConverter = null;
+let showdownPatched = false;
 let htmlBlockSerial = 0;
 const htmlBlockStore = new Map();
 let htmlBoundarySerial = 0;
@@ -41,6 +42,28 @@ function formatHtmlBlockSize(code = '') {
 
 function isHtmlBlockLanguage(language = '') {
     return HTML_BLOCK_LANGUAGES.has(String(language || '').trim().toLowerCase());
+}
+
+function patchShowdownHtmlSpans() {
+    if (showdownPatched) return;
+    showdownPatched = true;
+    showdown.subParser('unhashHTMLSpans', function unhashHTMLSpans(text, options, globals) {
+        let nextText = globals.converter._dispatch('unhashHTMLSpans.before', text, options, globals);
+        for (let index = 0; index < globals.gHtmlSpans.length; index += 1) {
+            let repText = globals.gHtmlSpans[index];
+            let limit = 0;
+            while (/¨C(\d+)C/.test(repText)) {
+                const num = RegExp.$1;
+                repText = repText.replace(`¨C${num}C`, globals.gHtmlSpans[num]);
+                if (limit === 10000) {
+                    break;
+                }
+                limit += 1;
+            }
+            nextText = nextText.replace(`¨C${index}C`, repText);
+        }
+        return globals.converter._dispatch('unhashHTMLSpans.after', nextText, options, globals);
+    });
 }
 
 function looksLikeHtmlCode(code = '') {
@@ -120,6 +143,7 @@ function preprocessNonFenceMarkdown(text = '') {
 function preprocessMarkdownInput(raw = '', options = {}) {
     const text = String(raw || '');
     const htmlFenceMode = options.htmlFenceMode === 'code' ? 'code' : 'placeholder';
+    const protectRawHtmlBoundaries = options.protectRawHtmlBoundaries !== false;
     const fenceRegex = /(^|\n)(`{3,}|~{3,})[ \t]*([^\n]*)\n([\s\S]*?)\n\2[ \t]*(?=\n|$)/g;
     let result = '';
     let lastIndex = 0;
@@ -133,7 +157,9 @@ function preprocessMarkdownInput(raw = '', options = {}) {
         const code = String(match[4] || '');
         const shouldFoldAsHtml = isHtmlBlockLanguage(rawLanguage) || (!rawLanguage && looksLikeHtmlCode(code));
 
-        result += preprocessNonFenceMarkdown(text.slice(lastIndex, blockStart));
+        result += protectRawHtmlBoundaries
+            ? preprocessNonFenceMarkdown(text.slice(lastIndex, blockStart))
+            : text.slice(lastIndex, blockStart);
         if (shouldFoldAsHtml && htmlFenceMode !== 'code') {
             result += storeHtmlBlock(code, rawLanguage || 'html');
         } else {
@@ -142,7 +168,9 @@ function preprocessMarkdownInput(raw = '', options = {}) {
         lastIndex = fenceEnd;
     }
 
-    result += preprocessNonFenceMarkdown(text.slice(lastIndex));
+    result += protectRawHtmlBoundaries
+        ? preprocessNonFenceMarkdown(text.slice(lastIndex))
+        : text.slice(lastIndex);
     return result;
 }
 
@@ -336,6 +364,7 @@ export function renderMarkdownToHtml(text, options = {}) {
 
     try {
         if (!markdownConverter) {
+            patchShowdownHtmlSpans();
             markdownConverter = new showdown.Converter({
                 emoji: true,
                 literalMidWordUnderscores: true,

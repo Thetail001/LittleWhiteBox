@@ -257,3 +257,41 @@ test('tavern roleplay markdown can keep fenced html as stable code anchors', () 
     assert.doesNotMatch(first, /xb-markdown-html-placeholder/);
     assert.doesNotMatch(first, /@@XBHTMLBLOCK/);
 });
+
+test('tavern roleplay markdown follows ST-like raw tag boundaries around guidance templates', () => {
+    const markdown = [
+        '<details style="margin: 8px 0;">',
+        '    <summary style="display: flex;">',
+        '        <div class="xb-char-avatar"></div>',
+        '        <span>深层思考中...</span>',
+        '    </summary>',
+        '    <div style="padding: 10px 12px;">',
+        '        已完成场景认知、角色校准与避雷处理；以下仅呈现当前可见行动、对白与NPC内心，不展开隐藏推理。',
+        '    </div>',
+        '</details>',
+        '',
+        '<fictional_scenarios>',
+        '“哈喽！是我！”你喊。',
+        '',
+        '',
+        '</fictional_scenarios>',
+        '',
+        '```状态栏',
+        '时间：未明确；当前为南昌昌北国际机场到达大厅接机瞬间',
+        '',
+        '```',
+    ].join('\n');
+
+    const html = renderMarkdownToHtml(markdown, {
+        htmlFenceMode: 'code',
+        protectRawHtmlBoundaries: false,
+    });
+
+    assert.match(html, /<details[\s\S]*<summary[\s\S]*深层思考中(?:\.\.\.|…)[\s\S]*<\/details>/);
+    assert.doesNotMatch(html, /<details[\s\S]*<pre><code>[\s\S]*场景认知[\s\S]*<\/code><\/pre>[\s\S]*<\/details>/);
+    assert.match(html, /<fictional_scenarios>[\s\S]*哈喽！是我！[\s\S]*<\/fictional_scenarios>/);
+    assert.match(html, /<pre><code class="custom-状态栏 custom-language-状态栏">[\s\S]*南昌昌北国际机场[\s\S]*<\/code><\/pre>/);
+    assert.doesNotMatch(html, /xb-markdown-html-placeholder/);
+    assert.doesNotMatch(html, /@@XBHTMLRAW|@@XBHTMLBLOCK/);
+    assert.doesNotMatch(html, /<details[\s\S]*<fictional_scenarios>[\s\S]*<\/details>/);
+});
