@@ -122,19 +122,19 @@ test('tavern session db stores independent sessions and messages', async () => {
         title: 'Aster test',
         characterKey: '0',
         characterName: 'Aster',
-        contextSnapshot: { character: { id: '0', name: 'Aster' } },
+        contextSnapshot: { character: { characterKey: '0', name: 'Aster' } },
         presetId: 'preset-1',
         presetName: 'Preset One',
     });
     const buildResult = buildXbTavernMessages({
-        character: { id: '0', name: 'Aster' },
+        character: { characterKey: '0', name: 'Aster' },
     }, {
         id: 'preset-1',
         name: 'Preset One',
     }, {
         currentUserMessage: 'Hello.',
     });
-    const buildSnapshot = createXbTavernBuildSnapshot({ character: { id: '0', name: 'Aster' } }, { id: 'preset-1', name: 'Preset One' }, buildResult);
+    const buildSnapshot = createXbTavernBuildSnapshot({ character: { characterKey: '0', name: 'Aster' } }, { id: 'preset-1', name: 'Preset One' }, buildResult);
     await appendTavernMessage(session.id, {
         role: 'user',
         content: 'Hello.',
@@ -276,7 +276,7 @@ test('tavern session db stores only cloneable snapshots from runtime inputs', as
     const session = await createTavernSession({
         title: 'Clone guard',
         contextSnapshot: {
-            character: { id: '1', name: 'Nia' },
+            character: { characterKey: '1', name: 'Nia' },
         },
         state: {
             turn: 1,
@@ -1589,7 +1589,7 @@ test('Map activate does not move atlas and spatial digest uses atlas active map'
     });
     assert.match(memoryContext.spatialState || '', /当前地点：办公室/);
     assert.equal(memoryContext.structuredStates?.some((state) => /地图：家/.test(state.digest || '')), true);
-    const build = buildXbTavernMessages({ character: { id: '0', name: 'Aster' } }, createDefaultXbTavernPreset(), {
+    const build = buildXbTavernMessages({ character: { characterKey: '0', name: 'Aster' } }, createDefaultXbTavernPreset(), {
         currentUserMessage: '看看四周。',
         memoryContext,
     });

@@ -1268,6 +1268,8 @@ test('tavern host imports preserve SillyTavern 1.14 and 1.18 API parity', () => 
 
 test('tavern character identity uses stable keys and explicit native ids', () => {
     const hostSource = readRepoFile('modules/tavern/host/sillytavern-context.ts');
+    const sharedContextSource = readRepoFile('modules/tavern/shared/sillytavern-context.ts');
+    const messageAssemblerSource = readRepoFile('modules/tavern/shared/message-assembler.ts');
     const appSource = readRepoFile('modules/tavern/app-src/App.vue');
     const sessionSource = readRepoFile('modules/tavern/shared/session-db.ts');
     const worldbookSource = readRepoFile('modules/tavern/host/worldbooks.ts');
@@ -1279,7 +1281,14 @@ test('tavern character identity uses stable keys and explicit native ids', () =>
     assert.match(hostSource, /characterKey: buildCharacterKey\(character, nativeCharacterId\)/);
     assert.match(hostSource, /nativeCharacterId: String\(index\)/);
     assert.match(hostSource, /function resolveNativeCharacterId[\s\S]*return options\.nativeCharacterId;/);
+    assert.match(hostSource, /if \(avatar\) \{[\s\S]*return `avatar:\$\{avatar\}`;[\s\S]*\}/);
+    assert.doesNotMatch(hostSource, /return `avatar:\$\{avatar\}:\$\{name|return `avatar:\$\{avatar\}:[^`]*hash/);
     assert.doesNotMatch(hostSource, /options\.characterId|ctx\.characterId|ctx\.this_chid/);
+    assert.match(sharedContextSource, /if \(avatar\) \{return `avatar:\$\{avatar\}`;\}/);
+    assert.doesNotMatch(sharedContextSource, /return `avatar:\$\{avatar\}:\$\{name|return `avatar:\$\{avatar\}:[^`]*hash/);
+    const characterInterface = messageAssemblerSource.match(/export interface XbTavernCharacter \{[\s\S]*?\n\}/)?.[0] || '';
+    assert.ok(characterInterface);
+    assert.doesNotMatch(characterInterface, /\bid\?: string;/);
 
     assert.match(sessionSource, /characterKey\?: string;/);
     assert.match(sessionSource, /this\.version\(8\)\.stores\(\{[\s\S]*sessions: 'id, updatedAt, characterKey, characterName'/);

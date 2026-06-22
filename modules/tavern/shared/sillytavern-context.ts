@@ -75,11 +75,11 @@ function buildCharacterKey(character: Record<string, unknown>, nativeCharacterId
     const data = pickData(character);
     const name = normalizeText(character.name || data.name);
     const avatar = normalizeText(character.avatar || data.avatar);
+    if (avatar) {return `avatar:${avatar}`;}
     const payload = normalizeText(character.json_data) || JSON.stringify(data || character || {});
-    const hash = hashString(payload || [avatar, name].join('\u0000'));
-    if (avatar) {return `avatar:${avatar}:${name || 'unnamed'}:${hash.slice(0, 8)}`;}
-    if (payload) {return `card:${hash}:${name || 'unnamed'}`;}
-    return `name:${name || 'unknown'}:${hash.slice(0, 8) || normalizeText(nativeCharacterId)}`;
+    const hash = hashString(payload || name);
+    if (payload) {return `card:${hash}`;}
+    return `name:${name || normalizeText(nativeCharacterId) || 'unknown'}`;
 }
 
 function readEntryList(value: unknown): unknown[] {

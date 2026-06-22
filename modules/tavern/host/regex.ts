@@ -176,7 +176,7 @@ function buildGroup(scriptType: number, key: string, label: string, nativeCharac
         scriptType,
         scripts,
         allowed: scriptType === SCRIPT_TYPES.SCOPED
-            ? isScopedScriptsAllowed(currentCharacter(nativeCharacterId))
+            ? !!nativeCharacterId && isScopedScriptsAllowed(currentCharacter(nativeCharacterId))
             : scriptType === SCRIPT_TYPES.PRESET
                 ? isPresetScriptsAllowed(presetApi, presetName)
                 : true,
@@ -221,6 +221,9 @@ export async function saveTavernRegexScript(input: unknown): Promise<Record<stri
     const nativeCharacterId = text(source.nativeCharacterId);
     const scriptType = normalizeScriptType(source.scriptType);
     const script = normalizeRegexScript(source.script);
+    if (scriptType === SCRIPT_TYPES.SCOPED && !nativeCharacterId) {
+        throw new Error('缺少角色身份，无法保存当前角色正则。');
+    }
     if (!script.scriptName) {
         throw new Error('正则名称不能为空。');
     }
@@ -249,6 +252,9 @@ export async function deleteTavernRegexScript(input: unknown): Promise<Record<st
     const source = asRecord(input);
     const nativeCharacterId = text(source.nativeCharacterId);
     const scriptType = normalizeScriptType(source.scriptType);
+    if (scriptType === SCRIPT_TYPES.SCOPED && !nativeCharacterId) {
+        throw new Error('缺少角色身份，无法删除当前角色正则。');
+    }
     const id = text(source.id);
     if (!id) {
         throw new Error('缺少正则 ID。');

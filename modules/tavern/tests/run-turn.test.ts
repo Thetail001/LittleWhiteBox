@@ -76,7 +76,7 @@ test('xb tavern run turn saves user and assistant messages and updates session s
     const result = await runXbTavernTurn({
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster', description: 'Pilot.' },
+            character: { characterKey: 'char-1', name: 'Aster', description: 'Pilot.' },
             user: { name: 'Player' },
             worldBooks: [{
                 name: 'Lore',
@@ -212,7 +212,7 @@ test('xb tavern run turn skips random encounters when contract disables them', a
     const result = await runXbTavernTurn({
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
         },
         preset,
         currentUserMessage: 'Keep the road quiet.',
@@ -256,7 +256,7 @@ test('xb tavern run turn injects chance encounter as D1 before action-check prot
     const result = await runXbTavernTurn({
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
         },
         preset,
         currentUserMessage: 'Step into the clearing.',
@@ -302,7 +302,7 @@ test('xb tavern run turn sends the same ST-native prompt shape used by simulatio
         characterKey: 'char-native',
         characterName: 'Aster',
         contextSnapshot: {
-            character: { id: 'char-native', name: 'Aster', description: 'Pilot.' },
+            character: { characterKey: 'char-native', name: 'Aster', description: 'Pilot.' },
         },
         state: {
             contract: mergeTavernSessionContract(undefined, {
@@ -364,7 +364,7 @@ test('xb tavern run turn sends only the latest quest hook first to ST-native mem
         characterKey: 'char-quest-native',
         characterName: 'Aster',
         contextSnapshot: {
-            character: { id: 'char-quest-native', name: 'Aster', description: 'Pilot.' },
+            character: { characterKey: 'char-quest-native', name: 'Aster', description: 'Pilot.' },
         },
         state: {
             contract: mergeTavernSessionContract(undefined, {
@@ -433,7 +433,7 @@ test('xb tavern run turn continues and records diagnostics when manager settle t
         characterKey: 'char-timeout',
         characterName: 'Aster',
         contextSnapshot: {
-            character: { id: 'char-timeout', name: 'Aster', description: 'Pilot.' },
+            character: { characterKey: 'char-timeout', name: 'Aster', description: 'Pilot.' },
         },
         state: {
             contract: managerContract,
@@ -594,7 +594,7 @@ test('xb tavern session author note reaches native prompt for real and simulated
         characterKey: 'char-note',
         characterName: 'Aster',
         contextSnapshot: {
-            character: { id: 'char-note', name: 'Aster', description: 'Pilot.' },
+            character: { characterKey: 'char-note', name: 'Aster', description: 'Pilot.' },
             authorNote: {
                 prompt: 'PLAYER_AUTHOR_NOTE',
                 interval: 1,
@@ -670,7 +670,7 @@ test('xb tavern author note world scan can activate local worldbook without cons
         characterKey: 'char-note-scan',
         characterName: 'Aster',
         contextSnapshot: {
-            character: { id: 'char-note-scan', name: 'Aster', description: 'Pilot.' },
+            character: { characterKey: 'char-note-scan', name: 'Aster', description: 'Pilot.' },
             authorNote: {
                 prompt: 'NOTE_SCAN_KEY',
                 interval: 1,
@@ -722,7 +722,7 @@ test('xb tavern rerun reuses an existing chance encounter without rerolling', as
     const first = await runXbTavernTurn({
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
         },
         preset,
         currentUserMessage: 'Keep watch.',
@@ -744,7 +744,7 @@ test('xb tavern rerun reuses an existing chance encounter without rerolling', as
         sessionId: first.sessionId,
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
         },
         preset,
         currentUserMessage: 'ignored',
@@ -784,7 +784,7 @@ test('xb tavern random encounter cooldown skips the next two new user turns and 
     const first = await runXbTavernTurn({
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
         },
         preset,
         currentUserMessage: 'Turn one.',
@@ -799,7 +799,7 @@ test('xb tavern random encounter cooldown skips the next two new user turns and 
         sessionId: first.sessionId,
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
         },
         preset,
         currentUserMessage: 'Turn two.',
@@ -814,7 +814,7 @@ test('xb tavern random encounter cooldown skips the next two new user turns and 
         sessionId: first.sessionId,
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
         },
         preset,
         currentUserMessage: 'Turn three.',
@@ -829,7 +829,7 @@ test('xb tavern random encounter cooldown skips the next two new user turns and 
         sessionId: first.sessionId,
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
         },
         preset,
         currentUserMessage: 'Turn four.',
@@ -859,7 +859,7 @@ test('xb tavern edited rerun can reroll runtime events on the reused user messag
     const first = await runXbTavernTurn({
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
         },
         preset,
         currentUserMessage: 'Original turn.',
@@ -883,7 +883,7 @@ test('xb tavern edited rerun can reroll runtime events on the reused user messag
         sessionId: first.sessionId,
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
         },
         preset,
         currentUserMessage: 'ignored',
@@ -927,7 +927,7 @@ test('xb tavern run turn does not inject action-check protocol or tools when con
     await runXbTavernTurn({
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
         },
         preset,
         currentUserMessage: '我想撬开这扇门。',
@@ -973,7 +973,7 @@ test('xb tavern run turn injects action-check protocol after current user and ex
     await runXbTavernTurn({
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
         },
         preset,
         currentUserMessage: '我想撬开这扇门。',
@@ -1066,7 +1066,7 @@ test('xb tavern run turn executes multiple action checks and persists assistant 
     const result = await runXbTavernTurn({
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
         },
         preset,
         currentUserMessage: '我跳过去，然后抓住对岸石沿。',
@@ -1101,7 +1101,7 @@ test('xb tavern action checks keep live dice visible even when the model calls t
     await runXbTavernTurn({
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
         },
         preset,
         currentUserMessage: '我立刻翻过窗台。',
@@ -1157,7 +1157,7 @@ test('xb tavern action checks stream cumulative text across tool rounds', async 
     await runXbTavernTurn({
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
         },
         preset,
         currentUserMessage: '我试着撬锁，然后推门。 ',
@@ -1218,7 +1218,7 @@ test('xb tavern action checks discard live dice results when the assistant never
     const result = await runXbTavernTurn({
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
         },
         preset,
         currentUserMessage: '我赌一把，从塔窗翻进去。',
@@ -1316,7 +1316,7 @@ test('xb tavern run turn denies unknown RP tools and does not persist action-che
     const result = await runXbTavernTurn({
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
         },
         preset,
         currentUserMessage: '我试着摸黑拆掉警铃。',
@@ -1341,7 +1341,7 @@ test('xb tavern action checks replay tool results through messages when session 
     await runXbTavernTurn({
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
         },
         preset,
         currentUserMessage: '我赌一把，从窗台翻进塔里。',
@@ -1435,7 +1435,7 @@ test('xb tavern action checks send a final reminder when tools finished but mode
     const result = await runXbTavernTurn({
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
         },
         preset,
         currentUserMessage: '我试着撬开这把锁。',
@@ -1520,7 +1520,7 @@ test('xb tavern action checks still send the final reminder after the max tool r
     const result = await runXbTavernTurn({
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
         },
         preset,
         currentUserMessage: '我连续冒险，直到命运给出最后结果。',
@@ -1572,7 +1572,7 @@ test('xb tavern action checks fail the turn when the model still gives no conclu
     const result = await runXbTavernTurn({
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
         },
         preset,
         currentUserMessage: '我试着撬开这把锁。',
@@ -1598,7 +1598,7 @@ test('xb tavern action checks remap dice-card offsets after aiOutput regex rewri
     const result = await runXbTavernTurn({
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
         },
         preset,
         currentUserMessage: '我跳过断桥。',
@@ -1672,7 +1672,7 @@ test('xb tavern rerun regenerates assistant action checks cleanly instead of reu
     const first = await runXbTavernTurn({
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
         },
         preset,
         currentUserMessage: '我撬门。',
@@ -1711,7 +1711,7 @@ test('xb tavern rerun regenerates assistant action checks cleanly instead of reu
         sessionId: first.sessionId,
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
         },
         preset,
         currentUserMessage: 'ignored',
@@ -1764,7 +1764,7 @@ test('xb tavern run turn can trigger manager summary with delegate config', asyn
             },
         },
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
         },
         preset,
         currentUserMessage: '我们去码头。',
@@ -1923,7 +1923,7 @@ test('xb tavern run turn retrieves relevant old memory beyond recent summaries',
     const session = await createTavernSession({
         title: 'Memory retrieval',
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
         },
     });
     await writeTavernMemoryFile(session.id, 'memory/state.md', '# 会话记忆\n\nAster 把银钥匙藏在码头钟楼下面。', {
@@ -1962,7 +1962,7 @@ test('xb tavern regex transforms user input, world info, and AI output in the re
         characterKey: 'char-1',
         characterName: 'Aster',
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
             worldBooks: [{
                 name: 'Lore',
                 entries: [{
@@ -2083,7 +2083,7 @@ test('xb tavern simulated request applies regex without saving messages', async 
         characterKey: 'char-1',
         characterName: 'Aster',
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
             worldBooks: [{
                 name: 'Lore',
                 entries: [{
@@ -2166,7 +2166,7 @@ test('xb tavern native world info keeps WORLD_INFO regex out of local world entr
             },
         },
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
             worldBooks: [
                 {
                     name: 'Bound Character Book',
@@ -2215,7 +2215,7 @@ test('xb tavern simulated request applies prompt-stage regex to history without 
         characterKey: 'char-1',
         characterName: 'Aster',
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
         },
     });
     await appendTavernMessage(session.id, { role: 'user', content: 'OLD_USER saved.' });
@@ -2285,7 +2285,7 @@ test('xb tavern regex failure before sending preserves the raw user message with
     const session = await createTavernSession({
         title: 'Regex failure',
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
         },
     });
 
@@ -2319,7 +2319,7 @@ test('xb tavern native prompt build failure preserves the saved user message', a
     const session = await createTavernSession({
         title: 'Native prompt failure',
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
         },
     });
     let providerCalls = 0;
@@ -2358,7 +2358,7 @@ test('xb tavern applies native macro substitution to user input, world keys, wor
         characterKey: 'char-1',
         characterName: 'Aster',
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster', description: 'Pilot for {{user}}.' },
+            character: { characterKey: 'char-1', name: 'Aster', description: 'Pilot for {{user}}.' },
             user: { name: 'Player' },
             worldBooks: [{
                 name: 'Lore',
@@ -2431,7 +2431,7 @@ test('xb tavern does not pass empty macro name overrides that would hide SillyTa
     const session = await createTavernSession({
         title: 'Macro fallback',
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
             user: { name: '' },
         },
     });
@@ -3032,7 +3032,7 @@ test('xb tavern simulated request builds raw API JSON without saving chat messag
         characterKey: 'char-1',
         characterName: 'Aster',
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster', description: 'A careful scout.' },
+            character: { characterKey: 'char-1', name: 'Aster', description: 'A careful scout.' },
         },
         presetId: preset.id,
         presetName: preset.name,
@@ -3075,7 +3075,7 @@ test('xb tavern world entry substitution skips null worldbook records', async ()
         position: 0,
     };
     const contextSnapshot = {
-        character: { id: 'char-1', name: 'Aster', description: 'A careful scout.' },
+        character: { characterKey: 'char-1', name: 'Aster', description: 'A careful scout.' },
         user: { name: 'Player' },
         worldBooks: [
             null,
@@ -3130,7 +3130,7 @@ test('xb tavern simulated request injects only the active map digest without ful
         characterKey: 'char-map',
         characterName: 'Mapper',
         contextSnapshot: {
-            character: { id: 'char-map', name: 'Mapper', description: 'A cartographer.' },
+            character: { characterKey: 'char-map', name: 'Mapper', description: 'A cartographer.' },
         },
         presetId: preset.id,
         presetName: preset.name,
@@ -3199,7 +3199,7 @@ test('xb tavern simulated request falls back to main map digest when active map 
         characterKey: 'char-map-fallback',
         characterName: 'Mapper',
         contextSnapshot: {
-            character: { id: 'char-map-fallback', name: 'Mapper', description: 'A cartographer.' },
+            character: { characterKey: 'char-map-fallback', name: 'Mapper', description: 'A cartographer.' },
         },
         presetId: preset.id,
         presetName: preset.name,
@@ -3261,7 +3261,7 @@ test('xb tavern simulated request injects only memory files when cartography is 
         characterKey: 'char-memory',
         characterName: 'Archivist',
         contextSnapshot: {
-            character: { id: 'char-memory', name: 'Archivist', description: 'Keeps notes.' },
+            character: { characterKey: 'char-memory', name: 'Archivist', description: 'Keeps notes.' },
         },
         presetId: preset.id,
         presetName: preset.name,
@@ -3320,7 +3320,7 @@ test('xb tavern simulated request injects only structured state when memory arch
         characterKey: 'char-map-only',
         characterName: 'Scout',
         contextSnapshot: {
-            character: { id: 'char-map-only', name: 'Scout', description: 'Checks routes.' },
+            character: { characterKey: 'char-map-only', name: 'Scout', description: 'Checks routes.' },
         },
         presetId: preset.id,
         presetName: preset.name,
@@ -3401,7 +3401,7 @@ test('xb tavern simulated request ignores unusable empty session snapshots', asy
         },
         contextSnapshot: {
             character: {
-                id: 'char-live',
+                characterKey: 'char-live',
                 name: 'Live Aster',
                 description: 'Live character card.',
             },
@@ -3432,7 +3432,7 @@ test('xb tavern simulated request ignores system-name session snapshots', async 
         characterName: 'SillyTavern System',
         contextSnapshot: {
             character: {
-                id: 'system',
+                characterKey: 'system',
                 name: 'SillyTavern System',
             },
         },
@@ -3456,7 +3456,7 @@ test('xb tavern simulated request ignores system-name session snapshots', async 
         },
         contextSnapshot: {
             character: {
-                id: 'seraphina',
+                characterKey: 'seraphina',
                 name: 'Seraphina',
                 description: 'A real character card.',
             },
@@ -3528,7 +3528,7 @@ test('xb tavern run turn records provider failures as error assistant messages',
     const result = await runXbTavernTurn({
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
         },
         preset,
         currentUserMessage: 'Fail once.',
@@ -3555,7 +3555,7 @@ test('xb tavern run turn records provider failures as error assistant messages',
         sessionId: result.sessionId,
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
         },
         preset,
         currentUserMessage: 'Retry.',
@@ -3576,7 +3576,7 @@ test('xb tavern provider fetch failures suggest switching tavern completion sour
     const result = await runXbTavernTurn({
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
         },
         preset,
         currentUserMessage: 'Fail fetch.',
@@ -3598,7 +3598,7 @@ test('xb tavern run turn keeps the actual failed request snapshot when provider 
     const result = await runXbTavernTurn({
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
         },
         preset,
         currentUserMessage: 'Fail with request snapshot.',
@@ -3639,7 +3639,7 @@ test('xb tavern run turn records aborted partial text as assistant message', asy
     const result = await runXbTavernTurn({
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
         },
         preset,
         currentUserMessage: 'Start then stop.',
@@ -3678,7 +3678,7 @@ test('xb tavern aborted partial output records AI_OUTPUT regex in request snapsh
     const result = await runXbTavernTurn({
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
         },
         preset,
         currentUserMessage: 'Start then stop.',
@@ -3712,7 +3712,7 @@ test('xb tavern run turn records aborted empty run as error assistant message', 
     const result = await runXbTavernTurn({
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
         },
         preset,
         currentUserMessage: 'Stop before text.',
@@ -3745,7 +3745,7 @@ test('xb tavern run turn keeps running when UI callbacks fail', async () => {
         result = await runXbTavernTurn({
             agentConfig: { provider: 'fake-provider', model: 'fake-model' },
             contextSnapshot: {
-                character: { id: 'char-1', name: 'Aster' },
+                character: { characterKey: 'char-1', name: 'Aster' },
             },
             preset,
             currentUserMessage: 'Do not let UI callbacks stop the turn.',
@@ -3780,7 +3780,7 @@ test('xb tavern run turn can rerun from an existing user without duplicating the
     const first = await runXbTavernTurn({
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
         },
         preset,
         currentUserMessage: 'Try again.',
@@ -3796,7 +3796,7 @@ test('xb tavern run turn can rerun from an existing user without duplicating the
         sessionId: first.sessionId,
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
         },
         preset,
         currentUserMessage: 'ignored because reused order wins',
@@ -3823,7 +3823,7 @@ test('xb tavern rerun uses regenerate world info trigger', async () => {
     await resetDb();
     const preset = createDefaultXbTavernPreset();
     const contextSnapshot = {
-        character: { id: 'char-1', name: 'Aster' },
+        character: { characterKey: 'char-1', name: 'Aster' },
         worldBooks: [{
             name: 'Lore',
             entries: [
@@ -3874,7 +3874,7 @@ test('xb tavern rerun rebuilds world entry state with macro-substituted world ke
     await resetDb();
     const preset = createDefaultXbTavernPreset();
     const contextSnapshot = {
-        character: { id: 'char-1', name: 'Aster' },
+        character: { characterKey: 'char-1', name: 'Aster' },
         user: { name: 'Player' },
         worldBooks: [{
             name: 'Lore',
@@ -3949,7 +3949,7 @@ test('xb tavern rerun deletes future messages and rebuilds state from remaining 
     await resetDb();
     const preset = createDefaultXbTavernPreset();
     const contextSnapshot = {
-        character: { id: 'char-1', name: 'Aster' },
+        character: { characterKey: 'char-1', name: 'Aster' },
         worldBooks: [{
             name: 'Lore',
             entries: [{
@@ -4020,7 +4020,7 @@ test('xb tavern rerun preserves contract and skips automatic manager work when d
     const first = await runXbTavernTurn({
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
         },
         preset,
         currentUserMessage: 'Keep the contract.',
@@ -4050,7 +4050,7 @@ test('xb tavern rerun preserves contract and skips automatic manager work when d
         sessionId: first.sessionId,
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
         },
         preset,
         currentUserMessage: 'ignored',
@@ -4082,7 +4082,7 @@ test('xb tavern rerun restores state memory to the snapshot before the changed f
     const first = await runXbTavernTurn({
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
         },
         preset,
         currentUserMessage: 'First turn.',
@@ -4120,7 +4120,7 @@ test('xb tavern rerun restores state memory to the snapshot before the changed f
         sessionId: first.sessionId,
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
         },
         preset,
         currentUserMessage: 'ignored',
@@ -4193,7 +4193,7 @@ test('xb tavern keeps inline image tokens in saved user messages but strips them
     const result = await runXbTavernTurn({
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster', description: 'Pilot.' },
+            character: { characterKey: 'char-1', name: 'Aster', description: 'Pilot.' },
             user: { name: 'Player' },
         },
         preset,
@@ -4401,7 +4401,7 @@ test('xb tavern run turn trims only API history and keeps stored messages intact
         characterKey: 'char-1',
         characterName: 'Aster',
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster', description: 'Pilot.' },
+            character: { characterKey: 'char-1', name: 'Aster', description: 'Pilot.' },
             user: { name: 'Player' },
         },
         presetId: preset.id,
@@ -4419,7 +4419,7 @@ test('xb tavern run turn trims only API history and keeps stored messages intact
         sessionId: session.id,
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster', description: 'Pilot.' },
+            character: { characterKey: 'char-1', name: 'Aster', description: 'Pilot.' },
             user: { name: 'Player' },
         },
         preset,
@@ -4455,7 +4455,7 @@ test('xb tavern simulated request uses the same trimmed API history without savi
         characterKey: 'char-1',
         characterName: 'Aster',
         contextSnapshot: {
-            character: { id: 'char-1', name: 'Aster', description: 'Pilot.' },
+            character: { characterKey: 'char-1', name: 'Aster', description: 'Pilot.' },
             user: { name: 'Player' },
         },
         presetId: preset.id,
@@ -4504,7 +4504,7 @@ test('xb tavern run turn prefers the latest live context for an existing session
         characterKey: 'old',
         characterName: 'Old Character',
         contextSnapshot: {
-            character: { id: 'old', name: 'Old Character', description: 'Old card.' },
+            character: { characterKey: 'old', name: 'Old Character', description: 'Old card.' },
         },
         presetId: preset.id,
         presetName: preset.name,
@@ -4514,7 +4514,7 @@ test('xb tavern run turn prefers the latest live context for an existing session
         sessionId: session.id,
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
-            character: { id: 'new', name: 'New Character', description: 'New card.' },
+            character: { characterKey: 'new', name: 'New Character', description: 'New card.' },
         },
         preset,
         currentUserMessage: 'Who are you?',

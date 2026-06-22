@@ -157,7 +157,7 @@ function buildGroup(scriptType, key, label, nativeCharacterId) {
     label,
     scriptType,
     scripts,
-    allowed: scriptType === SCRIPT_TYPES.SCOPED ? isScopedScriptsAllowed(currentCharacter(nativeCharacterId)) : scriptType === SCRIPT_TYPES.PRESET ? isPresetScriptsAllowed(presetApi, presetName) : true
+    allowed: scriptType === SCRIPT_TYPES.SCOPED ? !!nativeCharacterId && isScopedScriptsAllowed(currentCharacter(nativeCharacterId)) : scriptType === SCRIPT_TYPES.PRESET ? isPresetScriptsAllowed(presetApi, presetName) : true
   };
 }
 async function syncNativeRegexUiAfterWrite() {
@@ -196,6 +196,9 @@ async function saveTavernRegexScript(input) {
   const nativeCharacterId = text(source.nativeCharacterId);
   const scriptType = normalizeScriptType(source.scriptType);
   const script = normalizeRegexScript(source.script);
+  if (scriptType === SCRIPT_TYPES.SCOPED && !nativeCharacterId) {
+    throw new Error("\u7F3A\u5C11\u89D2\u8272\u8EAB\u4EFD\uFF0C\u65E0\u6CD5\u4FDD\u5B58\u5F53\u524D\u89D2\u8272\u6B63\u5219\u3002");
+  }
   if (!script.scriptName) {
     throw new Error("\u6B63\u5219\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A\u3002");
   }
@@ -223,6 +226,9 @@ async function deleteTavernRegexScript(input) {
   const source = asRecord(input);
   const nativeCharacterId = text(source.nativeCharacterId);
   const scriptType = normalizeScriptType(source.scriptType);
+  if (scriptType === SCRIPT_TYPES.SCOPED && !nativeCharacterId) {
+    throw new Error("\u7F3A\u5C11\u89D2\u8272\u8EAB\u4EFD\uFF0C\u65E0\u6CD5\u5220\u9664\u5F53\u524D\u89D2\u8272\u6B63\u5219\u3002");
+  }
   const id = text(source.id);
   if (!id) {
     throw new Error("\u7F3A\u5C11\u6B63\u5219 ID\u3002");

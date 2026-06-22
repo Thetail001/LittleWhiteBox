@@ -1571,7 +1571,7 @@ test('xb tavern world prompt blocks follow SillyTavern insertion order', () => {
 
 test('xb tavern build snapshot summarizes context, preset, world activation, and raw messages', () => {
     const context = {
-        character: { id: 'char-1', name: 'Aster' },
+        character: { characterKey: 'char-1', name: 'Aster' },
         user: { name: 'Player' },
         history: [{ role: 'user' as const, content: 'Earlier.' }],
         worldBooks: [{

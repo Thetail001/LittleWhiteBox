@@ -14,7 +14,7 @@ test('xb tavern brain applies one shared runtime contract for preview and runs',
     const preset = createDefaultXbTavernPreset();
     const brain = buildXbTavernBrain({
         context: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
             user: { name: 'Player' },
             worldBooks: [{
                 name: 'Lore',
@@ -96,7 +96,7 @@ test('xb tavern brain injects memory as D1 system before current user message', 
     const preset = createDefaultXbTavernPreset();
     const brain = buildXbTavernBrain({
         context: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
             history: [{ role: 'assistant', content: 'Old reply.' }],
         },
         preset,
@@ -144,7 +144,7 @@ test('xb tavern brain keeps full state memory content in D1 without preview trun
     });
     const brain = buildXbTavernBrain({
         context: {
-            character: { id: 'char-1', name: 'Aster' },
+            character: { characterKey: 'char-1', name: 'Aster' },
             history: [{ role: 'assistant', content: 'Old reply.' }],
         },
         preset: createDefaultXbTavernPreset(),

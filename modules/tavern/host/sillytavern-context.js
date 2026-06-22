@@ -251,15 +251,15 @@ function buildCharacterKey(character, nativeCharacterId) {
   const data = asRecord(character.data) || character;
   const name = normalizeText(character.name || data.name);
   const avatar = rawCharacterAvatarName(character, data, nativeCharacterId);
-  const cardPayload = normalizeText(character.json_data) || stableJson(data) || stableJson(character);
-  const hash = hashString(cardPayload || [avatar, name].join("\0"));
   if (avatar) {
-    return `avatar:${avatar}:${name || "unnamed"}:${hash.slice(0, 8)}`;
+    return `avatar:${avatar}`;
   }
+  const cardPayload = normalizeText(character.json_data) || stableJson(data) || stableJson(character);
+  const hash = hashString(cardPayload || name);
   if (cardPayload) {
-    return `card:${hash}:${name || "unnamed"}`;
+    return `card:${hash}`;
   }
-  return `name:${name || "unknown"}:${hash.slice(0, 8)}`;
+  return `name:${name || "unknown"}`;
 }
 async function hydrateCharacterAt(index) {
   if (!Number.isInteger(index) || index < 0) {

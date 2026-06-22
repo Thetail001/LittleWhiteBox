@@ -58,7 +58,6 @@ export interface XbTavernMessage {
 }
 
 export interface XbTavernCharacter {
-    id?: string;
     characterKey?: string;
     nativeCharacterId?: string;
     name?: string;
