@@ -795,13 +795,30 @@ function hasUsableTavernContext(context?: XbTavernContext | null): boolean {
     return !!name && !/^(sillytavern\s+system|system)\b/i.test(name);
 }
 
+function tavernContextCharacterKey(context?: XbTavernContext | null): string {
+    return String(context?.character?.characterKey || '').trim();
+}
+
 function resolveSessionContext(
-    session?: Pick<TavernSessionRecord, 'contextSnapshot'> | null,
+    session?: Pick<TavernSessionRecord, 'characterKey' | 'contextSnapshot'> | null,
     fallbackContext: XbTavernContext = {},
 ): XbTavernContext {
+    if (session) {
+        const sessionCharacterKey = String(session.characterKey || tavernContextCharacterKey(session.contextSnapshot)).trim();
+        const fallbackCharacterKey = tavernContextCharacterKey(fallbackContext);
+        if (hasUsableTavernContext(fallbackContext)) {
+            if (sessionCharacterKey && fallbackCharacterKey && sessionCharacterKey !== fallbackCharacterKey) {
+                throw new Error('会话角色身份不匹配，请重新选择对应角色会话。');
+            }
+            if (!sessionCharacterKey || fallbackCharacterKey === sessionCharacterKey) {
+                return fallbackContext || {};
+            }
+        }
+        if (hasUsableTavernContext(session.contextSnapshot)) {return session.contextSnapshot || {};}
+        return session.contextSnapshot || {};
+    }
     if (hasUsableTavernContext(fallbackContext)) {return fallbackContext || {};}
-    if (hasUsableTavernContext(session?.contextSnapshot)) {return session?.contextSnapshot || {};}
-    return fallbackContext || session?.contextSnapshot || {};
+    return fallbackContext || {};
 }
 
 function assertUsableTavernContext(context: XbTavernContext = {}): void {

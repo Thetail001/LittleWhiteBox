@@ -3423,7 +3423,7 @@ test('xb tavern simulated request ignores unusable empty session snapshots', asy
     assert.match(result.requestSnapshot.rawRequestJson, /Live constant lore/);
 });
 
-test('xb tavern simulated request ignores system-name session snapshots', async () => {
+test('xb tavern simulated request rejects system-name sessions with a different live character', async () => {
     await resetDb();
     const preset = createDefaultXbTavernPreset();
     const session = await createTavernSession({
@@ -3439,43 +3439,42 @@ test('xb tavern simulated request ignores system-name session snapshots', async 
         presetId: preset.id,
         presetName: preset.name,
     });
-    const result = await simulateXbTavernRequest({
-        sessionId: session.id,
-        agentConfig: {
-            currentPresetName: '酒馆 OpenAI',
-            presets: {
-                '酒馆 OpenAI': {
-                    provider: 'sillytavern-openai-compatible',
-                    modelConfigs: {
-                        'sillytavern-openai-compatible': {
-                            model: 'gpt-test',
+    await assert.rejects(
+        () => simulateXbTavernRequest({
+            sessionId: session.id,
+            agentConfig: {
+                currentPresetName: '酒馆 OpenAI',
+                presets: {
+                    '酒馆 OpenAI': {
+                        provider: 'sillytavern-openai-compatible',
+                        modelConfigs: {
+                            'sillytavern-openai-compatible': {
+                                model: 'gpt-test',
+                            },
                         },
                     },
                 },
             },
-        },
-        contextSnapshot: {
-            character: {
-                characterKey: 'seraphina',
-                name: 'Seraphina',
-                description: 'A real character card.',
-            },
-            worldBooks: [{
-                name: 'Seraphina Lore',
-                entries: [{
-                    uid: 'seraphina-lore',
-                    content: 'Seraphina constant lore.',
-                    constant: true,
+            contextSnapshot: {
+                character: {
+                    characterKey: 'seraphina',
+                    name: 'Seraphina',
+                    description: 'A real character card.',
+                },
+                worldBooks: [{
+                    name: 'Seraphina Lore',
+                    entries: [{
+                        uid: 'seraphina-lore',
+                        content: 'Seraphina constant lore.',
+                        constant: true,
+                    }],
                 }],
-            }],
-        },
-        preset,
-        currentUserMessage: '继续。',
-    });
-
-    assert.doesNotMatch(result.requestSnapshot.rawRequestJson, /SillyTavern System/);
-    assert.match(result.requestSnapshot.rawRequestJson, /Seraphina/);
-    assert.match(result.requestSnapshot.rawRequestJson, /Seraphina constant lore/);
+            },
+            preset,
+            currentUserMessage: '继续。',
+        }),
+        /会话角色身份不匹配/,
+    );
 });
 
 test('xb tavern runtime keeps capability registry empty until agent tools are added', () => {
@@ -4496,15 +4495,15 @@ test('xb tavern simulated request uses the same trimmed API history without savi
     assert.equal((await listTavernMessages(session.id)).length, 20);
 });
 
-test('xb tavern run turn prefers the latest live context for an existing session', async () => {
+test('xb tavern run turn accepts refreshed live context for the same session character', async () => {
     await resetDb();
     const preset = createDefaultXbTavernPreset();
     const session = await createTavernSession({
         title: 'Locked',
-        characterKey: 'old',
+        characterKey: 'char-refresh',
         characterName: 'Old Character',
         contextSnapshot: {
-            character: { characterKey: 'old', name: 'Old Character', description: 'Old card.' },
+            character: { characterKey: 'char-refresh', name: 'Old Character', description: 'Old card.' },
         },
         presetId: preset.id,
         presetName: preset.name,
@@ -4514,7 +4513,7 @@ test('xb tavern run turn prefers the latest live context for an existing session
         sessionId: session.id,
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
-            character: { characterKey: 'new', name: 'New Character', description: 'New card.' },
+            character: { characterKey: 'char-refresh', name: 'New Character', description: 'New card.' },
         },
         preset,
         currentUserMessage: 'Who are you?',
@@ -4530,4 +4529,38 @@ test('xb tavern run turn prefers the latest live context for an existing session
     assert.doesNotMatch(sentRaw, /Old Character/);
     const updated = await getTavernSession(session.id);
     assert.equal(updated?.contextSnapshot?.character?.name, 'New Character');
+});
+
+test('xb tavern run turn rejects live context from a different character', async () => {
+    await resetDb();
+    const preset = createDefaultXbTavernPreset();
+    const session = await createTavernSession({
+        title: 'Locked',
+        characterKey: 'char-a',
+        characterName: 'Character A',
+        contextSnapshot: {
+            character: { characterKey: 'char-a', name: 'Character A', description: 'A card.' },
+        },
+        presetId: preset.id,
+        presetName: preset.name,
+    });
+    await assert.rejects(
+        () => runXbTavernTurn({
+            sessionId: session.id,
+            agentConfig: { provider: 'fake-provider', model: 'fake-model' },
+            contextSnapshot: {
+                character: { characterKey: 'char-b', name: 'Character B', description: 'B card.' },
+            },
+            preset,
+            currentUserMessage: 'Who are you?',
+            executeRunOnce: async (options: TavernRunOnceOptions) => ({
+                text: 'wrong',
+                requestSnapshot: buildTavernRequestSnapshot(options.agentConfig, options.messages),
+            }),
+        }),
+        /会话角色身份不匹配/,
+    );
+    const updated = await getTavernSession(session.id);
+    assert.equal(updated?.contextSnapshot?.character?.name, 'Character A');
+    assert.equal((await listTavernMessages(session.id)).length, 0);
 });

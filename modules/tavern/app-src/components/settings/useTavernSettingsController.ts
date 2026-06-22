@@ -829,6 +829,11 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
             preset.value = normalized;
         }
     }
+    function refreshCurrentHostContext(): void {
+        const nativeCharacterId = String(options.currentWorldbookNativeCharacterId.value || '').trim();
+        if (!nativeCharacterId) {return;}
+        options.postToHost('xb-tavern:refresh-context', { nativeCharacterId, includeHistory: false });
+    }
     function applyActiveRegexScript(row: TavernRegexScriptRow | null) {
         if (!row) {
             regexDraft.value = {};
@@ -911,7 +916,7 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
             const nextPreset = (result.result || result) as Partial<TavernChatPromptPresetBundle>;
             applyActiveChatPreset(nextPreset);
             presetStatus.value = '';
-            options.postToHost('xb-tavern:refresh-context', {});
+            refreshCurrentHostContext();
         } catch (error) {
             selectedPresetSourceId.value = currentName;
             presetStatus.value = error instanceof Error ? error.message : String(error || '切换失败');
@@ -935,7 +940,7 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
         }
         applyActiveChatPreset(result.result as Partial<TavernChatPromptPresetBundle>);
         presetStatus.value = '';
-        options.postToHost('xb-tavern:refresh-context', {});
+        refreshCurrentHostContext();
     }
     async function syncWorldbooksFromHost(syncOptions: TavernWorldbookSyncOptions = {}) {
         const requestSerial = syncOptions.requestSerial || ++worldbookSyncRequestSerial;
@@ -1016,7 +1021,7 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
             globalWorldbookOptions.value = payload.options;
             globalWorldbookSelected.value = payload.selected;
             globalWorldbookStatus.value = '';
-            options.postToHost('xb-tavern:refresh-context', {});
+            refreshCurrentHostContext();
             void syncWorldbooksFromHost({ keepSelection: true });
         } catch (error) {
             if (requestSerial !== globalWorldbookRequestSerial) {return;}
@@ -1131,7 +1136,7 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
             applyWorldbookEntryDraft(result.result || result);
             worldbookEntryStatus.value = '已保存';
             await loadSelectedWorldbookPreview(targetName);
-            options.postToHost('xb-tavern:refresh-context', {});
+            refreshCurrentHostContext();
         } catch (error) {
             worldbookEntryStatus.value = error instanceof Error ? error.message : String(error || '保存失败');
         }
@@ -1353,7 +1358,7 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
             baseSettingsStatus.value = currentTavernUser.value
                 ? `已切换到 ${currentTavernUser.value.name}`
                 : 'USER 已切换';
-            options.postToHost('xb-tavern:refresh-context', {});
+            refreshCurrentHostContext();
         } catch (error) {
             baseSettingsStatus.value = error instanceof Error ? error.message : String(error || '切换失败');
         } finally {

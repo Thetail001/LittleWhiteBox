@@ -810,7 +810,7 @@ test('tavern markdown enhancement lives outside the app controller', () => {
     assert.match(comfyDrawSource, /messageId: sessionId[\s\S]*`tavern:/);
     assert.match(hostSource, /htmlRenderEnabled: isHtmlRenderEnabled\(\)/);
     assert.match(appSource, /const htmlRenderEnabled = ref\(true\);/);
-    assert.match(appSource, /if \('context' in payload\) \{[\s\S]*context\.value = payload\.context as XbTavernContext \|\| \{\};[\s\S]*\}/);
+    assert.match(appSource, /if \('context' in payload\) \{[\s\S]*const nextContext = payload\.context as XbTavernContext \|\| \{\};[\s\S]*if \(canApplyHostContext\(nextContext\)\) \{[\s\S]*context\.value = nextContext;/);
     assert.match(appSource, /htmlRenderEnabled\.value = payload\.htmlRenderEnabled !== false;/);
     assert.match(appSource, /htmlRenderEnabled,\s*requestHost,/);
     assert.match(contextSource, /htmlRenderEnabled: Ref<boolean>;/);
@@ -977,7 +977,8 @@ test('tavern streaming action-check UI renders from live runtime events and keep
     assert.match(contextSource, /currentAuthorNote: TavernReadable<XbTavernAuthorNote>/);
     assert.match(contextSource, /saveCurrentAuthorNote: TavernCommand<\[note: XbTavernAuthorNote\], Promise<void>>/);
     assert.match(appSource, /const currentAuthorNote = computed<XbTavernAuthorNote>\(\(\) => normalizeXbTavernAuthorNote\(selectedSession\.value\?\.contextSnapshot\?\.authorNote\)\)/);
-    assert.match(appSource, /const contextBase = selectedSessionId\.value === sessionId[\s\S]*\? \(context\.value \|\| session\.contextSnapshot \|\| \{\}\)/);
+    assert.match(appSource, /const contextBase = session\.contextSnapshot \|\| \{\};/);
+    assert.doesNotMatch(appSource, /const contextBase = selectedSessionId\.value === sessionId[\s\S]*context\.value/);
     assert.match(appSource, /async function saveCurrentAuthorNote\(note: XbTavernAuthorNote\)[\s\S]*authorNote: normalized/);
     assert.match(appSource, /async function saveCurrentAuthorNote\(note: XbTavernAuthorNote\)[\s\S]*contextSnapshot: nextContext/);
     assert.match(appSource, /if \(selectedSessionId\.value !== sessionId\) \{return;\}[\s\S]*context\.value = nextContext/);
@@ -1317,7 +1318,9 @@ test('tavern character identity uses stable keys and explicit native ids', () =>
     const sharedContextSource = readRepoFile('modules/tavern/shared/sillytavern-context.ts');
     const messageAssemblerSource = readRepoFile('modules/tavern/shared/message-assembler.ts');
     const appSource = readRepoFile('modules/tavern/app-src/App.vue');
+    const settingsControllerSource = readRepoFile('modules/tavern/app-src/components/settings/useTavernSettingsController.ts');
     const sessionSource = readRepoFile('modules/tavern/shared/session-db.ts');
+    const runtimeSource = readRepoFile('modules/tavern/app-src/runtime/run-once.ts');
     const worldbookSource = readRepoFile('modules/tavern/host/worldbooks.ts');
     const nativePromptSource = readRepoFile('modules/tavern/host/native-prompt.ts');
     const regexSource = readRepoFile('modules/tavern/host/regex.ts');
@@ -1341,19 +1344,28 @@ test('tavern character identity uses stable keys and explicit native ids', () =>
     assert.match(sessionSource, /this\.version\(8\)\.stores\(\{[\s\S]*sessions: 'id, updatedAt, characterKey, characterName'/);
     assert.match(sessionSource, /characterKey: String\(input\.characterKey \|\| ''\)/);
     assert.match(sessionSource, /characterKey: 'characterKey' in patch/);
+    assert.match(runtimeSource, /function resolveSessionContext\([\s\S]*sessionCharacterKey[\s\S]*fallbackCharacterKey[\s\S]*sessionCharacterKey !== fallbackCharacterKey[\s\S]*throw new Error\('会话角色身份不匹配，请重新选择对应角色会话。'\);/);
 
     assert.match(appSource, /const selectedCharacterPreviewKey = ref\(''\);/);
     assert.match(appSource, /const pendingCharacterSessionKey = ref\(''\);/);
     assert.match(appSource, /const selectedSessionCharacterError = ref\(''\);/);
     assert.match(appSource, /function resolveCurrentNativeCharacterId\(characterKey = ''/);
     assert.match(appSource, /throw new Error\('角色卡已不存在或文件名变化，请重新选择角色。'\);/);
+    assert.match(appSource, /function canApplyHostContext\(nextContext: XbTavernContext = \{\}\): boolean \{[\s\S]*String\(nextContext\.character\?\.characterKey \|\| ''\)\.trim\(\) === selectedKey;/);
+    assert.match(appSource, /function assertContextMatchesCharacterKey\(nextContext: XbTavernContext = \{\}, characterKey = ''\): void \{[\s\S]*actualKey !== expectedKey[\s\S]*throw new Error\('刷新到的角色卡与当前会话不一致，请重新选择角色。'\);/);
+    assert.match(appSource, /function applyHostPayload\(payload: Record<string, unknown>\) \{[\s\S]*if \(canApplyHostContext\(nextContext\)\) \{[\s\S]*context\.value = nextContext;/);
+    assert.match(appSource, /const nextContext = preserveSessionAuthorNote\(payload\.context as XbTavernContext \|\| context\.value, session\);[\s\S]*assertContextMatchesCharacterKey\(nextContext, targetCharacterKey\);[\s\S]*updateTavernSessionSnapshot/);
+    assert.match(appSource, /async function refreshCharacterList\(\) \{[\s\S]*const payload = await getHostContext\(\{ includeHistory: false, includeWorldbooks: false \}\);[\s\S]*applyCharacterListPayload\(payload\);/);
     assert.match(appSource, /function applySessionSnapshotContext\(session\?: TavernSessionRecord \| null\): void[\s\S]*context\.value = preserveSessionAuthorNote\(session\.contextSnapshot \|\| \{\}, session\);/);
     assert.match(appSource, /async function syncSessionCharacterContextSafely[\s\S]*catch \(error\) \{[\s\S]*setSelectedSessionCharacterError\(error, targetSessionId\);/);
     assert.match(appSource, /async function selectSession\(sessionId: string\)[\s\S]*applySessionSnapshotContext\(session\);[\s\S]*void syncSessionCharacterContextSafely\(\{ sessionId, force: true \}\);/);
     assert.doesNotMatch(appSource, /void syncSessionCharacterContext\(\{/);
     assert.match(appSource, /\.filter\(\(session\) => String\(session\.characterKey \|\| ''\)\.trim\(\) === characterKey\)/);
     assert.match(appSource, /postToHost\('xb-tavern:refresh-context', \{ nativeCharacterId, includeHistory: false \}\)/);
+    assert.doesNotMatch(appSource, /postToHost\('xb-tavern:refresh-context', \{\}\)/);
     assert.doesNotMatch(appSource, /selectedCharacterId|selectedCharacterPreviewId|pendingCharacterPreviewId|pendingCharacterSessionId|session\.characterId|payload: \{ characterId/);
+    assert.match(settingsControllerSource, /function refreshCurrentHostContext\(\): void \{[\s\S]*const nativeCharacterId = String\(options\.currentWorldbookNativeCharacterId\.value \|\| ''\)\.trim\(\);[\s\S]*options\.postToHost\('xb-tavern:refresh-context', \{ nativeCharacterId, includeHistory: false \}\);/);
+    assert.doesNotMatch(settingsControllerSource, /postToHost\('xb-tavern:refresh-context', \{\}\)/);
 
     assert.match(worldbookSource, /payload\.nativeCharacterId/);
     assert.doesNotMatch(worldbookSource, /payload\.characterId|isCurrentCharacter|currentCharacterId/);

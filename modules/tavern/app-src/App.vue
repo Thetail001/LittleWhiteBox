@@ -1835,6 +1835,25 @@ function currentContextCharacterKey() {
     return String(context.value.character?.characterKey || '').trim();
 }
 
+function sessionCharacterKey(session?: TavernSessionRecord | null): string {
+    return String(session?.characterKey || session?.contextSnapshot?.character?.characterKey || '').trim();
+}
+
+function canApplyHostContext(nextContext: XbTavernContext = {}): boolean {
+    const selectedKey = sessionCharacterKey(selectedSession.value);
+    if (!String(selectedSessionId.value || '').trim() || !selectedKey) {return true;}
+    return String(nextContext.character?.characterKey || '').trim() === selectedKey;
+}
+
+function assertContextMatchesCharacterKey(nextContext: XbTavernContext = {}, characterKey = ''): void {
+    const expectedKey = String(characterKey || '').trim();
+    if (!expectedKey) {return;}
+    const actualKey = String(nextContext.character?.characterKey || '').trim();
+    if (actualKey !== expectedKey) {
+        throw new Error('刷新到的角色卡与当前会话不一致，请重新选择角色。');
+    }
+}
+
 function currentContextCharacterReady() {
     return !!displayableTavernName(context.value.character?.name || '') && !!currentContextCharacterKey();
 }
@@ -1876,16 +1895,14 @@ async function saveCurrentAuthorNote(note: XbTavernAuthorNote): Promise<void> {
         throw new Error('当前没有可保存的会话。');
     }
     const normalized = normalizeXbTavernAuthorNote(note);
-    const contextBase = selectedSessionId.value === sessionId
-        ? (context.value || session.contextSnapshot || {})
-        : (session.contextSnapshot || context.value || {});
+    const contextBase = session.contextSnapshot || {};
     const nextContext: XbTavernContext = {
         ...contextBase,
         authorNote: normalized,
     };
     const updatedSession = await updateTavernSessionSnapshot(sessionId, {
         contextSnapshot: nextContext,
-        characterKey: String(nextContext.character?.characterKey || session.characterKey || ''),
+        characterKey: String(session.characterKey || nextContext.character?.characterKey || ''),
         characterName: String(nextContext.character?.name || session.characterName || ''),
     });
     if (updatedSession) {
@@ -1922,6 +1939,7 @@ async function syncSessionCharacterContext(options: { sessionId?: string; force?
         return context.value;
     }
     const nextContext = preserveSessionAuthorNote(payload.context as XbTavernContext || context.value, session);
+    assertContextMatchesCharacterKey(nextContext, targetCharacterKey);
     applyHostPayload({
         ...payload,
         context: nextContext,
@@ -2007,7 +2025,10 @@ function installHostRequestHeadersProvider(payload: Record<string, unknown> = {}
 function applyHostPayload(payload: Record<string, unknown>) {
     installHostRequestHeadersProvider(payload);
     if ('context' in payload) {
-        context.value = payload.context as XbTavernContext || {};
+        const nextContext = payload.context as XbTavernContext || {};
+        if (canApplyHostContext(nextContext)) {
+            context.value = nextContext;
+        }
     }
     if ('diagnostics' in payload) {
         diagnostics.value = payload.diagnostics as TavernDiagnostics || {};
@@ -2116,10 +2137,16 @@ function openCharacterSelect() {
     refreshCharacterList();
 }
 
-function refreshCharacterList() {
+async function refreshCharacterList() {
     statusText.value = '正在读取角色列表';
     pendingCharacterError.value = '';
-    postToHost('xb-tavern:refresh-context', {});
+    try {
+        const payload = await getHostContext({ includeHistory: false, includeWorldbooks: false });
+        applyCharacterListPayload(payload);
+        statusText.value = diagnostics.value.message || '';
+    } catch (error) {
+        pendingCharacterError.value = describeError(error);
+    }
 }
 
 async function selectCharacterForPreview(characterKey: string) {
@@ -2198,7 +2225,7 @@ async function openSelectedCharacterWorldbook() {
             const state = payload.state as TavernCharacterWorldbookState | undefined;
             if (state) {characterWorldbookState.value = state;}
             if (action === 'imported') {
-                postToHost('xb-tavern:refresh-context', {});
+                postToHost('xb-tavern:refresh-context', { nativeCharacterId, includeHistory: false });
             }
             openWorldbookWorkspace(String(payload.name || ''));
             return;
@@ -2235,7 +2262,7 @@ async function bindSelectedCharacterWorldbook(name: string) {
         });
         characterWorldbookState.value = (result.result || result) as unknown as TavernCharacterWorldbookState;
         characterWorldbookSelectionOpen.value = false;
-        postToHost('xb-tavern:refresh-context', {});
+        postToHost('xb-tavern:refresh-context', { nativeCharacterId, includeHistory: false });
         openWorldbookWorkspace(targetName);
     } catch (error) {
         characterWorldbookStatus.value = describeError(error);
