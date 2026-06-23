@@ -487,10 +487,12 @@ test('tavern built-in assistant preset upgrades stale local defaults', async () 
     assert.doesNotMatch(active.statePrompt, /memory\/session\.md|memory\/turns/i);
     assert.doesNotMatch(active.statePrompt, /memory\/state\.md/);
     assert.doesNotMatch(active.characterPrompt, /memory\/characters\/<角色名>\.md/);
-    assert.match(active.statePrompt, /Recommended structure:/);
-    assert.match(active.statePrompt, /Story Context/);
-    assert.match(active.characterPrompt, /Character Arc/);
-    assert.match(active.characterPrompt, /Recent Related Events/);
+    assert.match(active.statePrompt, /推荐结构：/);
+    assert.match(active.statePrompt, /写入准入：/);
+    assert.match(active.statePrompt, /当前局面/);
+    assert.match(active.characterPrompt, /关系变化/);
+    assert.match(active.characterPrompt, /不要按回合追加/);
+    assert.doesNotMatch(active.characterPrompt, /Recent Related Events|最近发生了什么/);
 });
 
 test('tavern assistant preset editable sections hide fixed memory paths', () => {
@@ -510,7 +512,7 @@ test('tavern assistant preset editable sections hide fixed memory paths', () => 
     });
 
     assert.doesNotMatch(normalized.statePrompt, /memory\/state\.md|facts and states that are still true/i);
-    assert.match(normalized.statePrompt, /Recommended structure:/);
+    assert.match(normalized.statePrompt, /推荐结构：/);
     assert.doesNotMatch(normalized.characterPrompt, /memory\/characters\/<角色名>\.md/);
     assert.match(normalized.characterPrompt, /## Relationships/);
 });

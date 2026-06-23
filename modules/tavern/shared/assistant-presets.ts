@@ -12,7 +12,7 @@ export interface TavernAssistantPreset {
 type AssistantPresetInput = Partial<TavernAssistantPreset>;
 
 export const DEFAULT_TAVERN_ASSISTANT_PRESET_ID = 'littlewhitebox-assistant-default';
-export const DEFAULT_TAVERN_ASSISTANT_PRESET_VERSION = '2026-06-assistant-prompt-structure-v2';
+export const DEFAULT_TAVERN_ASSISTANT_PRESET_VERSION = '2026-06-assistant-prompt-memory-gate-v3';
 
 interface TavernManagerPromptOptions extends Partial<TavernContractManagerPromptOptions> {
     includeMemory?: boolean;
@@ -47,7 +47,7 @@ function buildFixedManagerSystemPrompt(options: TavernManagerPromptOptions = {})
 
     const responsibilityLines = [
         includeMemory ? 'Turn already-confirmed RP source text into concise long-term memory instead of echoing whole chat logs back into the prompt.' : '',
-        includeMemory ? 'Update memory only when facts, current state, relationships, constraints, hooks, risks, or near-term carry-forward context actually changed. If nothing material changed, explicitly skip writing.' : '',
+        includeMemory ? 'Update memory only when the turn establishes a new or changed continuity fact that future RP must remember. If nothing material changed, explicitly skip writing.' : '',
         includeCartography ? 'Update the map only when confirmed spatial facts changed: position, boundaries, routes, objects, hazards, or current scene scope.' : '',
         includeQuestOrchestration ? 'Maintain event directions only as forward-looking possibilities. They are not memory, not old events, and not random surprises.' : '',
         includeCartography
@@ -80,8 +80,8 @@ function buildFixedManagerSystemPrompt(options: TavernManagerPromptOptions = {})
 
     const fileDisciplineLines = includeMemory ? [
         'Operate on current-session `memory/...` Markdown files only through LS/Grep/Read/Edit/Write.',
-        '`memory/state.md` is global memory: current situation, mainline, long-term pressures, unresolved matters, near-term carry-forward context, and hard state that is still true.',
-        '`memory/characters/<角色名>.md` is character memory: one file per entity, with the filename as the entity name. It carries that character\'s long-term state, motivations, secrets, constraints, relationships, arc, promises, debts, risks, and recent related events.',
+        '`memory/state.md` is global memory: current situation, hard world facts, unresolved hooks, and scene continuity that future RP must remember.',
+        '`memory/characters/<角色名>.md` is character memory: one file per entity, with the filename as the entity name. It carries durable character changes such as identity, motives, secrets, constraints, relationship shifts, promises, debts, and risks.',
         '`memory/state.md` is not a directory. Do not write index notes such as "see another file"; it records global facts only.',
         'Edit and Write may write only `memory/state.md` or `memory/characters/<角色名>.md`. Do not create `memory/session.md`, `memory/turns/*.md`, or other memory paths.',
         'Do not create or maintain `memory/characters/User.md`, `memory/characters/Player.md`, `memory/characters/用户.md`, `memory/characters/玩家.md`, or any file whose subject is merely the message author. If player-side durable state matters, keep it in `memory/state.md` unless the RP clearly established a named in-world player character.',
@@ -231,35 +231,42 @@ function joinLines(lines: string[] = []): string {
 
 export function buildDefaultStateMemoryPrompt(): string {
     return joinLines([
-        'Recommended structure:',
-        '- `## Story Context`: current mainline, long-term pressure, unresolved hooks, and relationship situation that affects the global scene.',
-        '- `## Current State`: time, place, present characters, key items, body/emotion/constraint state.',
-        '- `## Recent Carry-Forward Events`: compressed events still in progress or needed next turn, but not yet ready to rewrite as stable long-term conclusions.',
+        '推荐结构：',
+        '- `## 当前局面`：下一轮必须继承的时间、地点、在场关系、关键物件、持续限制。',
+        '- `## 硬事实`：身份、归属、生死、规则、长期状态、已经确认的世界事实。',
+        '- `## 未解决钩子`：未来会影响 RP 的承诺、冲突、秘密、危险或待办后果。',
         '',
-        'Writing rules:',
-        '- Write only facts that affect the global situation, mainline understanding, or immediate scene continuity.',
-        '- Do not write a directory or "see another file" notes. Global memory is a fact controller, not an index.',
-        '- Character-specific motives, secrets, constraints, relationship arcs, promises, debts, and risks belong in character memory.',
-        '- Do not write a floor-by-floor log. When an ongoing event ends, rewrite the still-relevant result into story context, current state, unresolved matters, or character memory; delete process details that no longer matter.',
-        '- Skip writing when there is no material global change. Read current global memory before changing it; use Grep/Read under `chat/` when source verification is needed.',
+        '写入准入：',
+        '- 先问：这轮是否新增或改变了未来 RP 必须记住的事实？没有就跳过。',
+        '- 只写会影响连续性的内容：位置变化、关系定性、物品归属、明确承诺、暴露秘密、持续伤势/限制、未解决冲突。',
+        '- 不写普通对白、气氛描写、一次性动作、重复情绪、没有后果的暧昧/寒暄、状态栏、格式块、系统提示。',
+        '',
+        '写法约束：',
+        '- 每条只写一个事实，短句即可；保留正式人名、地点、物件、具体动作和结果。',
+        '- 优先合并或替换旧条目，不追加流水账；事件结束后只保留仍会影响未来的结果。',
+        '- 人物动机、秘密、关系、承诺、债务和风险优先写入对应人物记忆；全局记忆只留必要摘要。',
+        '- 修改前先读现有全局记忆；证据不确定时再查 `chat/`，不要凭印象补设定。',
     ]);
 }
 
 export function buildDefaultCharacterMemoryPrompt(): string {
     return joinLines([
-        'Recommended structure:',
-        '- `## Current State`: location/presence, body/emotion/constraints, public goal, hidden motive/secret.',
-        '- `## Relationships`: toward the player and toward other characters.',
-        '- `## Character Arc`: long-term changes that have happened and unresolved inner conflicts.',
-        '- `## Promises, Debts, And Risks`: promises, debts, risks.',
-        '- `## Recent Related Events`: events specific to this character that still need carry-forward, but are not yet ready to rewrite as long-term conclusions.',
+        '推荐结构：',
+        '- `## 稳定状态`：身份、位置、身体状态、公开目标、持续限制。',
+        '- `## 关系变化`：只记录已经发生变化或被明确确认的关系判断。',
+        '- `## 秘密与动机`：已被 RP 明确建立的秘密、动机、执念或禁忌。',
+        '- `## 承诺、债务与风险`：未来会影响互动的约定、亏欠、威胁、把柄。',
         '',
-        'Writing rules:',
-        '- Record only what has happened or has been clearly established. Do not write guesses, plans, or unconfirmed psychology as facts.',
-        '- Keep one character memory per character. Do not create indexes or per-turn logs.',
-        '- Write only when there is a material character change; skip if nothing durable changed.',
-        '- If a character fact affects the global mainline or current situation, also copy a brief summary into global memory relationship situation or current state.',
-        '- Read the target character memory before modifying it; use Grep/Read under `chat/` when source verification is needed.',
+        '写入准入：',
+        '- 只在人物出现实质变化时写：关系转向、身份揭示、目标改变、秘密暴露、承诺/债务成立、伤势/物品/限制持续存在。',
+        '- 角色只是出场、说了普通话、做了一次性动作、短暂害羞/生气/沉默，都不值得写。',
+        '- 不把猜测、计划、隐藏推理、用户指令、状态栏文字写成人物事实。',
+        '',
+        '写法约束：',
+        '- 一条记忆要能被未来召回：写清谁、对谁、在哪里、因为什么、改变了什么。',
+        '- 优先改旧条目，让人物档案保持短而准；不要按回合追加“最近发生了”。',
+        '- 不为用户、玩家、消息作者或泛称代词建立人物档案；除非 RP 明确给了一个世界内角色名。',
+        '- 修改前先读目标人物记忆；证据不确定时查 `chat/`，不要靠状态栏或印象补全。',
     ]);
 }
 
