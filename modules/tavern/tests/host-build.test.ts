@@ -258,6 +258,7 @@ test('tavern chat creation waits for hydrated character context before adding gr
 test('tavern worldbook sync uses native source overview with current context', () => {
     const settingsControllerSource = readRepoFile('modules/tavern/app-src/components/settings/useTavernSettingsController.ts');
     const contextSource = readRepoFile('modules/tavern/host/sillytavern-context.ts');
+    const contextBuildSource = readRepoFile('modules/tavern/host/sillytavern-context.js');
     const appSource = readRepoFile('modules/tavern/app-src/App.vue');
     const worldbookSource = readRepoFile('modules/tavern/host/worldbooks.ts');
     assert.match(
@@ -276,6 +277,12 @@ test('tavern worldbook sync uses native source overview with current context', (
     assert.match(contextSource, /const worldbookSources = collectWorldbookSources\(ctx, options\);/);
     assert.doesNotMatch(contextSource, /METADATA_KEY/);
     assert.doesNotMatch(contextSource, /chat_metadata\?\.\[METADATA_KEY\]/);
+    assert.doesNotMatch(contextSource, /metadata_keys/);
+    assert.doesNotMatch(contextSource, /authors-note\.js/);
+    assert.doesNotMatch(contextSource, /chat_metadata\?\.\[metadata_keys/);
+    assert.doesNotMatch(contextBuildSource, /metadata_keys/);
+    assert.doesNotMatch(contextBuildSource, /authors-note\.js/);
+    assert.doesNotMatch(contextBuildSource, /chat_metadata\?\.\[metadata_keys/);
     assert.doesNotMatch(contextSource, /isCurrentCharacterSelection/);
     assert.doesNotMatch(contextSource, /persona_description_lorebook/);
     assert.doesNotMatch(contextSource, /sourceType: 'chat'/);
@@ -284,6 +291,11 @@ test('tavern worldbook sync uses native source overview with current context', (
     assert.doesNotMatch(contextSource, /!avatar \|\| normalizeText\(entry\?\.name\) === avatar/);
     assert.match(contextSource, /historySource: 'littlewhitebox-session'/);
     assert.match(contextSource, /function normalizeAuthorNote/);
+    assert.match(contextSource, /prompt: normalizeText\(noteSettings\.default\)/);
+    assert.match(contextSource, /interval: Number\(noteSettings\.defaultInterval \?\? 0\)/);
+    assert.match(contextSource, /position: Number\(noteSettings\.defaultPosition \?\? 1\)/);
+    assert.match(contextSource, /depth: Number\(noteSettings\.defaultDepth \?\? 4\)/);
+    assert.match(contextSource, /role: Number\(noteSettings\.defaultRole \?\? 0\)/);
     assert.match(contextSource, /authorNote: normalizeAuthorNote\(ctx, options\)/);
     assert.match(appSource, /function preserveSessionAuthorNote/);
     assert.match(appSource, /const nextContext = preserveSessionAuthorNote\(payload\.context as XbTavernContext \|\| context\.value, session\);/);

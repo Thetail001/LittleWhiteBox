@@ -1,12 +1,11 @@
 /* eslint-disable -- generated from TypeScript source; run npm run build:tavern */
 import { extension_settings, getContext } from "../../../../../../extensions.js";
-import { metadata_keys } from "../../../../../../authors-note.js";
 import { power_user } from "../../../../../../power-user.js";
 import { user_avatar } from "../../../../../../personas.js";
 import { getTagKeyForEntity, tag_map } from "../../../../../../tags.js";
 import { getCharaFilename } from "../../../../../../utils.js";
 import { getWorldInfoSettings, selected_world_info, world_info } from "../../../../../../world-info.js";
-import { characters as sillyTavernCharacters, chat_metadata, getOneCharacter, getRequestHeaders, getThumbnailUrl, unshallowCharacter } from "../../../../../../../script.js";
+import { characters as sillyTavernCharacters, getOneCharacter, getRequestHeaders, getThumbnailUrl, unshallowCharacter } from "../../../../../../../script.js";
 const LITTLE_WHITE_BOX_EXT_ID = "LittleWhiteBox";
 function normalizeText(value = "") {
   return String(value || "").trim();
@@ -388,11 +387,11 @@ function normalizeAuthorNote(ctx = getContext?.() || {}, options = {}) {
   const characterName = readCharacterAvatarName(ctx, options);
   const charaNote = Array.isArray(noteSettings.chara) ? noteSettings.chara.map(asRecord).find((entry) => normalizeText(entry.name) === characterName) : null;
   return {
-    prompt: normalizeText(chat_metadata?.[metadata_keys.prompt] ?? noteSettings.default),
-    interval: Number(chat_metadata?.[metadata_keys.interval] ?? noteSettings.defaultInterval ?? 0),
-    position: Number(chat_metadata?.[metadata_keys.position] ?? noteSettings.defaultPosition ?? 1),
-    depth: Number(chat_metadata?.[metadata_keys.depth] ?? noteSettings.defaultDepth ?? 4),
-    role: Number(chat_metadata?.[metadata_keys.role] ?? noteSettings.defaultRole ?? 0),
+    prompt: normalizeText(noteSettings.default),
+    interval: Number(noteSettings.defaultInterval ?? 0),
+    position: Number(noteSettings.defaultPosition ?? 1),
+    depth: Number(noteSettings.defaultDepth ?? 4),
+    role: Number(noteSettings.defaultRole ?? 0),
     scan: noteSettings.allowWIScan === true,
     characterName,
     characterPrompt: normalizeText(charaNote?.prompt),
