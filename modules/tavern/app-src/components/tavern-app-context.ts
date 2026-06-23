@@ -33,6 +33,10 @@ export type { TavernDisplaySettings, TavernUserOption } from '../../shared/setti
 
 export type TavernReadable<T> = Ref<T> | ComputedRef<T>;
 export type TavernCommand<TArgs extends unknown[] = [], TResult = void> = (...args: TArgs) => TResult;
+export interface TavernPresetSaveFeedback {
+    status: 'idle' | 'saving' | 'success' | 'error';
+    error: string;
+}
 
 export interface TavernDialogOptions {
     title?: string;
@@ -459,6 +463,7 @@ export interface TavernSettingsContext {
     assistantPresetItems: TavernReadable<TavernAssistantPresetItemRow[]>;
     assistantPresets: Ref<TavernAssistantPresetRecord[]>;
     assistantPresetSearchText: Ref<string>;
+    assistantPresetSaveFeedback: Ref<TavernPresetSaveFeedback>;
     assistantPresetStatus: Ref<string>;
     assistantPresetVisibleLimit: Ref<number>;
     canEditPromptOrder: TavernReadable<boolean>;
@@ -497,6 +502,7 @@ export interface TavernSettingsContext {
     preset: Ref<TavernChatPromptPresetBundle>;
     presetDirty: TavernReadable<boolean>;
     presetRows: TavernReadable<Array<{ previewId: string; previewLabel: string; previewPlacement: string; sectionIndex: number; chars: number }>>;
+    presetSaveFeedback: Ref<TavernPresetSaveFeedback>;
     presetStatus: Ref<string>;
     presetTotalChars: TavernReadable<number>;
     PROMPT_EDITOR_BATCH_SIZE: number;

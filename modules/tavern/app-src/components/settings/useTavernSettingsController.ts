@@ -36,6 +36,7 @@ import type {
     TavernRegexGroupRow,
     TavernRegexScriptDraft,
     TavernRegexScriptRow,
+    TavernPresetSaveFeedback,
     TavernWorldbookEntryDraft,
     TavernWorldbookOptionRow,
     TavernWorldbookPreviewEntryRow,
@@ -390,6 +391,8 @@ function normalizeTavernUsersPayload(value: unknown): { users: TavernUserOption[
 }
 
 const API_CONFIG_SAVE_TIMEOUT_MS = 5000;
+const CHAT_PRESET_SAVE_TIMEOUT_MS = 5000;
+const PRESET_SAVE_FEEDBACK_RESET_MS = 1800;
 
 export function readInitialSettingsWorkspace(): TavernSettingsWorkspaceKey {
     const hash = String(window.location.hash || '').replace(/^#\/?/, '');
@@ -410,6 +413,7 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
     const activeChatPreset = ref<TavernChatPromptPresetBundle>(initialChatPreset);
     const chatPresetList = ref<Record<string, unknown>>({});
     const presetStatus = ref('');
+    const presetSaveFeedback = ref<TavernPresetSaveFeedback>({ status: 'idle', error: '' });
     const savedPresetJson = ref(JSON.stringify(initialChatPreset));
     const selectedPromptIdentifier = ref('');
     const assistantPreset = ref<TavernAssistantPreset>(initialAssistantPreset);
@@ -417,6 +421,7 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
     const assistantPresets = ref<TavernAssistantPresetRecord[]>([]);
     const activeAssistantPresetId = ref('');
     const assistantPresetStatus = ref('');
+    const assistantPresetSaveFeedback = ref<TavernPresetSaveFeedback>({ status: 'idle', error: '' });
     const savedAssistantPresetJson = ref(JSON.stringify(initialAssistantPreset));
     const selectedPresetSourceId = ref('');
     const selectedAssistantPresetItemId = ref('statePrompt');
@@ -456,6 +461,8 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
     const displaySettings = ref(normalizeTavernDisplaySettings(options.tavernDisplaySettings.value));
     const committedDisplaySettings = ref(clonePromptJson(displaySettings.value) as TavernDisplaySettings);
     let baseSettingsSaveSerial = 0;
+    let presetSaveResetTimer: ReturnType<typeof setTimeout> | null = null;
+    let assistantPresetSaveResetTimer: ReturnType<typeof setTimeout> | null = null;
     let worldbookEntryLoadRequestSerial = 0;
     let worldbookEntryLoadRequestKey = '';
     let worldbookSyncRequestSerial = 0;
@@ -863,6 +870,77 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
             tone: 'warning',
         });
     }
+    function resetPresetSaveFeedback() {
+        if (presetSaveResetTimer !== null) {
+            clearTimeout(presetSaveResetTimer);
+            presetSaveResetTimer = null;
+        }
+        presetSaveFeedback.value = { status: 'idle', error: '' };
+    }
+    function resetAssistantPresetSaveFeedback() {
+        if (assistantPresetSaveResetTimer !== null) {
+            clearTimeout(assistantPresetSaveResetTimer);
+            assistantPresetSaveResetTimer = null;
+        }
+        assistantPresetSaveFeedback.value = { status: 'idle', error: '' };
+    }
+    function beginPresetSaveFeedback() {
+        resetPresetSaveFeedback();
+        presetSaveFeedback.value = { status: 'saving', error: '' };
+    }
+    function beginAssistantPresetSaveFeedback() {
+        resetAssistantPresetSaveFeedback();
+        assistantPresetSaveFeedback.value = { status: 'saving', error: '' };
+    }
+    function completePresetSaveFeedback(result: { ok: boolean; error?: string }) {
+        if (presetSaveResetTimer !== null) {
+            clearTimeout(presetSaveResetTimer);
+        }
+        const status = result.ok ? 'success' : 'error';
+        presetSaveFeedback.value = { status, error: result.error || '' };
+        presetSaveResetTimer = setTimeout(() => {
+            if (presetSaveFeedback.value.status !== status) {return;}
+            presetSaveFeedback.value = { status: 'idle', error: '' };
+            presetSaveResetTimer = null;
+        }, PRESET_SAVE_FEEDBACK_RESET_MS);
+        (presetSaveResetTimer as { unref?: () => void }).unref?.();
+    }
+    function completeAssistantPresetSaveFeedback(result: { ok: boolean; error?: string }) {
+        if (assistantPresetSaveResetTimer !== null) {
+            clearTimeout(assistantPresetSaveResetTimer);
+        }
+        const status = result.ok ? 'success' : 'error';
+        assistantPresetSaveFeedback.value = { status, error: result.error || '' };
+        assistantPresetSaveResetTimer = setTimeout(() => {
+            if (assistantPresetSaveFeedback.value.status !== status) {return;}
+            assistantPresetSaveFeedback.value = { status: 'idle', error: '' };
+            assistantPresetSaveResetTimer = null;
+        }, PRESET_SAVE_FEEDBACK_RESET_MS);
+        (assistantPresetSaveResetTimer as { unref?: () => void }).unref?.();
+    }
+    async function requestChatPresetSaveFromHost() {
+        const controller = typeof AbortController === 'function' ? new AbortController() : null;
+        let timeoutId: ReturnType<typeof setTimeout> | null = null;
+        const timeout = new Promise<never>((_resolve, reject) => {
+            timeoutId = setTimeout(() => {
+                reject(new Error('保存超时，请重试'));
+                controller?.abort();
+            }, CHAT_PRESET_SAVE_TIMEOUT_MS);
+            (timeoutId as { unref?: () => void }).unref?.();
+        });
+        try {
+            return await Promise.race([
+                options.requestHost('xb-tavern:save-chat-preset', {
+                    payload: preset.value as unknown as Record<string, unknown>,
+                }, controller ? { signal: controller.signal } : {}),
+                timeout,
+            ]);
+        } finally {
+            if (timeoutId !== null) {
+                clearTimeout(timeoutId);
+            }
+        }
+    }
     function applyWorldbookEntryDraft(draft: unknown) {
         const normalized = normalizeWorldbookEntryDraft(draft);
         worldbookEntryDraft.value = normalized;
@@ -902,6 +980,7 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
     async function selectChatPresetFromHost(name = selectedPresetSourceId.value) {
         const presetName = String(name || '').trim();
         const currentName = String(preset.value.promptManager?.name || preset.value.name || '').trim();
+        resetPresetSaveFeedback();
         if (!presetName) {
             selectedPresetSourceId.value = currentName;
             return;
@@ -929,24 +1008,33 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
         }
     }
     async function saveCurrentPreset() {
+        if (presetSaveFeedback.value.status === 'saving') {
+            return;
+        }
         if (!canEditPromptOrder.value) {
-            presetStatus.value = '未读取到当前角色顺序，请刷新后再保存';
+            completePresetSaveFeedback({ ok: false, error: '未读取到当前角色顺序，请刷新后再保存' });
             return;
         }
         if (!presetDirty.value) {
             return;
         }
-        presetStatus.value = '正在保存';
-        const result = await options.requestHost('xb-tavern:save-chat-preset', {
-            payload: preset.value as unknown as Record<string, unknown>,
-        });
-        if (result.ok === false) {
-            presetStatus.value = String(result.error || '保存失败');
-            return;
+        beginPresetSaveFeedback();
+        try {
+            const result = await requestChatPresetSaveFromHost();
+            if (result.ok === false) {
+                completePresetSaveFeedback({ ok: false, error: String(result.error || '保存失败') });
+                return;
+            }
+            applyActiveChatPreset(result.result as Partial<TavernChatPromptPresetBundle>);
+            presetStatus.value = '';
+            completePresetSaveFeedback({ ok: true });
+            refreshCurrentHostContext();
+        } catch (error) {
+            completePresetSaveFeedback({
+                ok: false,
+                error: error instanceof Error ? error.message : String(error || '保存失败'),
+            });
         }
-        applyActiveChatPreset(result.result as Partial<TavernChatPromptPresetBundle>);
-        presetStatus.value = '';
-        refreshCurrentHostContext();
     }
     async function syncWorldbooksFromHost(syncOptions: TavernWorldbookSyncOptions = {}) {
         const requestSerial = syncOptions.requestSerial || ++worldbookSyncRequestSerial;
@@ -1383,6 +1471,7 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
         preset.value = normalizeTavernChatPromptPresetBundle(activeChatPreset.value);
         savedPresetJson.value = snapshotPreset(activeChatPreset.value);
         presetStatus.value = '';
+        resetPresetSaveFeedback();
     }
     function updateChatPresetComponent(
         key: 'promptManager' | 'systemPrompt' | 'contextTemplate' | 'instructTemplate',
@@ -1552,6 +1641,7 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
     async function selectAssistantPreset(presetId: string) {
         const targetId = String(presetId || '').trim();
         if (!targetId || targetId === activeAssistantPresetId.value) {return;}
+        resetAssistantPresetSaveFeedback();
         if (assistantPresetDirty.value && !await confirmDiscardDraft('助手预设', '切换')) {
             return;
         }
@@ -1561,23 +1651,35 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
         assistantPresetStatus.value = '';
     }
     async function saveCurrentAssistantPreset() {
+        if (assistantPresetSaveFeedback.value.status === 'saving') {
+            return;
+        }
         if (!assistantPresetDirty.value) {
             return;
         }
-        const savingBuiltIn = String(activeAssistantPresetRecord.value?.id || '') === DEFAULT_TAVERN_ASSISTANT_PRESET_ID;
-        const presetForSave = savingBuiltIn
-            ? {
-                ...assistantPreset.value,
-                id: `assistant-preset-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-                name: `${assistantPreset.value.name || '助手预设'} 自定义`,
-            }
-            : assistantPreset.value;
-        const record = await saveTavernAssistantPreset(presetForSave);
-        await setActiveTavernAssistantPresetId(record.id);
-        activeAssistantPresetId.value = record.id;
-        applyActiveAssistantPreset(record.preset);
-        assistantPresets.value = await listTavernAssistantPresets();
-        assistantPresetStatus.value = '';
+        beginAssistantPresetSaveFeedback();
+        try {
+            const savingBuiltIn = String(activeAssistantPresetRecord.value?.id || '') === DEFAULT_TAVERN_ASSISTANT_PRESET_ID;
+            const presetForSave = savingBuiltIn
+                ? {
+                    ...assistantPreset.value,
+                    id: `assistant-preset-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                    name: `${assistantPreset.value.name || '助手预设'} 自定义`,
+                }
+                : assistantPreset.value;
+            const record = await saveTavernAssistantPreset(presetForSave);
+            await setActiveTavernAssistantPresetId(record.id);
+            activeAssistantPresetId.value = record.id;
+            applyActiveAssistantPreset(record.preset);
+            assistantPresets.value = await listTavernAssistantPresets();
+            assistantPresetStatus.value = '';
+            completeAssistantPresetSaveFeedback({ ok: true });
+        } catch (error) {
+            completeAssistantPresetSaveFeedback({
+                ok: false,
+                error: error instanceof Error ? error.message : String(error || '保存失败'),
+            });
+        }
     }
     async function deriveAssistantPreset() {
         const record = await saveTavernAssistantPreset({
@@ -1654,6 +1756,7 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
         assistantPreset.value = { ...activeAssistantPreset.value };
         savedAssistantPresetJson.value = snapshotAssistantPreset(activeAssistantPreset.value);
         assistantPresetStatus.value = '';
+        resetAssistantPresetSaveFeedback();
     }
     function syncApiSettingsConfigFromAgentConfig() {
         apiSettingsPanelState.config = normalizeAgentConfig(options.agentConfig.value || {});
@@ -1931,6 +2034,7 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
         assistantPresetItems,
         assistantPresets,
         assistantPresetSearchText,
+        assistantPresetSaveFeedback,
         assistantPresetStatus,
         assistantPresetVisibleLimit,
         canEditPromptOrder,
@@ -1967,6 +2071,7 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
         preset,
         presetDirty,
         presetRows,
+        presetSaveFeedback,
         presetStatus,
         presetTotalChars,
         PROMPT_EDITOR_BATCH_SIZE,

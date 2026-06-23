@@ -13,6 +13,7 @@ const {
     assistantPresetDirty,
     assistantPresetItems,
     assistantPresets,
+    assistantPresetSaveFeedback,
     assistantPresetStatus,
     createAssistantPreset,
     deleteCurrentAssistantPreset,
@@ -29,6 +30,22 @@ const {
 const selectedAssistantPresetId = computed(() => String(activeAssistantPresetId.value || assistantPreset.value.id || '').trim());
 const currentAssistantPresetRecord = computed(() => assistantPresets.value.find((item: TavernAssistantPresetRecord) => item.id === selectedAssistantPresetId.value) || null);
 const importInputRef = ref<HTMLInputElement | null>(null);
+const assistantPresetSaveButtonTitle = computed(() => {
+    const status = assistantPresetSaveFeedback.value.status;
+    if (status === 'saving') {return '正在保存';}
+    if (status === 'success') {return '已保存';}
+    if (status === 'error') {return assistantPresetSaveFeedback.value.error || '保存失败';}
+    return '保存';
+});
+const assistantPresetSaveButtonClass = computed(() => ({
+    'is-saving': assistantPresetSaveFeedback.value.status === 'saving',
+    'is-success': assistantPresetSaveFeedback.value.status === 'success',
+    'is-error': assistantPresetSaveFeedback.value.status === 'error',
+}));
+const assistantPresetSaveButtonDisabled = computed(() => (
+    !assistantPresetDirty.value
+    || assistantPresetSaveFeedback.value.status === 'saving'
+));
 
 async function renameCurrentPreset() {
     const currentName = String(assistantPreset.value.name || '').trim() || '助手预设';
@@ -144,12 +161,37 @@ function exportCurrentPreset() {
         <button
           type="button"
           class="assistant-preset-tool icon-button"
-          title="保存"
-          aria-label="保存"
-          :disabled="!assistantPresetDirty"
+          :class="assistantPresetSaveButtonClass"
+          :title="assistantPresetSaveButtonTitle"
+          :aria-label="assistantPresetSaveButtonTitle"
+          :disabled="assistantPresetSaveButtonDisabled"
           @click="saveCurrentAssistantPreset"
         >
           <svg
+            v-if="assistantPresetSaveFeedback.status === 'saving'"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <path d="M12 3a9 9 0 1 1-8.2 5.3" />
+          </svg>
+          <svg
+            v-else-if="assistantPresetSaveFeedback.status === 'success'"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <path d="M20 6 9 17l-5-5" />
+          </svg>
+          <svg
+            v-else-if="assistantPresetSaveFeedback.status === 'error'"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <path d="M12 9v4" />
+            <path d="M12 17h.01" />
+            <path d="M10.3 4.2 2.8 17a2 2 0 0 0 1.7 3h15a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0Z" />
+          </svg>
+          <svg
+            v-else
             viewBox="0 0 24 24"
             aria-hidden="true"
           >

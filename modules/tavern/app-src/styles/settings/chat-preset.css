@@ -179,6 +179,34 @@
     opacity: 0.48;
 }
 
+.settings-icon-tool.is-success,
+.settings-icon-tool.is-error {
+    background: var(--xb-settings-control-bg);
+    color: var(--xb-text-muted);
+    border-color: var(--xb-line);
+}
+
+.settings-icon-tool.is-saving svg,
+.assistant-preset-tool.is-saving svg {
+    animation: xb-tavern-preset-save-spin 0.85s linear infinite;
+}
+
+.settings-icon-tool.is-success,
+.assistant-preset-tool.is-success {
+    color: #3f8f5a;
+    border-color: rgba(63, 143, 90, 0.26);
+}
+
+.settings-icon-tool.is-error,
+.assistant-preset-tool.is-error {
+    color: #b65a55;
+    border-color: rgba(182, 90, 85, 0.26);
+}
+
+@keyframes xb-tavern-preset-save-spin {
+    to { transform: rotate(360deg); }
+}
+
 .settings-layout .preset-source-field {
     position: relative;
     display: flex;

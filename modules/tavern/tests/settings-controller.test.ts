@@ -110,3 +110,141 @@ test('runtime chat preset follows the LittleWhiteBox selected preset state', asy
         'B MAIN',
     );
 });
+
+test('chat preset save feedback stays on the save button instead of the status banner', async () => {
+    const activeView = ref('settings');
+    const activeSettingsWorkspace = ref<'api' | 'chatPreset' | 'worldbooks' | 'regex' | 'assistantPreset' | 'base'>('chatPreset');
+    const agentConfig = ref<Record<string, unknown>>({});
+    const tavernDisplaySettings = ref(normalizeTavernDisplaySettings({}));
+    const controller = useTavernSettingsController({
+        activeView,
+        activeSettingsWorkspace,
+        agentConfig,
+        tavernDisplaySettings,
+        effectiveContext: computed(() => ({})),
+        currentWorldbookNativeCharacterId: computed(() => ''),
+        homeThemeDark: ref(false),
+        isRunning: ref(false),
+        confirmDialog: async () => true,
+        describeError: (error) => error instanceof Error ? error.message : String(error || ''),
+        postToHost: () => {},
+        requestHost: async (type) => {
+            if (type === 'xb-tavern:save-chat-preset') {
+                return { ok: false, error: 'host refused save' };
+            }
+            return {};
+        },
+        shortText: (value = '') => String(value || ''),
+    });
+
+    controller.applyHostChatPreset({
+        chatPreset: {
+            id: 'Preset A',
+            name: 'Preset A',
+            source: 'sillytavern',
+            promptManager: {
+                name: 'Preset A',
+                rawPreset: {
+                    prompts: [{ identifier: 'main', name: 'Main', role: 'system', content: 'A MAIN' }],
+                    prompt_order: [{ character_id: 'char-1', order: [{ identifier: 'main', enabled: true }] }],
+                },
+                prompts: [{ identifier: 'main', name: 'Main', role: 'system', content: 'A MAIN' }],
+                promptOrder: [{ character_id: 'char-1', order: [{ identifier: 'main', enabled: true }] }],
+                activeCharacterId: 'char-1',
+                activeOrder: [{ identifier: 'main', enabled: true }],
+            },
+            sections: [],
+        },
+    });
+    controller.settingsContext.updatePromptByIdentifier('main', { content: 'A MAIN edited' });
+
+    await controller.settingsContext.saveCurrentPreset();
+
+    assert.equal(controller.settingsContext.presetStatus.value, '');
+    assert.equal(controller.settingsContext.presetSaveFeedback.value.status, 'error');
+    assert.equal(controller.settingsContext.presetSaveFeedback.value.error, 'host refused save');
+});
+
+test('chat preset server save reports timeout through the save button', async () => {
+    const activeView = ref('settings');
+    const activeSettingsWorkspace = ref<'api' | 'chatPreset' | 'worldbooks' | 'regex' | 'assistantPreset' | 'base'>('chatPreset');
+    const agentConfig = ref<Record<string, unknown>>({});
+    const tavernDisplaySettings = ref(normalizeTavernDisplaySettings({}));
+    const timers: Array<{ callback: () => void; delay?: number }> = [];
+    const originalSetTimeout = globalThis.setTimeout;
+    const originalClearTimeout = globalThis.clearTimeout;
+    let saveSignal: AbortSignal | null = null;
+    globalThis.setTimeout = ((callback: TimerHandler, delay?: number) => {
+        const entry = {
+            callback: () => {
+                if (typeof callback === 'function') {
+                    callback();
+                }
+            },
+            delay,
+        };
+        timers.push(entry);
+        return timers.length as unknown as ReturnType<typeof setTimeout>;
+    }) as typeof setTimeout;
+    globalThis.clearTimeout = (() => {}) as typeof clearTimeout;
+    try {
+        const controller = useTavernSettingsController({
+            activeView,
+            activeSettingsWorkspace,
+            agentConfig,
+            tavernDisplaySettings,
+            effectiveContext: computed(() => ({})),
+            currentWorldbookNativeCharacterId: computed(() => ''),
+            homeThemeDark: ref(false),
+            isRunning: ref(false),
+            confirmDialog: async () => true,
+            describeError: (error) => error instanceof Error ? error.message : String(error || ''),
+            postToHost: () => {},
+            requestHost: async (type, _payload, options = {}) => {
+                if (type === 'xb-tavern:save-chat-preset') {
+                    saveSignal = options.signal || null;
+                    return await new Promise<Record<string, unknown>>((_resolve, reject) => {
+                        options.signal?.addEventListener('abort', () => reject(new Error('request_aborted')), { once: true });
+                    });
+                }
+                return {};
+            },
+            shortText: (value = '') => String(value || ''),
+        });
+
+        controller.applyHostChatPreset({
+            chatPreset: {
+                id: 'Preset A',
+                name: 'Preset A',
+                source: 'sillytavern',
+                promptManager: {
+                    name: 'Preset A',
+                    rawPreset: {
+                        prompts: [{ identifier: 'main', name: 'Main', role: 'system', content: 'A MAIN' }],
+                        prompt_order: [{ character_id: 'char-1', order: [{ identifier: 'main', enabled: true }] }],
+                    },
+                    prompts: [{ identifier: 'main', name: 'Main', role: 'system', content: 'A MAIN' }],
+                    promptOrder: [{ character_id: 'char-1', order: [{ identifier: 'main', enabled: true }] }],
+                    activeCharacterId: 'char-1',
+                    activeOrder: [{ identifier: 'main', enabled: true }],
+                },
+                sections: [],
+            },
+        });
+        controller.settingsContext.updatePromptByIdentifier('main', { content: 'A MAIN edited' });
+
+        const savePromise = controller.settingsContext.saveCurrentPreset();
+        const saveTimeout = timers.find((timer) => timer.delay === 5000);
+        assert.ok(saveTimeout);
+        saveTimeout.callback();
+        await savePromise;
+
+        assert.equal(saveSignal?.aborted, true);
+        assert.equal(controller.settingsContext.presetStatus.value, '');
+        assert.equal(controller.settingsContext.presetSaveFeedback.value.status, 'error');
+        assert.equal(controller.settingsContext.presetSaveFeedback.value.error, '保存超时，请重试');
+    } finally {
+        globalThis.setTimeout = originalSetTimeout;
+        globalThis.clearTimeout = originalClearTimeout;
+    }
+});
