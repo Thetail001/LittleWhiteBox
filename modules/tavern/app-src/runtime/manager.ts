@@ -19,11 +19,11 @@ import {
 } from '../../shared/memory-files';
 import { cleanSourceTextForManager } from '../../shared/memory-retrieval';
 import {
-    advanceTavernAutoManagerEpoch,
+    clearTavernManagerRunSnapshots,
     createTavernManagerRun,
     deleteTavernManagerMessages,
-    getTavernAutoManagerEpoch,
     getTavernMessage,
+    listPendingAcceptedTurnManagerRuns,
     listTavernManagerMemorySnapshots,
     listTavernManagerMessages,
     rollbackManagerRunMemoryWrites,
@@ -58,6 +58,7 @@ import {
     type TavernToolLoopResponse,
 } from './tool-loop-request';
 
+const ACCEPTED_TURN_MANAGER_TRIGGER = 'accepted_turn';
 const resolveConversationTokens = (contextTokens as unknown as {
     resolveConversationTokens: (input: {
         messages?: XbTavernMessage[];
@@ -105,9 +106,7 @@ export interface XbTavernManagerRunInput {
     userMessage: TavernMessageRecord;
     assistantMessage: TavernMessageRecord;
     turn: number;
-    trigger?: string;
     managerRunId?: string;
-    autoManagerEpoch?: number;
     sessionContract?: TavernSessionContract;
     contextSnapshot?: XbTavernContext;
     assistantPreset?: TavernAssistantPreset;
@@ -128,7 +127,6 @@ export interface XbTavernManagerRunResult {
 export interface XbTavernManagerScheduleResult {
     managerRunId: string;
     managerStatus: TavernManagerRunRecord['status'];
-    completion?: Promise<XbTavernManagerRunResult>;
 }
 
 export interface XbTavernManagerChatInput {
@@ -183,9 +181,7 @@ export const TAVERN_MANAGER_MAX_CONTEXT_TOKENS = 188000;
 export const TAVERN_MANAGER_SUMMARY_TRIGGER_TOKENS = 158000;
 export const TAVERN_MANAGER_DEFAULT_PRESERVED_TURNS = 2;
 export const TAVERN_MANAGER_MIN_PRESERVED_TURNS = 1;
-export const TAVERN_MANAGER_SETTLE_TIMEOUT_MS = 20000;
 
-const managerQueues = new Map<string, Promise<unknown>>();
 const activeAutoManagerRuns = new Map<string, {
     controller: AbortController;
     sessionId: string;
@@ -254,7 +250,7 @@ function buildAutoManagerUserPrompt(input: {
     const requirements: string[] = [];
     let step = 1;
     if (allowMemory) {
-        requirements.push(`${step}. Read \`memory/state.md\` and relevant \`memory/characters/<角色名>.md\` files as needed, then update memory only if this completed assistant reply changed durable memory.`);
+        requirements.push(`${step}. Read \`memory/state.md\` and relevant \`memory/characters/<角色名>.md\` files as needed, then update memory only if this accepted assistant reply changed durable memory.`);
         step += 1;
         requirements.push(`${step}. Do not create or maintain user/player character files such as \`memory/characters/User.md\`, \`Player.md\`, \`用户.md\`, or \`玩家.md\`. Treat user messages as source evidence, not as a user persona sheet; ignore status-bar/UI/meta text unless the assistant reply establishes it inside RP.`);
         step += 1;
@@ -432,7 +428,7 @@ function isManagerAbortLike(error: unknown, signal?: AbortSignal): boolean {
 function managerFailureStatus(error: unknown, signal?: AbortSignal): TavernManagerRunRecord['status'] {
     const message = error instanceof Error ? error.message : String(error || '');
     if (isManagerAbortLike(error, signal)) {return 'cancelled';}
-    if (message === 'manager_source_messages_changed' || message === 'manager_epoch_expired') {return 'superseded';}
+    if (message === 'manager_source_messages_changed') {return 'superseded';}
     return 'failed';
 }
 
@@ -479,28 +475,73 @@ function mergeRollbackRunError(existing = '', conflicts: string[] = []): string 
     return `${prefix}${merged.join(',')}`;
 }
 
+async function restorePendingAcceptedTurnAfterCurrentAbort(input: {
+    selected: {
+        run: TavernManagerRunRecord;
+        userMessage: TavernMessageRecord;
+        assistantMessage: TavernMessageRecord;
+    };
+    onManagerRunSaved?: (run: TavernManagerRunRecord) => void | Promise<void>;
+}): Promise<XbTavernManagerRunResult> {
+    const runId = input.selected.run.id;
+    const rollback = await rollbackManagerRunIfWroteMemory(runId);
+    if (!rollback?.conflicts.length) {
+        await rebuildTavernMemoryDerivedIndex(input.selected.run.sessionId);
+    }
+    if (rollback?.conflicts.length) {
+        const conflicted = rollback.managerRun || await updateTavernManagerRun(runId, {
+            status: 'failed',
+            error: mergeRollbackRunError('manager_pending_interrupted_by_current_turn_abort', rollback.conflicts),
+        }) || input.selected.run;
+        await input.onManagerRunSaved?.(conflicted);
+        return {
+            ok: false,
+            managerRun: conflicted,
+            error: conflicted.error || 'manager_pending_interrupted_rollback_conflict',
+        };
+    }
+
+    try {
+        await resolveManagerSourceMessagesByOrder(input.selected.run.sessionId, input.selected.run.userOrder, input.selected.run.assistantOrder);
+    } catch {
+        const cancelled = await updateTavernManagerRun(runId, {
+            status: 'cancelled',
+            error: 'manager_source_messages_superseded',
+        }) || input.selected.run;
+        await input.onManagerRunSaved?.(cancelled);
+        return {
+            ok: false,
+            managerRun: cancelled,
+            error: cancelled.error,
+        };
+    }
+
+    await clearTavernManagerRunSnapshots(runId);
+    const pendingAgain = await updateTavernManagerRun(runId, {
+        status: 'pending',
+        provider: '',
+        model: '',
+        outputText: '等待用户继续后维护上一条已接受回复。',
+        parsedAction: '',
+        toolTrace: undefined,
+        changedFiles: [],
+        changedStates: [],
+        changedTasks: [],
+        error: 'manager_pending_interrupted_by_current_turn_abort',
+    }) || input.selected.run;
+    await input.onManagerRunSaved?.(pendingAgain);
+    return {
+        ok: false,
+        managerRun: pendingAgain,
+        error: pendingAgain.error,
+    };
+}
+
 function throwIfManagerAborted(signal?: AbortSignal) {
     if (!signal?.aborted) {return;}
     const error = new Error('manager_aborted');
     error.name = 'AbortError';
     throw error;
-}
-
-async function abortAutoManagerRunsForSession(sessionId = '', error = 'manager_settle_timeout'): Promise<string[]> {
-    const id = String(sessionId || '').trim();
-    if (!id) {return [];}
-    const runIds: string[] = [];
-    activeAutoManagerRuns.forEach((run, runId) => {
-        if (run.sessionId !== id) {return;}
-        runIds.push(runId);
-        run.controller.abort();
-    });
-    runIds.forEach((runId) => activeAutoManagerRuns.delete(runId));
-    await Promise.all(runIds.map((runId) => updateTavernManagerRun(runId, {
-        status: 'cancelled',
-        error,
-    })));
-    return runIds;
 }
 
 async function runManagerAgentWithTools(input: {
@@ -805,15 +846,16 @@ async function resolveCurrentManagerSourceMessages(input: XbTavernManagerRunInpu
     userMessage: TavernMessageRecord;
     assistantMessage: TavernMessageRecord;
 }> {
-    if (Number.isFinite(Number(input.autoManagerEpoch))) {
-        const currentEpoch = await getTavernAutoManagerEpoch(input.sessionId);
-        if (currentEpoch !== Math.max(0, Math.floor(Number(input.autoManagerEpoch) || 0))) {
-            throw new Error('manager_epoch_expired');
-        }
-    }
+    return resolveManagerSourceMessagesByOrder(input.sessionId, input.userMessage.order, input.assistantMessage.order);
+}
+
+async function resolveManagerSourceMessagesByOrder(sessionId = '', userOrder = -1, assistantOrder = -1): Promise<{
+    userMessage: TavernMessageRecord;
+    assistantMessage: TavernMessageRecord;
+}> {
     const [userMessage, assistantMessage] = await Promise.all([
-        getTavernMessage(input.sessionId, input.userMessage.order),
-        getTavernMessage(input.sessionId, input.assistantMessage.order),
+        getTavernMessage(sessionId, userOrder),
+        getTavernMessage(sessionId, assistantOrder),
     ]);
     const userMatches = userMessage?.role === 'user'
         && userMessage.error !== true;
@@ -1263,7 +1305,7 @@ export async function runXbTavernManagerAfterTurn(input: XbTavernManagerRunInput
             })
             : await createTavernManagerRun({
                 sessionId,
-                trigger: input.trigger || 'after_turn',
+                trigger: ACCEPTED_TURN_MANAGER_TRIGGER,
                 turn: input.turn,
                 userOrder: input.userMessage.order,
                 assistantOrder: input.assistantMessage.order,
@@ -1281,7 +1323,7 @@ export async function runXbTavernManagerAfterTurn(input: XbTavernManagerRunInput
         };
     }
     const inputSummary = buildInputSummary({
-        trigger: input.trigger || 'after_turn',
+        trigger: ACCEPTED_TURN_MANAGER_TRIGGER,
         turn: input.turn,
         userOrder: input.userMessage.order,
         assistantOrder: input.assistantMessage.order,
@@ -1294,7 +1336,7 @@ export async function runXbTavernManagerAfterTurn(input: XbTavernManagerRunInput
         })
         : await createTavernManagerRun({
             sessionId,
-            trigger: input.trigger || 'after_turn',
+            trigger: ACCEPTED_TURN_MANAGER_TRIGGER,
             turn: input.turn,
             userOrder: input.userMessage.order,
             assistantOrder: input.assistantMessage.order,
@@ -1307,7 +1349,7 @@ export async function runXbTavernManagerAfterTurn(input: XbTavernManagerRunInput
     try {
         const currentSourceMessages = await resolveCurrentManagerSourceMessages(input);
         const currentInputSummary = buildInputSummary({
-            trigger: input.trigger || 'after_turn',
+            trigger: ACCEPTED_TURN_MANAGER_TRIGGER,
             turn: input.turn,
             userOrder: currentSourceMessages.userMessage.order,
             assistantOrder: currentSourceMessages.assistantMessage.order,
@@ -1317,7 +1359,7 @@ export async function runXbTavernManagerAfterTurn(input: XbTavernManagerRunInput
         const result = await runManagerTask({
             sessionId,
             agentConfig: input.agentConfig,
-            trigger: input.trigger || 'after_turn',
+            trigger: ACCEPTED_TURN_MANAGER_TRIGGER,
             turn: input.turn,
             userOrder: currentSourceMessages.userMessage.order,
             assistantOrder: currentSourceMessages.assistantMessage.order,
@@ -1441,117 +1483,140 @@ export async function runXbTavernManagerChat(input: XbTavernManagerChatInput): P
     };
 }
 
-export async function scheduleXbTavernManagerAfterTurn(input: XbTavernManagerRunInput & {
-    awaitCompletion?: boolean;
+export async function markXbTavernManagerTurnPending(input: XbTavernManagerRunInput & {
     onManagerRunSaved?: (run: TavernManagerRunRecord) => void | Promise<void>;
 }): Promise<XbTavernManagerScheduleResult> {
-    const autoManagerEpoch = Number.isFinite(Number(input.autoManagerEpoch))
-        ? Math.max(0, Math.floor(Number(input.autoManagerEpoch) || 0))
-        : await getTavernAutoManagerEpoch(input.sessionId);
-    const queued = await createTavernManagerRun({
-        sessionId: input.sessionId,
+    const sessionId = String(input.sessionId || '').trim();
+    if (!sessionId) {throw new Error('manager_session_required');}
+    const pending = await createTavernManagerRun({
+        sessionId,
         turn: input.turn,
         userOrder: input.userMessage.order,
         assistantOrder: input.assistantMessage.order,
-        trigger: input.trigger || 'after_turn',
-        status: 'queued',
+        trigger: ACCEPTED_TURN_MANAGER_TRIGGER,
+        status: 'pending',
         inputSummary: buildInputSummary({
-            trigger: input.trigger || 'after_turn',
+            trigger: ACCEPTED_TURN_MANAGER_TRIGGER,
             turn: input.turn,
             userOrder: input.userMessage.order,
             assistantOrder: input.assistantMessage.order,
             text: input.userMessage.content,
         }),
+        outputText: '等待用户继续后维护上一条已接受回复。',
     });
-    await input.onManagerRunSaved?.(queued);
+    const olderPending = (await listPendingAcceptedTurnManagerRuns(sessionId))
+        .filter((run) => run.id !== pending.id);
+    await Promise.all(olderPending.map(async (run) => {
+        const updated = await updateTavernManagerRun(run.id, {
+            status: 'superseded',
+            error: 'manager_pending_superseded_by_newer_turn',
+        });
+        if (updated) {await input.onManagerRunSaved?.(updated);}
+    }));
+    await input.onManagerRunSaved?.(pending);
+    return {
+        managerRunId: pending.id,
+        managerStatus: pending.status,
+    };
+}
+
+export async function runPendingAcceptedTurnManager(input: Omit<XbTavernManagerRunInput, 'userMessage' | 'assistantMessage' | 'turn'> & {
+    onManagerRunSaved?: (run: TavernManagerRunRecord) => void | Promise<void>;
+}): Promise<XbTavernManagerRunResult | null> {
+    const sessionId = String(input.sessionId || '').trim();
+    if (!sessionId) {return null;}
+    const pendingRuns = await listPendingAcceptedTurnManagerRuns(sessionId);
+    if (!pendingRuns.length) {return null;}
+
+    let selected: {
+        run: TavernManagerRunRecord;
+        userMessage: TavernMessageRecord;
+        assistantMessage: TavernMessageRecord;
+    } | null = null;
+    for (const run of pendingRuns) {
+        if (selected) {
+            const updated = await updateTavernManagerRun(run.id, {
+                status: 'superseded',
+                error: 'manager_pending_superseded_by_newer_turn',
+            });
+            if (updated) {await input.onManagerRunSaved?.(updated);}
+            continue;
+        }
+        try {
+            const sourceMessages = await resolveManagerSourceMessagesByOrder(sessionId, run.userOrder, run.assistantOrder);
+            selected = {
+                run,
+                userMessage: sourceMessages.userMessage,
+                assistantMessage: sourceMessages.assistantMessage,
+            };
+        } catch {
+            const updated = await updateTavernManagerRun(run.id, {
+                status: 'superseded',
+                error: 'manager_source_messages_superseded',
+            });
+            if (updated) {await input.onManagerRunSaved?.(updated);}
+        }
+    }
+    if (!selected) {return null;}
+
     const controller = new AbortController();
-    const abortFromInput = () => controller.abort();
+    let abortedByCurrentTurnSignal = false;
+    const abortFromInput = () => {
+        abortedByCurrentTurnSignal = true;
+        controller.abort();
+    };
     if (input.signal?.aborted) {
+        abortedByCurrentTurnSignal = true;
         controller.abort();
     } else {
         input.signal?.addEventListener('abort', abortFromInput, { once: true });
     }
-    activeAutoManagerRuns.set(queued.id, {
+    activeAutoManagerRuns.set(selected.run.id, {
         controller,
-        sessionId: input.sessionId,
-        userOrder: input.userMessage.order,
-        assistantOrder: input.assistantMessage.order,
+        sessionId,
+        userOrder: selected.userMessage.order,
+        assistantOrder: selected.assistantMessage.order,
     });
-    const previous = managerQueues.get(input.sessionId) || Promise.resolve();
-    const completion = previous
-        .catch(() => {})
-        .then(async () => {
-            throwIfManagerAborted(controller.signal);
-            const result = await runXbTavernManagerAfterTurn({
-                ...input,
-                managerRunId: queued.id,
-                autoManagerEpoch,
-                signal: controller.signal,
-            });
-            await input.onManagerRunSaved?.(result.managerRun);
-            return result;
-        })
-        .catch(async (error) => {
-            const errorText = error instanceof Error ? error.message : String(error || 'manager_failed');
-            const failed = await updateTavernManagerRun(queued.id, {
-                status: managerFailureStatus(error, controller.signal),
-                error: errorText,
-            }) || queued;
-            await input.onManagerRunSaved?.(failed);
-            return {
-                ok: false,
-                managerRun: failed,
-                error: errorText,
-            };
+    try {
+        throwIfManagerAborted(controller.signal);
+        const result = await runXbTavernManagerAfterTurn({
+            ...input,
+            managerRunId: selected.run.id,
+            turn: selected.run.turn,
+            userMessage: selected.userMessage,
+            assistantMessage: selected.assistantMessage,
+            signal: controller.signal,
         });
-    managerQueues.set(input.sessionId, completion);
-    completion.finally(() => {
+        if (!result.ok && abortedByCurrentTurnSignal && input.signal?.aborted) {
+            return await restorePendingAcceptedTurnAfterCurrentAbort({
+                selected,
+                onManagerRunSaved: input.onManagerRunSaved,
+            });
+        }
+        await input.onManagerRunSaved?.(result.managerRun);
+        return result;
+    } catch (error) {
+        if (abortedByCurrentTurnSignal && input.signal?.aborted) {
+            return await restorePendingAcceptedTurnAfterCurrentAbort({
+                selected,
+                onManagerRunSaved: input.onManagerRunSaved,
+            });
+        }
+        const errorText = error instanceof Error ? error.message : String(error || 'manager_failed');
+        const failed = await updateTavernManagerRun(selected.run.id, {
+            status: managerFailureStatus(error, controller.signal),
+            error: errorText,
+        }) || selected.run;
+        await input.onManagerRunSaved?.(failed);
+        return {
+            ok: false,
+            managerRun: failed,
+            error: errorText,
+        };
+    } finally {
         input.signal?.removeEventListener('abort', abortFromInput);
-        activeAutoManagerRuns.delete(queued.id);
-        if (managerQueues.get(input.sessionId) === completion) {
-            managerQueues.delete(input.sessionId);
-        }
-    });
-    const completedResult = input.awaitCompletion ? await completion : null;
-    return {
-        managerRunId: queued.id,
-        managerStatus: completedResult?.managerRun?.status || queued.status,
-        completion,
-    };
-}
-
-export async function settleTavernManagersForSession(sessionId = '', timeoutMs = TAVERN_MANAGER_SETTLE_TIMEOUT_MS): Promise<{
-    settled: boolean;
-    timedOut: boolean;
-    abortedRunIds?: string[];
-}> {
-    const id = String(sessionId || '').trim();
-    if (!id) {return { settled: true, timedOut: false };}
-    const queue = managerQueues.get(id);
-    if (!queue) {return { settled: true, timedOut: false };}
-    const timeout = Math.max(1, Number(timeoutMs) || TAVERN_MANAGER_SETTLE_TIMEOUT_MS);
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const timeoutPromise = new Promise<'timeout'>((resolve) => {
-        timer = setTimeout(() => resolve('timeout'), timeout);
-    });
-    const result = await Promise.race([
-        queue.then(() => 'settled' as const).catch(() => 'settled' as const),
-        timeoutPromise,
-    ]);
-    if (timer) {clearTimeout(timer);}
-    let abortedRunIds: string[] = [];
-    if (result === 'timeout') {
-        await advanceTavernAutoManagerEpoch(id);
-        abortedRunIds = await abortAutoManagerRunsForSession(id);
-        if (managerQueues.get(id) === queue) {
-            managerQueues.delete(id);
-        }
+        activeAutoManagerRuns.delete(selected.run.id);
     }
-    return {
-        settled: result === 'settled',
-        timedOut: result === 'timeout',
-        ...(abortedRunIds.length ? { abortedRunIds } : {}),
-    };
 }
 
 export async function cancelAndRollbackXbTavernManagersForMessageRange(sessionId = '', fromOrder = 0): Promise<{

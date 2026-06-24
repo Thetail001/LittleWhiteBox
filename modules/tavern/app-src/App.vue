@@ -3042,6 +3042,16 @@ async function commitAcceptedState(sessionId = selectedSessionId.value) {
     await saveAcceptedStateSnapshot(id);
 }
 
+async function commitUserAcceptedState(sessionId = selectedSessionId.value, userOrder?: number) {
+    const id = String(sessionId || '').trim();
+    if (!id) {return;}
+    const explicitOrder = Number(userOrder);
+    const latestUserOrder = Number.isFinite(explicitOrder)
+        ? Math.floor(explicitOrder)
+        : (await getLatestTavernUserMessageAtOrBefore(id, Number.POSITIVE_INFINITY))?.order;
+    await saveAcceptedStateSnapshot(id, latestUserOrder ?? -1);
+}
+
 const {
     discardMemoryDraft,
     enterMemoryEditMode,
@@ -3065,7 +3075,7 @@ const {
     selectedMemoryFilePath,
     selectedMemoryFileRecord,
     selectedSessionId,
-    commitAcceptedState,
+    commitUserAcceptedState,
     confirmDialog: confirmTavernDialog,
     refreshRecords: refreshManagerRecords,
 });
@@ -3093,7 +3103,6 @@ async function retryManagerRun(run: TavernManagerRunRecord) {
             userMessage: validUserMessage,
             assistantMessage: validAssistantMessage,
             turn: run.turn,
-            trigger: 'manual_retry',
             assistantPreset: activeAssistantPreset.value,
             sessionContract: sessionContract.value,
         });
@@ -4130,6 +4139,7 @@ async function sendManagerQuestion(
     managerAutoScroll.value = true;
     resetManagerMessageWindowState();
     const managerStreamToolDraftState = createManagerStreamToolDraftState();
+    const userAcceptedAnchorOrder = (await getLatestTavernUserMessageAtOrBefore(managerSessionId, Number.POSITIVE_INFINITY))?.order ?? -1;
     try {
         const budget = await ensureTavernManagerChatBudget({
             sessionId: managerSessionId,
@@ -4233,7 +4243,7 @@ async function sendManagerQuestion(
             managerChatMessages.value = await listTavernManagerMessages(managerSessionId);
         }
         if ((result.changedFiles || []).length || (result.changedTasks || []).length) {
-            await commitAcceptedState(managerSessionId);
+            await commitUserAcceptedState(managerSessionId, userAcceptedAnchorOrder);
         }
         await refreshManagerRecords(managerSessionId);
         managerInputStatus.value = '';
@@ -4799,6 +4809,7 @@ provide(TAVERN_APP_UI_CONTEXT, {
     memory: {
         activeMemoryFiles,
         commitAcceptedState,
+        commitUserAcceptedState,
         discardMemoryDraft,
         enterMemoryEditMode,
         expandMemoryFileGroup,

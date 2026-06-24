@@ -129,9 +129,14 @@ test('tavern startup posts frame-ready before heavy app tasks and prewarms host 
     assert.doesNotMatch(appSource, /scheduleMemoryTokenizerWarmup|promoteMemoryTokenizerWarmup|preloadXbTavernMemoryTokenizer|getXbTavernMemoryTokenizerStatus/);
     assert.match(appSource, /async function runOnce[\s\S]*const controller = new AbortController\(\);[\s\S]*isRunning\.value = true;[\s\S]*const runtimeContext = await resolveRuntimeContextForSession/);
     assert.match(appSource, /async function handleManagerSubmit\(\) \{[\s\S]*isManagerAssistantRunning\.value = true;[\s\S]*managerInputStatus\.value = '准备中';[\s\S]*await sendManagerQuestion\(managerSessionId, text\);/);
+    assert.match(htmlSource, /<span class="xb-frame-boot-percent">5%<\/span>/);
+    assert.match(htmlSource, /<span class="xb-frame-boot-stage">等待启动<\/span>/);
     assert.match(htmlSource, /<div class="xb-frame-boot-fill"><\/div>/);
     assert.match(htmlSource, /首次加载需约30s/);
     assert.doesNotMatch(htmlSource, /xb-frame-boot-text|当前阶段|读取世界书/);
+    assert.match(htmlSource, /const startupStageLabels = \{[\s\S]*loadTavernResources: '载入资源'[\s\S]*sendInitialConfigToFrame: '同步配置'[\s\S]*enterTavern: '进入酒馆'/);
+    assert.match(htmlSource, /progressPercent\.textContent = `\$\{roundedPercent\}%`/);
+    assert.match(htmlSource, /progressStage\.textContent = stage/);
     assert.match(htmlSource, /window\.addEventListener\('message'[\s\S]*data\.type !== 'xb-tavern:startup-progress'[\s\S]*applyStartupProgress\(data\.payload \|\| \{\}\)/);
     assert.match(htmlSource, /window\.parent\?\.postMessage\(\{[\s\S]*source: SOURCE_APP,[\s\S]*type: 'xb-tavern:boot-ready'/);
     assert.match(hostSource, /let initialConfigPromise: Promise<Record<string, unknown>> \| null = null;/);
@@ -937,6 +942,32 @@ test('tavern manager display projection stays out of the app controller', () => 
     assert.doesNotMatch(managerDisplaySource, /managerStatusLine/);
 });
 
+test('tavern accepted-turn manager maintenance is deferred until the next user send', () => {
+    const runOnceSource = readRepoFile('modules/tavern/app-src/runtime/run-once.ts');
+    const managerSource = readRepoFile('modules/tavern/app-src/runtime/manager.ts');
+    const sessionDbSource = readRepoFile('modules/tavern/shared/session-db.ts');
+    const displaySource = readRepoFile('modules/tavern/app-src/components/chat/useTavernManagerDisplay.ts');
+    const panelSource = readRepoFile('modules/tavern/app-src/components/chat/TavernManagerPanel.vue');
+
+    assert.match(runOnceSource, /markXbTavernManagerTurnPending/);
+    assert.match(runOnceSource, /runPendingAcceptedTurnManager/);
+    assert.doesNotMatch(runOnceSource, /scheduleXbTavernManagerAfterTurn/);
+    assert.match(runOnceSource, /if \(input\.runManager === true && persistedSessionContractRuntime\.hasAutomaticManagerWork\)[\s\S]*runPendingAcceptedTurnManager\(\{[\s\S]*signal: input\.signal/);
+    assert.match(runOnceSource, /await saveAcceptedStateSnapshot\(baseSession\.id\);/);
+    assert.match(runOnceSource, /markXbTavernManagerTurnPending\(\{[\s\S]*assistantMessage[\s\S]*turn: nextTurn/);
+    assert.match(managerSource, /const ACCEPTED_TURN_MANAGER_TRIGGER = 'accepted_turn';/);
+    assert.doesNotMatch(managerSource, /scheduleXbTavernManagerAfterTurn|managerQueues|settleTavernManagersForSession/);
+    assert.match(managerSource, /status: 'pending'[\s\S]*等待用户继续后维护上一条已接受回复/);
+    assert.match(managerSource, /listPendingAcceptedTurnManagerRuns/);
+    assert.match(managerSource, /abortedByCurrentTurnSignal[\s\S]*restorePendingAcceptedTurnAfterCurrentAbort/);
+    assert.match(managerSource, /manager_pending_interrupted_by_current_turn_abort/);
+    assert.match(sessionDbSource, /clearTavernManagerRunSnapshots/);
+    assert.match(sessionDbSource, /export type TavernManagerRunStatus = 'pending' \| 'queued'/);
+    assert.match(sessionDbSource, /run\.trigger === 'accepted_turn' && run\.status === 'pending'/);
+    assert.match(displaySource, /pending: '待维护'/);
+    assert.match(panelSource, /'已接受回合维护'/);
+});
+
 test('tavern markdown enhancement lives outside the app controller', () => {
     const appSource = readRepoFile('modules/tavern/app-src/App.vue');
     const markdownToolsSource = readRepoFile('modules/tavern/app-src/components/chat/useTavernMarkdownTools.ts');
@@ -1174,14 +1205,18 @@ test('tavern memory editor actions live outside the app controller', () => {
     assert.doesNotMatch(appSource, /async function loadSelectedMemoryFileRecord/);
     assert.doesNotMatch(appSource, /function enterMemoryEditMode/);
     assert.match(memoryWorkspaceSource, /async function saveSelectedMemoryFile/);
-    assert.match(memoryWorkspaceSource, /writeTavernMemoryFile\(options\.selectedSessionId\.value, file\.path[\s\S]*await options\.commitAcceptedState\(options\.selectedSessionId\.value\);[\s\S]*await options\.refreshRecords\(options\.selectedSessionId\.value\);/);
+    assert.match(memoryWorkspaceSource, /getLatestTavernUserMessageAtOrBefore\([\s\S]*Number\.POSITIVE_INFINITY[\s\S]*writeTavernMemoryFile\(options\.selectedSessionId\.value, file\.path[\s\S]*await options\.commitUserAcceptedState\(options\.selectedSessionId\.value, userAcceptedAnchorOrder\);[\s\S]*await options\.refreshRecords\(options\.selectedSessionId\.value\);/);
     assert.match(memoryWorkspaceSource, /async function loadSelectedMemoryFileRecord/);
     assert.match(memoryWorkspaceSource, /function enterMemoryEditMode/);
     assert.match(contextSource, /commitAcceptedState: TavernCommand<\[sessionId\?: string\], Promise<void>>/);
+    assert.match(contextSource, /commitUserAcceptedState: TavernCommand<\[sessionId\?: string, userOrder\?: number\], Promise<void>>/);
     assert.match(appSource, /async function commitAcceptedState\(sessionId = selectedSessionId\.value\) \{[\s\S]*await saveAcceptedStateSnapshot\(id\);[\s\S]*\}/);
+    assert.match(appSource, /async function commitUserAcceptedState\(sessionId = selectedSessionId\.value, userOrder\?: number\) \{[\s\S]*const explicitOrder = Number\(userOrder\);[\s\S]*getLatestTavernUserMessageAtOrBefore\(id, Number\.POSITIVE_INFINITY\)[\s\S]*await saveAcceptedStateSnapshot\(id, latestUserOrder \?\? -1\);[\s\S]*\}/);
     assert.match(appSource, /commitAcceptedState,/);
-    assert.match(appSource, /if \(\(result\.changedFiles \|\| \[\]\)\.length \|\| \(result\.changedTasks \|\| \[\]\)\.length\) \{[\s\S]*await commitAcceptedState\(managerSessionId\);[\s\S]*\}[\s\S]*await refreshManagerRecords\(managerSessionId\);/);
-    assert.doesNotMatch(appSource, /changedStates[\s\S]{0,120}commitAcceptedState/);
+    assert.match(appSource, /commitUserAcceptedState,/);
+    assert.match(appSource, /const userAcceptedAnchorOrder = \(await getLatestTavernUserMessageAtOrBefore\(managerSessionId, Number\.POSITIVE_INFINITY\)\)\?\.order \?\? -1;/);
+    assert.match(appSource, /if \(\(result\.changedFiles \|\| \[\]\)\.length \|\| \(result\.changedTasks \|\| \[\]\)\.length\) \{[\s\S]*await commitUserAcceptedState\(managerSessionId, userAcceptedAnchorOrder\);[\s\S]*\}[\s\S]*await refreshManagerRecords\(managerSessionId\);/);
+    assert.doesNotMatch(appSource, /changedStates[\s\S]{0,120}commitUserAcceptedState/);
 });
 
 test('tavern streaming action-check UI renders from live runtime events and keeps dark card styling aligned', () => {

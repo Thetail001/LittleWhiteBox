@@ -159,7 +159,7 @@ const managerWorkHistoryTotal = computed(() => archivedManagerRuns.value.length 
 
 function managerRunKindLabel(run: TavernManagerRunRecord | null | undefined) {
     if (!run) {return '工作记录';}
-    if (run.trigger === 'after_turn') {return '后台维护';}
+    if (['accepted_turn', 'after_turn'].includes(run.trigger)) {return '已接受回合维护';}
     if (run.trigger === 'manager_chat') {return '助手问答';}
     return '运行记录';
 }

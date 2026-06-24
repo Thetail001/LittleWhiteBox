@@ -107,9 +107,8 @@ import {
 import { createXbTavernAgentRuntime } from './agent-runtime';
 import {
     cancelAndRollbackXbTavernManagersForMessageRange,
-    scheduleXbTavernManagerAfterTurn,
-    settleTavernManagersForSession,
-    TAVERN_MANAGER_SETTLE_TIMEOUT_MS,
+    markXbTavernManagerTurnPending,
+    runPendingAcceptedTurnManager,
     type XbTavernManagerOnceOptions,
     type XbTavernManagerOnceResult,
 } from './manager';
@@ -565,9 +564,7 @@ export interface TavernDiagnostics {
     ok?: boolean;
     message?: string;
     worldbookErrors?: Array<{ name: string; error: string }>;
-    managerSettleTimedOut?: boolean;
-    managerSettleTimeoutMs?: number;
-    managerSettleAbortedRunIds?: string[];
+    pendingManagerError?: string;
 }
 
 export type TavernGetNativeWorldInfoRuntime = (input: {
@@ -611,9 +608,7 @@ export interface XbTavernRunTurnInput {
     onAssistantMessageSaved?: (sessionId: string, message: TavernMessageRecord) => void | Promise<void>;
     onManagerRunSaved?: (sessionId: string, managerRunId: string) => void | Promise<void>;
     reuseUserMessageOrder?: number;
-    awaitManager?: boolean;
     runManager?: boolean;
-    managerSettleTimeoutMs?: number;
     generationTrigger?: string;
     executeRunOnce?: TavernRunOnceExecutor;
     executeManagerOnce?: (options: XbTavernManagerOnceOptions) => Promise<XbTavernManagerOnceResult>;
@@ -2084,22 +2079,33 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
         await rebuildTavernMemoryDerivedIndex(baseSession.id);
         await deleteTavernMessages(baseSession.id, await listTavernMessageOrdersFrom(baseSession.id, changedOrder));
     }
+    const persistedSessionState = normalizeTavernSessionState(baseSession.state || input.runtimeState || {});
+    const persistedSessionContract = resolveSessionContract(persistedSessionState);
+    const persistedSessionContractRuntime = resolveTavernSessionContractRuntime(persistedSessionContract);
     const turnDiagnostics: TavernDiagnostics = {
         ...(input.diagnostics || {}),
     };
     if (!reusedUserMessage) {
-        const managerSettleTimeoutMs = Math.max(1, Math.floor(Number(input.managerSettleTimeoutMs) || TAVERN_MANAGER_SETTLE_TIMEOUT_MS));
-        const managerSettle = await settleTavernManagersForSession(baseSession.id, managerSettleTimeoutMs);
-        if (managerSettle.timedOut) {
-            turnDiagnostics.managerSettleTimedOut = true;
-            turnDiagnostics.managerSettleTimeoutMs = managerSettleTimeoutMs;
-            if (managerSettle.abortedRunIds?.length) {
-                turnDiagnostics.managerSettleAbortedRunIds = managerSettle.abortedRunIds;
+        if (input.runManager === true && persistedSessionContractRuntime.hasAutomaticManagerWork) {
+            try {
+                await runPendingAcceptedTurnManager({
+                    sessionId: baseSession.id,
+                    agentConfig: input.agentConfig,
+                    assistantPreset: input.assistantPreset,
+                    sessionContract: persistedSessionContract,
+                    contextSnapshot: liveContext,
+                    signal: input.signal,
+                    executeManagerOnce: input.executeManagerOnce,
+                    onManagerRunSaved: async (run) => {
+                        await notifyRunCallback(() => input.onManagerRunSaved?.(baseSession.id, run.id));
+                    },
+                });
+            } catch (error) {
+                turnDiagnostics.pendingManagerError = error instanceof Error ? error.message : String(error || 'manager_failed');
             }
         }
         await saveAcceptedStateSnapshot(baseSession.id);
     }
-    const persistedSessionState = normalizeTavernSessionState(baseSession.state || input.runtimeState || {});
     const rebuildHistoryMessages = reusedUserMessage
         ? await listAllTavernMessagesInRangePaged(baseSession.id, 0, reusedUserMessage.order - 1)
         : null;
@@ -2464,7 +2470,7 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
             && !assistantMessage.error
             && !['aborted', 'error'].includes(assistantFinishReason);
         if (canRunManager && sessionContractRuntime.hasAutomaticManagerWork) {
-            const manager = await scheduleXbTavernManagerAfterTurn({
+            const manager = await markXbTavernManagerTurnPending({
                 sessionId: session.id,
                 agentConfig: input.agentConfig,
                 userMessage,
@@ -2473,7 +2479,6 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
                 assistantPreset: input.assistantPreset,
                 sessionContract,
                 contextSnapshot: liveContext,
-                awaitCompletion: input.awaitManager === true,
                 executeManagerOnce: input.executeManagerOnce,
                 onManagerRunSaved: async (run) => {
                     await notifyRunCallback(() => input.onManagerRunSaved?.(session.id, run.id));

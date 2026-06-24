@@ -1,9 +1,10 @@
 import { nextTick, type ComputedRef, type Ref } from 'vue';
 import { getTavernMemoryFile, writeTavernMemoryFile } from '../../../shared/memory-files';
-import type {
-    TavernMemoryFileListEntry,
-    TavernMemoryFileRecord,
-    TavernMemoryIndexFileEntry,
+import {
+    getLatestTavernUserMessageAtOrBefore,
+    type TavernMemoryFileListEntry,
+    type TavernMemoryFileRecord,
+    type TavernMemoryIndexFileEntry,
 } from '../../../shared/session-db';
 
 export interface TavernMemoryWorkspaceOptions {
@@ -18,7 +19,7 @@ export interface TavernMemoryWorkspaceOptions {
     selectedMemoryFilePath: Ref<string>;
     selectedMemoryFileRecord: Ref<TavernMemoryFileRecord | null>;
     selectedSessionId: Ref<string>;
-    commitAcceptedState: (sessionId?: string) => Promise<void>;
+    commitUserAcceptedState: (sessionId?: string, userOrder?: number) => Promise<void>;
     confirmDialog: (options: { title?: string; message?: string; confirmText?: string; cancelText?: string; tone?: 'default' | 'danger' | 'warning' } | string) => Promise<boolean>;
     refreshRecords: (sessionId?: string) => Promise<void>;
 }
@@ -92,8 +93,12 @@ export function useTavernMemoryWorkspace(options: TavernMemoryWorkspaceOptions) 
         if (!options.selectedSessionId.value || !file) {return;}
         options.memoryEditorStatus.value = '保存中';
         try {
+            const userAcceptedAnchorOrder = (await getLatestTavernUserMessageAtOrBefore(
+                options.selectedSessionId.value,
+                Number.POSITIVE_INFINITY,
+            ))?.order ?? -1;
             await writeTavernMemoryFile(options.selectedSessionId.value, file.path, options.memoryEditorDraft.value, { source: 'user' });
-            await options.commitAcceptedState(options.selectedSessionId.value);
+            await options.commitUserAcceptedState(options.selectedSessionId.value, userAcceptedAnchorOrder);
             await options.refreshRecords(options.selectedSessionId.value);
             options.memoryEditorLoadedPath.value = file.path;
             options.memoryEditorBaseContent.value = options.memoryEditorDraft.value;

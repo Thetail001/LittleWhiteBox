@@ -77,6 +77,7 @@ export function useTavernManagerDisplay(options: TavernManagerDisplayOptions) {
 
     function managerStatusLabel(status = '') {
         const labels: Record<string, string> = {
+            pending: '待维护',
             queued: '排队',
             running: '运行中',
             completed: '完成',
@@ -97,13 +98,14 @@ export function useTavernManagerDisplay(options: TavernManagerDisplayOptions) {
             if (silentMs > 9000) {return 'warn';}
         }
         if (['failed', 'rolled_back'].includes(status)) {return 'danger';}
-        if (['cancelled', 'superseded'].includes(status)) {return 'muted';}
+        if (['pending', 'cancelled', 'superseded'].includes(status)) {return 'muted';}
         if (['queued', 'running'].includes(status)) {return 'active';}
         if (status === 'completed') {return 'done';}
         return 'neutral';
     }
 
     function formatRunModelLine(run: TavernManagerRunRecord) {
+        if (run.status === 'pending') {return '等待用户继续';}
         if (run.status === 'queued') {return '等待后台模型';}
         if (run.status === 'running') {return '后台模型运行中';}
         const provider = String(run.provider || '').trim();
@@ -114,6 +116,9 @@ export function useTavernManagerDisplay(options: TavernManagerDisplayOptions) {
     function formatRunActivityLine(run: TavernManagerRunRecord) {
         const status = String(run.status || '');
         const updatedAt = Number(run.updatedAt) || Number(run.createdAt) || 0;
+        if (status === 'pending') {
+            return `待用户继续后维护 · 建立于 ${formatDurationAgo(run.createdAt)}`;
+        }
         if (status === 'queued') {
             return `等待开始 · 建立于 ${formatDurationAgo(run.createdAt)}`;
         }
@@ -154,12 +159,13 @@ export function useTavernManagerDisplay(options: TavernManagerDisplayOptions) {
         const source = Number.isInteger(userOrder) && userOrder >= 0 && Number.isInteger(assistantOrder) && assistantOrder >= 0
             ? `原文 ${userOrder + 1}-${assistantOrder + 1} 楼`
             : '';
-        const trigger = run.trigger === 'after_turn' ? '自动记忆' : run.trigger === 'manager_chat' ? '助手聊天' : String(run.trigger || '');
+        const trigger = ['accepted_turn', 'after_turn'].includes(run.trigger) ? '已接受回合维护' : run.trigger === 'manager_chat' ? '助手聊天' : String(run.trigger || '');
         return [roleTurn, source, trigger].filter(Boolean).join(' · ');
     }
 
     function formatRunMemoryLine(run: TavernManagerRunRecord) {
         const files = Array.isArray(run.changedFiles) ? run.changedFiles : [];
+        if (run.status === 'pending') {return '记忆：等待用户继续后维护';}
         if (run.status === 'queued') {return '记忆：等待开始';}
         if (run.status === 'running') {return '记忆：正在整理';}
         if (run.status === 'failed') {return files.length ? `记忆：已写入 ${files.length} 份档案，但本轮失败` : '记忆：未完成';}
@@ -171,6 +177,7 @@ export function useTavernManagerDisplay(options: TavernManagerDisplayOptions) {
 
     function formatRunMapLine(run: TavernManagerRunRecord) {
         const states = Array.isArray(run.changedStates) ? run.changedStates : [];
+        if (run.status === 'pending') {return '地图：等待用户继续后维护';}
         if (run.status === 'queued') {return '地图：等待开始';}
         if (run.status === 'running') {return '地图：正在判断本轮有没有空间变化';}
         if (run.status === 'failed') {return states.length ? `地图：已写入 ${states.length} 份状态，但本轮失败` : '地图：未完成';}
@@ -182,6 +189,7 @@ export function useTavernManagerDisplay(options: TavernManagerDisplayOptions) {
 
     function formatRunTaskLine(run: TavernManagerRunRecord) {
         const tasks = Array.isArray(run.changedTasks) ? run.changedTasks : [];
+        if (run.status === 'pending') {return '事件：等待用户继续后维护';}
         if (run.status === 'queued') {return '事件：等待开始';}
         if (run.status === 'running') {return '事件：正在判断线索池';}
         if (run.status === 'failed') {return tasks.length ? `事件：已写入 ${tasks.length} 条线索，但本轮失败` : '事件：未完成';}
