@@ -12,6 +12,8 @@ import {
     collectStudioFileSectionModels,
     formatFileTitle,
     renderEbookShell,
+    renderConversationContextMeterLabel,
+    renderConversationContextMeterTitle,
     renderProviderReadiness,
     renderSettingsDialog,
 } from './renderer.js';
@@ -22,7 +24,7 @@ import { enhanceMarkdownContent } from '../../agent-core/ui/message-markdown.js'
 import { formatDraftMetrics } from './text-metrics.js';
 import { escapeHtml } from './text-utils.js';
 
-const CONFIG_SAVE_TIMEOUT_MS = 3000;
+const CONFIG_SAVE_TIMEOUT_MS = 5000;
 const CONFIG_SAVE_RESULT_MS = 1800;
 const CHAPTER_PATH_REGEX = /^book\/chapters\/.+\.md$/;
 const EBOOK_IMAGE_MARKER_REGEX = /\[ebook-image:[a-z0-9\-_]+\]/gi;
@@ -35,14 +37,67 @@ function stripEbookImageMarkers(content = '') {
     return String(content || '').replace(EBOOK_IMAGE_MARKER_REGEX, '').trim();
 }
 
+function getScrollAnchorConfig(selector = '') {
+    if (selector === '.xb-agent-main') {
+        return {
+            attr: 'data-agent-unit-key',
+            datasetKey: 'agentUnitKey',
+        };
+    }
+    if (selector === '.xb-reader-paper') {
+        return {
+            attr: 'data-reader-block-key',
+            datasetKey: 'readerBlockKey',
+        };
+    }
+    return null;
+}
+
+function isVolatileScrollAnchorKey(selector = '', key = '') {
+    return selector === '.xb-agent-main' && String(key || '').startsWith('history-gate:');
+}
+
+export function shouldForceAgentScrollToBottom(state = {}, snapshot = null) {
+    if (state.agentForceScrollBottomOnce) return true;
+    if (state.agentAutoScroll === false) return false;
+    return !snapshot || snapshot.nearBottom !== false;
+}
+
 export function captureScrollState(root, selector) {
     const node = root?.querySelector?.(selector);
     if (!node) return null;
     const distanceToBottom = node.scrollHeight - node.scrollTop - node.clientHeight;
+    const containerRect = typeof node.getBoundingClientRect === 'function'
+        ? node.getBoundingClientRect()
+        : null;
+    const anchorConfig = getScrollAnchorConfig(selector);
+    const visibleAnchors = containerRect && anchorConfig
+        ? Array.from(node.querySelectorAll?.(`[${anchorConfig.attr}]`) || [])
+            .map((item) => ({
+                key: item?.dataset?.[anchorConfig.datasetKey] || '',
+                rect: typeof item?.getBoundingClientRect === 'function'
+                    ? item.getBoundingClientRect()
+                    : null,
+            }))
+            .filter((item) => (
+                item.key
+                && item.rect
+                && item.rect.bottom >= containerRect.top + 1
+                && item.rect.top <= containerRect.bottom - 1
+            ))
+        : [];
+    const anchor = visibleAnchors.find((item) => !isVolatileScrollAnchorKey(selector, item.key))
+        || visibleAnchors[0]
+        || null;
     return {
         selector,
         scrollTop: node.scrollTop,
         nearBottom: distanceToBottom < 80,
+        distanceToBottom,
+        scrollHeight: node.scrollHeight,
+        clientHeight: node.clientHeight,
+        anchorKey: anchor?.key || '',
+        anchorTopOffset: anchor?.rect ? anchor.rect.top - containerRect.top : 0,
     };
 }
 
@@ -62,15 +117,38 @@ export function restoreScrollState(root, snapshot, defaultSelector = null, optio
         return;
     }
     if (options.preserveScrollTop) {
-        const top = Number.isFinite(options.overrideScrollTop)
-            ? options.overrideScrollTop
-            : snapshot.scrollTop;
-        node.scrollTop = Math.min(Math.max(0, top), node.scrollHeight);
+        node.scrollTop = Math.min(Math.max(0, snapshot.scrollTop), node.scrollHeight);
+        if (snapshot.anchorKey && options.preserveAnchor !== false) {
+            const anchorConfig = getScrollAnchorConfig(selector);
+            const containerRect = typeof node.getBoundingClientRect === 'function'
+                ? node.getBoundingClientRect()
+                : null;
+            const anchorNode = anchorConfig
+                ? Array.from(node.querySelectorAll?.(`[${anchorConfig.attr}]`) || [])
+                    .find((item) => item?.dataset?.[anchorConfig.datasetKey] === snapshot.anchorKey)
+                : null;
+            const anchorRect = typeof anchorNode?.getBoundingClientRect === 'function'
+                ? anchorNode.getBoundingClientRect()
+                : null;
+            if (containerRect && anchorRect) {
+                const nextOffset = anchorRect.top - containerRect.top;
+                node.scrollTop = Math.min(
+                    Math.max(0, node.scrollTop + nextOffset - Number(snapshot.anchorTopOffset || 0)),
+                    node.scrollHeight,
+                );
+            }
+        }
         return;
     }
     node.scrollTop = snapshot.nearBottom
         ? node.scrollHeight
         : Math.min(snapshot.scrollTop, node.scrollHeight);
+}
+
+export function shouldResetReaderScrollOnRender(previousReaderPath = '', nextViewMode = '', nextReaderPath = '') {
+    return nextViewMode === 'reader'
+        && String(previousReaderPath || '') !== String(nextReaderPath || '')
+        && isChapterPath(nextReaderPath);
 }
 
 function updateAgentScrollButtons(root) {
@@ -110,6 +188,9 @@ function applyAgentRenderUnits(container, previousUnits = [], unitSpecs = [], en
         }
         if (!canReuseNode && node?.nodeType === (globalThis.Node?.ELEMENT_NODE || 1)) {
             enhanceNode(node);
+        }
+        if (node?.nodeType === (globalThis.Node?.ELEMENT_NODE || 1)) {
+            node.dataset.agentUnitKey = unit.key;
         }
 
         nextUnits.push({
@@ -204,6 +285,7 @@ export function createEbookApp(options = {}) {
     let configSaveTimeout = null;
     let configSaveResetTimer = null;
     let agentRenderCache = [];
+    let lastRenderedReaderPath = '';
     const renderPerfCounters = {
         fullRender: 0,
         agentSurface: 0,
@@ -317,6 +399,7 @@ export function createEbookApp(options = {}) {
 
     let bookController;
     let agentRunner;
+    let startupHydrationPromise = null;
     const conversationStore = createEbookConversationStore({ state });
     const settingsPanel = createAgentSettingsPanel({
         state,
@@ -387,8 +470,15 @@ export function createEbookApp(options = {}) {
         const agentLog = root.querySelector('.xb-agent-log');
         if (!shell || !agentMain || !agentLog) return false;
 
+        const contextMeter = root.querySelector('.xb-agent-context-meter');
+        if (contextMeter) {
+            const providerConfig = getActiveProviderConfig();
+            contextMeter.textContent = renderConversationContextMeterLabel(state, providerConfig);
+            contextMeter.title = renderConversationContextMeterTitle(state, providerConfig);
+        }
+
         const agentScroll = captureScrollState(root, '.xb-agent-main');
-        const shouldAutoScrollAgent = state.agentAutoScroll !== false;
+        const shouldAutoScrollAgent = shouldForceAgentScrollToBottom(state, agentScroll);
         agentMain.classList.toggle('is-busy', !!state.isBusy);
         agentRenderCache = applyAgentRenderUnits(
             agentLog,
@@ -414,17 +504,17 @@ export function createEbookApp(options = {}) {
         const sendButton = root.querySelector('#xb-agent-form button[type="submit"]');
         if (sendButton) {
             sendButton.classList.toggle('is-busy', !!state.isBusy);
-            sendButton.textContent = state.isBusy ? '■' : '➤';
-            sendButton.title = state.isBusy ? '停止' : '发送';
+            sendButton.textContent = state.isCancellingRun ? '…' : state.isBusy ? '■' : '➤';
+            sendButton.title = state.isCancellingRun ? '正在停止' : state.isBusy ? '停止' : '发送';
             sendButton.setAttribute('aria-label', sendButton.title);
             if (state.isBusy) {
-                sendButton.disabled = false;
+                sendButton.disabled = !!state.isCancellingRun;
             }
         }
 
         const clearButton = root.querySelector('#xb-agent-clear');
         if (clearButton) {
-            const canClearConversation = !!(state.messages?.length || state.historySummary?.trim());
+            const canClearConversation = !!state.messages?.length;
             clearButton.disabled = state.isBusy || !canClearConversation;
         }
 
@@ -432,10 +522,9 @@ export function createEbookApp(options = {}) {
             forceBottom: shouldAutoScrollAgent,
             defaultToBottom: shouldAutoScrollAgent,
             preserveScrollTop: !shouldAutoScrollAgent,
-            overrideScrollTop: !shouldAutoScrollAgent && Number.isFinite(state.agentScrollLockTop)
-                ? state.agentScrollLockTop
-                : undefined,
+            preserveAnchor: false,
         });
+        state.agentForceScrollBottomOnce = false;
         updateAgentScrollButtons(root);
         bumpRenderPerfCounter('agentSurface');
         return true;
@@ -652,6 +741,15 @@ export function createEbookApp(options = {}) {
         return true;
     }
 
+    function renderPassiveSurface() {
+        const root = document.getElementById(rootId);
+        if (!root) return false;
+        if (state.viewMode !== 'reader') return false;
+        renderToastSurface();
+        renderSettingsSurface();
+        return true;
+    }
+
     function renderProtocolNoticeSurface() {
         const root = document.getElementById(rootId);
         if (!root || state.viewMode !== 'studio') return false;
@@ -674,9 +772,15 @@ export function createEbookApp(options = {}) {
         if (!root) return;
         bumpRenderPerfCounter('fullRender');
         const agentScroll = captureScrollState(root, '.xb-agent-main');
+        const readerScroll = captureScrollState(root, '.xb-reader-paper');
         const settingsScroll = captureScrollState(root, '.xb-ebook-settings-body');
         const focusState = captureFocusState(root);
         const wasSettingsOpen = !!root.querySelector('.xb-ebook-settings-body');
+        const shouldResetReaderScroll = shouldResetReaderScrollOnRender(
+            lastRenderedReaderPath,
+            state.viewMode,
+            state.readerPath,
+        );
         const providerConfig = getActiveProviderConfig();
         // Dynamic values are escaped by renderer helpers before interpolation.
         // eslint-disable-next-line no-unsanitized/property
@@ -708,16 +812,23 @@ export function createEbookApp(options = {}) {
             persistConversation: conversationStore.persistConversation,
             clearConversation: conversationStore.clearConversation,
             showToast,
+            hydrateStartup: hydrateEbookStartup,
         });
-        const shouldAutoScrollAgent = state.agentAutoScroll !== false;
+        const shouldAutoScrollAgent = shouldForceAgentScrollToBottom(state, agentScroll);
         restoreScrollState(root, agentScroll, '.xb-agent-main', {
             forceBottom: shouldAutoScrollAgent,
             defaultToBottom: shouldAutoScrollAgent,
             preserveScrollTop: !shouldAutoScrollAgent,
-            overrideScrollTop: !shouldAutoScrollAgent && Number.isFinite(state.agentScrollLockTop)
-                ? state.agentScrollLockTop
-                : undefined,
         });
+        state.agentForceScrollBottomOnce = false;
+        restoreScrollState(root, readerScroll, '.xb-reader-paper', {
+            defaultToBottom: false,
+            preserveScrollTop: true,
+        });
+        if (shouldResetReaderScroll) {
+            const readerPaper = root.querySelector('.xb-reader-paper');
+            if (readerPaper) readerPaper.scrollTop = 0;
+        }
         if (state.isSettingsOpen) {
             const settingsBody = root.querySelector('.xb-ebook-settings-body');
             if (settingsBody) {
@@ -733,12 +844,16 @@ export function createEbookApp(options = {}) {
         if (wasSettingsOpen === state.isSettingsOpen) {
             restoreFocusState(root, focusState);
         }
+        lastRenderedReaderPath = state.viewMode === 'reader' && isChapterPath(state.readerPath)
+            ? state.readerPath
+            : '';
     }
 
     bookController = createBookController({
         state,
         render,
         renderStudioSurface,
+        renderFilesSurface,
         requestHost: hostBridge.requestHost,
         showToast,
         conversationStore,
@@ -749,6 +864,7 @@ export function createEbookApp(options = {}) {
         refreshBooksAndFiles: bookController.refreshBooksAndFiles,
         render,
         renderAgentSurface,
+        renderPassiveSurface,
         renderToolTraceSurface,
         renderFilesSurface,
         renderEditorFileSurface,
@@ -781,14 +897,42 @@ export function createEbookApp(options = {}) {
         bookController.handleTtsState(payload);
     }
 
-    async function start() {
+    async function hydrateEbookStartup(options = {}) {
+        if (startupHydrationPromise) return startupHydrationPromise;
+        state.isShelfLoading = true;
+        state.shelfLoadError = '';
+        state.status = '正在打开书架...';
+        if (options.renderInitial !== false) {
+            render();
+        }
+        startupHydrationPromise = (async () => {
+            try {
+                await bookController.initializeBook();
+                state.isShelfLoading = false;
+                state.status = '就绪';
+                render();
+                void bookController.refreshDrawStatus({ renderAfter: true });
+                void bookController.refreshTtsStatus({ renderAfter: true });
+            } catch (error) {
+                state.isShelfLoading = false;
+                state.shelfLoadError = error?.message || String(error || 'shelf_load_failed');
+                state.status = `书架加载失败：${state.shelfLoadError}`;
+                render();
+            } finally {
+                startupHydrationPromise = null;
+            }
+        })();
+        return startupHydrationPromise;
+    }
+
+    function start() {
         injectEbookStyles(rootId);
-        await bookController.initializeBook();
-        state.status = '就绪';
+        state.isShelfLoading = true;
+        state.shelfLoadError = '';
+        state.status = '正在打开书架...';
         render();
         hostBridge.postToHost('xb-ebook:frame-ready');
-        void bookController.refreshDrawStatus({ renderAfter: true });
-        void bookController.refreshTtsStatus({ renderAfter: true });
+        void hydrateEbookStartup({ renderInitial: false });
     }
 
     return {
