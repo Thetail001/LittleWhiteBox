@@ -475,6 +475,58 @@ function getActivePreset(settings = getSettings()) {
     return settings.presets.find(p => p.id === settings.selectedPresetId) || settings.presets[0] || createDefaultPreset();
 }
 
+function getQuickSizeOptions() {
+    return [
+        { value: 'default', label: '跟随预设' },
+        ...SD_SIZE_PRESETS.map((item) => ({
+            value: item.value,
+            label: item.value.replace('x', ' x '),
+        })),
+    ];
+}
+
+export function getQuickSettings() {
+    const settings = getSettings();
+    const presets = (settings.presets || []).map((preset) => ({
+        value: String(preset.id || ''),
+        label: String(preset.name || '未命名'),
+    })).filter((preset) => preset.value);
+    return {
+        provider: 'sd-webui',
+        providerLabel: 'SD WebUI',
+        available: moduleInitialized,
+        auto: settings.mode === 'auto',
+        presets,
+        selectedPresetId: String(settings.selectedPresetId || presets[0]?.value || ''),
+        sizeOptions: getQuickSizeOptions(),
+        selectedSize: String(settings.overrideSize || 'default'),
+    };
+}
+
+export async function updateQuickSettings(patch = {}) {
+    const ok = await updateSettingsPersistent((settings) => {
+        if (Object.prototype.hasOwnProperty.call(patch, 'selectedPresetId')) {
+            settings.selectedPresetId = String(patch.selectedPresetId || '');
+        }
+        if (Object.prototype.hasOwnProperty.call(patch, 'selectedSize')) {
+            settings.overrideSize = String(patch.selectedSize || 'default');
+        }
+        if (Object.prototype.hasOwnProperty.call(patch, 'auto')) {
+            settings.mode = patch.auto === true ? 'auto' : 'manual';
+        }
+    }, '快捷设置已保存', { notify: false, silent: false });
+    if (!ok) {
+        throw new Error('quick_settings_save_failed');
+    }
+    try {
+        const fp = await import('./floating-panel.js');
+        fp.updateAllPresetSelects?.();
+        fp.updateAllSizeSelects?.();
+        fp.updateAutoModeUI?.();
+    } catch {}
+    return getQuickSettings();
+}
+
 function getActivePromptPreset(settings = getSettings()) {
     return settings.promptPresets.find((preset) => preset.id === settings.selectedPromptPresetId)
         || settings.promptPresets[0]
@@ -4241,6 +4293,8 @@ export async function initSdDraw() {
     window.xiaobaixSdDraw = {
         openSettings,
         getSettings,
+        getQuickSettings,
+        updateQuickSettings,
         testConnection,
         fetchSdModels,
         fetchSdSamplers,

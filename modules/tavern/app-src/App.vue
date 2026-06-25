@@ -658,6 +658,7 @@ const {
     alertDialog: alertTavernDialog,
     confirmDialog: confirmTavernDialog,
     requestHost,
+    showToast: showTavernToast,
     getHtmlFrameAvatarUrls: () => ({
         user: String(effectiveContext.value.user?.avatar || ''),
         char: String(effectiveContext.value.character?.avatar || ''),

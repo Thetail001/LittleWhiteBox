@@ -990,13 +990,20 @@
 }
 
 .tavern-chat.xb-page .tavern-draw-layer-active {
+    display: flex;
+    align-items: center;
     justify-content: center;
-    gap: 5px;
+    gap: 6px;
+    box-sizing: border-box;
+    overflow: hidden;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+    padding: 0 7px;
     opacity: 0;
     pointer-events: none;
     transform: translateY(100%);
     cursor: pointer;
-    font: 800 11px/1 var(--xb-font-ui);
+    font: 800 13px/1 var(--xb-font-ui);
 }
 
 .tavern-chat.xb-page .tavern-draw-float.has-active-layer .tavern-draw-layer-idle {
@@ -1121,11 +1128,24 @@
     transform: scale(1);
 }
 
+.tavern-chat.xb-page .tavern-draw-status-icon {
+    display: inline-block;
+    flex: 0 0 auto;
+    line-height: 1;
+    align-self: center;
+}
+
 .tavern-chat.xb-page .tavern-draw-status-text {
-    max-width: 48px;
+    display: inline-block;
+    min-width: 0;
+    max-width: none;
+    flex: 0 1 auto;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    line-height: 1;
+    vertical-align: middle;
+    align-self: center;
 }
 
 .tavern-draw-popover-layer.tavern-draw-detail,
@@ -1381,6 +1401,12 @@
 
     .tavern-chat.xb-page .tavern-draw-float.tavern-draw-capsule-mobile .tavern-draw-main {
         font-size: 14px;
+    }
+
+    .tavern-chat.xb-page .tavern-draw-float.tavern-draw-capsule-mobile .tavern-draw-layer-active {
+        gap: 4px;
+        padding: 0 6px;
+        font-size: 12px;
     }
 
     .tavern-chat.xb-page .tavern-draw-float.tavern-draw-capsule-mobile .tavern-draw-menu-button {

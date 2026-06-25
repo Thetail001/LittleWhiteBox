@@ -45,6 +45,11 @@ const autoEnabled = computed(() => tavernDrawQuickSettings.value.auto === true);
 const statusText = computed(() => tavernDrawCapsuleStatusText.value || (
     tavernDrawCapsuleIcon.value === '■' ? '绘制中' : tavernDrawCapsuleTitle.value
 ));
+const capsuleStatusText = computed(() => compactCapsuleStatusText(
+    statusText.value,
+    tavernDrawCapsuleStatusClass.value,
+    tavernDrawCapsuleIcon.value,
+));
 const activeLayerCanCancel = computed(() => (
     tavernDrawCapsuleIcon.value === '■'
     || tavernDrawCapsuleStatusClass.value.includes('running')
@@ -83,6 +88,26 @@ const popoverClass = computed(() => [
 
 function clampNumber(value: number, min: number, max: number) {
     return Math.max(min, Math.min(max, value));
+}
+
+function compactCapsuleStatusText(text = '', statusClass = '', icon = '') {
+    const raw = String(text || '').trim();
+    const ratio = raw.match(/(\d+)\s*\/\s*(\d+)/);
+    if (ratio) {return `${ratio[1]}/${ratio[2]}`;}
+    const queueAhead = raw.match(/前方\s*(\d+)/);
+    if (queueAhead) {return Number(queueAhead[1]) > 0 ? `排队${queueAhead[1]}` : '排队';}
+    const seconds = raw.match(/(\d+(?:\.\d+)?)\s*s/i);
+    if (seconds && /冷却|等待/.test(raw)) {return `${seconds[1]}s`;}
+    if (/排队/.test(raw)) {return '排队';}
+    if (/冷却|等待下一张/.test(raw)) {return '冷却';}
+    if (/分析/.test(raw)) {return '分析';}
+    if (/准备/.test(raw)) {return '准备';}
+    if (/生成|绘制|画图|配图/.test(raw) && icon === '■') {return '绘制';}
+    if (/取消/.test(raw)) {return '取消';}
+    if (statusClass.includes('success')) {return '完成';}
+    if (statusClass.includes('error')) {return '错误';}
+    if (icon === '■') {return '绘制';}
+    return raw || '状态';
 }
 
 function anchoredPopoverStyle(width: number, height: number): Record<string, string> {
@@ -167,6 +192,13 @@ async function handleActiveLayerClick() {
     detailPinned.value = !detailPinned.value;
     await nextTick();
     updatePopoverPosition();
+}
+
+async function handleActiveLayerKeydown(event: KeyboardEvent) {
+    if (event.key !== 'Enter' && event.key !== ' ') {return;}
+    event.preventDefault();
+    event.stopPropagation();
+    await handleActiveLayerClick();
 }
 
 function handleOutsidePointer(event: PointerEvent) {
@@ -276,19 +308,21 @@ onBeforeUnmount(() => {
             >▼</span>
           </button>
         </div>
-        <button
-          type="button"
+        <div
           class="tavern-draw-layer tavern-draw-layer-active"
+          role="button"
+          tabindex="0"
           :title="activeLayerTitle"
           :aria-label="activeLayerTitle"
           @click="handleActiveLayerClick"
+          @keydown="handleActiveLayerKeydown"
         >
           <span
             class="tavern-draw-status-icon"
             aria-hidden="true"
           >{{ tavernDrawCapsuleIcon }}</span>
-          <span class="tavern-draw-status-text">{{ statusText }}</span>
-        </button>
+          <span class="tavern-draw-status-text">{{ capsuleStatusText }}</span>
+        </div>
       </div>
     </div>
   </div>

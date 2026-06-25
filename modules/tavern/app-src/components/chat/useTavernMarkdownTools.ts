@@ -22,6 +22,7 @@ export interface TavernMarkdownToolsOptions {
     confirmDialog: (options: { title?: string; message?: string; confirmText?: string; cancelText?: string; tone?: 'default' | 'danger' | 'warning' } | string) => Promise<boolean>;
     requestHost: (type: string, payload?: { payload?: object }) => Promise<{ result?: unknown } & Record<string, unknown>>;
     getHtmlFrameAvatarUrls?: () => { user?: string; char?: string };
+    showToast?: (message: string, options?: { tone?: 'info' | 'warning' | 'danger'; durationMs?: number }) => void;
 }
 
 export interface TavernRoleplayMarkdownOptions {
@@ -746,9 +747,13 @@ export function useTavernMarkdownTools(options: TavernMarkdownToolsOptions) {
         figure: HTMLElement,
         slotId: string,
         result: Record<string, unknown>,
+        panelOptions: { inline?: boolean; saveLabel?: string; retryAfterSave?: boolean; onToggle?: (open: boolean) => void } = {},
     ) {
         const editPanel = document.createElement('span');
         editPanel.className = 'xb-tavern-image-edit';
+        if (panelOptions.inline) {
+            editPanel.classList.add('is-inline');
+        }
         editPanel.style.display = 'none';
 
         const editLabel = document.createElement('span');
@@ -761,7 +766,7 @@ export function useTavernMarkdownTools(options: TavernMarkdownToolsOptions) {
         const editActions = document.createElement('span');
         editActions.className = 'xb-tavern-image-edit-actions';
         [
-            { action: 'save-tags', label: '保存 TAG' },
+            { action: 'save-tags', label: panelOptions.saveLabel || '保存 TAG' },
             { action: 'cancel-edit', label: '取消' },
         ].forEach((item) => {
             const button = document.createElement('button');
@@ -772,9 +777,14 @@ export function useTavernMarkdownTools(options: TavernMarkdownToolsOptions) {
         });
         editPanel.append(editLabel, editScroll, editActions);
 
+        const setOpen = (open: boolean) => {
+            editPanel.style.display = open ? 'block' : 'none';
+            panelOptions.onToggle?.(open);
+        };
+
         const openEditor = () => {
             const sceneInput = renderTavernImageEditFields(editScroll, result);
-            editPanel.style.display = 'block';
+            setOpen(true);
             sceneInput.focus();
         };
 
@@ -785,7 +795,7 @@ export function useTavernMarkdownTools(options: TavernMarkdownToolsOptions) {
             event.stopPropagation();
             const action = target.dataset.action || '';
             if (action === 'cancel-edit') {
-                editPanel.style.display = 'none';
+                setOpen(false);
                 editScroll.replaceChildren();
                 return;
             }
@@ -802,9 +812,28 @@ export function useTavernMarkdownTools(options: TavernMarkdownToolsOptions) {
                     }
                     const characterPrompts = collectTavernImageEditCharacterPrompts(editPanel, result);
                     setTavernImageBusy(figure, true);
-                    void options.requestHost('xb-tavern:draw-image-edit', { payload: { slotId, tags, characterPrompts } })
-                        .then((response) => refreshTavernImageFigure(figure, slotId, response))
-                        .catch(() => setTavernImageBusy(figure, false));
+                    const runSave = async () => {
+                        const editResponse = await options.requestHost('xb-tavern:draw-image-edit', {
+                            payload: { slotId, tags, characterPrompts },
+                        });
+                        if (panelOptions.retryAfterSave) {
+                            // Mirrors the main body's failed-state "save-tags-retry": persist the
+                            // edited tags first, then regenerate. The host writes a new failed
+                            // placeholder on regeneration failure, so a rejected refresh is the
+                            // transport-level fallback — re-render with the edited tags regardless.
+                            try {
+                                const refreshResponse = await options.requestHost('xb-tavern:draw-image-refresh', {
+                                    payload: { slotId },
+                                });
+                                await refreshTavernImageFigure(figure, slotId, refreshResponse);
+                            } catch {
+                                await refreshTavernImageFigure(figure, slotId, editResponse);
+                            }
+                            return;
+                        }
+                        await refreshTavernImageFigure(figure, slotId, editResponse);
+                    };
+                    void runSave().catch(() => setTavernImageBusy(figure, false));
                 })();
             }
         });
@@ -834,7 +863,21 @@ export function useTavernMarkdownTools(options: TavernMarkdownToolsOptions) {
     function setTavernImageBusy(figure: HTMLElement, busy: boolean) {
         figure.classList.toggle('is-busy', busy);
         figure.querySelectorAll<HTMLButtonElement>('button').forEach((button) => {
-            button.disabled = busy || button.dataset.navDisabled === 'true';
+            button.disabled = busy
+                || button.dataset.navDisabled === 'true'
+                || button.dataset.editDisabled === 'true';
+        });
+    }
+
+    function describeTavernImageRefreshError(error: unknown) {
+        const raw = error instanceof Error ? error.message : String(error || 'unknown_error');
+        return raw.replace(/^xb-tavern:draw-image-refresh:\s*/, '').trim() || 'unknown_error';
+    }
+
+    function showTavernImageRefreshError(error: unknown) {
+        options.showToast?.(`重绘失败：${describeTavernImageRefreshError(error)}`, {
+            tone: 'warning',
+            durationMs: 4200,
         });
     }
 
@@ -1024,33 +1067,61 @@ export function useTavernMarkdownTools(options: TavernMarkdownToolsOptions) {
         figure.dataset.state = 'failed';
 
         const slotId = String(result.slotId || figure.dataset.tavernImageSlot || '').trim();
+        const isFailed = !!result.isFailed;
+        const errorType = String(result.errorType || '').trim();
+        const errorMessage = String(result.errorMessage || '').trim();
+
         const wrap = document.createElement('span');
         wrap.className = 'xb-tavern-image-wrap xb-tavern-image-failed-wrap';
 
-        const placeholder = document.createElement('span');
-        placeholder.className = 'xb-tavern-image-placeholder';
-        placeholder.textContent = result.isFailed
-            ? String(result.errorMessage || '配图生成失败')
-            : String(result.errorMessage || '配图未找到');
-        wrap.append(placeholder);
+        const icon = document.createElement('span');
+        icon.className = 'xb-tavern-image-failed-icon';
+        icon.textContent = isFailed ? '⚠️' : '🌫️';
+        wrap.append(icon);
 
-        if (result.isFailed && slotId) {
+        const title = document.createElement('span');
+        title.className = 'xb-tavern-image-failed-title';
+        title.textContent = errorType || (isFailed ? '生成失败' : '配图未找到');
+        wrap.append(title);
+
+        const desc = document.createElement('span');
+        desc.className = 'xb-tavern-image-failed-desc';
+        desc.textContent = errorMessage || (isFailed ? '点击重试' : '');
+        if (desc.textContent) {
+            wrap.append(desc);
+        }
+
+        if (isFailed && slotId) {
             const actions = document.createElement('span');
             actions.className = 'xb-tavern-image-failed-actions';
 
             const retryButton = document.createElement('button');
             retryButton.type = 'button';
             retryButton.dataset.action = 'refresh-image';
-            retryButton.textContent = '重试';
+            retryButton.textContent = '🔄 重新生成';
 
             const editButton = document.createElement('button');
             editButton.type = 'button';
             editButton.dataset.action = 'edit-tags';
-            editButton.textContent = '编辑 TAG';
+            editButton.textContent = '✏️ 编辑TAG';
             actions.append(retryButton, editButton);
             wrap.append(actions);
 
-            const { editPanel, openEditor } = buildTavernImageEditPanel(figure, slotId, result);
+            const { editPanel, openEditor } = buildTavernImageEditPanel(figure, slotId, result, {
+                inline: true,
+                saveLabel: '保存并重试',
+                retryAfterSave: true,
+                onToggle: (open) => {
+                    actions.style.opacity = open ? '0.3' : '';
+                    actions.style.pointerEvents = open ? 'none' : '';
+                    actions.querySelectorAll<HTMLButtonElement>('button').forEach((button) => {
+                        button.dataset.editDisabled = open ? 'true' : 'false';
+                        button.disabled = open
+                            || figure.classList.contains('is-busy')
+                            || button.dataset.navDisabled === 'true';
+                    });
+                },
+            });
             wrap.append(editPanel);
 
             actions.addEventListener('click', (event) => {
@@ -1178,8 +1249,9 @@ export function useTavernMarkdownTools(options: TavernMarkdownToolsOptions) {
             try {
                 const response = await options.requestHost('xb-tavern:draw-image-refresh', { payload: { slotId } });
                 await refreshTavernImageFigure(figure, slotId, response);
-            } catch {
+            } catch (error) {
                 setTavernImageBusy(figure, false);
+                showTavernImageRefreshError(error);
             }
         };
 

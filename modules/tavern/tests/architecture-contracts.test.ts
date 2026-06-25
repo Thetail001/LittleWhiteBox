@@ -44,6 +44,28 @@ function extractCssBlock(source: string, selector: string): string {
     assert.fail(`Unclosed CSS block: ${selector}`);
 }
 
+function extractFunctionSource(source: string, signature: string): string {
+    const start = source.indexOf(signature);
+    assert.notEqual(start, -1, `Missing function: ${signature}`);
+    const paramsEnd = source.indexOf(')', start);
+    assert.notEqual(paramsEnd, -1, `Missing function params: ${signature}`);
+    const open = source.indexOf('{', paramsEnd);
+    assert.notEqual(open, -1, `Missing function body: ${signature}`);
+    let depth = 0;
+    for (let index = open; index < source.length; index += 1) {
+        const char = source[index];
+        if (char === '{') {
+            depth += 1;
+        } else if (char === '}') {
+            depth -= 1;
+            if (depth === 0) {
+                return source.slice(start, index + 1);
+            }
+        }
+    }
+    assert.fail(`Unclosed function: ${signature}`);
+}
+
 const sourceFiles = collectSourceFiles(tavernRoot);
 
 function sourceMatches(pattern: RegExp): Array<{ path: string; line: number; text: string }> {
@@ -1044,6 +1066,18 @@ test('tavern markdown enhancement lives outside the app controller', () => {
     assert.match(markdownToolsSource, /function removeAdjacentImageLineBreaks/);
     assert.match(markdownToolsSource, /node instanceof HTMLBRElement/);
     assert.match(markdownToolsSource, /xb-tavern-image-failed-actions/);
+    assert.match(markdownToolsSource, /xb-tavern-image-failed-icon/);
+    assert.match(markdownToolsSource, /xb-tavern-image-failed-title/);
+    assert.match(markdownToolsSource, /xb-tavern-image-failed-desc/);
+    // Failed-state "保存并重试" persists edited tags then regenerates, and falls back to the
+    // edited result when the regeneration transport rejects.
+    assert.match(markdownToolsSource, /retryAfterSave: true/);
+    assert.match(markdownToolsSource, /panelOptions\.retryAfterSave/);
+    assert.match(markdownToolsSource, /catch \{\s*await refreshTavernImageFigure\(figure, slotId, editResponse\);/);
+    // While the failed-state editor is open the outer action buttons stay keyboard-disabled,
+    // surviving a busy lock clearing after an error.
+    assert.match(markdownToolsSource, /button\.dataset\.editDisabled/);
+    assert.match(markdownToolsSource, /button\.disabled = busy[\s\S]*button\.dataset\.editDisabled === 'true'/);
     assert.match(markdownToolsSource, /payload: \{ slotId, imgId \}/);
     assert.match(markdownToolsSource, /textarea\[data-type="scene"\]/);
     assert.match(markdownToolsSource, /textarea\[data-type="char"\]/);
@@ -1071,6 +1105,13 @@ test('tavern markdown enhancement lives outside the app controller', () => {
     assert.match(tavernHostSource, /syncDrawSavedAfterDeletion/);
     assert.match(tavernHostSource, /clearDrawSavedEntry/);
     assert.match(tavernHostSource, /storeFailedPlaceholder/);
+    // handleDrawImageRefresh must persist a new failed placeholder and return ok on regeneration
+    // failure (not reject), so the iframe re-renders the failed state with the attempted tags.
+    assert.match(tavernHostSource, /function buildRefreshFailedDrawPlaceholder/);
+    assert.match(tavernHostSource, /storeFailedPlaceholder\(\s*buildRefreshFailedDrawPlaceholder/);
+    assert.match(tavernHostSource, /deleteFailedRecordsForSlot\(slotId\)/);
+    assert.match(markdownToolsSource, /showTavernImageRefreshError\(error\)/);
+    assert.match(appSource, /showToast: showTavernToast/);
     assert.match(tavernHostSource, /clearSlotSelection/);
     assert.match(tavernHostSource, /function getDrawPreviewStorageMessageId/);
     assert.match(tavernHostSource, /function buildDeletedDrawPlaceholder/);
@@ -1126,6 +1167,137 @@ test('tavern markdown enhancement lives outside the app controller', () => {
     assert.match(tavernHostSource, /function refreshRenderSettings\(\): void \{[\s\S]*htmlRenderEnabled: isHtmlRenderEnabled\(\),[\s\S]*\}/);
     assert.match(indexSource, /window\.xiaobaixTavern\?\.refreshRenderSettings\?\.\(\);/);
     assert.doesNotMatch(indexSource, /refreshContext\?\.\(\{ includeWorldbooks: false \}\)/);
+});
+
+test('tavern draw image refresh only stores failed placeholders for failed-card retries', async () => {
+    const tavernHostBuildSource = readRepoFile('modules/tavern/tavern.js');
+    const refreshFunction = extractFunctionSource(tavernHostBuildSource, 'async function handleDrawImageRefresh');
+    const replies: Array<{ requestId: string; payload: Record<string, unknown> }> = [];
+    const storedFailedPlaceholders: Array<Record<string, unknown>> = [];
+    const storedPreviews: Array<Record<string, unknown>> = [];
+    const selectedSlots: Array<{ slotId: string; imgId: string }> = [];
+    const deletedFailedSlots: string[] = [];
+    let currentDisplay: Record<string, unknown> = {};
+    let failGeneration = true;
+
+    const harness = new Function(
+        'window',
+        'getDrawGalleryCacheModule',
+        'getDrawCommonModule',
+        'buildDrawImageResult',
+        'replyHostResult',
+        'hostErrorPayload',
+        'buildRefreshFailedDrawPlaceholder',
+        'getDrawPreviewCharacterPrompts',
+        'getDrawPromptNegativeInput',
+        'extractGeneratedImageBase64',
+        'generateDrawImageId',
+        'getDrawPreviewStorageMessageId',
+        'getDrawPreviewMessageId',
+        `${refreshFunction}; return handleDrawImageRefresh;`,
+    )(
+        {
+            xiaobaixDraw: {
+                buildPromptData: ({ tags }: Record<string, unknown>) => ({ positive: tags }),
+                generateImage: async () => {
+                    if (failGeneration) {
+                        throw new Error('provider failed');
+                    }
+                    return 'new-base64';
+                },
+            },
+        },
+        async () => ({
+            getDisplayPreviewForSlot: async () => currentDisplay,
+            storePreview: async (preview: Record<string, unknown>) => {
+                storedPreviews.push(preview);
+                currentDisplay = { preview, hasData: true, isFailed: false };
+            },
+            setSlotSelection: async (slotId: string, imgId: string) => {
+                selectedSlots.push({ slotId, imgId });
+            },
+            deleteFailedRecordsForSlot: async (slotId: string) => {
+                deletedFailedSlots.push(slotId);
+            },
+            storeFailedPlaceholder: async (preview: Record<string, unknown>) => {
+                storedFailedPlaceholders.push(preview);
+            },
+        }),
+        async () => ({
+            clearDrawSavedEntry: async () => false,
+        }),
+        async (slotId: string) => ({ slotId, resultFromDisplay: currentDisplay.isFailed ? 'failed' : 'success' }),
+        (requestId: string, payload: Record<string, unknown>) => {
+            replies.push({ requestId, payload });
+        },
+        (error: unknown, fallback: string) => ({
+            ok: false,
+            error: error instanceof Error ? error.message : String(error || fallback),
+            fallback,
+        }),
+        (slotId: string, preview: Record<string, unknown>, failedInfo: Record<string, unknown>, error: unknown) => ({
+            slotId,
+            tags: String(preview.tags || failedInfo.tags || ''),
+            errorMessage: error instanceof Error ? error.message : String(error || ''),
+            status: 'failed',
+        }),
+        (): Array<Record<string, unknown>> => [],
+        () => '',
+        (value: unknown) => String(value || ''),
+        () => 'img-new',
+        () => 'message-id',
+        () => -1,
+    ) as (payload?: Record<string, unknown>) => Promise<void>;
+
+    currentDisplay = {
+        preview: { imgId: 'img-ok', slotId: 'slot-ok', tags: 'good prompt', base64: 'old-image' },
+        hasData: true,
+        isFailed: false,
+    };
+    await harness({ requestId: 'success-refresh', payload: { slotId: 'slot-ok' } });
+
+    assert.equal(storedFailedPlaceholders.length, 0);
+    assert.deepEqual(replies.at(-1), {
+        requestId: 'success-refresh',
+        payload: { ok: false, error: 'provider failed', fallback: 'image_refresh_failed' },
+    });
+
+    currentDisplay = {
+        preview: { slotId: 'slot-failed', tags: 'retry prompt', status: 'failed' },
+        failedInfo: { tags: 'retry prompt', errorMessage: 'old failure' },
+        hasData: false,
+        isFailed: true,
+    };
+    await harness({ requestId: 'failed-retry', payload: { slotId: 'slot-failed' } });
+
+    assert.deepEqual(storedFailedPlaceholders, [{
+        slotId: 'slot-failed',
+        tags: 'retry prompt',
+        errorMessage: 'provider failed',
+        status: 'failed',
+    }]);
+    assert.deepEqual(replies.at(-1), {
+        requestId: 'failed-retry',
+        payload: { ok: true, result: { slotId: 'slot-failed', resultFromDisplay: 'failed' } },
+    });
+
+    failGeneration = false;
+    currentDisplay = {
+        preview: { slotId: 'slot-failed', tags: 'retry prompt', status: 'failed' },
+        failedInfo: { tags: 'retry prompt', errorMessage: 'old failure' },
+        hasData: false,
+        isFailed: true,
+    };
+    await harness({ requestId: 'failed-retry-success', payload: { slotId: 'slot-failed' } });
+
+    assert.deepEqual(deletedFailedSlots, ['slot-failed']);
+    assert.deepEqual(selectedSlots.at(-1), { slotId: 'slot-failed', imgId: 'img-new' });
+    assert.equal(storedPreviews.at(-1)?.slotId, 'slot-failed');
+    assert.equal(storedPreviews.at(-1)?.base64, 'new-base64');
+    assert.deepEqual(replies.at(-1), {
+        requestId: 'failed-retry-success',
+        payload: { ok: true, result: { slotId: 'slot-failed', resultFromDisplay: 'success' } },
+    });
 });
 
 test('tavern roleplay html previews use stable code anchors and a local iframe bridge', () => {
@@ -1272,9 +1444,10 @@ test('tavern draw jobs are message-queued and route progress by host request', (
     assert.match(appSource, /onUnmounted\(\(\) => \{[\s\S]*abortAllDrawJobs\(\);/);
 });
 
-test('tavern draw capsule stays in-app and opens native provider settings', () => {
+test('tavern draw capsule mirrors native capsule structure with in-app quick settings', () => {
     const appSource = readRepoFile('modules/tavern/app-src/App.vue');
     const contextSource = readRepoFile('modules/tavern/app-src/components/tavern-app-context.ts');
+    const capsuleSource = readRepoFile('modules/tavern/app-src/components/chat/TavernDrawCapsule.vue');
     const conversationSource = readRepoFile('modules/tavern/app-src/components/chat/TavernConversationPanel.vue');
     const chatPageSource = readRepoFile('modules/tavern/app-src/components/chat/TavernChatPage.vue');
     const layoutCss = readRepoFile('modules/tavern/app-src/styles/chat/layout.css');
@@ -1290,33 +1463,71 @@ test('tavern draw capsule stays in-app and opens native provider settings', () =
     assert.match(capsuleBlock, /height:\s*34px;/);
     assert.match(capsuleBlock, /min-height:\s*34px;/);
     assert.match(capsuleBlock, /border-radius:\s*17px;/);
-    assert.match(layoutCss, /\.tavern-chat\.xb-page \.tavern-draw-settings \{[\s\S]*width:\s*24px;[\s\S]*min-width:\s*24px;[\s\S]*height:\s*100%;/);
+    assert.match(capsuleBlock, /border:\s*1px solid var\(--xb-rule\);/);
+    assert.doesNotMatch(capsuleBlock, /--xb-stamp|rgba\(0,\s*0,\s*0,\s*0\.55\)|rgba\(32,\s*28,\s*24,\s*0\.72\)|rgba\(128,\s*38,\s*38/);
+    assert.match(layoutCss, /\.tavern-chat\.xb-page \.tavern-draw-menu-button \{[\s\S]*width:\s*24px;[\s\S]*min-width:\s*24px;[\s\S]*height:\s*100%;/);
     assert.match(layoutCss, /\.tavern-chat\.xb-page \.tavern-draw-divider \{[\s\S]*width:\s*1px;[\s\S]*height:\s*12px;/);
+    assert.match(layoutCss, /\.tavern-chat\.xb-page \.tavern-draw-layer-active \{[\s\S]*gap:\s*6px;[\s\S]*overflow:\s*hidden;[\s\S]*flex-wrap:\s*nowrap;[\s\S]*white-space:\s*nowrap;[\s\S]*padding:\s*0 7px;/);
+    assert.match(layoutCss, /\.tavern-chat\.xb-page \.tavern-draw-status-icon \{[\s\S]*flex:\s*0 0 auto;/);
+    assert.match(layoutCss, /\.tavern-chat\.xb-page \.tavern-draw-status-text \{[\s\S]*min-width:\s*0;[\s\S]*max-width:\s*none;[\s\S]*white-space:\s*nowrap;/);
+    assert.doesNotMatch(layoutCss, /\.tavern-chat\.xb-page \.tavern-draw-status-text \{[\s\S]*max-width:\s*48px;/);
+    assert.match(layoutCss, /\.tavern-draw-popover-layer\.tavern-draw-menu \{[\s\S]*width:\s*198px;/);
+    assert.match(layoutCss, /\.tavern-draw-popover-layer \.tavern-draw-auto-toggle/);
+    assert.match(layoutCss, /\.tavern-draw-popover-layer\.tavern-draw-detail,[\s\S]*\.tavern-draw-popover-layer\.tavern-draw-menu \{[\s\S]*z-index:\s*100120;/);
+    assert.match(layoutCss, /@media \(max-width: 760px\) \{[\s\S]*\.tavern-chat\.xb-page \.tavern-draw-float\.tavern-draw-capsule-mobile,[\s\S]*width:\s*68px;[\s\S]*height:\s*30px;/);
+    assert.doesNotMatch(layoutCss, /\.xb-os-shell\.theme-light \.tavern-chat\.xb-page \.tavern-draw-capsule[\s\S]*rgba\(32,\s*28,\s*24,\s*0\.72\)/);
+
+    assert.match(capsuleSource, /<Teleport to="body">[\s\S]*class="tavern-draw-detail"[\s\S]*class="tavern-draw-menu"/);
+    assert.match(capsuleSource, /function anchoredPopoverStyle\(width: number, height: number\): Record<string, string> \{[\s\S]*getBoundingClientRect\(\)[\s\S]*position: 'fixed'/);
+    assert.match(capsuleSource, /class="tavern-draw-layer tavern-draw-layer-idle"[\s\S]*class="tavern-draw-layer tavern-draw-layer-active"/);
+    assert.match(capsuleSource, /const capsuleStatusText = computed\(\(\) => compactCapsuleStatusText/);
+    assert.match(capsuleSource, /function compactCapsuleStatusText/);
+    assert.match(capsuleSource, /前方\\s\*\(\\d\+\)/);
+    assert.match(capsuleSource, /return `\$\{ratio\[1\]\}\/\$\{ratio\[2\]\}`;/);
+    assert.match(capsuleSource, /class="tavern-draw-status-text">\{\{ capsuleStatusText \}\}/);
+    assert.doesNotMatch(capsuleSource, /class="tavern-draw-status-text">\{\{ statusText \}\}/);
+    assert.match(capsuleSource, /class="tavern-draw-menu-button"[\s\S]*class="tavern-draw-arrow"[\s\S]*>▼</);
+    assert.match(capsuleSource, />预设<[\s\S]*>尺寸<[\s\S]*>自动配图</);
+    assert.match(capsuleSource, /class="tavern-draw-gear"[\s\S]*画图设置/);
+    assert.match(capsuleSource, /async function handleActiveLayerClick\(\) \{[\s\S]*if \(activeLayerCanCancel\.value\) \{[\s\S]*await drawLatestAssistantMessage\(\);[\s\S]*detailPinned\.value = !detailPinned\.value;/);
+    assert.doesNotMatch(capsuleSource, /class="tavern-draw-layer tavern-draw-layer-active"[\s\S]{0,260}@click="drawLatestAssistantMessage"/);
+    assert.doesNotMatch(capsuleSource, /tavern-draw-settings|draw-open-settings/);
 
     assert.match(contextSource, /drawLatestAssistantMessage: TavernCommand<\[], Promise<void>>;/);
     assert.match(contextSource, /openTavernDrawSettings: TavernCommand<\[], Promise<void>>;/);
+    assert.match(contextSource, /refreshTavernDrawQuickSettings: TavernCommand<\[], Promise<TavernDrawQuickSettings>>;/);
+    assert.match(contextSource, /tavernDrawQuickSettings: Ref<TavernDrawQuickSettings>;/);
+    assert.match(contextSource, /updateTavernDrawQuickSettings: TavernCommand<\[patch\?: Record<string, unknown>\], Promise<void>>;/);
     assert.match(contextSource, /tavernDrawCapsuleVisible: TavernReadable<boolean>;/);
     assert.match(appSource, /const latestDrawableAssistantMessage = computed\(\(\) => findLatestDrawableAssistantMessage\(\)\);/);
     assert.match(appSource, /function findLatestDrawableAssistantMessage\(\): TavernMessageRecord \| null \{[\s\S]*message\.role === 'assistant'[\s\S]*canDrawMessage\(message\)/);
     assert.match(appSource, /async function drawLatestAssistantMessage\(\): Promise<void> \{[\s\S]*showTavernToast\('没有可配图的回复'[\s\S]*if \(isDrawingMessage\(message\)\) \{[\s\S]*await drawMessage\(message\);[\s\S]*showTavernToast\('画图模块初始化中'/);
     assert.match(appSource, /async function openTavernDrawSettings\(\): Promise<void> \{[\s\S]*requestHost\('xb-tavern:draw-open-settings'/);
+    assert.match(appSource, /async function refreshTavernDrawQuickSettings\(\): Promise<TavernDrawQuickSettings> \{[\s\S]*requestHost\('xb-tavern:draw-quick-settings'/);
+    assert.match(appSource, /async function updateTavernDrawQuickSettings\(patch: Record<string, unknown> = \{\}\): Promise<void> \{[\s\S]*requestHost\('xb-tavern:draw-update-quick-settings'/);
     assert.match(appSource, /function applyTavernDrawStatus\(payload: Record<string, unknown> = \{\}\) \{[\s\S]*provider: String\(payload\.provider \|\| 'disabled'\)[\s\S]*ready: payload\.ready === true/);
-    assert.match(appSource, /if \(data\.type === 'xb-tavern:draw-status-changed'\) \{[\s\S]*applyTavernDrawStatus\(data\.payload \|\| \{\}\);[\s\S]*return;/);
+    assert.match(appSource, /if \(data\.type === 'xb-tavern:draw-status-changed'\) \{[\s\S]*applyTavernDrawStatus\(data\.payload \|\| \{\}\);[\s\S]*void refreshTavernDrawQuickSettings\(\);[\s\S]*return;/);
     assert.match(appSource, /postToHost\('xb-tavern:frame-ready'\);[\s\S]*void refreshTavernDrawStatus\(\);/);
 
-    assert.match(conversationSource, /<div class="chat-head-actions">[\s\S]*class="tavern-draw-capsule"[\s\S]*class="contract-trigger"/);
-    assert.match(chatPageSource, /class="chat-mobile-action-group">[\s\S]*v-if="chatFocus === 'chat' && tavernDrawCapsuleVisible"[\s\S]*class="tavern-draw-capsule tavern-draw-capsule-mobile"[\s\S]*class="chat-mobile-icon-button chat-mobile-utility-button"/);
-    assert.doesNotMatch(`${appSource}\n${conversationSource}\n${chatPageSource}`, /nd-capsule|nd-floating|floating-panel/);
+    assert.match(conversationSource, /import TavernDrawCapsule from '\.\/TavernDrawCapsule\.vue';/);
+    assert.match(conversationSource, /<div class="chat-head-actions">[\s\S]*<TavernDrawCapsule \/>[\s\S]*class="contract-trigger"/);
+    assert.match(chatPageSource, /import TavernDrawCapsule from '\.\/TavernDrawCapsule\.vue';/);
+    assert.match(chatPageSource, /class="chat-mobile-action-group">[\s\S]*<TavernDrawCapsule[\s\S]*v-if="chatFocus === 'chat'"[\s\S]*mobile[\s\S]*\/>[\s\S]*class="chat-mobile-icon-button chat-mobile-utility-button"/);
+    assert.doesNotMatch(`${appSource}\n${conversationSource}\n${chatPageSource}\n${capsuleSource}`, /nd-capsule|nd-floating|floating-panel/);
 
     assert.match(tavernHostSource, /case 'xb-tavern:draw-open-settings':[\s\S]*void handleDrawOpenSettings\(data\.payload \|\| \{\}\);/);
+    assert.match(tavernHostSource, /case 'xb-tavern:draw-quick-settings':[\s\S]*void handleDrawQuickSettings\(data\.payload \|\| \{\}\);/);
+    assert.match(tavernHostSource, /case 'xb-tavern:draw-update-quick-settings':[\s\S]*void handleDrawUpdateQuickSettings\(data\.payload \|\| \{\}\);/);
     assert.match(tavernHostSource, /refreshDrawStatus: \(\) => void;/);
     assert.match(tavernHostSource, /function refreshDrawStatus\(\): void \{[\s\S]*postToFrame\('xb-tavern:draw-status-changed', getDrawStatus\(\)\);[\s\S]*\}/);
     assert.match(tavernHostSource, /window\.xiaobaixTavern = \{[\s\S]*refreshDrawStatus,/);
-    const openSettingsSource = tavernHostSource.match(/async function handleDrawOpenSettings\(payload: Record<string, unknown> = \{\}\): Promise<void> \{[\s\S]*?\n\}\n\nasync function handleDrawGenerate/)?.[0] || '';
+    const openSettingsSource = tavernHostSource.match(/async function handleDrawOpenSettings\(payload: Record<string, unknown> = \{\}\): Promise<void> \{[\s\S]*?\n\}\n\nasync function handleDrawQuickSettings/)?.[0] || '';
     assert.ok(openSettingsSource);
     assert.match(openSettingsSource, /getDrawProviderSettingsFacade\(provider\)/);
     assert.match(openSettingsSource, /await settingsFacade\.openSettings\(\);/);
     assert.doesNotMatch(openSettingsSource, /closeTavern|xb-tavern:close|querySelector|nd-capsule/);
+    assert.match(tavernHostSource, /getQuickSettings\?: \(\) => Record<string, unknown> \| Promise<Record<string, unknown>>;/);
+    assert.match(tavernHostSource, /updateQuickSettings\?: \(patch: Record<string, unknown>\) => Record<string, unknown> \| Promise<Record<string, unknown>>;/);
     assert.match(tavernHostSource, /xiaobaixNovelDraw\?: DrawProviderSettingsFacade;/);
     assert.match(tavernHostSource, /xiaobaixSdDraw\?: DrawProviderSettingsFacade;/);
     assert.match(tavernHostSource, /xiaobaixComfyDraw\?: DrawProviderSettingsFacade;/);
@@ -1325,6 +1536,13 @@ test('tavern draw capsule stays in-app and opens native provider settings', () =
     assert.match(indexSource, /await cleanupDrawProvider\(prev\);[\s\S]*settings\.drawProvider = next;[\s\S]*try \{[\s\S]*await initActiveDrawProvider\(\);[\s\S]*\} finally \{[\s\S]*notifyTavernDrawStatusChanged\(\);[\s\S]*\}/);
     assert.match(indexSource, /settings\.drawProvider = 'disabled';[\s\S]*extension_settings\[EXT_ID\]\.drawProvider = 'disabled';[\s\S]*notifyTavernDrawStatusChanged\(\);/);
 
+    [novelDrawSource, sdDrawSource, comfyDrawSource].forEach((source) => {
+        assert.match(source, /getQuickSettings/);
+        assert.match(source, /updateQuickSettings/);
+        assert.match(source, /selectedPresetId/);
+        assert.match(source, /selectedSize/);
+        assert.match(source, /mode = patch\.auto === true \? 'auto' : 'manual'|settings\.mode = patch\.auto === true \? 'auto' : 'manual'/);
+    });
     assert.match(novelDrawSource, /z-index:100002!important/);
     assert.match(sdDrawSource, /z-index:100002!important/);
     assert.match(comfyDrawSource, /z-index:100002!important/);

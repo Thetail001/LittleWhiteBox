@@ -56,6 +56,8 @@ interface TavernFacade {
 
 interface DrawProviderSettingsFacade {
     openSettings?: () => void | Promise<void>;
+    getQuickSettings?: () => Record<string, unknown> | Promise<Record<string, unknown>>;
+    updateQuickSettings?: (patch: Record<string, unknown>) => Record<string, unknown> | Promise<Record<string, unknown>>;
 }
 
 declare global {
@@ -103,6 +105,7 @@ async function getDrawGalleryCacheModule(): Promise<{
     getPreview: (imgId: string) => Promise<Record<string, unknown> | undefined>;
     getPreviewsBySlot: (slotId: string) => Promise<Array<Record<string, unknown>>>;
     setSlotSelection: (slotId: string, imgId: string) => Promise<void>;
+    deleteFailedRecordsForSlot: (slotId: string) => Promise<void>;
     storeFailedPlaceholder: (preview: Record<string, unknown>) => Promise<void>;
     storePreview: (preview: Record<string, unknown>) => Promise<void>;
     deletePreview: (imgId: string) => Promise<void>;
@@ -114,6 +117,7 @@ async function getDrawGalleryCacheModule(): Promise<{
         getPreview: (imgId: string) => Promise<Record<string, unknown> | undefined>;
         getPreviewsBySlot: (slotId: string) => Promise<Array<Record<string, unknown>>>;
         setSlotSelection: (slotId: string, imgId: string) => Promise<void>;
+        deleteFailedRecordsForSlot: (slotId: string) => Promise<void>;
         storeFailedPlaceholder: (preview: Record<string, unknown>) => Promise<void>;
         storePreview: (preview: Record<string, unknown>) => Promise<void>;
         deletePreview: (imgId: string) => Promise<void>;
@@ -482,6 +486,57 @@ async function handleDrawOpenSettings(payload: Record<string, unknown> = {}): Pr
     }
 }
 
+async function handleDrawQuickSettings(payload: Record<string, unknown> = {}): Promise<void> {
+    const requestId = String(payload.requestId || '');
+    try {
+        const status = getDrawStatus();
+        const provider = String(status.provider || 'disabled');
+        const settingsFacade = getDrawProviderSettingsFacade(provider);
+        const quickSettings = typeof settingsFacade?.getQuickSettings === 'function'
+            ? await settingsFacade.getQuickSettings()
+            : {
+                provider,
+                available: false,
+                presets: [],
+                sizeOptions: [],
+            };
+        replyHostResult(requestId, {
+            ok: true,
+            result: {
+                provider,
+                ...(quickSettings || {}),
+            },
+        });
+    } catch (error) {
+        replyHostResult(requestId, hostErrorPayload(error, 'draw_quick_settings_failed'));
+    }
+}
+
+async function handleDrawUpdateQuickSettings(payload: Record<string, unknown> = {}): Promise<void> {
+    const requestId = String(payload.requestId || '');
+    const patch = payload.payload && typeof payload.payload === 'object'
+        ? payload.payload as Record<string, unknown>
+        : {};
+    try {
+        const status = getDrawStatus();
+        const provider = String(status.provider || 'disabled');
+        const settingsFacade = getDrawProviderSettingsFacade(provider);
+        if (typeof settingsFacade?.updateQuickSettings !== 'function') {
+            throw new Error('画图快捷设置不可用');
+        }
+        const quickSettings = await settingsFacade.updateQuickSettings(patch);
+        replyHostResult(requestId, {
+            ok: true,
+            result: {
+                provider,
+                ...(quickSettings || {}),
+            },
+        });
+    } catch (error) {
+        replyHostResult(requestId, hostErrorPayload(error, 'draw_quick_settings_save_failed'));
+    }
+}
+
 async function handleDrawGenerate(payload: Record<string, unknown> = {}): Promise<void> {
     const requestId = String(payload.requestId || '');
     const controller = new AbortController();
@@ -624,6 +679,40 @@ function buildDeletedDrawPlaceholder(
         positive: String(source.positive || ''),
         errorType: TAVERN_DRAW_DELETED_ERROR_TYPE,
         errorMessage: TAVERN_DRAW_DELETED_ERROR_MESSAGE,
+        characterPrompts: cloneFramePayload(getDrawPreviewCharacterPrompts(source)),
+        negativePrompt: String(source.negativePrompt || ''),
+        anchor: String(source.anchor || ''),
+    };
+}
+
+function buildRefreshFailedDrawPlaceholder(
+    slotId: string,
+    preview: Record<string, unknown> = {},
+    failedInfo: Record<string, unknown> = {},
+    error: unknown,
+): Record<string, unknown> {
+    // Prefer the freshly-fetched preview (a failed slot's display preview is the latest failed
+    // record, which carries the attempted tags); fall back to failedInfo for early failures.
+    const source = preview && typeof preview === 'object' && Object.keys(preview).length
+        ? preview
+        : failedInfo;
+    const errorMessage = error instanceof Error && error.message
+        ? error.message
+        : String((error as string | undefined) || '生成失败');
+    return {
+        slotId,
+        messageId: getDrawPreviewStorageMessageId(source, slotId),
+        source: String(source.source || 'tavern'),
+        chatId: String(source.chatId || ''),
+        characterName: String(source.characterName || ''),
+        bookId: String(source.bookId || ''),
+        bookTitle: String(source.bookTitle || ''),
+        chapterPath: String(source.chapterPath || ''),
+        chapterTitle: String(source.chapterTitle || ''),
+        tags: String(source.tags || ''),
+        positive: String(source.positive || source.tags || ''),
+        errorType: '生成失败',
+        errorMessage,
         characterPrompts: cloneFramePayload(getDrawPreviewCharacterPrompts(source)),
         negativePrompt: String(source.negativePrompt || ''),
         anchor: String(source.anchor || ''),
@@ -824,13 +913,20 @@ async function handleDrawImageRefresh(payload: Record<string, unknown> = {}): Pr
         ? payload.payload as Record<string, unknown>
         : payload;
     const slotId = String(source.slotId || '').trim();
+    let refreshFailureContext: { wasFailed: boolean; preview: Record<string, unknown>; failedInfo: Record<string, unknown> } | null = null;
     try {
         if (!slotId) {throw new Error('slot_id_required');}
-        const facade = window.xiaobaixDraw;
-        if (typeof facade?.generateImage !== 'function') {throw new Error('画图模块未初始化');}
-        const { getDisplayPreviewForSlot, storePreview, setSlotSelection } = await getDrawGalleryCacheModule();
+        const { getDisplayPreviewForSlot, storePreview, setSlotSelection, deleteFailedRecordsForSlot } = await getDrawGalleryCacheModule();
         const current = await getDisplayPreviewForSlot(slotId);
         const preview = current.preview as Record<string, unknown> || {};
+        const failedInfo = current.failedInfo as Record<string, unknown> || {};
+        refreshFailureContext = {
+            wasFailed: current.isFailed === true || current.hasData !== true,
+            preview,
+            failedInfo,
+        };
+        const facade = window.xiaobaixDraw;
+        if (typeof facade?.generateImage !== 'function') {throw new Error('画图模块未初始化');}
         const tags = String(source.tags || preview.tags || '').trim();
         const characterPrompts = getDrawPreviewCharacterPrompts(preview);
         const negativePrompt = getDrawPromptNegativeInput(facade, preview);
@@ -860,6 +956,9 @@ async function handleDrawImageRefresh(payload: Record<string, unknown> = {}): Pr
             source: 'tavern',
         });
         await setSlotSelection(slotId, imgId);
+        if (refreshFailureContext.wasFailed) {
+            await deleteFailedRecordsForSlot(slotId);
+        }
         const messageId = getDrawPreviewMessageId(preview);
         if (messageId >= 0) {
             const { clearDrawSavedEntry } = await getDrawCommonModule();
@@ -867,6 +966,23 @@ async function handleDrawImageRefresh(payload: Record<string, unknown> = {}): Pr
         }
         replyHostResult(requestId, { ok: true, result: await buildDrawImageResult(slotId) });
     } catch (error) {
+        // Only failed-card retries replace the visible card with a fresh failed placeholder.
+        // Successful images keep their old preview and report the refresh error normally.
+        if (slotId && refreshFailureContext?.wasFailed) {
+            try {
+                const { storeFailedPlaceholder } = await getDrawGalleryCacheModule();
+                const { preview, failedInfo } = refreshFailureContext;
+                if (String(preview.tags || failedInfo.tags || '').trim()) {
+                    await storeFailedPlaceholder(
+                        buildRefreshFailedDrawPlaceholder(slotId, preview, failedInfo, error),
+                    );
+                    replyHostResult(requestId, { ok: true, result: await buildDrawImageResult(slotId) });
+                    return;
+                }
+            } catch {
+                // Fall through to the generic error reply if persistence itself fails.
+            }
+        }
         replyHostResult(requestId, hostErrorPayload(error, 'image_refresh_failed'));
     }
 }
@@ -1228,6 +1344,12 @@ function handleFrameMessage(event: MessageEvent): void {
             break;
         case 'xb-tavern:draw-open-settings':
             void handleDrawOpenSettings(data.payload || {});
+            break;
+        case 'xb-tavern:draw-quick-settings':
+            void handleDrawQuickSettings(data.payload || {});
+            break;
+        case 'xb-tavern:draw-update-quick-settings':
+            void handleDrawUpdateQuickSettings(data.payload || {});
             break;
         case 'xb-tavern:draw-generate':
             void handleDrawGenerate(data.payload || {});

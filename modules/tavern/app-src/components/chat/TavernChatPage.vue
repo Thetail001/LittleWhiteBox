@@ -15,6 +15,7 @@ import TavernAssistantPresetSettingsPanel from '../settings/TavernAssistantPrese
 import TavernBaseSettingsPanel from '../settings/TavernBaseSettingsPanel.vue';
 import TavernChatPresetSettingsPanel from '../settings/TavernChatPresetSettingsPanel.vue';
 import TavernConversationPanel from './TavernConversationPanel.vue';
+import TavernDrawCapsule from './TavernDrawCapsule.vue';
 import TavernManagerPanel from './TavernManagerPanel.vue';
 import TavernRegexSettingsPanel from '../settings/TavernRegexSettingsPanel.vue';
 import TavernWorkspacePanel from './TavernWorkspacePanel.vue';
@@ -50,15 +51,8 @@ const {
     chatMessageWindow,
     chatScrollRef,
     currentAuthorNote,
-    drawLatestAssistantMessage,
-    openTavernDrawSettings,
     saveCurrentAuthorNote,
     messageKey,
-    tavernDrawCapsuleIcon,
-    tavernDrawCapsuleMainDisabled,
-    tavernDrawCapsuleStatusClass,
-    tavernDrawCapsuleTitle,
-    tavernDrawCapsuleVisible,
     updateChatScrollButtons,
     visibleChatMessages,
 } = chat;
@@ -562,43 +556,10 @@ onUpdated(() => {
           </button>
         </div>
         <div class="chat-mobile-action-group">
-          <div
-            v-if="chatFocus === 'chat' && tavernDrawCapsuleVisible"
-            class="tavern-draw-capsule tavern-draw-capsule-mobile"
-            :class="[
-              tavernDrawCapsuleStatusClass,
-              {
-                'is-disabled': tavernDrawCapsuleMainDisabled,
-                'is-working': tavernDrawCapsuleIcon === '■',
-              },
-            ]"
-            role="group"
-            aria-label="画图"
-          >
-            <button
-              type="button"
-              class="tavern-draw-main"
-              :disabled="tavernDrawCapsuleMainDisabled"
-              :title="tavernDrawCapsuleTitle"
-              :aria-label="tavernDrawCapsuleTitle"
-              @click="drawLatestAssistantMessage"
-            >
-              <span aria-hidden="true">{{ tavernDrawCapsuleIcon }}</span>
-            </button>
-            <span
-              class="tavern-draw-divider"
-              aria-hidden="true"
-            />
-            <button
-              type="button"
-              class="tavern-draw-settings"
-              title="画图设置"
-              aria-label="画图设置"
-              @click="openTavernDrawSettings"
-            >
-              <span aria-hidden="true">⚙</span>
-            </button>
-          </div>
+          <TavernDrawCapsule
+            v-if="chatFocus === 'chat'"
+            mobile
+          />
           <button
             type="button"
             class="chat-mobile-icon-button chat-mobile-utility-button"

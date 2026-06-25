@@ -2675,17 +2675,24 @@ test('Studio file section models keep unchanged file signatures reusable', () =>
 
     assert.deepEqual(firstChapters.files.map((file) => file.path), ['book/chapters/001.md', 'book/chapters/002.md']);
     assert.deepEqual(descendingChapters.files.map((file) => file.path), ['book/chapters/002.md', 'book/chapters/001.md']);
-    assert.notEqual(firstChapters.files[0].signature, nextChapters.files[0].signature);
-    assert.notEqual(firstChapters.files[1].signature, nextChapters.files[1].signature);
+    // Signatures are structural only (path + title) — they must NOT change when the active
+    // selection moves, otherwise the whole .xb-file-tree would be rebuilt and scroll reset.
+    assert.equal(firstChapters.files[0].signature, nextChapters.files[0].signature);
+    assert.equal(firstChapters.files[1].signature, nextChapters.files[1].signature);
     assert.equal(firstOutline.signature, nextOutline.signature);
+    // Active/selected state is exposed on the model and synced as a class toggle instead.
+    assert.equal(firstChapters.files[0].active, true);
+    assert.equal(firstChapters.files[1].active, false);
+    assert.equal(nextChapters.files[0].active, false);
+    assert.equal(nextChapters.files[1].active, true);
     assert.equal(firstModel.groups.some((group) => group.key === 'volumes'), false);
     assert.match(firstChapters.scaffoldHtml, /data-file-group-key="chapters"/);
     assert.match(firstChapters.html, /data-file-group-key="chapters"/);
     assert.match(firstChapters.html, /data-chapter-sort-toggle[^>]*>倒序<\/button>/);
     assert.match(descendingChapters.html, /data-chapter-sort-toggle[^>]*>正序<\/button>/);
     assert.match(firstChapters.html, /data-file-static-signature="chapters:/);
-    assert.match(firstChapters.html, /data-file-signature="book\/chapters\/001\.md:第 1 章:active"/);
-    assert.match(firstChapters.html, /data-file-signature="book\/chapters\/002\.md:第 2 章:"/);
+    assert.match(firstChapters.html, /data-file-signature="book\/chapters\/001\.md:第 1 章"/);
+    assert.match(firstChapters.html, /data-file-signature="book\/chapters\/002\.md:第 2 章"/);
     assert.match(settingsGroup.html, /第 1 卷规划/);
     assert.match(settingsGroup.html, /xb-file-directory/);
     assert.match(settingsGroup.html, />volumes</);
@@ -2724,6 +2731,94 @@ test('Chapter sort toggle refreshes file surface without rebuilding the shell', 
     assert.equal(state.chapterSortDescending, true);
     assert.equal(fileSurfaces, 1);
     assert.equal(fullRenders, 0);
+});
+
+test('selectFile from studio patches surfaces without rebuilding the shell', async () => {
+    const state = {
+        files: [
+            { path: 'book/chapters/001.md', content: '第一章' },
+            { path: 'book/chapters/002.md', content: '第二章' },
+        ],
+        selectedPath: 'book/chapters/001.md',
+        editorContent: '第一章',
+        savedContent: '第一章',
+        viewMode: 'studio',
+    };
+    let fullRenders = 0;
+    let fileSurfaces = 0;
+    let studioSurfaces = 0;
+    const controller = createBookController({
+        state,
+        render() { fullRenders += 1; },
+        renderFilesSurface() { fileSurfaces += 1; return true; },
+        renderStudioSurface() { studioSurfaces += 1; return true; },
+        requestHost() { return Promise.resolve({}); },
+        showToast() {},
+    });
+
+    await controller.selectFile('book/chapters/002.md');
+
+    assert.equal(state.selectedPath, 'book/chapters/002.md');
+    assert.equal(state.editorContent, '第二章');
+    assert.equal(state.savedContent, '第二章');
+    assert.equal(fileSurfaces, 1, 'files surface patches active state');
+    assert.equal(studioSurfaces, 1, 'studio surface patches the editor');
+    assert.equal(fullRenders, 0, 'no full shell rebuild — sidebar scroll survives');
+});
+
+test('selectFile entering studio from another view does a full render', async () => {
+    const state = {
+        files: [{ path: 'book/chapters/001.md', content: '第一章' }],
+        selectedPath: '',
+        editorContent: '',
+        savedContent: '',
+        viewMode: 'book-entry',
+    };
+    let fullRenders = 0;
+    let fileSurfaces = 0;
+    let studioSurfaces = 0;
+    const controller = createBookController({
+        state,
+        render() { fullRenders += 1; },
+        renderFilesSurface() { fileSurfaces += 1; return true; },
+        renderStudioSurface() { studioSurfaces += 1; return true; },
+        requestHost() { return Promise.resolve({}); },
+        showToast() {},
+    });
+
+    await controller.selectFile('book/chapters/001.md');
+
+    assert.equal(state.viewMode, 'studio');
+    assert.equal(fullRenders, 1, 'entering studio mounts the shell');
+    assert.equal(fileSurfaces, 0);
+    assert.equal(studioSurfaces, 0);
+});
+
+test('selectFile falls back to a full render when a studio surface cannot patch', async () => {
+    const state = {
+        files: [
+            { path: 'book/chapters/001.md', content: '第一章' },
+            { path: 'book/chapters/002.md', content: '第二章' },
+        ],
+        selectedPath: 'book/chapters/001.md',
+        editorContent: '第一章',
+        savedContent: '第一章',
+        viewMode: 'studio',
+    };
+    let fullRenders = 0;
+    const controller = createBookController({
+        state,
+        render() { fullRenders += 1; },
+        renderFilesSurface() { return true; },
+        renderStudioSurface() { return false; }, // e.g. shell node unexpectedly missing
+        requestHost() { return Promise.resolve({}); },
+        showToast() {},
+    });
+
+    await controller.selectFile('book/chapters/002.md');
+
+    assert.equal(state.selectedPath, 'book/chapters/002.md');
+    assert.equal(fullRenders, 1, 'a failed surface patch must not leave the view stale');
 });
 
 test('Chapter sort toggle uses delegated binding after the file group is replaced', () => {

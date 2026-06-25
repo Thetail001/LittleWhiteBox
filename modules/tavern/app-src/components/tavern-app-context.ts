@@ -267,6 +267,22 @@ export interface TavernMessageWindowState {
     visibleCount: number;
 }
 
+export interface TavernDrawQuickOption {
+    value: string;
+    label: string;
+}
+
+export interface TavernDrawQuickSettings {
+    provider: string;
+    providerLabel: string;
+    available: boolean;
+    auto: boolean;
+    presets: TavernDrawQuickOption[];
+    selectedPresetId: string;
+    sizeOptions: TavernDrawQuickOption[];
+    selectedSize: string;
+}
+
 export interface TavernManagerCompactionOverlay {
     active?: boolean;
     resolved?: boolean;
@@ -355,6 +371,7 @@ export interface TavernChatContext {
     messageKey: TavernCommand<[message: TavernMessageRecord], string>;
     normalizeTavernSessionState: TavernCommand<[value?: unknown], { turn?: number }>;
     openTavernDrawSettings: TavernCommand<[], Promise<void>>;
+    refreshTavernDrawQuickSettings: TavernCommand<[], Promise<TavernDrawQuickSettings>>;
     removeSession: TavernCommand<[sessionId: string, event?: Event], Promise<void>>;
     renderChatMarkdown: TavernCommand<[text?: string, options?: { roleplay?: boolean; userName?: string; characterName?: string }], string>;
     rerunFromMessage: TavernCommand<[message: TavernMessageRecord], Promise<void>>;
@@ -383,9 +400,12 @@ export interface TavernChatContext {
     tavernDrawCapsuleStatusText: TavernReadable<string>;
     tavernDrawCapsuleTitle: TavernReadable<string>;
     tavernDrawCapsuleVisible: TavernReadable<boolean>;
+    tavernDrawQuickSettings: Ref<TavernDrawQuickSettings>;
+    tavernDrawQuickSettingsLoading: Ref<boolean>;
     thoughtBlocks: TavernCommand<[messageOrThoughts: unknown], Array<{ label?: string; text?: string }>>;
     thoughtSummaryLabel: TavernCommand<[messageOrThoughts: unknown, streaming?: boolean], string>;
     updateChatScrollButtons: TavernCommand;
+    updateTavernDrawQuickSettings: TavernCommand<[patch?: Record<string, unknown>], Promise<void>>;
     visibleCharacterAvatar: TavernReadable<string>;
     visibleChatMessages: TavernReadable<TavernMessageRecord[]>;
     visibleUserAvatar: TavernReadable<string>;
