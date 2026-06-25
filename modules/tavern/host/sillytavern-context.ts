@@ -129,6 +129,16 @@ function pickUserAvatarFromDom(): string {
     return '';
 }
 
+function normalizePersonaAvatar(personaId = ''): string {
+    const id = normalizeText(personaId);
+    if (!id) {return '';}
+    try {
+        return getThumbnailUrl('persona', id);
+    } catch {
+        return `/thumbnail?type=persona&file=${encodeURIComponent(id)}`;
+    }
+}
+
 function normalizeUserAvatar(): string {
     let avatar = pickUserAvatarFromDom() || readGlobalString('default_user_avatar');
     const personaMatch = String(avatar).match(/\/thumbnail\?type=persona&file=([^&]+)/i);
@@ -404,7 +414,7 @@ function normalizeUser(ctx: Record<string, unknown> = getContext?.() || {}): Rec
     return {
         id: personaId,
         name: readPersonaName(personaId) || normalizeText(ctx.name1) || 'User',
-        avatar: normalizeUserAvatar(),
+        avatar: normalizePersonaAvatar(personaId) || normalizeUserAvatar(),
         persona: readPersonaDescription(personaId) || normalizeText(ctx.userPersona || ctx.persona),
     };
 }
