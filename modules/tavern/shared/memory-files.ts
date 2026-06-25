@@ -491,6 +491,51 @@ export async function trimTavernMemorySnapshotsFromFloor(sessionId = '', fromFlo
     });
 }
 
+export async function describeTavernMemoryRestoreImpact(sessionId = '', targetFloor = -1): Promise<{
+    changed: boolean;
+    currentFileCount: number;
+    targetFileCount: number;
+    changedPaths: string[];
+}> {
+    const id = String(sessionId || '').trim();
+    if (!id) {
+        return { changed: false, currentFileCount: 0, targetFileCount: 0, changedPaths: [] };
+    }
+    const snapshot = await getLatestTavernMemorySnapshot(id, targetFloor);
+    const currentFiles = await listTavernMemoryFiles(id, { includeStale: true });
+    let targetFiles: TavernMemoryFileRecord[];
+    if (snapshot) {
+        targetFiles = snapshot.files.map((entry) => cloneJson(entry.file));
+    } else {
+        const session = await tavernSessionsTable.get(id);
+        targetFiles = [{
+            sessionId: id,
+            path: 'memory/state.md',
+            content: buildDefaultTavernMemoryStateContent(session?.characterName || ''),
+            status: 'active',
+            source: 'default',
+            createdAt: 0,
+            updatedAt: 0,
+        }];
+    }
+    const currentFingerprint = memorySnapshotCollectionFingerprint(currentFiles);
+    const targetFingerprint = memorySnapshotCollectionFingerprint(targetFiles);
+    const currentByPath = new Map(
+        currentFiles.map((file) => [normalizeTavernMemoryPath(file.path), memorySnapshotFileFingerprint(file)] as const),
+    );
+    const targetByPath = new Map(
+        targetFiles.map((file) => [normalizeTavernMemoryPath(file.path), memorySnapshotFileFingerprint(file)] as const),
+    );
+    const changedPaths = [...new Set([...currentByPath.keys(), ...targetByPath.keys()])]
+        .filter((path) => currentByPath.get(path) !== targetByPath.get(path));
+    return {
+        changed: currentFingerprint !== targetFingerprint,
+        currentFileCount: currentFiles.length,
+        targetFileCount: targetFiles.length,
+        changedPaths,
+    };
+}
+
 export async function restoreTavernMemoryToFloor(sessionId = '', targetFloor = -1): Promise<TavernMemoryFileRecord[]> {
     const id = String(sessionId || '').trim();
     if (!id) {throw new Error('memory_session_required');}

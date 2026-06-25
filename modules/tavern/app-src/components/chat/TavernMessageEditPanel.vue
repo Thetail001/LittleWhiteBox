@@ -9,7 +9,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
     (event: 'cancel'): void;
-    (event: 'save', options: { content: string; rerun?: boolean; rollbackState?: boolean }): void;
+    (event: 'save', options: { content: string; rollbackState?: boolean }): void;
 }>();
 
 const draft = ref(String(props.message.content || ''));
@@ -71,7 +71,7 @@ function focusEditor() {
     });
 }
 
-function save(options: { rerun?: boolean; rollbackState?: boolean } = {}) {
+function save(options: { rollbackState?: boolean } = {}) {
     if (!dirty.value) {return;}
     emit('save', { content: draft.value, ...options });
 }
@@ -131,14 +131,6 @@ onBeforeUnmount(() => {
         @click="save({ rollbackState: true })"
       >
         回滚保存
-      </button>
-      <button
-        v-if="message.role === 'user'"
-        type="button"
-        :disabled="!dirty"
-        @click="save({ rerun: true })"
-      >
-        重来
       </button>
       <button
         type="button"

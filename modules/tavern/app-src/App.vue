@@ -20,6 +20,7 @@ import {
 } from '../shared/message-assembler';
 import { buildXbTavernBrain } from '../shared/brain';
 import {
+    describeTavernMemoryRestoreImpact,
     getTavernMemoryIndex,
     getTavernMemoryFile,
     rebuildTavernMemoryDerivedIndex,
@@ -64,7 +65,7 @@ import {
     type TavernTaskRecord,
 } from '../shared/session-db';
 import { getTavernAtlasStateForSession, getTavernMapStateForSession, type TavernMapStateDocumentItem } from '../shared/structured-state';
-import { listTavernTasks, restoreTavernTasksToFloor, trimTavernTaskSnapshotsFromFloor } from '../shared/tasks';
+import { describeTavernTaskRestoreImpact, listTavernTasks, restoreTavernTasksToFloor, trimTavernTaskSnapshotsFromFloor } from '../shared/tasks';
 import { saveAcceptedStateSnapshot } from '../shared/accepted-state';
 import {
     normalizeTavernSessionContract,
@@ -97,6 +98,7 @@ import {
 } from './manager-tool-display';
 import {
     cancelAndRollbackXbTavernManagersForMessageRange,
+    describeXbTavernManagerRollbackImpactForMessageRange,
     ensureTavernManagerChatBudget,
     runXbTavernManagerAfterTurn,
     runXbTavernManagerChat,
@@ -3959,46 +3961,93 @@ async function restoreAcceptedStateBeforeMessage(sessionId = '', changedOrder = 
     await rebuildTavernMemoryDerivedIndex(id);
 }
 
-function acceptedStateRollbackNoticeForFloor(floor: number): string {
-    const previousFloor = Math.max(0, floor - 1);
-    const target = previousFloor > 0 ? `第 ${previousFloor} 楼后的状态` : '开局前状态';
-    return `会话记忆、人物记忆和事件线索会回滚到${target}。`;
+type AcceptedStateRollbackImpact = {
+    targetFloor: number;
+    memory: { changed: boolean; currentFileCount: number; targetFileCount: number; changedPaths: string[] };
+    tasks: { changed: boolean; currentTaskCount: number; targetTaskCount: number };
+    managers: {
+        affectedRuns: number;
+        pendingRuns: number;
+        writtenMemoryFiles: number;
+        writtenTaskRuns: number;
+        hasWrittenState: boolean;
+    };
+    willRollbackState: boolean;
+    willCancelWork: boolean;
+};
+
+async function describeAcceptedStateRollbackImpact(sessionId: string, changedOrder: number): Promise<AcceptedStateRollbackImpact> {
+    const targetFloor = Number(changedOrder) - 1;
+    const [memory, tasks, managers] = await Promise.all([
+        describeTavernMemoryRestoreImpact(sessionId, targetFloor),
+        describeTavernTaskRestoreImpact(sessionId, targetFloor),
+        describeXbTavernManagerRollbackImpactForMessageRange(sessionId, changedOrder),
+    ]);
+    return {
+        targetFloor,
+        memory,
+        tasks,
+        managers,
+        willRollbackState: memory.changed || tasks.changed,
+        willCancelWork: managers.pendingRuns > 0,
+    };
 }
 
-async function saveEditMessage(message: TavernMessageRecord, options: { rerun?: boolean; rollbackState?: boolean; content?: string } = {}) {
+function rollbackImpactTargetLabel(targetFloor: number): string {
+    return targetFloor >= 0 ? `第 ${targetFloor + 1} 楼后的状态` : '开局前状态';
+}
+
+function rollbackImpactLines(impact: AcceptedStateRollbackImpact): string[] {
+    const target = rollbackImpactTargetLabel(impact.targetFloor);
+    const lines: string[] = [];
+    if (impact.memory.changed && impact.tasks.changed) {
+        lines.push(`会话记忆和事件线索会恢复到${target}。`);
+    } else if (impact.memory.changed) {
+        lines.push(`会话记忆会恢复到${target}。`);
+    } else if (impact.tasks.changed) {
+        lines.push(`事件线索会恢复到${target}。`);
+    }
+    if (impact.managers.pendingRuns) {
+        lines.push(`将取消 ${impact.managers.pendingRuns} 个尚未执行的后台维护。`);
+    }
+    return lines;
+}
+
+async function saveEditMessage(message: TavernMessageRecord, options: { rollbackState?: boolean; content?: string } = {}) {
     if (!canEditMessage(message)) {return;}
     const draft = 'content' in options
         ? String(options.content || '')
         : String(message.content || '');
     const content = draft.trim();
-    const shouldRollbackState = options.rerun === true || options.rollbackState === true;
-    const shouldClearRuntimeEvents = options.rerun === true && message.role === 'user';
+    const shouldRollbackState = options.rollbackState === true;
     if (!content) {
         flashMessageAction(message, 'edit', false);
         return;
     }
-    if (!options.rerun && content === String(message.content || '').trim()) {
+    if (content === String(message.content || '').trim()) {
         cancelEditMessage();
         return;
     }
-    if (options.rerun && message.role !== 'user') {
-        cancelEditMessage();
-        await rerunFromMessage(message);
-        return;
+    if (shouldRollbackState) {
+        const impact = await describeAcceptedStateRollbackImpact(message.sessionId, message.order);
+        if (impact.willRollbackState || impact.willCancelWork) {
+            const ok = await confirmTavernDialog({
+                title: '保存楼层编辑',
+                message: [
+                    '保存后将按这楼重新整理后续状态。',
+                    ...rollbackImpactLines(impact),
+                ].join('\n\n'),
+                confirmText: '回滚保存',
+                tone: 'warning',
+            });
+            if (!ok) {return;}
+        }
     }
-    const floor = Math.max(1, Number(message.order) + 1);
-    if (options.rollbackState === true && !options.rerun && !await confirmTavernDialog({
-        title: '保存楼层编辑',
-        message: `回滚这一楼之后的记忆和事件状态？\n\n${acceptedStateRollbackNoticeForFloor(floor)}`,
-        confirmText: '回滚保存',
-        tone: 'warning',
-    })) {return;}
     const substitutedContent = await substituteEditedMessageContent(message, content);
     const regexedContent = await applyEditRegexToMessageContent(message, substitutedContent);
     cancelDrawJob(messageKey(message));
     const updated = await updateTavernMessage(message.sessionId, message.order, {
         content: regexedContent,
-        ...(shouldClearRuntimeEvents ? { runtimeEvents: [] } : {}),
     });
     if (updated && shouldRollbackState) {
         await cancelAndRollbackXbTavernManagersForMessageRange(message.sessionId, message.order);
@@ -4012,17 +4061,7 @@ async function saveEditMessage(message: TavernMessageRecord, options: { rerun?: 
     }
     cancelEditMessage();
     flashMessageAction(updated || message, 'edit', !!updated);
-    if (updated && options.rerun) {
-        if (updated.role === 'user') {
-            await runOnce({
-                messageText: updated.content,
-                reuseUserMessageOrder: updated.order,
-                rerollRuntimeEvents: true,
-            });
-        } else {
-            await rerunFromMessage(updated);
-        }
-    } else if (updated && shouldRollbackState) {
+    if (updated && shouldRollbackState) {
         await rebuildSelectedSessionRuntimeState();
     }
 }
@@ -4066,16 +4105,20 @@ async function deleteMessageTurn(message: TavernMessageRecord) {
     if (isRunning.value) {return;}
     const ordersToDelete = await findDeleteOrders(message);
     const floor = Math.max(1, Number(message.order) + 1);
-    const confirmText = ordersToDelete.length > 1
-        ? `从第 ${floor} 楼开始删除后续剧情？将移除 ${ordersToDelete.length} 楼。\n\n${acceptedStateRollbackNoticeForFloor(floor)}`
-        : `删除第 ${floor} 楼？\n\n${acceptedStateRollbackNoticeForFloor(floor)}`;
+    const fromOrder = Math.min(...ordersToDelete);
+    const impact = await describeAcceptedStateRollbackImpact(message.sessionId, fromOrder);
+    const confirmLines = [
+        ordersToDelete.length > 1
+            ? `从第 ${floor} 楼开始删除后续剧情？将移除 ${ordersToDelete.length} 楼。`
+            : `删除第 ${floor} 楼？`,
+        ...rollbackImpactLines(impact),
+    ];
     if (!await confirmTavernDialog({
         title: '删除剧情楼层',
-        message: confirmText,
+        message: confirmLines.filter(Boolean).join('\n\n'),
         confirmText: '删除',
         tone: 'danger',
     })) {return;}
-    const fromOrder = Math.min(...ordersToDelete);
     cancelDrawJobsForMessageRange(message.sessionId, fromOrder);
     await cancelAndRollbackXbTavernManagersForMessageRange(message.sessionId, fromOrder);
     const deleted = await deleteTavernMessages(message.sessionId, ordersToDelete);

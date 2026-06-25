@@ -779,7 +779,11 @@ test('tavern edit and delete roll back accepted memory and event state together'
     assert.match(appSource, /restoreTavernTasksToFloor\(id, order - 1\)/);
     assert.match(appSource, /trimTavernMemorySnapshotsFromFloor\(id, order\)/);
     assert.match(appSource, /trimTavernTaskSnapshotsFromFloor\(id, order\)/);
-    assert.match(appSource, /会话记忆、人物记忆和事件线索会回滚/);
+    assert.match(appSource, /async function describeAcceptedStateRollbackImpact/);
+    assert.match(appSource, /describeTavernMemoryRestoreImpact\(sessionId, targetFloor\)/);
+    assert.match(appSource, /describeTavernTaskRestoreImpact\(sessionId, targetFloor\)/);
+    assert.match(appSource, /describeXbTavernManagerRollbackImpactForMessageRange\(sessionId, changedOrder\)/);
+    assert.doesNotMatch(appSource, /acceptedStateRollbackNoticeForFloor|会话记忆、人物记忆和事件线索会回滚/);
     assert.doesNotMatch(appSource, /restoreMemoryStateBeforeMessage|memoryRollbackNoticeForFloor/);
 });
 
@@ -2003,22 +2007,28 @@ test('tavern edited RP messages use native macro substitution before saving', ()
 
     assert.match(appSource, /function buildUiSubstituteParamsOptions/);
     assert.match(appSource, /async function substituteEditedMessageContent/);
-    assert.match(contextSource, /saveEditMessage: TavernCommand<\[message: TavernMessageRecord, options\?: \{ rerun\?: boolean; rollbackState\?: boolean; content\?: string \}\], Promise<void>>;/);
-    assert.match(editPanelSource, /event: 'save', options: \{ content: string; rerun\?: boolean; rollbackState\?: boolean \}/);
+    assert.match(contextSource, /saveEditMessage: TavernCommand<\[message: TavernMessageRecord, options\?: \{ rollbackState\?: boolean; content\?: string \}\], Promise<void>>;/);
+    assert.match(editPanelSource, /event: 'save', options: \{ content: string; rollbackState\?: boolean \}/);
     assert.match(editPanelSource, />\s*仅保存\s*<\/button>/);
     assert.match(editPanelSource, /@click="save\(\{ rollbackState: true \}\)"[\s\S]*>\s*回滚保存\s*<\/button>/);
-    assert.match(editPanelSource, /v-if="message\.role === 'user'"[\s\S]*@click="save\(\{ rerun: true \}\)"[\s\S]*>\s*重来\s*<\/button>/);
+    assert.doesNotMatch(editPanelSource, /重来/);
+    assert.doesNotMatch(editPanelSource, /save\(\{ rerun: true \}\)/);
     assert.doesNotMatch(editPanelSource, /保存并从这里重来|保存修改/);
-    assert.match(appSource, /const shouldRollbackState = options\.rerun === true \|\| options\.rollbackState === true;/);
-    assert.match(appSource, /const shouldClearRuntimeEvents = options\.rerun === true && message\.role === 'user';/);
-    assert.match(appSource, /options\.rollbackState === true && !options\.rerun && !await confirmTavernDialog\(\{[\s\S]*message: `回滚这一楼之后的记忆和事件状态/);
+    assert.match(appSource, /const shouldRollbackState = options\.rollbackState === true;/);
+    assert.match(appSource, /async function saveEditMessage\(message: TavernMessageRecord, options: \{ rollbackState\?: boolean; content\?: string \} = \{\}\) \{/);
+    assert.doesNotMatch(appSource, /async function saveEditMessage\(message: TavernMessageRecord, options: \{ rerun\?: boolean/);
+    assert.doesNotMatch(appSource, /shouldClearRuntimeEvents/);
+    assert.match(appSource, /async function describeAcceptedStateRollbackImpact\(sessionId: string, changedOrder: number\): Promise<AcceptedStateRollbackImpact>[\s\S]*willRollbackState: memory\.changed \|\| tasks\.changed,/);
+    assert.match(appSource, /function rollbackImpactLines\(impact: AcceptedStateRollbackImpact\): string\[] \{/);
+    assert.match(appSource, /const impact = await describeAcceptedStateRollbackImpact\(message\.sessionId, message\.order\);[\s\S]*if \(impact\.willRollbackState \|\| impact\.willCancelWork\)/);
+    assert.doesNotMatch(appSource, /回滚这一楼之后的记忆和事件状态/);
     assert.match(appSource, /applyTavernSubstituteParams\(\[\{\s*id: `edit:\$\{message\.sessionId\}:\$\{message\.order\}`,[\s\S]*buildUiSubstituteParamsOptions/);
     assert.match(appSource, /const substitutedContent = await substituteEditedMessageContent\(message, content\);[\s\S]*const regexedContent = await applyEditRegexToMessageContent\(message, substitutedContent\);[\s\S]*updateTavernMessage\(message\.sessionId, message\.order, \{\s*content: regexedContent,/);
-    assert.match(appSource, /\.\.\.\(shouldClearRuntimeEvents \? \{ runtimeEvents: \[\] \} : \{\}\),/);
+    assert.doesNotMatch(appSource, /\.\.\.\(shouldClearRuntimeEvents \? \{ runtimeEvents: \[\] \} : \{\}\),/);
     assert.doesNotMatch(appSource, /\.\.\.\(message\.role === 'user' \? \{ runtimeEvents: \[\] \} : \{\}\)/);
     assert.match(appSource, /if \(updated && shouldRollbackState\) \{[\s\S]*await cancelAndRollbackXbTavernManagersForMessageRange\(message\.sessionId, message\.order\);[\s\S]*await restoreAcceptedStateBeforeMessage\(message\.sessionId, message\.order\);[\s\S]*\}/);
     assert.match(appSource, /if \(shouldRollbackState\) \{[\s\S]*await refreshManagerRecords\(selectedSessionId\.value\);[\s\S]*\}/);
-    assert.match(appSource, /else if \(updated && shouldRollbackState\) \{[\s\S]*await rebuildSelectedSessionRuntimeState\(\);[\s\S]*\}/);
+    assert.match(appSource, /if \(updated && shouldRollbackState\) \{[\s\S]*await rebuildSelectedSessionRuntimeState\(\);[\s\S]*\}/);
 });
 
 test('tavern RP display and edit save use native regex phases without slash command placement', () => {

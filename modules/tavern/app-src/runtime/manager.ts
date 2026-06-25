@@ -27,6 +27,7 @@ import {
     listPendingAcceptedTurnManagerRuns,
     listTavernManagerMemorySnapshots,
     listTavernManagerMessages,
+    listTavernManagerRuns,
     rollbackManagerRunMemoryWrites,
     rollbackManagerRunsForMessageRange,
     touchRunningTavernManagerRun,
@@ -1627,6 +1628,44 @@ export async function runPendingAcceptedTurnManager(input: Omit<XbTavernManagerR
         input.signal?.removeEventListener('abort', abortFromInput);
         activeAutoManagerRuns.delete(selected.run.id);
     }
+}
+
+export async function describeXbTavernManagerRollbackImpactForMessageRange(sessionId = '', fromOrder = 0): Promise<{
+    affectedRuns: number;
+    pendingRuns: number;
+    writtenMemoryFiles: number;
+    writtenTaskRuns: number;
+    hasWrittenState: boolean;
+}> {
+    const id = String(sessionId || '').trim();
+    const order = Number(fromOrder);
+    if (!id || !Number.isFinite(order)) {
+        return { affectedRuns: 0, pendingRuns: 0, writtenMemoryFiles: 0, writtenTaskRuns: 0, hasWrittenState: false };
+    }
+    const runs = (await listTavernManagerRuns(id))
+        .filter((run) => ['accepted_turn', 'after_turn'].includes(run.trigger)
+            && (Number(run.userOrder) >= order || Number(run.assistantOrder) >= order));
+    let pendingRuns = 0;
+    let writtenMemoryFiles = 0;
+    let writtenTaskRuns = 0;
+    for (const run of runs) {
+        if (['pending', 'queued', 'running'].includes(run.status)) {
+            pendingRuns += 1;
+        }
+        const memorySnapshots = await listTavernManagerMemorySnapshots(run.id);
+        const taskSnapshots = await listTavernManagerTaskSnapshots(run.id);
+        writtenMemoryFiles += memorySnapshots.filter((snapshot) => String(snapshot.afterHash || '').trim()).length;
+        if (taskSnapshots.some((snapshot) => String(snapshot.afterHash || '').trim())) {
+            writtenTaskRuns += 1;
+        }
+    }
+    return {
+        affectedRuns: runs.length,
+        pendingRuns,
+        writtenMemoryFiles,
+        writtenTaskRuns,
+        hasWrittenState: writtenMemoryFiles > 0 || writtenTaskRuns > 0,
+    };
 }
 
 export async function cancelAndRollbackXbTavernManagersForMessageRange(sessionId = '', fromOrder = 0): Promise<{

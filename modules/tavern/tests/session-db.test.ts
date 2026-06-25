@@ -59,6 +59,7 @@ import { createSeedMapDocument } from '../shared/map-state-seed';
 import {
     MAX_MANAGER_TOOL_ROUNDS,
     cancelAndRollbackXbTavernManagersForMessageRange,
+    describeXbTavernManagerRollbackImpactForMessageRange,
     runXbTavernManagerChat,
     runXbTavernManagerAfterTurn,
     runPendingAcceptedTurnManager,
@@ -74,6 +75,7 @@ import {
     getTavernMemoryIndex,
     normalizeCharacterMemoryPath,
     normalizeTavernMemoryPath,
+    describeTavernMemoryRestoreImpact,
     listTavernMemorySnapshots,
     listTavernMemoryFiles,
     rebuildTavernMemoryDerivedIndex,
@@ -98,6 +100,7 @@ import {
 } from '../shared/structured-state';
 import {
     abandonStaleTavernTasks,
+    describeTavernTaskRestoreImpact,
     executeTavernTaskTool,
     getLatestQuestHooksForPrompt,
     listTavernTasks,
@@ -4560,6 +4563,114 @@ test('tavern manager rollback cancels pending accepted-turn runs without rollbac
     const updated = (await listTavernManagerRuns(session.id)).find((item) => item.id === run.id);
     assert.equal(updated?.status, 'cancelled');
     assert.equal(updated?.error, 'manager_source_messages_superseded');
+});
+
+test('rollback impact treats pending accepted-turn runs as cancellable work, not state rollback', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Pending rollback impact' });
+    const userMessage = await appendTavernMessage(session.id, { role: 'user', content: '第一轮。' });
+    const assistantMessage = await appendTavernMessage(session.id, { role: 'assistant', content: '第一轮回复。' });
+    await ensureTavernMemoryDefaults(session.id);
+    await createTavernManagerRun({
+        sessionId: session.id,
+        turn: 1,
+        userOrder: userMessage.order,
+        assistantOrder: assistantMessage.order,
+        trigger: 'accepted_turn',
+        status: 'pending',
+    });
+
+    const [memoryImpact, taskImpact, managerImpact] = await Promise.all([
+        describeTavernMemoryRestoreImpact(session.id, assistantMessage.order - 1),
+        describeTavernTaskRestoreImpact(session.id, assistantMessage.order - 1),
+        describeXbTavernManagerRollbackImpactForMessageRange(session.id, assistantMessage.order),
+    ]);
+
+    assert.equal(memoryImpact.changed, false);
+    assert.equal(taskImpact.changed, false);
+    assert.equal(managerImpact.pendingRuns, 1);
+    assert.equal(managerImpact.hasWrittenState, false);
+});
+
+test('memory rollback impact reports same-path content changes in changedPaths', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Memory impact changed paths' });
+    const assistantMessage = await appendTavernMessage(session.id, { role: 'assistant', content: '第一轮回复。' });
+    await ensureTavernMemoryDefaults(session.id);
+    await writeTavernMemoryFile(session.id, 'memory/state.md', '# 会话记忆\n\n基线内容。', { source: 'manager' });
+    await saveAcceptedStateSnapshot(session.id, assistantMessage.order);
+    await writeTavernMemoryFile(session.id, 'memory/state.md', '# 会话记忆\n\n改写后的内容。', { source: 'manager' });
+
+    const impact = await describeTavernMemoryRestoreImpact(session.id, assistantMessage.order);
+
+    assert.equal(impact.changed, true);
+    assert.deepEqual(impact.changedPaths, ['memory/state.md']);
+});
+
+test('rollback impact ignores old manager writes once current memory and tasks already match the target floor', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Rollback impact target match' });
+    const userMessage = await appendTavernMessage(session.id, { role: 'user', content: '第一轮。' });
+    const assistantMessage = await appendTavernMessage(session.id, { role: 'assistant', content: '第一轮回复。' });
+
+    await ensureTavernMemoryDefaults(session.id);
+    await writeTavernMemoryFile(session.id, 'memory/state.md', '# 会话记忆\n\n原始状态。', { source: 'manager' });
+    await saveAcceptedStateSnapshot(session.id, assistantMessage.order);
+
+    const run = await createTavernManagerRun({
+        sessionId: session.id,
+        turn: 1,
+        userOrder: userMessage.order,
+        assistantOrder: assistantMessage.order,
+        trigger: 'after_turn',
+        status: 'completed',
+    });
+
+    const memoryWrite = await executeTavernMemoryTool(session.id, 'MemoryWrite', {
+        filePath: 'memory/state.md',
+        content: '# 会话记忆\n\n稍后会被恢复的临时状态。',
+    }, {
+        managerRunId: run.id,
+        sourceUserOrder: userMessage.order,
+        sourceAssistantOrder: assistantMessage.order,
+    });
+    assert.equal(memoryWrite.ok, true);
+
+    const taskWrite = await executeTavernTaskTool(session.id, 'EventPatch', {
+        op: 'upsert-event',
+        eventId: 'impact-task',
+        title: '临时线',
+        horizon: '临时远景',
+        current: '临时当前',
+        doneWhen: '临时完成条件。',
+        hookForModel: '临时软句。',
+    }, {
+        caller: 'chat',
+        managerRunId: run.id,
+        sourceAssistantOrder: assistantMessage.order,
+    });
+    assert.equal(taskWrite.ok, true);
+
+    await restoreTavernMemoryToFloor(session.id, assistantMessage.order);
+    await restoreTavernTasksToFloor(session.id, assistantMessage.order);
+
+    const [memoryImpact, taskImpact, managerImpact] = await Promise.all([
+        describeTavernMemoryRestoreImpact(session.id, assistantMessage.order),
+        describeTavernTaskRestoreImpact(session.id, assistantMessage.order),
+        describeXbTavernManagerRollbackImpactForMessageRange(session.id, assistantMessage.order),
+    ]);
+
+    assert.equal(memoryImpact.changed, false);
+    assert.equal(taskImpact.changed, false);
+    assert.equal(managerImpact.hasWrittenState, true);
+    assert.equal(managerImpact.writtenMemoryFiles, 1);
+    assert.equal(managerImpact.writtenTaskRuns, 1);
 });
 
 test('tavern manager memory rollback is idempotent', async () => {
