@@ -392,6 +392,9 @@ test('tavern session db deletes sessions with related records', async () => {
     assert.equal((await listTavernManagerRuns(session.id)).length, 0);
     assert.equal(await getTavernStructuredStateDocument(session.id, 'tavern.map', 'main'), null);
     assert.equal((await listTavernStructuredStatePatches({ sessionId: session.id })).length, 0);
+    assert.equal((await listTavernMemoryFiles(session.id, { includeStale: true })).length, 0);
+    await assert.rejects(() => ensureTavernMemoryDefaults(session.id), /memory_session_missing/);
+    assert.equal((await listTavernMemoryFiles(session.id, { includeStale: true })).length, 0);
     assert.equal(await getSelectedTavernSessionId(), other.id);
 });
 

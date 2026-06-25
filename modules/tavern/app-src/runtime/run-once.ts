@@ -2056,6 +2056,60 @@ function resolveRunOnceSessionToolLoopSupport(
     return executeRunOnce?.supportsSessionToolLoop === true;
 }
 
+const pendingAcceptedTurnManagerQueues = new Map<string, Promise<void>>();
+
+function schedulePendingAcceptedTurnManager(input: {
+    sessionId: string;
+    agentConfig: Record<string, unknown>;
+    assistantPreset?: TavernAssistantPreset;
+    sessionContract: TavernSessionContract;
+    contextSnapshot: XbTavernContext;
+    executeManagerOnce?: (options: XbTavernManagerOnceOptions) => Promise<XbTavernManagerOnceResult>;
+    onManagerRunSaved?: (sessionId: string, managerRunId: string) => void | Promise<void>;
+}): void {
+    const sessionId = String(input.sessionId || '').trim();
+    if (!sessionId) {return;}
+    const previous = pendingAcceptedTurnManagerQueues.get(sessionId) || Promise.resolve();
+    const run = previous
+        .catch((): void => undefined)
+        .then(async (): Promise<void> => {
+            const result = await runPendingAcceptedTurnManager({
+                sessionId,
+                agentConfig: input.agentConfig,
+                assistantPreset: input.assistantPreset,
+                sessionContract: input.sessionContract,
+                contextSnapshot: input.contextSnapshot,
+                executeManagerOnce: input.executeManagerOnce,
+                onManagerRunSaved: async (managerRun) => {
+                    await notifyRunCallback(() => input.onManagerRunSaved?.(sessionId, managerRun.id));
+                },
+            });
+            if (result?.ok && result.managerRun?.status === 'completed') {
+                await saveAcceptedStateSnapshot(sessionId, result.managerRun.assistantOrder);
+            }
+        })
+        .catch(async (error): Promise<void> => {
+            console.warn('[小白酒馆] accepted-turn manager background task failed', error);
+        })
+        .finally(() => {
+            if (pendingAcceptedTurnManagerQueues.get(sessionId) === run) {
+                pendingAcceptedTurnManagerQueues.delete(sessionId);
+            }
+        });
+    pendingAcceptedTurnManagerQueues.set(sessionId, run);
+}
+
+export async function waitForPendingAcceptedTurnManagers(sessionId = ''): Promise<void> {
+    const target = String(sessionId || '').trim();
+    for (;;) {
+        const queues = target
+            ? [pendingAcceptedTurnManagerQueues.get(target)].filter(Boolean) as Promise<void>[]
+            : [...pendingAcceptedTurnManagerQueues.values()];
+        if (!queues.length) {return;}
+        await Promise.allSettled(queues);
+    }
+}
+
 export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTavernRunResult> {
     const chatPreset = resolveInputChatPreset(input);
     if (!input.sessionId) {
@@ -2087,22 +2141,15 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
     };
     if (!reusedUserMessage) {
         if (input.runManager === true && persistedSessionContractRuntime.hasAutomaticManagerWork) {
-            try {
-                await runPendingAcceptedTurnManager({
-                    sessionId: baseSession.id,
-                    agentConfig: input.agentConfig,
-                    assistantPreset: input.assistantPreset,
-                    sessionContract: persistedSessionContract,
-                    contextSnapshot: liveContext,
-                    signal: input.signal,
-                    executeManagerOnce: input.executeManagerOnce,
-                    onManagerRunSaved: async (run) => {
-                        await notifyRunCallback(() => input.onManagerRunSaved?.(baseSession.id, run.id));
-                    },
-                });
-            } catch (error) {
-                turnDiagnostics.pendingManagerError = error instanceof Error ? error.message : String(error || 'manager_failed');
-            }
+            schedulePendingAcceptedTurnManager({
+                sessionId: baseSession.id,
+                agentConfig: input.agentConfig,
+                assistantPreset: input.assistantPreset,
+                sessionContract: persistedSessionContract,
+                contextSnapshot: liveContext,
+                executeManagerOnce: input.executeManagerOnce,
+                onManagerRunSaved: input.onManagerRunSaved,
+            });
         }
         await saveAcceptedStateSnapshot(baseSession.id);
     }

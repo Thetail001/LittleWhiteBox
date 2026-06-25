@@ -1086,7 +1086,7 @@ const memoryDirectoryGroups = computed(() => {
     }];
 });
 const memoryEditorDocumentAvailable = computed(() => !!selectedMemoryFileEntry.value || !!memoryEditorLoadedPath.value);
-const memoryEditorReadOnly = computed(() => false);
+const memoryEditorReadOnly = computed(() => isRunning.value || managerBusy.value || isManagerAssistantRunning.value);
 const memoryEditorDirty = computed(() => (
     !!memoryEditorLoadedPath.value
     && memoryEditorDraft.value !== memoryEditorBaseContent.value
@@ -2939,6 +2939,7 @@ async function removeSession(sessionId: string, event?: Event) {
     if (isDeletingSelectedSession && isRunning.value) {
         activeRunController.value?.abort();
     }
+    await cancelAndRollbackXbTavernManagersForMessageRange(id, 0);
     const removed = await deleteTavernSession(id);
     if (!removed) {return;}
     forgetSessionMessageCount(id);
@@ -3070,6 +3071,7 @@ const {
     memoryEditorDirty,
     memoryEditorLoadedPath,
     memoryEditorMode,
+    memoryEditorReadOnly,
     memoryEditorStatus,
     selectedMemoryFileEntry,
     selectedMemoryFilePath,
@@ -3079,6 +3081,18 @@ const {
     confirmDialog: confirmTavernDialog,
     refreshRecords: refreshManagerRecords,
 });
+
+watch(memoryEditorReadOnly, (readOnly) => {
+    if (!readOnly || memoryEditorMode.value !== 'edit') {return;}
+    const wasDirty = memoryEditorDirty.value;
+    discardMemoryDraft();
+    if (wasDirty) {
+        showTavernToast('记忆正在维护，未保存修改已放弃', {
+            tone: 'warning',
+            durationMs: 4000,
+        });
+    }
+}, { immediate: true });
 
 async function retryManagerRun(run: TavernManagerRunRecord) {
     const runId = String(run.id || '');
@@ -4581,8 +4595,12 @@ watch(() => selectedSessionId.value, () => {
     });
 });
 
-watch(selectedMemoryFileEntry, async (file) => {
-    const nextPath = String(file?.path || '');
+watch([
+    () => String(selectedSessionId.value || '').trim(),
+    () => String(selectedMemoryFileEntry.value?.path || '').trim(),
+    () => Number(selectedMemoryFileEntry.value?.updatedAt) || 0,
+    () => Number(selectedMemoryFileEntry.value?.contentLength) || 0,
+], async ([sessionId, nextPath]) => {
     if (!nextPath) {
         if (memoryEditorDirty.value) {
             memoryEditorStatus.value = '当前档案已变化，草稿仍保留';
@@ -4592,14 +4610,17 @@ watch(selectedMemoryFileEntry, async (file) => {
         loadMemoryFileIntoEditor(null);
         return;
     }
-    if (memoryEditorLoadedPath.value === nextPath && memoryEditorDirty.value) {
+    if (memoryEditorLoadedPath.value === nextPath && (memoryEditorMode.value === 'edit' || memoryEditorDirty.value)) {
         if (selectedMemoryFileRecord.value?.sessionId !== selectedSessionId.value) {
             selectedMemoryFileRecord.value = null;
         }
-        memoryEditorStatus.value = '档案已刷新，当前草稿仍保留';
+        if (memoryEditorDirty.value) {
+            memoryEditorStatus.value = '档案已刷新，当前草稿仍保留';
+        }
         return;
     }
     const loaded = await loadSelectedMemoryFileRecord(nextPath);
+    if (String(selectedSessionId.value || '').trim() !== sessionId) {return;}
     if (String(selectedMemoryFilePath.value || '') !== nextPath) {return;}
     loadMemoryFileIntoEditor(loaded);
 }, { immediate: true });

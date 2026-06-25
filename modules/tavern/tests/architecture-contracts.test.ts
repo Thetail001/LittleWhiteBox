@@ -690,6 +690,12 @@ test('tavern map update badge stays collapsed until requested', () => {
     assert.match(mapPanelSource, /const mapZoom = ref\(1\)/);
     assert.match(mapPanelSource, /const zoomedWidth = width \/ zoom/);
     assert.match(mapPanelSource, /function setMapZoom\(nextZoom: number, anchor\?: \{ clientX: number; clientY: number \}\)/);
+    const documentRevisionWatch = mapPanelSource.match(/watch\(\(\) => props\.document\?\.revision,[\s\S]*?\n\}\);/);
+    assert.ok(documentRevisionWatch);
+    assert.doesNotMatch(documentRevisionWatch[0], /resetMapPan/);
+    const patchLengthWatch = mapPanelSource.match(/watch\(\(\) => selectedDocPatches\.value\.length,[\s\S]*?\n\}\);/);
+    assert.ok(patchLengthWatch);
+    assert.doesNotMatch(patchLengthWatch[0], /resetMapPan/);
     assert.match(mapPanelSource, /function handleMapWheel\(event: WheelEvent\)[\s\S]*event\.preventDefault\(\)[\s\S]*setMapZoom/);
     assert.match(mapPanelSource, /function handleMapPointerDown\(event: PointerEvent\)/);
     assert.match(mapPanelSource, /class="tavern-map-zoom-controls"[\s\S]*@click="zoomMapBy\(-0\.25\)"[\s\S]*{{ mapZoomLabel }}[\s\S]*@click="zoomMapBy\(0\.25\)"/);
@@ -732,6 +738,8 @@ test('tavern atlas only opens scene maps that actually exist', () => {
     assert.match(atlasPanelSource, /const atlasZoom = ref\(1\)/);
     assert.match(atlasPanelSource, /const atlasViewBoxArray = computed<\[number, number, number, number\]>/);
     assert.match(atlasPanelSource, /function setAtlasZoom\(nextZoom: number, anchor\?: \{ clientX: number; clientY: number \}\)/);
+    assert.match(atlasPanelSource, /watch\(\(\) => \[props\.document\?\.docId, props\.displayMode\] as const, \(\) => \{[\s\S]*resetAtlasPan\(\);[\s\S]*\}\);/);
+    assert.doesNotMatch(atlasPanelSource, /watch\(\(\) => \[props\.document\?\.docId, props\.document\?\.revision, props\.displayMode, atlas\.value\.locations\.length\]/);
     assert.match(atlasPanelSource, /function handleAtlasWheel\(event: WheelEvent\)[\s\S]*event\.preventDefault\(\)[\s\S]*setAtlasZoom/);
     assert.match(atlasPanelSource, /class="tavern-map-zoom-controls tavern-atlas-zoom-controls"[\s\S]*@click="zoomAtlasBy\(-0\.25\)"[\s\S]*{{ atlasZoomLabel }}[\s\S]*@click="zoomAtlasBy\(0\.25\)"/);
     assert.match(atlasPanelSource, /ref="atlasSvgRef"[\s\S]*:viewBox="atlasViewBox"[\s\S]*@pointerdown="handleAtlasPointerDown"[\s\S]*@wheel="handleAtlasWheel"/);
@@ -942,19 +950,46 @@ test('tavern manager display projection stays out of the app controller', () => 
     assert.doesNotMatch(managerDisplaySource, /managerStatusLine/);
 });
 
-test('tavern accepted-turn manager maintenance is deferred until the next user send', () => {
+test('tavern accepted-turn manager maintenance runs in background after the next user send starts', () => {
+    const appSource = readRepoFile('modules/tavern/app-src/App.vue');
     const runOnceSource = readRepoFile('modules/tavern/app-src/runtime/run-once.ts');
     const managerSource = readRepoFile('modules/tavern/app-src/runtime/manager.ts');
+    const memoryFilesSource = readRepoFile('modules/tavern/shared/memory-files.ts');
     const sessionDbSource = readRepoFile('modules/tavern/shared/session-db.ts');
     const displaySource = readRepoFile('modules/tavern/app-src/components/chat/useTavernManagerDisplay.ts');
     const panelSource = readRepoFile('modules/tavern/app-src/components/chat/TavernManagerPanel.vue');
+    const schedulerStart = runOnceSource.indexOf('function schedulePendingAcceptedTurnManager');
+    const runTurnStart = runOnceSource.indexOf('export async function runXbTavernTurn');
+    const schedulerSource = runOnceSource.slice(schedulerStart, runTurnStart);
+    const runTurnSource = runOnceSource.slice(runTurnStart);
+    const productionRunTurnCall = appSource.match(/const result = await runXbTavernTurn\(\{[\s\S]*?runManager: true,[\s\S]*?onManagerRunSaved:[\s\S]*?\n[ ]{8}\}\);/);
+    const removeSessionBody = appSource.match(/async function removeSession\(sessionId: string, event\?: Event\) \{[\s\S]*?const removed = await deleteTavernSession\(id\);/);
 
     assert.match(runOnceSource, /markXbTavernManagerTurnPending/);
     assert.match(runOnceSource, /runPendingAcceptedTurnManager/);
+    assert.match(runOnceSource, /const pendingAcceptedTurnManagerQueues = new Map<string, Promise<void>>\(\);/);
+    assert.match(runOnceSource, /function schedulePendingAcceptedTurnManager/);
+    assert.doesNotMatch(runOnceSource, /markPendingAcceptedTurnManagersFailed/);
+    assert.doesNotMatch(runOnceSource, /listPendingAcceptedTurnManagerRuns/);
+    assert.doesNotMatch(schedulerSource, /status: 'failed'/);
+    assert.match(schedulerSource, /runPendingAcceptedTurnManager\(\{/);
+    assert.doesNotMatch(schedulerSource, /signal: input\.signal/);
     assert.doesNotMatch(runOnceSource, /scheduleXbTavernManagerAfterTurn/);
-    assert.match(runOnceSource, /if \(input\.runManager === true && persistedSessionContractRuntime\.hasAutomaticManagerWork\)[\s\S]*runPendingAcceptedTurnManager\(\{[\s\S]*signal: input\.signal/);
+    assert.doesNotMatch(runTurnSource, /await runPendingAcceptedTurnManager/);
+    assert.match(runTurnSource, /if \(input\.runManager === true && persistedSessionContractRuntime\.hasAutomaticManagerWork\)[\s\S]*schedulePendingAcceptedTurnManager\(\{[\s\S]*\}\);\s*\}\s*await saveAcceptedStateSnapshot\(baseSession\.id\);/);
+    assert.ok(productionRunTurnCall);
+    assert.doesNotMatch(productionRunTurnCall[0], /executeManagerOnce/);
+    assert.ok(removeSessionBody);
+    assert.match(removeSessionBody[0], /await cancelAndRollbackXbTavernManagersForMessageRange\(id, 0\);[\s\S]*const removed = await deleteTavernSession\(id\);/);
+    assert.doesNotMatch(removeSessionBody[0], /waitForPendingAcceptedTurnManagers/);
     assert.match(runOnceSource, /await saveAcceptedStateSnapshot\(baseSession\.id\);/);
     assert.match(runOnceSource, /markXbTavernManagerTurnPending\(\{[\s\S]*assistantMessage[\s\S]*turn: nextTurn/);
+    assert.match(managerSource, /const TAVERN_MANAGER_TIMEOUT_MS = 5 \* 60 \* 1000;/);
+    assert.doesNotMatch(managerSource, /15 \* 60 \* 1000/);
+    assert.match(managerSource, /await input\.onManagerRunSaved\?\.\(managerRun\);\s*try \{/);
+    assert.match(managerSource, /async function rebuildTavernMemoryDerivedIndexForLiveSession\(sessionId = ''\): Promise<void> \{[\s\S]*getTavernSession\(id\)[\s\S]*rebuildTavernMemoryDerivedIndex\(id\);[\s\S]*\}/);
+    assert.doesNotMatch(managerSource, /await rebuildTavernMemoryDerivedIndex\((?!id\))/);
+    assert.match(memoryFilesSource, /export async function ensureTavernMemoryDefaults[\s\S]*if \(!await tavernSessionsTable\.get\(id\)\) \{throw new Error\('memory_session_missing'\);\}[\s\S]*tavernMemoryFilesTable\.bulkPut\(files\)/);
     assert.match(managerSource, /const ACCEPTED_TURN_MANAGER_TRIGGER = 'accepted_turn';/);
     assert.doesNotMatch(managerSource, /scheduleXbTavernManagerAfterTurn|managerQueues|settleTavernManagersForSession/);
     assert.match(managerSource, /status: 'pending'[\s\S]*等待用户继续后维护上一条已接受回复/);
@@ -1445,8 +1480,21 @@ test('tavern keeps the app exit button on home only', () => {
 
 test('tavern memory workspace keeps session-scoped lazy file loading and index-backed search text', () => {
     const appSource = readRepoFile('modules/tavern/app-src/App.vue');
+    const editorSource = readRepoFile('modules/tavern/app-src/components/TavernMemoryEditor.vue');
     const memoryWorkspaceSource = readRepoFile('modules/tavern/app-src/components/chat/useTavernMemoryWorkspace.ts');
     assert.match(appSource, /selectedMemoryFileRecord\.value\?\.sessionId === selectedSessionId\.value/);
+    assert.match(appSource, /watch\(\[[\s\S]*\(\) => String\(selectedSessionId\.value \|\| ''\)\.trim\(\),[\s\S]*\(\) => String\(selectedMemoryFileEntry\.value\?\.path \|\| ''\)\.trim\(\),[\s\S]*\(\) => Number\(selectedMemoryFileEntry\.value\?\.updatedAt\) \|\| 0,[\s\S]*\(\) => Number\(selectedMemoryFileEntry\.value\?\.contentLength\) \|\| 0,[\s\S]*\], async \(\[sessionId, nextPath\]\) => \{/);
+    assert.match(appSource, /memoryEditorLoadedPath\.value === nextPath && \(memoryEditorMode\.value === 'edit' \|\| memoryEditorDirty\.value\)/);
+    assert.doesNotMatch(appSource, /watch\(selectedMemoryFileEntry,/);
+    assert.match(appSource, /const memoryEditorReadOnly = computed\(\(\) => isRunning\.value \|\| managerBusy\.value \|\| isManagerAssistantRunning\.value\);/);
+    assert.match(appSource, /watch\(memoryEditorReadOnly, \(readOnly\) => \{[\s\S]*memoryEditorMode\.value !== 'edit'[\s\S]*const wasDirty = memoryEditorDirty\.value;[\s\S]*discardMemoryDraft\(\);[\s\S]*if \(wasDirty\) \{[\s\S]*showTavernToast\('记忆正在维护，未保存修改已放弃', \{[\s\S]*tone: 'warning',[\s\S]*durationMs: 4000,[\s\S]*\}\);[\s\S]*\}[\s\S]*\}, \{ immediate: true \}\);/);
+    assert.match(memoryWorkspaceSource, /memoryEditorReadOnly: ComputedRef<boolean>;/);
+    assert.match(memoryWorkspaceSource, /if \(!options\.selectedSessionId\.value \|\| !file \|\| options\.memoryEditorReadOnly\.value\) \{return;\}/);
+    assert.match(memoryWorkspaceSource, /if \(!options\.memoryEditorDocumentAvailable\.value \|\| options\.memoryEditorReadOnly\.value\) \{return;\}/);
+    assert.doesNotMatch(memoryWorkspaceSource, /记忆已更新|覆盖保存|保留草稿|memory_write_conflict|expected:/);
+    assert.match(editorSource, /:disabled="!documentAvailable \|\| readOnly"/);
+    assert.match(editorSource, /:disabled="!hasSelectedFile \|\| !dirty \|\| readOnly"/);
+    assert.match(editorSource, /:readonly="readOnly"/);
     assert.match(memoryWorkspaceSource, /function invalidateMemoryFileRecordLoad/);
     assert.match(appSource, /file\.searchText \|\| file\.preview \|\| ''/);
 });

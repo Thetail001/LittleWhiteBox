@@ -46,6 +46,7 @@ import {
     runXbTavernTurn,
     simulateXbTavernRequest,
     trimFinalAssistantMessageEnd,
+    waitForPendingAcceptedTurnManagers,
     type XbTavernRunResult,
     type TavernRunOnceOptions,
 } from '../app-src/runtime/run-once';
@@ -56,6 +57,7 @@ import type { TavernApplyRegexItem } from '../shared/regex';
 import type { TavernSubstituteParamsItem } from '../shared/substitute-params';
 
 async function resetDb() {
+    await waitForPendingAcceptedTurnManagers();
     await db.delete();
     await db.open();
 }
@@ -419,7 +421,7 @@ test('xb tavern run turn sends only the latest quest hook first to ST-native mem
     assert.doesNotMatch(memoryPrompt, /旧码头的名字还挂在雨里/);
 });
 
-test('xb tavern pending accepted-turn manager receives the current send signal', async () => {
+test('xb tavern pending accepted-turn manager runs independently from the current send signal', async () => {
     await resetDb();
     const preset = createDefaultXbTavernPreset();
     const managerContract = mergeTavernSessionContract(undefined, {
@@ -451,11 +453,15 @@ test('xb tavern pending accepted-turn manager receives the current send signal',
     assert.equal(first.managerStatus, 'pending');
     assert.ok(first.managerRunId);
     const controller = new AbortController();
-    let managerSawAbort = false;
     let managerCalls = 0;
+    let managerSignalAbortedAfterCurrentAbort = false;
     let markManagerStarted!: () => void;
     const managerStarted = new Promise<void>((resolve) => {
         markManagerStarted = resolve;
+    });
+    let releaseManager!: () => void;
+    const managerRelease = new Promise<void>((resolve) => {
+        releaseManager = resolve;
     });
     const turnPromise = runXbTavernTurn({
         sessionId: first.sessionId,
@@ -468,47 +474,34 @@ test('xb tavern pending accepted-turn manager receives the current send signal',
         currentUserMessage: '下一轮继续。',
         runManager: true,
         executeRunOnce: async (options: TavernRunOnceOptions) => {
-            if (options.signal?.aborted) {
-                const error = new Error('current turn aborted');
-                error.name = 'AbortError';
-                throw error;
-            }
-            return {
-                text: 'RP turn continued.',
-                provider: 'fake-provider',
-                model: 'fake-model',
-                requestSnapshot: buildTavernRequestSnapshot(options.agentConfig, options.messages),
-            };
-        },
-        executeManagerOnce: async (options) => {
-            managerCalls += 1;
-            if (managerCalls === 1) {
-                return {
-                    text: '',
-                    provider: 'fake-provider',
-                    model: 'fake-model',
-                    toolCalls: [{
-                        id: 'partial-memory',
-                        name: 'Write',
-                        arguments: {
-                            filePath: 'memory/state.md',
-                            content: '# 会话记忆\n\n这段 pending 维护被当前停止打断，必须回滚。',
-                        },
-                    }],
-                };
-            }
             await new Promise<void>((resolve) => {
                 if (options.signal?.aborted) {
                     resolve();
                     return;
                 }
-                markManagerStarted();
                 options.signal?.addEventListener('abort', () => resolve(), { once: true });
             });
-            managerSawAbort = options.signal?.aborted === true;
-            const error = new Error('pending_manager_saw_abort');
+            const error = new Error('current turn aborted');
             error.name = 'AbortError';
             throw error;
+        },
+        executeManagerOnce: async (options) => {
+            managerCalls += 1;
+            markManagerStarted();
+            await managerRelease;
+            managerSignalAbortedAfterCurrentAbort = options.signal?.aborted === true;
+            if (managerCalls === 1) {
+                return {
+                    text: 'pending manager completed after current turn abort.',
+                    provider: 'fake-provider',
+                    model: 'fake-model',
+                };
+            }
+            return {
+                text: 'extra pending manager completed.',
+                provider: 'fake-provider',
+                model: 'fake-model',
+            };
         },
     });
     await managerStarted;
@@ -516,12 +509,15 @@ test('xb tavern pending accepted-turn manager receives the current send signal',
     const result = await turnPromise;
 
     assert.equal(result.error, '已停止生成。');
-    assert.equal(managerSawAbort, true);
+    let runs = await listTavernManagerRuns(first.sessionId);
+    assert.equal(runs.find((run) => run.id === first.managerRunId)?.status, 'running');
+    releaseManager();
+    await waitForPendingAcceptedTurnManagers(first.sessionId);
+    assert.equal(managerSignalAbortedAfterCurrentAbort, false);
+    assert.equal(managerCalls, 1);
     assert.doesNotMatch((await getTavernMemoryFile(first.sessionId, 'memory/state.md'))?.content || '', /pending 维护被当前停止打断/);
-    const runs = await listTavernManagerRuns(first.sessionId);
-    const interrupted = runs.find((run) => run.id === first.managerRunId);
-    assert.equal(interrupted?.status, 'pending');
-    assert.equal(interrupted?.error, 'manager_pending_interrupted_by_current_turn_abort');
+    runs = await listTavernManagerRuns(first.sessionId);
+    assert.equal(runs.find((run) => run.id === first.managerRunId)?.status, 'completed');
     assert.deepEqual(await listTavernManagerMemorySnapshots(first.managerRunId), []);
 
     const next = await runXbTavernTurn({
@@ -542,16 +538,17 @@ test('xb tavern pending accepted-turn manager receives the current send signal',
         executeManagerOnce: async () => {
             managerCalls += 1;
             return {
-                text: 'pending manager consumed after interruption.',
+                text: 'new pending manager completed.',
                 provider: 'fake-provider',
                 model: 'fake-model',
             };
         },
     });
     assert.equal(next.error, undefined);
-    const finalRuns = await listTavernManagerRuns(first.sessionId);
-    assert.equal(finalRuns.find((run) => run.id === first.managerRunId)?.status, 'completed');
-    assert.equal(finalRuns[0]?.status, 'pending');
+    assert.equal(next.managerStatus, 'pending');
+    runs = await listTavernManagerRuns(first.sessionId);
+    assert.equal(runs.find((run) => run.id === first.managerRunId)?.status, 'completed');
+    assert.equal(runs.find((run) => run.id === next.managerRunId)?.status, 'pending');
 });
 
 test('xb tavern session author note reaches native prompt for real and simulated requests', async () => {
@@ -1762,7 +1759,7 @@ test('xb tavern rerun regenerates assistant action checks cleanly instead of reu
     assert.equal(getActionCheckEvents(messages[1]?.runtimeEvents).length, 0);
 });
 
-test('xb tavern run turn defers accepted-turn manager work until the next user send', async () => {
+test('xb tavern run turn starts accepted-turn manager work on the next user send without blocking RP', async () => {
     await resetDb();
     const preset = createDefaultXbTavernPreset();
     let managerProvider = '';
@@ -1850,7 +1847,16 @@ test('xb tavern run turn defers accepted-turn manager work until the next user s
     assert.equal(pendingRuns[0]?.status, 'pending');
     assert.equal(pendingRuns[0]?.trigger, 'accepted_turn');
 
-    const result = await runXbTavernTurn({
+    let markManagerStarted!: () => void;
+    const managerStarted = new Promise<void>((resolve) => {
+        markManagerStarted = resolve;
+    });
+    let releaseManager!: () => void;
+    const managerRelease = new Promise<void>((resolve) => {
+        releaseManager = resolve;
+    });
+    const managerRunStatuses: string[] = [];
+    const turnPromise = runXbTavernTurn({
         sessionId: first.sessionId,
         agentConfig: {
             currentPresetName: '主聊天',
@@ -1891,6 +1897,8 @@ test('xb tavern run turn defers accepted-turn manager work until the next user s
             const delegateConfig = options.agentConfig.delegateConfig as { provider?: string } | undefined;
             managerProvider = String(delegateConfig?.provider || '');
             if (managerCalls === 1) {
+                markManagerStarted();
+                await managerRelease;
                 return {
                     provider: 'sillytavern-openai-compatible',
                     model: 'manager-model',
@@ -1924,10 +1932,23 @@ test('xb tavern run turn defers accepted-turn manager work until the next user s
                 text: '已更新本轮记忆档案。',
             };
         },
+        onManagerRunSaved: async (sessionId, managerRunId) => {
+            const run = (await listTavernManagerRuns(sessionId)).find((item) => item.id === managerRunId);
+            if (run) {
+                managerRunStatuses.push(`${run.id}:${run.status}`);
+            }
+        },
     });
 
+    await managerStarted;
+    const sawRunningStatusBeforeRpCompleted = managerRunStatuses.includes(`${first.managerRunId}:running`);
+    const result = await turnPromise;
     assert.equal(result.managerStatus, 'pending');
     assert.ok(result.managerRunId);
+    assert.equal(managerCalls, 1);
+    releaseManager();
+    await waitForPendingAcceptedTurnManagers(result.sessionId);
+    assert.equal(sawRunningStatusBeforeRpCompleted, true);
     assert.equal(managerCalls, 2);
     assert.equal(managerProvider, 'sillytavern-openai-compatible');
     assert.match(managerPrompt, /小白酒馆后台管理员/);
@@ -1979,8 +2000,9 @@ test('xb tavern run turn defers accepted-turn manager work until the next user s
     const completed = runs.find((run) => run.id === first.managerRunId);
     assert.equal(completed?.status, 'completed');
     assert.equal(completed?.model, 'manager-model');
-    assert.equal(runs[0]?.status, 'pending');
-    assert.equal(runs[0]?.trigger, 'accepted_turn');
+    const nextPending = runs.find((run) => run.id === result.managerRunId);
+    assert.equal(nextPending?.status, 'pending');
+    assert.equal(nextPending?.trigger, 'accepted_turn');
 });
 
 test('tavern manager prompt strips unauthorized module rules cleanly', () => {
@@ -2049,7 +2071,15 @@ test('xb tavern pending accepted-turn manager failure does not block the next RP
     assert.equal(first.managerStatus, 'pending');
     assert.equal(managerCalls, 0);
 
-    const second = await runXbTavernTurn({
+    let markManagerStarted!: () => void;
+    const managerStarted = new Promise<void>((resolve) => {
+        markManagerStarted = resolve;
+    });
+    let releaseManager!: () => void;
+    const managerRelease = new Promise<void>((resolve) => {
+        releaseManager = resolve;
+    });
+    const turnPromise = runXbTavernTurn({
         sessionId: first.sessionId,
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
@@ -2064,19 +2094,26 @@ test('xb tavern pending accepted-turn manager failure does not block the next RP
         }),
         executeManagerOnce: async () => {
             managerCalls += 1;
+            markManagerStarted();
+            await managerRelease;
             throw new Error('manager_pre_send_failed');
         },
     });
 
+    await managerStarted;
+    const second = await turnPromise;
     assert.equal(second.error, undefined);
     assert.equal(second.assistantMessage?.content, '她低声说，别让第三个人知道。');
     assert.equal(second.managerStatus, 'pending');
     assert.equal(managerCalls, 1);
+    releaseManager();
+    await waitForPendingAcceptedTurnManagers(first.sessionId);
     const runs = await listTavernManagerRuns(first.sessionId);
     const failed = runs.find((run) => run.id === first.managerRunId);
     assert.equal(failed?.status, 'failed');
     assert.equal(failed?.error, 'manager_pre_send_failed');
-    assert.equal(runs[0]?.status, 'pending');
+    const nextPending = runs.find((run) => run.id === second.managerRunId);
+    assert.equal(nextPending?.status, 'pending');
 });
 
 test('xb tavern reroll cancels pending accepted-turn manager work without calling the manager API', async () => {

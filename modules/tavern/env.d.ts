@@ -55,6 +55,11 @@ declare module '*.js' {
     export const extension_prompts: Record<string, Record<string, unknown>>;
     export const extension_prompt_types: Record<string, number>;
     export const extension_prompt_roles: Record<string, number>;
+    export const inject_ids: {
+        CUSTOM_WI_DEPTH: string;
+        CUSTOM_WI_OUTLET: (key: string) => string;
+        [key: string]: unknown;
+    };
     export function setExtensionPrompt(
         key: string,
         value: string,

@@ -234,14 +234,17 @@ watch(() => props.document?.revision, () => {
     timelineIndex.value = Math.max(0, timelineFrames.value.length - 1);
     replayKey.value += 1;
     mapBadgeExpanded.value = false;
-    resetMapPan();
 });
 
 watch(() => [props.selectedDocId, props.activeDocId, props.document?.docId, props.documents.length] as const, () => {
     const next = String(props.selectedDocId || localSelectedDocId.value || props.activeDocId || props.document?.docId || '').trim();
     const exists = mapDocuments.value.some((document) => document.docId === next);
     const resolved = exists ? next : String(props.activeDocId || props.document?.docId || mapDocuments.value[0]?.docId || '').trim();
+    const previous = localSelectedDocId.value;
     localSelectedDocId.value = resolved;
+    if (previous && resolved && previous !== resolved) {
+        resetMapPan();
+    }
     if (resolved && resolved !== props.selectedDocId) {
         emit('update:selectedDocId', resolved);
     }
@@ -256,7 +259,6 @@ watch(() => selectedDocPatches.value.length, () => {
         clearTimelineTimer();
     }
     mapBadgeExpanded.value = false;
-    resetMapPan();
 });
 
 onBeforeUnmount(() => {

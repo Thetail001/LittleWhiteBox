@@ -10,6 +10,7 @@ import {
     setExtensionPrompt,
 } from '../../../../../../../script.js';
 import { NOTE_MODULE_NAME } from '../../../../../../authors-note.js';
+import { inject_ids } from '../../../../../../constants.js';
 import { parseExampleIntoIndividual, prepareOpenAIMessages, promptManager } from '../../../../../../openai.js';
 import { persona_description_positions, power_user } from '../../../../../../power-user.js';
 import {
@@ -190,6 +191,16 @@ function restoreExtensionPrompts(snapshot: ExtensionPromptSnapshot): void {
     });
 }
 
+function flushNativeWorldInfoInjections(): void {
+    const depthPrefix = inject_ids.CUSTOM_WI_DEPTH;
+    const outletPrefix = inject_ids.CUSTOM_WI_OUTLET('');
+    Object.keys(extension_prompts || {}).forEach((key) => {
+        if (key.startsWith(depthPrefix) || key.startsWith(outletPrefix)) {
+            delete extension_prompts[key];
+        }
+    });
+}
+
 function capturePersonaPrompt(): PersonaPromptSnapshot {
     return {
         description: power_user?.persona_description,
@@ -367,6 +378,22 @@ function addNativeWorldInfoDepth(runtime: XbTavernNativeWorldInfoRuntime = {}): 
     });
 }
 
+function addNativeWorldInfoOutlets(runtime: XbTavernNativeWorldInfoRuntime = {}): void {
+    const outlets = asRecord(runtime.outlets);
+    Object.entries(outlets).forEach(([rawName, rawEntries]) => {
+        const outletName = normalizeText(rawName);
+        const entries = Array.isArray(rawEntries) ? rawEntries.map(normalizeText).filter(Boolean) : [];
+        const value = entries.join('\n');
+        if (!outletName || !value) {return;}
+        setExtensionPrompt(
+            inject_ids.CUSTOM_WI_OUTLET(outletName),
+            value,
+            Number(extension_prompt_types.NONE ?? 0),
+            0,
+        );
+    });
+}
+
 function characterPromptManagerIdentity(context: XbTavernContext = {}): Record<string, unknown> | null {
     const character = context.character || {};
     const nativeCharacterId = normalizeText(character.nativeCharacterId);
@@ -498,11 +525,13 @@ async function buildNativePromptNow(input: TavernNativePromptInput = {}, queuedA
         });
         await traceNativePromptStep(trace, 'apply_persona', () => applyUserPersonaPrompt(context));
         await traceNativePromptStep(trace, 'inject_runtime_prompts', () => {
+            flushNativeWorldInfoInjections();
             addInChatPrompt('xb_tavern_memory_d1', input.memoryPrompt, 1, 'system');
             addInChatPrompt('xb_tavern_chance_d1', input.chancePrompt, 1, 'system');
             addInChatPrompt('xb_tavern_action_check_d0', input.actionCheckPrompt, 0, 'system');
             addCharacterDepthPrompt(context);
             addNativeWorldInfoDepth(runtime);
+            addNativeWorldInfoOutlets(runtime);
             applyAuthorNotePrompt(context, input.currentUserMessage || '', runtime);
         });
         const messages = await traceNativePromptStep(trace, 'build_chat_messages', () => buildOpenAiMessages(context, input.currentUserMessage || ''));

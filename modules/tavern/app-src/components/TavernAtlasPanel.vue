@@ -96,7 +96,7 @@ watch([() => atlas.value.activeLocationKey, () => atlas.value.locations.length],
     selectedLocationKey.value = String(key || atlas.value.locations[0]?.key || '');
 }, { immediate: true });
 
-watch(() => [props.document?.docId, props.document?.revision, props.displayMode, atlas.value.locations.length] as const, () => {
+watch(() => [props.document?.docId, props.displayMode] as const, () => {
     resetAtlasPan();
 });
 

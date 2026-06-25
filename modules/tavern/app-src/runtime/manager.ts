@@ -23,6 +23,7 @@ import {
     createTavernManagerRun,
     deleteTavernManagerMessages,
     getTavernMessage,
+    getTavernSession,
     listPendingAcceptedTurnManagerRuns,
     listTavernManagerMemorySnapshots,
     listTavernManagerMessages,
@@ -59,6 +60,7 @@ import {
 } from './tool-loop-request';
 
 const ACCEPTED_TURN_MANAGER_TRIGGER = 'accepted_turn';
+const TAVERN_MANAGER_TIMEOUT_MS = 5 * 60 * 1000;
 const resolveConversationTokens = (contextTokens as unknown as {
     resolveConversationTokens: (input: {
         messages?: XbTavernMessage[];
@@ -112,6 +114,7 @@ export interface XbTavernManagerRunInput {
     assistantPreset?: TavernAssistantPreset;
     signal?: AbortSignal;
     executeManagerOnce?: (options: XbTavernManagerOnceOptions) => Promise<XbTavernManagerOnceResult>;
+    onManagerRunSaved?: (run: TavernManagerRunRecord) => void | Promise<void>;
     onProtocolEvent?: (event: TavernManagerProtocolEvent) => void;
 }
 
@@ -486,7 +489,7 @@ async function restorePendingAcceptedTurnAfterCurrentAbort(input: {
     const runId = input.selected.run.id;
     const rollback = await rollbackManagerRunIfWroteMemory(runId);
     if (!rollback?.conflicts.length) {
-        await rebuildTavernMemoryDerivedIndex(input.selected.run.sessionId);
+        await rebuildTavernMemoryDerivedIndexForLiveSession(input.selected.run.sessionId);
     }
     if (rollback?.conflicts.length) {
         const conflicted = rollback.managerRun || await updateTavernManagerRun(runId, {
@@ -572,7 +575,7 @@ async function runManagerAgentWithTools(input: {
 }> {
     const providerConfig = resolveActiveProviderConfig(input.agentConfig || {}, {
         role: 'delegate',
-        timeoutMs: 15 * 60 * 1000,
+        timeoutMs: TAVERN_MANAGER_TIMEOUT_MS,
     });
     const defaultAdapter = input.executeManagerOnce
         ? null
@@ -883,7 +886,7 @@ async function createOrUpdateManagerRun(input: {
 }): Promise<TavernManagerRunRecord> {
     const providerConfig = resolveActiveProviderConfig(input.agentConfig || {}, {
         role: 'delegate',
-        timeoutMs: 15 * 60 * 1000,
+        timeoutMs: TAVERN_MANAGER_TIMEOUT_MS,
     });
     const providerLabel = getXbTavernProviderLabel(String(providerConfig.provider || ''));
     const patch = {
@@ -924,6 +927,12 @@ function startManagerRunHeartbeat(managerRunId = '', signal?: AbortSignal): () =
 
 async function finalizeManagerRun(record: TavernManagerRunRecord, patch: Partial<TavernManagerRunRecord>): Promise<TavernManagerRunRecord> {
     return await updateTavernManagerRun(record.id, patch) || record;
+}
+
+async function rebuildTavernMemoryDerivedIndexForLiveSession(sessionId = ''): Promise<void> {
+    const id = String(sessionId || '').trim();
+    if (!id || !await getTavernSession(id)) {return;}
+    await rebuildTavernMemoryDerivedIndex(id);
 }
 
 async function buildAutoManagerMessages(input: XbTavernManagerRunInput, sourceMessages: {
@@ -1089,7 +1098,7 @@ async function runManagerTask(input: {
         if (input.requireChangedFiles && !changedFiles.length) {
             throw new Error('manager_memory_tool_required');
         }
-        await rebuildTavernMemoryDerivedIndex(input.sessionId);
+        await rebuildTavernMemoryDerivedIndexForLiveSession(input.sessionId);
         const changedCount = changedFiles.length + changedStates.length + changedTasks.length;
         const defaultOutput = changedCount
             ? `已维护 ${changedFiles.length} 个记忆文件、${changedStates.length} 份结构化状态、${changedTasks.length} 条事件线索。`
@@ -1136,7 +1145,7 @@ async function runManagerTask(input: {
             ? await rollbackManagerRunIfWroteMemory(managerRun.id)
             : null;
         if (!rolledBack?.conflicts.length) {
-            await rebuildTavernMemoryDerivedIndex(input.sessionId);
+            await rebuildTavernMemoryDerivedIndexForLiveSession(input.sessionId);
         }
         return {
             ok: false,
@@ -1190,7 +1199,7 @@ async function estimateManagerChatTokens(input: {
 }): Promise<number> {
     const providerConfig = resolveActiveProviderConfig(input.agentConfig || {}, {
         role: 'delegate',
-        timeoutMs: 15 * 60 * 1000,
+        timeoutMs: TAVERN_MANAGER_TIMEOUT_MS,
     });
     const messages = await buildChatManagerMessages(input);
     return await resolveConversationTokens({
@@ -1346,6 +1355,7 @@ export async function runXbTavernManagerAfterTurn(input: XbTavernManagerRunInput
     if (!managerRun) {
         throw new Error('manager_run_missing');
     }
+    await input.onManagerRunSaved?.(managerRun);
     try {
         const currentSourceMessages = await resolveCurrentManagerSourceMessages(input);
         const currentInputSummary = buildInputSummary({
@@ -1429,7 +1439,7 @@ export async function runXbTavernManagerAfterTurn(input: XbTavernManagerRunInput
         });
         const rolledBack = await rollbackManagerRunIfWroteMemory(managerRun.id);
         if (!rolledBack?.conflicts.length) {
-            await rebuildTavernMemoryDerivedIndex(sessionId);
+            await rebuildTavernMemoryDerivedIndexForLiveSession(sessionId);
         }
         return {
             ok: false,
