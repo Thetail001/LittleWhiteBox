@@ -208,6 +208,7 @@ const {
     isRunning,
     runtimeActionCheckEvents,
     runtimeError,
+    runtimeFinalizedAssistantMessage,
     runtimeModel,
     runtimePendingUserMessage,
     runtimeProvider,
@@ -377,10 +378,12 @@ const chatLayout = ref<ChatLayout>('balanced');
 const chatComposeTextareaRef = ref<HTMLTextAreaElement | null>(null);
 const managerComposeTextareaRef = ref<HTMLTextAreaElement | null>(null);
 const managerWorkRef = ref<HTMLElement | null>(null);
+let flushDeferredChatDomCommits = () => false;
 const chatScrollPane = useTavernScrollPane({
     totalItems: () => selectedSessionMessageTotal.value,
     defaultLimit: hiddenOutsideCount,
     loadBatchSize,
+    onReturnToBottom: () => flushDeferredChatDomCommits(),
 });
 const managerScrollPane = useTavernScrollPane({
     totalItems: () => managerChatMessageDisplayItems.value.length,
@@ -3402,6 +3405,17 @@ const chatRunController = useTavernChatRunController({
     cancelDrawJobsForMessageRange: drawContext.cancelJobsForMessageRange,
 });
 
+flushDeferredChatDomCommits = () => {
+    const changed = chatRunController.flushDeferredAssistantCommit();
+    if (changed) {
+        void nextTick(() => {
+            enhanceChatMarkdown();
+            updateChatScrollButtons();
+        });
+    }
+    return changed;
+};
+
 function cancelActiveRun() {
     chatRunController.cancelActiveRun();
 }
@@ -3758,6 +3772,7 @@ watch([
     () => chatMessageWindow.value.startIndex,
     () => visibleChatMarkdownSignature.value,
     () => runtimeText.value,
+    () => `${runtimeFinalizedAssistantMessage.value?.sessionId || ''}:${runtimeFinalizedAssistantMessage.value?.order ?? ''}:${String(runtimeFinalizedAssistantMessage.value?.content || '').length}`,
     () => runtimePendingUserMessage.value,
     () => runtimeThoughtsSignature.value,
     () => runtimeActionCheckSignature.value,
@@ -3967,6 +3982,7 @@ const chatContext = {
     runtimeText,
     runtimeThoughts,
     runtimeActionCheckEvents,
+    runtimeFinalizedAssistantMessage,
     runtimeUserMessageVisible,
     runtimePendingUserMessage,
     saveEditMessage,

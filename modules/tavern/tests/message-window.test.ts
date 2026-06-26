@@ -62,6 +62,8 @@ test('tavern scroll handlers collapse expanded message windows when returning to
     assert.doesNotMatch(scrollPaneSource, /else \{\s*autoScroll\.value = false;\s*\}/);
     assert.match(scrollPaneSource, /function findWheelScrollTarget\(event: WheelEvent, root: HTMLElement, deltaY: number\)/);
     assert.match(scrollPaneSource, /requestAnimationFrame\(\(\) => \{[\s\S]*applyWheelFallback\(target, deltaY\);[\s\S]*if \(target === root\) \{[\s\S]*handleScroll\(\);/);
-    assert.match(scrollPaneSource, /function scrollToBottom\([\s\S]*scrollOptions\.collapseWindow \|\| autoScroll\.value[\s\S]*collapseMessageWindowIfBottom\(true\);/);
-    assert.match(scrollPaneSource, /watch\(\(\) => normalizeHiddenOutsideCount/);
+    assert.match(scrollPaneSource, /onReturnToBottom\?: \(options: \{ collapseWindow: boolean; force: boolean \}\) => void \| boolean;/);
+    assert.match(scrollPaneSource, /function scrollToBottom\([\s\S]*const changed = notifyReturnToBottom\(!!scrollOptions\.collapseWindow, force\);[\s\S]*if \(scrollOptions\.collapseWindow \|\| changed\) \{[\s\S]*collapseMessageWindowIfBottom\(true\);/);
+    assert.doesNotMatch(scrollPaneSource, /scrollOptions\.collapseWindow \|\| autoScroll\.value/);
+    assert.match(scrollPaneSource, /watch\(\(\) => normalizeHiddenOutsideCount[\s\S]*if \(autoScroll\.value === false\) \{return;\}[\s\S]*resetWindowState\(\);/);
 });

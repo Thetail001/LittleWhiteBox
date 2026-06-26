@@ -12,6 +12,7 @@ export interface TavernScrollPaneOptions {
     totalItems: () => number;
     defaultLimit?: number | Ref<number>;
     loadBatchSize?: number | Ref<number>;
+    onReturnToBottom?: (options: { collapseWindow: boolean; force: boolean }) => void | boolean;
 }
 
 export interface TavernScrollToBottomOptions {
@@ -90,16 +91,18 @@ export function useTavernScrollPane(options: TavernScrollPaneOptions) {
         return true;
     }
 
+    function notifyReturnToBottom(collapseWindow: boolean, force: boolean) {
+        return options.onReturnToBottom?.({ collapseWindow, force }) === true;
+    }
+
     watch(() => normalizeHiddenOutsideCount(unref(options.defaultLimit), AGENT_MESSAGE_WINDOW_DEFAULT), () => {
+        if (autoScroll.value === false) {return;}
         resetWindowState();
     });
 
     function scrollToBottom(force = false, scrollOptions: TavernScrollToBottomOptions = {}) {
         if (!force && !autoScroll.value) {return;}
         if (force) {autoScroll.value = true;}
-        if (scrollOptions.collapseWindow || autoScroll.value) {
-            collapseMessageWindowIfBottom(true);
-        }
         void nextTick(() => {
             const node = scrollRef.value;
             if (!node) {return;}
@@ -111,6 +114,14 @@ export function useTavernScrollPane(options: TavernScrollPaneOptions) {
                 apply();
                 requestAnimationFrame(() => {
                     apply();
+                    const changed = notifyReturnToBottom(!!scrollOptions.collapseWindow, force);
+                    if (scrollOptions.collapseWindow || changed) {
+                        collapseMessageWindowIfBottom(true);
+                        void nextTick(() => {
+                            apply();
+                            requestAnimationFrame(apply);
+                        });
+                    }
                     updateScrollButtons();
                     if (scrollOptions.revealHelpers) {
                         scheduleHideScrollHelpers();
@@ -143,6 +154,7 @@ export function useTavernScrollPane(options: TavernScrollPaneOptions) {
         if (nearBottom) {
             if (autoScroll.value !== false || scrollingTowardBottom) {
                 autoScroll.value = true;
+                notifyReturnToBottom(false, false);
                 collapseMessageWindowIfBottom();
             }
         } else if (currentScrollTop < previousScrollTop) {

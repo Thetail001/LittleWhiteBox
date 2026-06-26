@@ -68,6 +68,7 @@ const {
     revealOlderChatMessages,
     roleLabel,
     runtimeActionCheckEvents,
+    runtimeFinalizedAssistantMessage,
     runtimePendingUserMessage,
     runtimeText,
     runtimeThoughts,
@@ -167,6 +168,9 @@ function assistantMessageRenderState(message: TavernMessageRecord) {
 }
 
 const liveAssistantRenderState = computed(() => {
+    if (runtimeFinalizedAssistantMessage.value) {
+        return assistantMessageRenderState(runtimeFinalizedAssistantMessage.value);
+    }
     const projection = displayRuntimeRenderProjection(
         runtimeText.value,
         Array.isArray(runtimeActionCheckEvents.value) ? runtimeActionCheckEvents.value : [],
@@ -174,15 +178,27 @@ const liveAssistantRenderState = computed(() => {
     return buildAssistantRenderState(projection.text, projection.actionCheckEvents);
 });
 const liveAssistantVisible = computed(() => hasRenderableLiveAssistantContent({
-    text: runtimeText.value,
-    thoughts: runtimeThoughts.value,
-    actionCheckEvents: runtimeActionCheckEvents.value,
+    text: liveAssistantRenderState.value.text,
+    thoughts: runtimeFinalizedAssistantMessage.value
+        ? displayMessageThoughtBlocks(runtimeFinalizedAssistantMessage.value)
+        : runtimeThoughts.value,
+    actionCheckEvents: runtimeFinalizedAssistantMessage.value
+        ? []
+        : runtimeActionCheckEvents.value,
 }));
-const liveAssistantCanRender = computed(() => isRunning.value && runtimeUserMessageVisible.value);
+const liveAssistantCanRender = computed(() => (
+    (isRunning.value && runtimeUserMessageVisible.value)
+    || !!runtimeFinalizedAssistantMessage.value
+));
 const liveAssistantMarkdownVisible = computed(() => hasRenderableLiveAssistantMarkdown({
-    text: runtimeText.value,
-    actionCheckEvents: runtimeActionCheckEvents.value,
+    text: liveAssistantRenderState.value.text,
+    actionCheckEvents: runtimeFinalizedAssistantMessage.value
+        ? []
+        : runtimeActionCheckEvents.value,
 }));
+const liveAssistantThoughtBlocks = computed(() => runtimeFinalizedAssistantMessage.value
+    ? displayMessageThoughtBlocks(runtimeFinalizedAssistantMessage.value)
+    : displayRuntimeThoughtBlocks(thoughtBlocks(runtimeThoughts.value)));
 const pendingUserVisible = computed(() => isRunning.value && !runtimeUserMessageVisible.value && !!runtimePendingUserMessage.value.trim());
 const pendingUserRenderState = computed(() => {
     const text = runtimePendingUserMessage.value.trim();
@@ -626,37 +642,32 @@ watch(isMobileActionTrayViewport, (isMobile) => {
               </span>
               <span class="bubble-role-name">{{ roleLabel('assistant') }}</span>
             </span>
-            <small>生成中</small>
+            <small>{{ runtimeFinalizedAssistantMessage ? '已完成' : '生成中' }}</small>
           </div>
           <template
-            v-for="rawRuntimeThoughts in [thoughtBlocks(runtimeThoughts)]"
-            :key="`${runtimeThoughtDisclosureId}:${rawRuntimeThoughts.length}`"
+            v-for="displayRuntimeThoughts in [liveAssistantThoughtBlocks]"
+            :key="`${runtimeThoughtDisclosureId}:${displayRuntimeThoughts.length}`"
           >
             <details
-              v-if="rawRuntimeThoughts.length"
+              v-if="displayRuntimeThoughts.length"
               class="tavern-thought-details"
               :open="thoughtDisclosure.isOpen(runtimeThoughtDisclosureId, true)"
               @toggle="thoughtDisclosure.setOpenFromEvent(runtimeThoughtDisclosureId, $event)"
             >
-              <summary>{{ thoughtSummaryLabel(rawRuntimeThoughts, true) }}</summary>
+              <summary>{{ thoughtSummaryLabel(displayRuntimeThoughts, true) }}</summary>
               <template
                 v-if="thoughtDisclosure.isOpen(runtimeThoughtDisclosureId, true)"
               >
-                <template
-                  v-for="displayRuntimeThoughts in [displayRuntimeThoughtBlocks(rawRuntimeThoughts)]"
-                  :key="`${runtimeThoughtDisclosureId}:display:${displayRuntimeThoughts.length}`"
+                <div
+                  v-for="(thought, thoughtIndex) in displayRuntimeThoughts"
+                  :key="`runtime-thought-${thoughtIndex}`"
+                  class="tavern-thought-block"
                 >
-                  <div
-                    v-for="(thought, thoughtIndex) in displayRuntimeThoughts"
-                    :key="`runtime-thought-${thoughtIndex}`"
-                    class="tavern-thought-block"
-                  >
-                    <div class="tavern-thought-label">
-                      {{ thought.label }}
-                    </div>
-                    <pre>{{ thought.text }}</pre>
+                  <div class="tavern-thought-label">
+                    {{ thought.label }}
                   </div>
-                </template>
+                  <pre>{{ thought.text }}</pre>
+                </div>
               </template>
             </details>
           </template>
@@ -686,7 +697,7 @@ watch(isMobileActionTrayViewport, (isMobile) => {
               </span>
               <span class="bubble-role-name">{{ roleLabel('assistant') }}</span>
             </span>
-            <small>生成中</small>
+            <small>{{ runtimeFinalizedAssistantMessage ? '已完成' : '生成中' }}</small>
           </div>
           <p>正在组织回复...</p>
         </div>
