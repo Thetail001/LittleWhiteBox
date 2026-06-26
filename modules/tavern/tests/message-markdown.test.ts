@@ -221,7 +221,7 @@ test('tavern markdown does not turn ordinary standalone HTML documents into ifra
     assert.match(html, /普通正文 HTML/);
 });
 
-test('tavern markdown only folds fenced html code into iframe preview placeholders', () => {
+test('tavern markdown folds fenced html code into iframe preview placeholders', () => {
     const html = renderMarkdownToHtml([
         '```html',
         '<main><script>window.__preview = true</script></main>',
@@ -231,6 +231,18 @@ test('tavern markdown only folds fenced html code into iframe preview placeholde
     assert.match(html, /xb-markdown-html-placeholder/);
     assert.doesNotMatch(html, /<script/i);
     assert.equal(HTML_PREVIEW_SANDBOX, 'allow-scripts');
+});
+
+test('tavern markdown folds unlabeled fenced html documents into iframe preview placeholders', () => {
+    const html = renderMarkdownToHtml([
+        '```',
+        '<!DOCTYPE html>',
+        '<html lang="zh-CN"><body><main>预览</main></body></html>',
+        '```',
+    ].join('\n'));
+
+    assert.match(html, /xb-markdown-html-placeholder/);
+    assert.doesNotMatch(html, /<pre><code/);
 });
 
 test('tavern roleplay markdown can keep fenced html as stable code anchors', () => {

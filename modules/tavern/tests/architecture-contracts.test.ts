@@ -1442,8 +1442,9 @@ test('tavern roleplay html previews use stable code anchors and a local iframe b
     assert.match(markdownToolsSource, /renderOptions\.roleplay \? \{ htmlFenceMode: 'code', protectRawHtmlBoundaries: false \} : \{\}/);
     assert.match(markdownToolsSource, /const TAVERN_HTML_CODE_LANGUAGES = new Set\(\['html', 'htm', 'xhtml', 'xml', 'svg', 'vue', 'svelte'\]\);/);
     assert.match(markdownToolsSource, /function enhanceTavernHtmlCodeBlocks\(root: HTMLElement\)/);
-    assert.match(markdownToolsSource, /function isExplicitTavernHtmlCodeBlock\(codeBlock: HTMLElement\)[\s\S]*TAVERN_HTML_CODE_LANGUAGES\.has\(normalized\);/);
-    assert.match(markdownToolsSource, /if \(!isExplicitTavernHtmlCodeBlock\(codeBlock\)\) \{[\s\S]*cleanupTavernHtmlPre\(pre\);[\s\S]*return;[\s\S]*\}/);
+    assert.match(markdownToolsSource, /function isTavernHtmlCodeLanguage\(codeBlock: HTMLElement\)[\s\S]*TAVERN_HTML_CODE_LANGUAGES\.has\(normalized\);/);
+    assert.match(markdownToolsSource, /function isRenderableTavernHtmlCodeBlock\(codeBlock: HTMLElement\) \{[\s\S]*return isTavernHtmlCodeLanguage\(codeBlock\)[\s\S]*\|\| looksLikeTavernHtmlFrameContent\(codeBlock\.textContent \|\| ''\);[\s\S]*\}/);
+    assert.match(markdownToolsSource, /if \(!isRenderableTavernHtmlCodeBlock\(codeBlock\)\) \{[\s\S]*cleanupTavernHtmlPre\(pre\);[\s\S]*return;[\s\S]*\}/);
     assert.match(markdownToolsSource, /function extractTavernExternalHtmlUrl\(content = ''\)[\s\S]*\/\^https\?:\\\/\\\/\[\^\\s\]\+\$\/i[\s\S]*xb-src:/);
     assert.match(markdownToolsSource, /htmlThemeDark: Ref<boolean>;/);
     assert.match(markdownToolsSource, /function buildTavernHtmlThemeBootstrap\(theme: 'dark' \| 'light'\)[\s\S]*<meta name="color-scheme" content="\$\{theme\}">[\s\S]*r\.dataset\.xbTavernTheme='\$\{theme\}'[\s\S]*r\.style\.colorScheme='\$\{theme\}'/);

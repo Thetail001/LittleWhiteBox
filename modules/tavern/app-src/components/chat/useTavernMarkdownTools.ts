@@ -563,7 +563,7 @@ export function useTavernMarkdownTools(options: TavernMarkdownToolsOptions) {
         root.querySelectorAll<HTMLElement>('pre > code').forEach((codeBlock) => {
             const pre = codeBlock.parentElement as HTMLPreElement | null;
             if (!pre || pre.dataset.xbTavernHtmlFinal === 'true') {return;}
-            if (!isExplicitTavernHtmlCodeBlock(codeBlock)) {return;}
+            if (!isRenderableTavernHtmlCodeBlock(codeBlock)) {return;}
             pre.style.display = 'none';
             pre.dataset.xbTavernHtmlPending = 'true';
         });
@@ -579,7 +579,7 @@ export function useTavernMarkdownTools(options: TavernMarkdownToolsOptions) {
         root.querySelectorAll<HTMLElement>('pre > code').forEach((codeBlock) => {
             const pre = codeBlock.parentElement as HTMLPreElement | null;
             if (!pre) {return;}
-            if (!isExplicitTavernHtmlCodeBlock(codeBlock)) {
+            if (!isRenderableTavernHtmlCodeBlock(codeBlock)) {
                 cleanupTavernHtmlPre(pre);
                 return;
             }
@@ -604,11 +604,16 @@ export function useTavernMarkdownTools(options: TavernMarkdownToolsOptions) {
         });
     }
 
-    function isExplicitTavernHtmlCodeBlock(codeBlock: HTMLElement) {
+    function isTavernHtmlCodeLanguage(codeBlock: HTMLElement) {
         return Array.from(codeBlock.classList).some((className) => {
             const normalized = String(className || '').replace(/^custom-/, '').replace(/^language-/, '').toLowerCase();
             return TAVERN_HTML_CODE_LANGUAGES.has(normalized);
         });
+    }
+
+    function isRenderableTavernHtmlCodeBlock(codeBlock: HTMLElement) {
+        return isTavernHtmlCodeLanguage(codeBlock)
+            || looksLikeTavernHtmlFrameContent(codeBlock.textContent || '');
     }
 
     const dialogueQuotePairs: { [key: string]: string } = {
