@@ -219,6 +219,22 @@ export interface TavernCharacterContext {
     visibleCharacters: TavernReadable<TavernCharacterOption[]>;
 }
 
+export interface TavernSessionContext {
+    chatMessages: TavernReadable<TavernMessageRecord[]>;
+    chatMessageWindow: TavernReadable<TavernMessageWindowState>;
+    createNewChatSession: TavernCommand<[], Promise<void>>;
+    currentAssistantFloor: TavernReadable<number>;
+    currentChatCharacterSessions: TavernReadable<TavernSessionRecord[]>;
+    removeSession: TavernCommand<[sessionId: string, event?: Event], Promise<void>>;
+    selectedCharacterSessions: TavernReadable<TavernSessionRecord[]>;
+    selectedSessionId: Ref<string>;
+    selectSession: TavernCommand<[sessionId: string], Promise<void>>;
+    sessionDisplayTitle: TavernCommand<[session?: TavernSessionRecord | null], string>;
+    sessionFloorLabel: TavernCommand<[session?: TavernSessionRecord | null], string>;
+    sessions: Ref<TavernSessionRecord[]>;
+    visibleChatMessages: TavernReadable<TavernMessageRecord[]>;
+}
+
 export interface TavernRegexScriptDraft {
     scriptName?: string;
     findRegex?: string;
@@ -642,6 +658,7 @@ export interface TavernSettingsContext {
 export interface TavernAppUiContext {
     shell: TavernShellContext;
     character: TavernCharacterContext;
+    session: TavernSessionContext;
     draw: TavernDrawContext;
     chat: TavernChatContext;
     manager: TavernManagerContext;
@@ -666,6 +683,10 @@ export function useTavernShellContext(): TavernShellContext {
 
 export function useTavernCharacterContext(): TavernCharacterContext {
     return useTavernAppUiContext().character;
+}
+
+export function useTavernSessionContext(): TavernSessionContext {
+    return useTavernAppUiContext().session;
 }
 
 export function useTavernDrawContext(): TavernDrawContext {

@@ -850,13 +850,18 @@ test('tavern UI context is grouped by page responsibility instead of one flat ba
     assert.doesNotMatch(contextSource, /TavernContextBucket/);
     assert.doesNotMatch(contextSource, /Record<string,\s*any>/);
     assert.doesNotMatch(contextSource, /\[key:\s*string\]:\s*any/);
-    for (const bucket of ['Shell', 'Character', 'Chat', 'Manager', 'Memory', 'Workspace', 'Settings']) {
+    for (const bucket of ['Shell', 'Character', 'Session', 'Chat', 'Manager', 'Memory', 'Workspace', 'Settings']) {
         assert.match(contextSource, new RegExp(`interface Tavern${bucket}Context`));
     }
-    for (const bucket of ['shell', 'character', 'chat', 'manager', 'memory', 'workspace']) {
+    for (const bucket of ['shell', 'character', 'session', 'chat', 'manager', 'memory', 'workspace']) {
         assert.match(contextSource, new RegExp(`${bucket}: Tavern${bucket[0].toUpperCase()}${bucket.slice(1)}Context`));
-        assert.match(appSource, new RegExp(`${bucket}: \\{`));
+        assert.match(appSource, new RegExp(`const ${bucket}Context = \\{`));
+        assert.match(appSource, new RegExp(`${bucket}: ${bucket}Context`));
     }
+    assert.match(contextSource, /export function useTavernSessionContext\(\): TavernSessionContext/);
+    assert.match(appSource, /const appUiContext = \{[\s\S]*session: sessionContext[\s\S]*\} satisfies/);
+    assert.match(appSource, /provide\(TAVERN_APP_UI_CONTEXT, appUiContext\);/);
+    assert.doesNotMatch(appSource, /provide\(TAVERN_APP_UI_CONTEXT, \{/);
     assert.match(contextSource, /settings: TavernSettingsContext/);
     assert.match(appSource, /useTavernSettingsController/);
     assert.match(appSource, /settings: settingsContext/);
@@ -1780,7 +1785,8 @@ test('tavern streaming action-check UI renders from live runtime events and keep
     assert.match(contextSource, /currentChatCharacterSessions: TavernReadable<TavernSessionRecord\[\]>/);
     assert.match(appSource, /const currentChatCharacterSessions = computed<TavernSessionRecord\[\]>\(\(\) => \{[\s\S]*selectedSession\.value\?\.characterKey[\s\S]*effectiveContext\.value\.character\?\.characterKey[\s\S]*\.filter\(\(session\) => String\(session\.characterKey \|\| ''\)\.trim\(\) === characterKey\)/);
     assert.match(appSource, /watch\(\(\) => currentChatCharacterSessions\.value\.map\(\(session\) => session\.id\)\.join\('\|'\), \(\) => \{[\s\S]*refreshSessionMessageCountsForSessions\(currentChatCharacterSessions\.value\)/);
-    assert.match(appSource, /chat: \{[\s\S]*currentChatCharacterSessions,/);
+    assert.match(appSource, /const sessionContext = \{[\s\S]*currentChatCharacterSessions,/);
+    assert.match(appSource, /const chatContext = \{[\s\S]*currentChatCharacterSessions,/);
     assert.doesNotMatch(conversationPanelSource, /useTavernCharacterContext|selectedCharacterSessions/);
     assert.match(conversationPanelSource, /v-if="sessionArchiveOpen"[\s\S]*class="character-session-archive-overlay chat-session-archive-overlay"[\s\S]*v-for="session in currentChatCharacterSessions"[\s\S]*@click="openArchivedSession\(session\.id\)"/);
     assert.match(managerPanelSource, /v-model="managerInputDraft"[\s\S]*rows="1"/);
