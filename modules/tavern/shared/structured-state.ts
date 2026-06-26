@@ -771,6 +771,44 @@ function normalizeMapElementInput(
     return [finalizeElement(base, id, { allowReservedId: options.allowReservedId === true || source === 'stored-document' })];
 }
 
+function repairStoredMapElements(rawElements: unknown[]): TavernMapElement[] {
+    const byId = new Map<string, TavernMapElement>();
+    const derivedLabelBaseById = new Map<string, string>();
+    const putElement = (element: TavernMapElement, options: { derivedFrom?: string } = {}) => {
+        if (byId.has(element.id)) {
+            byId.delete(element.id);
+            derivedLabelBaseById.delete(element.id);
+        }
+        byId.set(element.id, cloneJson(element));
+        if (options.derivedFrom) {
+            derivedLabelBaseById.set(element.id, options.derivedFrom);
+        } else if (isSeedLabelId(element.id)) {
+            derivedLabelBaseById.delete(element.id);
+        }
+    };
+
+    rawElements.forEach((rawElement) => {
+        const normalized = normalizeMapElementInput(rawElement, { source: 'stored-document' });
+        const geometry = normalized[0];
+        const derivedLabel = normalized.length === 2
+            && geometry
+            && normalized[1]?.id === buildSeedLabelId(geometry.id)
+            ? normalized[1]
+            : null;
+        if (geometry && !derivedLabel && !isSeedLabelId(geometry.id) && hasGeometryShape(geometry)) {
+            const labelId = buildSeedLabelId(geometry.id);
+            if (derivedLabelBaseById.get(labelId) === geometry.id) {
+                byId.delete(labelId);
+                derivedLabelBaseById.delete(labelId);
+            }
+        }
+        normalized.forEach((element) => {
+            putElement(element, derivedLabel && element.id === derivedLabel.id ? { derivedFrom: geometry.id } : {});
+        });
+    });
+    return [...byId.values()];
+}
+
 function normalizeMapDocument(
     value: unknown,
     fallback: Partial<TavernMapDocumentMeta> = {},
@@ -779,14 +817,18 @@ function normalizeMapDocument(
     const raw = isPlainObject(value) ? value : {};
     const meta = normalizeMapMeta(raw.meta, fallback);
     const elements = Array.isArray(raw.elements)
-        ? raw.elements.flatMap((element) => normalizeMapElementInput(element, { source: normalizeSource }))
+        ? normalizeSource === 'stored-document'
+            ? repairStoredMapElements(raw.elements)
+            : raw.elements.flatMap((element) => normalizeMapElementInput(element, { source: normalizeSource }))
         : [];
     if (elements.length > MAX_MAP_ELEMENTS) {throw new Error('map_elements_limit_exceeded');}
-    const ids = new Set<string>();
-    elements.forEach((element) => {
-        if (ids.has(element.id)) {throw new Error(`map_element_duplicate:${element.id}`);}
-        ids.add(element.id);
-    });
+    if (normalizeSource === 'model-input') {
+        const ids = new Set<string>();
+        elements.forEach((element) => {
+            if (ids.has(element.id)) {throw new Error(`map_element_duplicate:${element.id}`);}
+            ids.add(element.id);
+        });
+    }
     return { meta, elements };
 }
 
@@ -1613,6 +1655,76 @@ function buildNextElement(current: TavernMapElement, set: Partial<TavernMapEleme
     return finalizeElement(next, current.id, { allowReservedId: isSeedLabelId(current.id) });
 }
 
+function hasGeometryShape(element: Partial<TavernMapElement>): boolean {
+    return MAP_GEOMETRY_KEYS.some((key) => {
+        if (key === 'circle') {return typeof element.circle === 'number';}
+        if (key === 'icon') {return typeof element.icon === 'string' && !!element.icon.trim();}
+        return Array.isArray(element[key]);
+    });
+}
+
+function withoutTextShape(set: Partial<TavernMapElement>): Partial<TavernMapElement> {
+    const next = { ...set };
+    delete next.text;
+    return next;
+}
+
+function hasPatchFields(set: Partial<TavernMapElement>): boolean {
+    return Object.keys(set).length > 0;
+}
+
+function buildDerivedLabelElement(
+    geometry: TavernMapElement,
+    text: string,
+    existing?: TavernMapElement,
+    at?: [number, number],
+): TavernMapElement {
+    const labelId = buildSeedLabelId(geometry.id);
+    return finalizeElement({
+        id: labelId,
+        at: at || existing?.at || labelPositionForElement(geometry),
+        cat: 'label',
+        text,
+        style: existing?.style,
+    }, labelId, { allowReservedId: true });
+}
+
+function buildDerivedLabelModifySet(existing: TavernMapElement, text: string, at?: [number, number]): Partial<TavernMapElement> {
+    return {
+        cat: 'label',
+        text,
+        ...(at ? { at } : {}),
+        ...(existing.style ? { style: cloneJson(existing.style) } : {}),
+    };
+}
+
+function isCanonicalLabelElement(element: TavernMapElement): boolean {
+    return element.cat === 'label'
+        && typeof element.text === 'string'
+        && !!element.text.trim()
+        && !hasGeometryShape(element)
+        && !element.actorKey
+        && element.closed !== true
+        && !element.fill;
+}
+
+function buildCanonicalLabelElement(
+    id: string,
+    current: TavernMapElement,
+    set: Partial<TavernMapElement> = {},
+): TavernMapElement {
+    const hasText = Object.prototype.hasOwnProperty.call(set, 'text');
+    const hasAt = Object.prototype.hasOwnProperty.call(set, 'at');
+    const hasStyle = Object.prototype.hasOwnProperty.call(set, 'style');
+    return finalizeElement({
+        id,
+        at: hasAt ? set.at : current.at,
+        cat: 'label',
+        text: hasText ? set.text : current.text,
+        style: hasStyle ? set.style : current.style,
+    }, id, { allowReservedId: true });
+}
+
 async function getSeededMapDocumentRecord(
     sessionId = '',
     docType: TavernStructuredStateDocType = MAP_DOC_TYPE,
@@ -1739,16 +1851,44 @@ function applyMapOps(source: TavernMapDocument, rawOps: unknown[]): {
         const index = findIndex(id);
         if (index < 0) {throw new Error(`map_element_not_found:${id}`);}
         const current = document.elements[index];
-        const next = buildNextElement(current, set);
-        if (deepEqual(current, next)) {
-            satisfiedCount += 1;
+        if (isSeedLabelId(id)) {
+            const nextLabel = buildCanonicalLabelElement(id, current, set);
+            if (deepEqual(current, nextLabel)) {
+                satisfiedCount += 1;
+                return;
+            }
+            document.elements[index] = nextLabel;
+            if (isCanonicalLabelElement(current) && deepEqual(current.style, nextLabel.style)) {
+                effectiveOps.push({ op: 'modify', id, set: buildDerivedLabelModifySet(current, nextLabel.text, nextLabel.at) });
+            } else {
+                removedElements.push(cloneJson(current));
+                effectiveOps.push({ op: 'remove', id, _internalSoft: true });
+                effectiveOps.push({ op: 'add', element: cloneJson(nextLabel) });
+            }
+            changed = true;
+            appliedCount += 1;
+            changedIds.add(id);
             return;
         }
-        document.elements[index] = next;
-        effectiveOps.push({ op: 'modify', id, set: cloneJson(set) });
-        changed = true;
-        appliedCount += 1;
-        changedIds.add(id);
+        const setHasText = Object.prototype.hasOwnProperty.call(set, 'text');
+        const text = setHasText ? normalizeText(set.text, 240) : normalizeText(current.text, 240);
+        const textlessSet = setHasText ? withoutTextShape(set) : set;
+        const geometryCandidate = hasPatchFields(textlessSet) ? buildNextElement(current, textlessSet) : cloneJson(current);
+        const candidate = setHasText ? { ...geometryCandidate, text } : geometryCandidate;
+        const shouldUpsertDerivedLabel = !isSeedLabelId(id) && hasGeometryShape(candidate) && !!text;
+        const geometrySet = shouldUpsertDerivedLabel ? textlessSet : set;
+        const next = shouldUpsertDerivedLabel
+            ? geometryCandidate
+            : candidate;
+        let modifiedGeometry = false;
+        if (!deepEqual(current, next)) {
+            document.elements[index] = next;
+            effectiveOps.push({ op: 'modify', id, set: cloneJson(geometrySet) });
+            changed = true;
+            appliedCount += 1;
+            changedIds.add(id);
+            modifiedGeometry = true;
+        }
 
         if (!isSeedLabelId(id) && set.at && current.at) {
             const labelId = buildSeedLabelId(id);
@@ -1761,12 +1901,58 @@ function applyMapOps(source: TavernMapDocument, rawOps: unknown[]): {
                         Number((label.at[0] + delta[0]).toFixed(2)),
                         Number((label.at[1] + delta[1]).toFixed(2)),
                     ];
-                    const moved = buildNextElement(label, { at: labelAt });
+                    const moved = shouldUpsertDerivedLabel
+                        ? buildDerivedLabelElement(next, text, label, labelAt)
+                        : buildNextElement(label, { at: labelAt });
                     document.elements[labelIndex] = moved;
-                    effectiveOps.push({ op: 'modify', id: labelId, set: { at: labelAt } });
+                    if (shouldUpsertDerivedLabel && !isCanonicalLabelElement(label)) {
+                        removedElements.push(cloneJson(label));
+                        effectiveOps.push({ op: 'remove', id: labelId, _internalSoft: true });
+                        effectiveOps.push({ op: 'add', element: cloneJson(moved) });
+                    } else {
+                        effectiveOps.push({ op: 'modify', id: labelId, set: shouldUpsertDerivedLabel ? buildDerivedLabelModifySet(label, text, labelAt) : { at: labelAt } });
+                    }
+                    changed = true;
+                    if (shouldUpsertDerivedLabel) {appliedCount += 1;}
                     changedIds.add(labelId);
+                    if (shouldUpsertDerivedLabel) {return;}
                 }
             }
+        }
+
+        if (shouldUpsertDerivedLabel) {
+            const labelId = buildSeedLabelId(id);
+            const labelIndex = findIndex(labelId);
+            if (labelIndex >= 0) {
+                const label = document.elements[labelIndex];
+                const labelNext = buildDerivedLabelElement(next, text, label);
+                if (!deepEqual(label, labelNext)) {
+                    document.elements[labelIndex] = labelNext;
+                    if (isCanonicalLabelElement(label)) {
+                        effectiveOps.push({ op: 'modify', id: labelId, set: buildDerivedLabelModifySet(label, text) });
+                    } else {
+                        removedElements.push(cloneJson(label));
+                        effectiveOps.push({ op: 'remove', id: labelId, _internalSoft: true });
+                        effectiveOps.push({ op: 'add', element: cloneJson(labelNext) });
+                    }
+                    changed = true;
+                    appliedCount += 1;
+                    changedIds.add(labelId);
+                    return;
+                }
+            } else {
+                const labelNext = buildDerivedLabelElement(next, text);
+                document.elements.push(labelNext);
+                effectiveOps.push({ op: 'add', element: cloneJson(labelNext) });
+                changed = true;
+                appliedCount += 1;
+                changedIds.add(labelId);
+                return;
+            }
+        }
+
+        if (!modifiedGeometry) {
+            satisfiedCount += 1;
         }
     };
 

@@ -49,6 +49,8 @@ import db, {
     createTavernManagerRun,
     getTavernStructuredStateDocument,
     listTavernStructuredStatePatches,
+    putTavernStructuredStateDocument,
+    type TavernStructuredStateDocumentRecord,
 } from '../shared/session-db';
 import { DEFAULT_XB_TAVERN_PRESET_ID, createDefaultXbTavernPreset } from '../shared/presets';
 import { DEFAULT_TAVERN_SESSION_CONTRACT, mergeTavernSessionContract } from '../shared/session-contract';
@@ -97,6 +99,7 @@ import {
     getTavernMapStateForSession,
     getTavernStateToolDefinitions,
     listTavernStructuredStateDigests,
+    type TavernMapDocument,
 } from '../shared/structured-state';
 import {
     abandonStaleTavernTasks,
@@ -1814,6 +1817,123 @@ test('StatePatch accepts common map geometry aliases and explains failures', asy
     assert.match(JSON.stringify(invalid.details), /at:\[x,y\]/);
 });
 
+function createStoredMapRecord(
+    sessionId: string,
+    elements: Array<Record<string, unknown>>,
+    revision = 1,
+): TavernStructuredStateDocumentRecord {
+    const timestamp = Date.now();
+    return {
+        sessionId,
+        docType: 'tavern.map',
+        docId: 'main',
+        title: 'Stored map',
+        revision,
+        data: {
+            meta: { name: 'Stored map', theme: 'parchment', viewBox: [0, 0, 400, 300], status: 'active' },
+            elements,
+        },
+        digest: '',
+        status: 'active',
+        source: 'test',
+        createdAt: timestamp,
+        updatedAt: timestamp,
+    };
+}
+
+test('StatePatch repairs stored map duplicate ids while keeping model input strict', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Map duplicate repair' });
+    await putTavernStructuredStateDocument(createStoredMapRecord(session.id, [
+        { id: 'dup', at: [10, 12], rect: [30, 20], cat: 'wall' },
+        { id: 'dup', at: [40, 42], circle: 6, cat: 'marker' },
+    ]));
+
+    const document = await executeTavernStateTool(session.id, 'MapInspect', { mode: 'document' });
+    assert.equal(document.ok, true);
+    const elements = ((document.document as { elements?: Array<Record<string, unknown>> })?.elements || []);
+    assert.equal(elements.filter((element) => element.id === 'dup').length, 1);
+    assert.deepEqual(elements.find((element) => element.id === 'dup')?.at, [40, 42]);
+    assert.equal(elements.find((element) => element.id === 'dup')?.circle, 6);
+
+    const duplicateInput = await executeTavernStateTool(session.id, 'MapPatch', {
+        ops: [{
+            op: 'reset',
+            document: {
+                meta: { name: 'Strict input', viewBox: [0, 0, 400, 300] },
+                elements: [
+                    { id: 'strict', at: [0, 0], rect: [10, 10], cat: 'wall' },
+                    { id: 'strict', at: [20, 20], circle: 5, cat: 'marker' },
+                ],
+            },
+        }],
+    });
+    assert.equal(duplicateInput.ok, false);
+    assert.match(duplicateInput.summary, /strict is duplicated/i);
+});
+
+test('StatePatch repairs stored geometry text collisions with derived labels', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Map label collision repair' });
+    const atlas = await executeTavernStateTool(session.id, 'MapPatch', {
+        docType: 'tavern.atlas',
+        ops: [
+            { op: 'upsert-location', key: 'office', set: { name: '办公室', scale: 'room', status: 'visited', mapDocId: 'main' } },
+            { op: 'move-actor', actorKey: 'player', locationKey: 'office' },
+        ],
+    });
+    assert.equal(atlas.ok, true);
+    await putTavernStructuredStateDocument(createStoredMapRecord(session.id, [
+        { id: '__label__player_actor', at: [1, 1], text: '玛雅', cat: 'label' },
+        { id: 'player_actor', at: [80, 90], icon: 'o', cat: 'actor', actorKey: 'player', text: '玛雅（压制）' },
+    ]));
+
+    const spatial = await buildTavernSpatialStateDigest(session.id);
+    assert.match(spatial, /玛雅（压制）/);
+
+    const document = await executeTavernStateTool(session.id, 'MapInspect', { mode: 'document' });
+    assert.equal(document.ok, true);
+    const elements = ((document.document as { elements?: Array<Record<string, unknown>> })?.elements || []);
+    const actor = elements.find((element) => element.id === 'player_actor');
+    const labels = elements.filter((element) => element.id === '__label__player_actor');
+    assert.equal(actor?.text, undefined);
+    assert.equal(actor?.icon, 'o');
+    assert.equal(labels.length, 1);
+    assert.equal(labels[0]?.text, '玛雅（压制）');
+});
+
+test('StatePatch repairs stale derived labels when later stored geometry wins', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Map stale derived label repair' });
+    await putTavernStructuredStateDocument(createStoredMapRecord(session.id, [
+        { id: 'dup', at: [10, 12], rect: [30, 20], cat: 'wall', text: 'OLD' },
+        { id: 'dup', at: [40, 42], circle: 6, cat: 'marker' },
+    ]));
+
+    const document = await executeTavernStateTool(session.id, 'MapInspect', { mode: 'document' });
+    assert.equal(document.ok, true);
+    const elements = ((document.document as { elements?: Array<Record<string, unknown>> })?.elements || []);
+    assert.equal(elements.filter((element) => element.id === 'dup').length, 1);
+    assert.equal(elements.some((element) => element.id === '__label__dup'), false);
+    assert.equal(elements.find((element) => element.id === 'dup')?.circle, 6);
+
+    await putTavernStructuredStateDocument(createStoredMapRecord(session.id, [
+        { id: 'dup', at: [10, 12], rect: [30, 20], cat: 'wall', text: 'OLD' },
+        { id: '__label__dup', at: [12, 4], text: 'EXPLICIT', cat: 'label' },
+        { id: 'dup', at: [40, 42], circle: 6, cat: 'marker' },
+    ], 2));
+    const explicitDocument = await executeTavernStateTool(session.id, 'MapInspect', { mode: 'document' });
+    assert.equal(explicitDocument.ok, true);
+    const explicitElements = ((explicitDocument.document as { elements?: Array<Record<string, unknown>> })?.elements || []);
+    assert.equal(explicitElements.find((element) => element.id === '__label__dup')?.text, 'EXPLICIT');
+});
+
 test('StatePatch keeps system-derived label ids readable while rejecting reserved ids from model input', async () => {
     await db.delete();
     await db.open();
@@ -1842,6 +1962,203 @@ test('StatePatch keeps system-derived label ids readable while rejecting reserve
     });
     assert.equal(reserved.ok, false);
     assert.match(reserved.summary, /reserved `__label__` prefix/i);
+});
+
+test('StatePatch canonicalizes modify text on geometry into a derived label upsert', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Map modify label upsert' });
+    const add = await executeTavernStateTool(session.id, 'MapPatch', {
+        ops: [{
+            op: 'add',
+            element: { id: 'player_actor', at: [80, 90], icon: 'o', cat: 'actor', actorKey: 'player' },
+        }],
+    });
+    assert.equal(add.ok, true);
+
+    const label = await executeTavernStateTool(session.id, 'MapPatch', {
+        ops: [{
+            op: 'modify',
+            id: 'player_actor',
+            set: { text: '玛雅（压制）' },
+        }],
+    });
+    assert.equal(label.ok, true);
+    assert.equal(label.changed, true);
+    assert.equal(label.changedIds?.includes('__label__player_actor'), true);
+
+    const record = await getTavernStructuredStateDocument(session.id, 'tavern.map', 'main');
+    const storedElements = ((record?.data as { elements?: Array<Record<string, unknown>> })?.elements || []);
+    const actor = storedElements.find((element) => element.id === 'player_actor');
+    const labelElement = storedElements.find((element) => element.id === '__label__player_actor');
+    assert.equal(actor?.text, undefined);
+    assert.equal(actor?.icon, 'o');
+    assert.equal(actor?.actorKey, 'player');
+    assert.equal(labelElement?.text, '玛雅（压制）');
+
+    const document = await executeTavernStateTool(session.id, 'MapInspect', { mode: 'document' });
+    assert.equal(document.ok, true);
+    const ids = ((document.document as { elements?: Array<Record<string, unknown>> })?.elements || []).map((element) => element.id);
+    assert.equal(ids.filter((id) => id === 'player_actor').length, 1);
+    assert.equal(ids.filter((id) => id === '__label__player_actor').length, 1);
+});
+
+test('StatePatch canonicalizes modify shape plus text after candidate merge', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Map modify candidate split' });
+    const add = await executeTavernStateTool(session.id, 'MapPatch', {
+        ops: [{
+            op: 'add',
+            element: { id: 'note', at: [12, 14], text: '旧标注', cat: 'label' },
+        }],
+    });
+    assert.equal(add.ok, true);
+
+    const modify = await executeTavernStateTool(session.id, 'MapPatch', {
+        ops: [{
+            op: 'modify',
+            id: 'note',
+            set: { rect: [90, 40], text: '储物间', cat: 'wall' },
+        }],
+    });
+    assert.equal(modify.ok, true);
+
+    const record = await getTavernStructuredStateDocument(session.id, 'tavern.map', 'main');
+    const storedElements = ((record?.data as { elements?: Array<Record<string, unknown>> })?.elements || []);
+    const geometry = storedElements.find((element) => element.id === 'note');
+    const label = storedElements.find((element) => element.id === '__label__note');
+    assert.deepEqual(geometry?.rect, [90, 40]);
+    assert.equal(geometry?.text, undefined);
+    assert.equal(label?.cat, 'label');
+    assert.equal(label?.text, '储物间');
+});
+
+test('StatePatch label upsert patch replays over bad derived labels canonically', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Map bad label replay' });
+    const badDocument = createStoredMapRecord(session.id, [
+        { id: 'player_actor', at: [80, 90], icon: 'o', cat: 'actor', actorKey: 'player' },
+        { id: '__label__player_actor', at: [98, 72], rect: [30, 12], cat: 'marker', actorKey: 'bad-label-actor' },
+    ]);
+    await putTavernStructuredStateDocument(badDocument);
+
+    const modify = await executeTavernStateTool(session.id, 'MapPatch', {
+        ops: [{
+            op: 'modify',
+            id: 'player_actor',
+            set: { text: '玛雅（压制）' },
+        }],
+    });
+    assert.equal(modify.ok, true);
+
+    const record = await getTavernStructuredStateDocument(session.id, 'tavern.map', 'main');
+    const storedLabel = ((record?.data as { elements?: Array<Record<string, unknown>> })?.elements || [])
+        .find((element) => element.id === '__label__player_actor');
+    assert.equal(storedLabel?.cat, 'label');
+    assert.equal(storedLabel?.text, '玛雅（压制）');
+    assert.equal(storedLabel?.rect, undefined);
+    assert.equal(storedLabel?.actorKey, undefined);
+
+    const patches = await listTavernStructuredStatePatches({ sessionId: session.id });
+    const replayed = applyTrustedMapPatchOps(badDocument.data as TavernMapDocument, patches.flatMap((patch) => patch.ops as Array<Record<string, unknown>>));
+    const replayedLabel = replayed.elements.find((element) => element.id === '__label__player_actor');
+    assert.equal(replayedLabel?.cat, 'label');
+    assert.equal(replayedLabel?.text, '玛雅（压制）');
+    assert.equal(replayedLabel?.rect, undefined);
+    assert.equal(replayedLabel?.actorKey, undefined);
+});
+
+test('StatePatch keeps direct derived label modify canonical even with geometry input', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Map direct label modify' });
+    const add = await executeTavernStateTool(session.id, 'MapPatch', {
+        ops: [{
+            op: 'add',
+            element: { id: 'player_actor', at: [80, 90], icon: 'o', cat: 'actor', actorKey: 'player', text: '玛雅' },
+        }],
+    });
+    assert.equal(add.ok, true);
+
+    const modify = await executeTavernStateTool(session.id, 'MapPatch', {
+        ops: [{
+            op: 'modify',
+            id: '__label__player_actor',
+            set: { rect: [50, 20], cat: 'marker', text: '玛雅（压制）', at: [110, 70] },
+        }],
+    });
+    assert.equal(modify.ok, true);
+
+    const record = await getTavernStructuredStateDocument(session.id, 'tavern.map', 'main');
+    const storedElements = ((record?.data as { elements?: Array<Record<string, unknown>> })?.elements || []);
+    const label = storedElements.find((element) => element.id === '__label__player_actor');
+    assert.equal(label?.cat, 'label');
+    assert.equal(label?.text, '玛雅（压制）');
+    assert.deepEqual(label?.at, [110, 70]);
+    assert.equal(label?.rect, undefined);
+    assert.equal(storedElements.some((element) => element.id === '__label____label__player_actor'), false);
+
+    const patches = await listTavernStructuredStatePatches({ sessionId: session.id });
+    const replayed = applyTrustedMapPatchOps(createSeedMapDocument(), patches.flatMap((patch) => patch.ops as Array<Record<string, unknown>>));
+    const replayedLabel = replayed.elements.find((element) => element.id === '__label__player_actor');
+    assert.equal(replayedLabel?.cat, 'label');
+    assert.equal(replayedLabel?.text, '玛雅（压制）');
+    assert.equal(replayedLabel?.rect, undefined);
+    assert.equal(replayed.elements.some((element) => element.id === '__label____label__player_actor'), false);
+});
+
+test('StatePatch direct derived label style changes replay canonically', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Map label style replay' });
+    const add = await executeTavernStateTool(session.id, 'MapPatch', {
+        ops: [{
+            op: 'add',
+            element: { id: 'player_actor', at: [80, 90], icon: 'o', cat: 'actor', actorKey: 'player', text: '玛雅' },
+        }],
+    });
+    assert.equal(add.ok, true);
+
+    const styled = await executeTavernStateTool(session.id, 'MapPatch', {
+        ops: [{
+            op: 'modify',
+            id: '__label__player_actor',
+            set: { style: { color: '#f00' }, text: '玛雅' },
+        }],
+    });
+    assert.equal(styled.ok, true);
+    const styleRecord = await getTavernStructuredStateDocument(session.id, 'tavern.map', 'main');
+    const stylePatches = await listTavernStructuredStatePatches({ sessionId: session.id });
+    const styleReplay = applyTrustedMapPatchOps(createSeedMapDocument(), stylePatches.flatMap((patch) => patch.ops as Array<Record<string, unknown>>));
+    const storedStyledLabel = ((styleRecord?.data as { elements?: Array<Record<string, unknown>> })?.elements || [])
+        .find((element) => element.id === '__label__player_actor');
+    const replayedStyledLabel = styleReplay.elements.find((element) => element.id === '__label__player_actor');
+    assert.deepEqual(storedStyledLabel?.style, { color: '#f00' });
+    assert.deepEqual(replayedStyledLabel?.style, { color: '#f00' });
+
+    const cleared = await executeTavernStateTool(session.id, 'MapPatch', {
+        ops: [{
+            op: 'modify',
+            id: '__label__player_actor',
+            set: { style: null, text: '玛雅' },
+        }],
+    });
+    assert.equal(cleared.ok, true);
+    const clearedRecord = await getTavernStructuredStateDocument(session.id, 'tavern.map', 'main');
+    const clearedPatches = await listTavernStructuredStatePatches({ sessionId: session.id });
+    const clearedReplay = applyTrustedMapPatchOps(createSeedMapDocument(), clearedPatches.flatMap((patch) => patch.ops as Array<Record<string, unknown>>));
+    const storedClearedLabel = ((clearedRecord?.data as { elements?: Array<Record<string, unknown>> })?.elements || [])
+        .find((element) => element.id === '__label__player_actor');
+    const replayedClearedLabel = clearedReplay.elements.find((element) => element.id === '__label__player_actor');
+    assert.equal(storedClearedLabel?.style, undefined);
+    assert.equal(replayedClearedLabel?.style, undefined);
 });
 
 test('StatePatch infers path anchors without at and keeps at optional in the public schema', async () => {
