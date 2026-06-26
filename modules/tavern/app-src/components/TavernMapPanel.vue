@@ -572,7 +572,9 @@ function buildRenderItemsForElement(element: TavernMapElement, index: number, fo
     const length = gameIcon ? 120 : estimatePathLength(element, path);
     const durationMs = forcedOpKind === 'remove' ? 1050 : Math.max(680, Math.min(2200, length * 4.2));
     const color = forcedOpKind === 'remove' ? '#b94035' : elementColor(element);
-    const fill = forcedOpKind === 'remove' ? 'rgba(185, 64, 53, 0.16)' : elementFill(element);
+    const fill = forcedOpKind === 'remove'
+        ? (hasAreaShape(element) ? 'rgba(185, 64, 53, 0.16)' : 'none')
+        : elementFill(element);
     const items: MapRenderItem[] = [];
     if (material?.layer === 'light' && forcedOpKind !== 'remove' && hasAreaShape(element)) {
         items.push({

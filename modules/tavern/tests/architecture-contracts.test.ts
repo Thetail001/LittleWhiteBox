@@ -754,6 +754,7 @@ test('tavern map update badge stays collapsed until requested', () => {
     assert.match(mapPanelSource, /function handleMapWheel\(event: WheelEvent\)[\s\S]*event\.preventDefault\(\)[\s\S]*setMapZoom/);
     assert.match(mapPanelSource, /function handleMapPointerDown\(event: PointerEvent\)/);
     assert.match(mapPanelSource, /function elementFill\(element: TavernMapElement\)[\s\S]*if \(material\?\.layer === 'fill'\) \{return hasAreaShape\(element\) \? material\.paint : 'none';\}/);
+    assert.match(mapPanelSource, /const fill = forcedOpKind === 'remove'[\s\S]*hasAreaShape\(element\) \? 'rgba\(185, 64, 53, 0\.16\)' : 'none'[\s\S]*: elementFill\(element\);/);
     assert.match(mapPanelSource, /class="tavern-map-zoom-controls"[\s\S]*@click="zoomMapBy\(-0\.25\)"[\s\S]*{{ mapZoomLabel }}[\s\S]*@click="zoomMapBy\(0\.25\)"/);
     assert.match(mapPanelSource, /@pointerdown="handleMapPointerDown"[\s\S]*@pointermove="handleMapPointerMove"[\s\S]*@pointerup="handleMapPointerEnd"[\s\S]*@pointercancel="handleMapPointerEnd"[\s\S]*@wheel="handleMapWheel"/);
     assert.match(mapPanelSource, /function pickPenAnimationItem[\s\S]*!item\.gameIcon[\s\S]*item\.layer !== 'label'[\s\S]*!!item\.path/);
@@ -1819,7 +1820,7 @@ test('tavern streaming action-check UI renders from live runtime events and keep
     assert.doesNotMatch(conversationPanelSource, /open-session-archive/);
     assert.match(conversationPanelSource, /removeSession,/);
     assert.match(conversationPanelSource, /function deleteArchivedSession\(sessionId: string, event: Event\)[\s\S]*removeSession\(sessionId, event\)/);
-    assert.match(conversationPanelSource, /v-for="session in currentChatCharacterSessions"[\s\S]*class="session-archive-open"[\s\S]*@click="openArchivedSession\(session\.id\)"[\s\S]*class="session-archive-delete"[\s\S]*aria-label="删除会话"[\s\S]*@click="deleteArchivedSession\(session\.id, \$event\)"/);
+    assert.match(conversationPanelSource, /v-for="archivedSession in currentChatCharacterSessions"[\s\S]*class="session-archive-open"[\s\S]*@click="openArchivedSession\(archivedSession\.id\)"[\s\S]*class="session-archive-delete"[\s\S]*aria-label="删除会话"[\s\S]*@click="deleteArchivedSession\(archivedSession\.id, \$event\)"/);
     assert.match(conversationPanelSource, /class="chat-compose-dock"[\s\S]*class="chat-compose-shell"[\s\S]*class="compose-menu-shell"[\s\S]*<form\s+class="chat-compose"/);
     assert.doesNotMatch(conversationPanelSource, /<form\s+class="chat-compose"[\s\S]*class="compose-menu-shell"/);
     assert.match(conversationPanelSource, /class="compose-menu-button"[\s\S]*aria-label="聊天操作"[\s\S]*aria-controls="xb-tavern-compose-menu"[\s\S]*@click\.stop="toggleComposeMenu"/);
@@ -1856,7 +1857,7 @@ test('tavern streaming action-check UI renders from live runtime events and keep
     assert.match(appSource, /watch\(\(\) => currentChatCharacterSessions\.value\.map\(\(session\) => session\.id\)\.join\('\|'\), \(\) => \{[\s\S]*refreshSessionMessageCountsForSessions\(currentChatCharacterSessions\.value\)/);
     assert.match(appSource, /const sessionContext = \{[\s\S]*currentChatCharacterSessions,/);
     assert.doesNotMatch(conversationPanelSource, /useTavernCharacterContext|selectedCharacterSessions/);
-    assert.match(conversationPanelSource, /v-if="sessionArchiveOpen"[\s\S]*class="character-session-archive-overlay chat-session-archive-overlay"[\s\S]*v-for="session in currentChatCharacterSessions"[\s\S]*@click="openArchivedSession\(session\.id\)"/);
+    assert.match(conversationPanelSource, /v-if="sessionArchiveOpen"[\s\S]*class="character-session-archive-overlay chat-session-archive-overlay"[\s\S]*v-for="archivedSession in currentChatCharacterSessions"[\s\S]*@click="openArchivedSession\(archivedSession\.id\)"/);
     assert.match(managerPanelSource, /v-model="managerInputDraft"[\s\S]*rows="1"/);
     assert.match(workspacePanelSource, /<button[\s\S]*chatWorkspacePanel === 'state'[\s\S]*>\s*地图\s*<\/button>/);
     assert.match(workspacePanelSource, /class="tavern-state-viewport"[\s\S]*class="tavern-state-inline-switcher"[\s\S]*场景图[\s\S]*世界图/);

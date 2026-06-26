@@ -49857,7 +49857,7 @@ var dde = {
       }
       const rn = oe(W);
       if (!rn) return [];
-      const Qn = W.icon ? Ig(W.icon) : null, Mn = Qn ? 120 : gt(W, rn), Zr = H === "remove" ? 1050 : Math.max(680, Math.min(2200, Mn * 4.2)), Ln = H === "remove" ? "#b94035" : Fe(W), _r = H === "remove" ? "rgba(185, 64, 53, 0.16)" : ct(W), Pn = [];
+      const Qn = W.icon ? Ig(W.icon) : null, Mn = Qn ? 120 : gt(W, rn), Zr = H === "remove" ? 1050 : Math.max(680, Math.min(2200, Mn * 4.2)), Ln = H === "remove" ? "#b94035" : Fe(W), _r = H === "remove" ? Je(W) ? "rgba(185, 64, 53, 0.16)" : "none" : ct(W), Pn = [];
       if (Ke?.layer === "light" && H !== "remove" && Je(W))
         return Pn.push({
           element: W,
