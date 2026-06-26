@@ -472,10 +472,20 @@ export function createBookController(deps = {}) {
         const file = state.files.find((item) => item.path === path);
         if (!file) return;
         void stopReaderTts({ renderAfter: false });
+        const wasStudio = state.viewMode === 'studio';
         state.selectedPath = file.path;
         state.viewMode = 'studio';
         state.editorContent = file.content;
         state.savedContent = file.content;
+        if (wasStudio) {
+            // Already in studio — only patch the editor surfaces + file selection state. A full
+            // render() here would rebuild the whole shell (including the .xb-sidebar/.xb-files
+            // scroll container) and snap the sidebar to the top. If either surface can't patch
+            // (e.g. the shell node is unexpectedly missing), fall back to a full render.
+            const filesOk = typeof renderFilesSurface === 'function' && renderFilesSurface();
+            const studioOk = typeof renderStudioSurface === 'function' && renderStudioSurface();
+            if (filesOk && studioOk) return;
+        }
         render();
     }
 

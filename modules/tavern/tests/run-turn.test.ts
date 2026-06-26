@@ -8,6 +8,7 @@ import db, {
     createTavernSession,
     deleteTavernMessages,
     getTavernSession,
+    listTavernManagerMemorySnapshots,
     listTavernManagerRuns,
     listTavernMessages,
     updateTavernSessionState,
@@ -45,10 +46,10 @@ import {
     runXbTavernTurn,
     simulateXbTavernRequest,
     trimFinalAssistantMessageEnd,
+    waitForPendingAcceptedTurnManagers,
     type XbTavernRunResult,
     type TavernRunOnceOptions,
 } from '../app-src/runtime/run-once';
-import { scheduleXbTavernManagerAfterTurn } from '../app-src/runtime/manager';
 import { executeTavernTaskTool } from '../shared/tasks';
 import { createXbTavernAgentRuntime, EMPTY_XB_TAVERN_CAPABILITY_REGISTRY } from '../app-src/runtime/agent-runtime';
 import { resolveXbTavernProviderConfig } from '../app-src/runtime/provider';
@@ -56,6 +57,7 @@ import type { TavernApplyRegexItem } from '../shared/regex';
 import type { TavernSubstituteParamsItem } from '../shared/substitute-params';
 
 async function resetDb() {
+    await waitForPendingAcceptedTurnManagers();
     await db.delete();
     await db.open();
 }
@@ -419,168 +421,134 @@ test('xb tavern run turn sends only the latest quest hook first to ST-native mem
     assert.doesNotMatch(memoryPrompt, /旧码头的名字还挂在雨里/);
 });
 
-test('xb tavern run turn continues and records diagnostics when manager settle times out', async () => {
+test('xb tavern pending accepted-turn manager runs independently from the current send signal', async () => {
     await resetDb();
     const preset = createDefaultXbTavernPreset();
     const managerContract = mergeTavernSessionContract(undefined, {
         memoryArchiving: true,
-        questOrchestration: true,
     });
-    const session = await createTavernSession({
-        title: 'Manager settle timeout',
-        characterKey: 'char-timeout',
-        characterName: 'Aster',
+
+    const first = await runXbTavernTurn({
+        agentConfig: { provider: 'fake-provider', model: 'fake-model' },
         contextSnapshot: {
-            character: { characterKey: 'char-timeout', name: 'Aster', description: 'Pilot.' },
+            character: { characterKey: 'char-signal', name: 'Aster', description: 'Pilot.' },
         },
-        state: {
+        preset,
+        runtimeState: {
             contract: managerContract,
         },
-    });
-    for (let index = 0; index < 5; index += 1) {
-        await appendTavernMessage(session.id, {
-            role: index % 2 ? 'assistant' : 'user',
-            content: `铺垫 ${index}`,
-        });
-    }
-    const userMessage = await appendTavernMessage(session.id, {
-        role: 'user',
-        content: '上一轮。',
-    });
-    const assistantMessage = await appendTavernMessage(session.id, {
-        role: 'assistant',
-        content: '上一轮回复。',
-    });
-    let releaseManager!: () => void;
-    let markManagerStarted!: () => void;
-    const managerGate = new Promise<void>((resolve) => {
-        releaseManager = resolve;
-    });
-    const managerStarted = new Promise<void>((resolve) => {
-        markManagerStarted = resolve;
-    });
-    const scheduled = await scheduleXbTavernManagerAfterTurn({
-        sessionId: session.id,
-        agentConfig: { provider: 'fake-provider', model: 'fake-model' },
-        userMessage,
-        assistantMessage,
-        turn: 1,
-        sessionContract: managerContract,
-        awaitCompletion: false,
-        executeManagerOnce: async () => {
-            markManagerStarted();
-            await managerGate;
-            return {
-                text: '',
-                provider: 'fake-provider',
-                model: 'fake-model',
-                toolCalls: [{
-                    id: 'late-memory',
-                    name: 'Write',
-                    arguments: {
-                        filePath: 'memory/state.md',
-                        content: '# 会话记忆\n\n这条超时后台写入不能落库。',
-                    },
-                }, {
-                    id: 'late-task',
-                    name: 'EventPatch',
-                    arguments: {
-                        op: 'upsert-event',
-                        eventId: 'late-task',
-                        title: '超时线',
-                        horizon: '超时后台远景',
-                        current: '超时后台入口',
-                        doneWhen: '角色在故事中明确说出超时后台结果。',
-                        hookForModel: '超时后台线索浮现。',
-                    },
-                }, {
-                    id: 'late-state',
-                    name: 'MapPatch',
-                    arguments: {
-                        docType: 'tavern.map',
-                        docId: 'late-map',
-                        ops: [{
-                            op: 'meta',
-                            set: { name: '超时后台地图', viewBox: [0, 0, 500, 400], status: 'active' },
-                        }, {
-                            op: 'add',
-                            element: { id: 'late-marker', at: [50, 50], shape: 'label', text: '不能落库' },
-                        }],
-                    },
-                }],
-            };
-        },
-    });
-    await managerStarted;
-
-    const result = await runXbTavernTurn({
-        sessionId: session.id,
-        agentConfig: { provider: 'fake-provider', model: 'fake-model' },
-        contextSnapshot: session.contextSnapshot || {},
-        preset,
-        currentUserMessage: '下一轮继续。',
-        managerSettleTimeoutMs: 5,
+        currentUserMessage: '上一轮。',
+        runManager: true,
         executeRunOnce: async (options: TavernRunOnceOptions) => ({
-            text: 'RP turn continued.',
+            text: '上一轮回复。',
             provider: 'fake-provider',
             model: 'fake-model',
             requestSnapshot: buildTavernRequestSnapshot(options.agentConfig, options.messages),
         }),
+        executeManagerOnce: async () => {
+            throw new Error('first turn manager must not run yet');
+        },
     });
 
-    releaseManager();
-    await scheduled.completion;
-    assert.equal(result.error, undefined);
-    assert.equal(result.assistantMessage?.content, 'RP turn continued.');
-    const diagnostics = result.buildSnapshot.diagnostics as {
-        managerSettleTimedOut?: boolean;
-        managerSettleTimeoutMs?: number;
-        managerSettleAbortedRunIds?: string[];
-    } | undefined;
-    assert.equal(diagnostics?.managerSettleTimedOut, true);
-    assert.equal(diagnostics?.managerSettleTimeoutMs, 5);
-    assert.deepEqual(diagnostics?.managerSettleAbortedRunIds, [scheduled.managerRunId]);
-
-    const nextScheduled = await scheduleXbTavernManagerAfterTurn({
-        sessionId: session.id,
+    assert.equal(first.managerStatus, 'pending');
+    assert.ok(first.managerRunId);
+    const controller = new AbortController();
+    let managerCalls = 0;
+    let managerSignalAbortedAfterCurrentAbort = false;
+    let markManagerStarted!: () => void;
+    const managerStarted = new Promise<void>((resolve) => {
+        markManagerStarted = resolve;
+    });
+    let releaseManager!: () => void;
+    const managerRelease = new Promise<void>((resolve) => {
+        releaseManager = resolve;
+    });
+    const turnPromise = runXbTavernTurn({
+        sessionId: first.sessionId,
         agentConfig: { provider: 'fake-provider', model: 'fake-model' },
-        userMessage: result.userMessage,
-        assistantMessage: result.assistantMessage!,
-        turn: 2,
-        sessionContract: managerContract,
-        awaitCompletion: false,
-        executeManagerOnce: async () => {
+        contextSnapshot: {
+            character: { characterKey: 'char-signal', name: 'Aster', description: 'Pilot.' },
+        },
+        preset,
+        signal: controller.signal,
+        currentUserMessage: '下一轮继续。',
+        runManager: true,
+        executeRunOnce: async (options: TavernRunOnceOptions) => {
+            await new Promise<void>((resolve) => {
+                if (options.signal?.aborted) {
+                    resolve();
+                    return;
+                }
+                options.signal?.addEventListener('abort', () => resolve(), { once: true });
+            });
+            const error = new Error('current turn aborted');
+            error.name = 'AbortError';
+            throw error;
+        },
+        executeManagerOnce: async (options) => {
+            managerCalls += 1;
+            markManagerStarted();
+            await managerRelease;
+            managerSignalAbortedAfterCurrentAbort = options.signal?.aborted === true;
+            if (managerCalls === 1) {
+                return {
+                    text: 'pending manager completed after current turn abort.',
+                    provider: 'fake-provider',
+                    model: 'fake-model',
+                };
+            }
             return {
-                text: 'new manager started',
+                text: 'extra pending manager completed.',
                 provider: 'fake-provider',
                 model: 'fake-model',
-                toolCalls: [],
             };
         },
     });
-    const nextStartResult = await Promise.race([
-        nextScheduled.completion.then(() => 'completed' as const),
-        new Promise<'blocked'>((resolve) => setTimeout(() => resolve('blocked'), 50)),
-    ]);
-    assert.equal(nextStartResult, 'completed');
-    await nextScheduled.completion;
+    await managerStarted;
+    controller.abort();
+    const result = await turnPromise;
 
-    assert.doesNotMatch((await getTavernMemoryFile(session.id, 'memory/state.md'))?.content || '', /超时后台写入不能落库/);
-    const taskResult = await executeTavernTaskTool(session.id, 'EventPatch', {
-        op: 'complete-event',
-        eventId: 'late-task',
+    assert.equal(result.error, '已停止生成。');
+    let runs = await listTavernManagerRuns(first.sessionId);
+    assert.equal(runs.find((run) => run.id === first.managerRunId)?.status, 'running');
+    releaseManager();
+    await waitForPendingAcceptedTurnManagers(first.sessionId);
+    assert.equal(managerSignalAbortedAfterCurrentAbort, false);
+    assert.equal(managerCalls, 1);
+    assert.doesNotMatch((await getTavernMemoryFile(first.sessionId, 'memory/state.md'))?.content || '', /pending 维护被当前停止打断/);
+    runs = await listTavernManagerRuns(first.sessionId);
+    assert.equal(runs.find((run) => run.id === first.managerRunId)?.status, 'completed');
+    assert.deepEqual(await listTavernManagerMemorySnapshots(first.managerRunId), []);
+
+    const next = await runXbTavernTurn({
+        sessionId: first.sessionId,
+        agentConfig: { provider: 'fake-provider', model: 'fake-model' },
+        contextSnapshot: {
+            character: { characterKey: 'char-signal', name: 'Aster', description: 'Pilot.' },
+        },
+        preset,
+        currentUserMessage: '再继续。',
+        runManager: true,
+        executeRunOnce: async (options: TavernRunOnceOptions) => ({
+            text: '这次正常继续。',
+            provider: 'fake-provider',
+            model: 'fake-model',
+            requestSnapshot: buildTavernRequestSnapshot(options.agentConfig, options.messages),
+        }),
+        executeManagerOnce: async () => {
+            managerCalls += 1;
+            return {
+                text: 'new pending manager completed.',
+                provider: 'fake-provider',
+                model: 'fake-model',
+            };
+        },
     });
-    assert.equal(taskResult.error, 'task_not_found');
-    const stateResult = await executeTavernStateTool(session.id, 'MapInspect', {
-        docType: 'tavern.map',
-        docId: 'late-map',
-        mode: 'document',
-    });
-    assert.equal(stateResult.error, 'state_document_not_found');
-    const runs = await listTavernManagerRuns(session.id);
-    const staleRun = runs.find((run) => run.id === scheduled.managerRunId);
-    assert.equal(staleRun?.status, 'cancelled');
-    assert.match(String(staleRun?.error || ''), /manager_(?:settle_timeout|aborted)/);
+    assert.equal(next.error, undefined);
+    assert.equal(next.managerStatus, 'pending');
+    runs = await listTavernManagerRuns(first.sessionId);
+    assert.equal(runs.find((run) => run.id === first.managerRunId)?.status, 'completed');
+    assert.equal(runs.find((run) => run.id === next.managerRunId)?.status, 'pending');
 });
 
 test('xb tavern session author note reaches native prompt for real and simulated requests', async () => {
@@ -1791,13 +1759,13 @@ test('xb tavern rerun regenerates assistant action checks cleanly instead of reu
     assert.equal(getActionCheckEvents(messages[1]?.runtimeEvents).length, 0);
 });
 
-test('xb tavern run turn can trigger manager summary with delegate config', async () => {
+test('xb tavern run turn starts accepted-turn manager work on the next user send without blocking RP', async () => {
     await resetDb();
     const preset = createDefaultXbTavernPreset();
     let managerProvider = '';
     let managerPrompt = '';
     let managerCalls = 0;
-    const result = await runXbTavernTurn({
+    const first = await runXbTavernTurn({
         agentConfig: {
             currentPresetName: '主聊天',
             delegatePresetName: '记忆管理员',
@@ -1822,7 +1790,6 @@ test('xb tavern run turn can trigger manager summary with delegate config', asyn
         preset,
         currentUserMessage: '我们去码头。',
         runManager: true,
-        awaitManager: true,
         executeRunOnce: async (options: TavernRunOnceOptions) => ({
             text: '她点头，把灯吹灭。',
             provider: 'sillytavern-claude',
@@ -1873,9 +1840,116 @@ test('xb tavern run turn can trigger manager summary with delegate config', asyn
         },
     });
 
-    const debugRuns = await listTavernManagerRuns(result.sessionId);
-    assert.equal(result.managerStatus, 'completed', JSON.stringify(debugRuns[0] || null));
+    const pendingRuns = await listTavernManagerRuns(first.sessionId);
+    assert.equal(first.managerStatus, 'pending', JSON.stringify(pendingRuns[0] || null));
+    assert.ok(first.managerRunId);
+    assert.equal(managerCalls, 0);
+    assert.equal(pendingRuns[0]?.status, 'pending');
+    assert.equal(pendingRuns[0]?.trigger, 'accepted_turn');
+
+    let markManagerStarted!: () => void;
+    const managerStarted = new Promise<void>((resolve) => {
+        markManagerStarted = resolve;
+    });
+    let releaseManager!: () => void;
+    const managerRelease = new Promise<void>((resolve) => {
+        releaseManager = resolve;
+    });
+    const managerRunStatuses: string[] = [];
+    const turnPromise = runXbTavernTurn({
+        sessionId: first.sessionId,
+        agentConfig: {
+            currentPresetName: '主聊天',
+            delegatePresetName: '记忆管理员',
+            presets: {
+                主聊天: {
+                    provider: 'sillytavern-claude',
+                    modelConfigs: {
+                        'sillytavern-claude': { model: 'main-model' },
+                    },
+                },
+            },
+            delegateConfig: {
+                provider: 'sillytavern-openai-compatible',
+                modelConfigs: {
+                    'sillytavern-openai-compatible': { model: 'manager-model' },
+                },
+            },
+        },
+        contextSnapshot: {
+            character: { characterKey: 'char-1', name: 'Aster' },
+        },
+        preset,
+        currentUserMessage: '继续。',
+        runManager: true,
+        executeRunOnce: async (options: TavernRunOnceOptions) => ({
+            text: '她把船绳绕在腕上，准备登船。',
+            provider: 'sillytavern-claude',
+            model: 'main-model',
+            requestSnapshot: buildTavernRequestSnapshot(options.agentConfig, options.messages, {
+                provider: 'sillytavern-claude',
+                model: 'main-model',
+            }),
+        }),
+        executeManagerOnce: async (options) => {
+            managerCalls += 1;
+            managerPrompt = JSON.stringify(options.messages);
+            const delegateConfig = options.agentConfig.delegateConfig as { provider?: string } | undefined;
+            managerProvider = String(delegateConfig?.provider || '');
+            if (managerCalls === 1) {
+                markManagerStarted();
+                await managerRelease;
+                return {
+                    provider: 'sillytavern-openai-compatible',
+                    model: 'manager-model',
+                    text: '',
+                    toolCalls: [{
+                        id: 'write-state',
+                        name: 'Write',
+                        arguments: {
+                            filePath: 'memory/state.md',
+                            content: [
+                                '# 会话记忆',
+                                '',
+                                '两人决定去码头，Aster 接受行动。',
+                                '',
+                                '状态：',
+                                'Aster 更主动。',
+                                '',
+                                '关系：',
+                                '信任增加。',
+                                '',
+                                '地点与物品：',
+                                '目标地点变成码头。',
+                            ].join('\n'),
+                        },
+                    }],
+                };
+            }
+            return {
+                provider: 'sillytavern-openai-compatible',
+                model: 'manager-model',
+                text: '已更新本轮记忆档案。',
+            };
+        },
+        onManagerRunSaved: async (sessionId, managerRunId) => {
+            const run = (await listTavernManagerRuns(sessionId)).find((item) => item.id === managerRunId);
+            if (run) {
+                managerRunStatuses.push(`${run.id}:${run.status}`);
+            }
+        },
+    });
+
+    await managerStarted;
+    const sawRunningStatusBeforeRpCompleted = managerRunStatuses.includes(`${first.managerRunId}:running`);
+    const result = await turnPromise;
+    assert.equal(result.managerStatus, 'pending');
     assert.ok(result.managerRunId);
+    assert.equal(managerCalls, 1);
+    releaseManager();
+    await waitForPendingAcceptedTurnManagers(result.sessionId);
+    assert.equal(sawRunningStatusBeforeRpCompleted, true);
+    assert.equal(managerCalls, 2);
     assert.equal(managerProvider, 'sillytavern-openai-compatible');
     assert.match(managerPrompt, /小白酒馆后台管理员/);
     assert.match(managerPrompt, /running inside the user's SillyTavern instance/i);
@@ -1906,6 +1980,9 @@ test('xb tavern run turn can trigger manager summary with delegate config', asyn
     assert.match(managerPrompt, /First appearance does not require a prior/i);
     assert.match(managerPrompt, /what defines the boundary, where entrances and exits are/i);
     assert.match(managerPrompt, /For indoor scenes, use an outer-wall rect as the anchor/i);
+    assert.match(managerPrompt, /Let the scene pressure shape composition/i);
+    assert.match(managerPrompt, /A house becomes walls, doors, windows, yard, and road edge/i);
+    assert.match(managerPrompt, /Do not invent a complete floor plan just to make the map look full/i);
     assert.match(managerPrompt, /`meta\.viewBox` is the camera/i);
     assert.match(managerPrompt, /at least one drawable spatial geometry element/i);
     assert.match(managerPrompt, /Place text labels 15-25 units beside what they describe/i);
@@ -1920,8 +1997,12 @@ test('xb tavern run turn can trigger manager summary with delegate config', asyn
     const memoryFiles = (await getTavernMemoryIndex(result.sessionId))?.files || [];
     assert.equal(memoryFiles.some((file) => file.path === 'memory/state.md'), true);
     const runs = await listTavernManagerRuns(result.sessionId);
-    assert.equal(runs[0]?.status, 'completed');
-    assert.equal(runs[0]?.model, 'manager-model');
+    const completed = runs.find((run) => run.id === first.managerRunId);
+    assert.equal(completed?.status, 'completed');
+    assert.equal(completed?.model, 'manager-model');
+    const nextPending = runs.find((run) => run.id === result.managerRunId);
+    assert.equal(nextPending?.status, 'pending');
+    assert.equal(nextPending?.trigger, 'accepted_turn');
 });
 
 test('tavern manager prompt strips unauthorized module rules cleanly', () => {
@@ -1964,6 +2045,130 @@ test('tavern manager prompt strips unauthorized module rules cleanly', () => {
     assert.doesNotMatch(questOnly, /MemoryWrite/);
     assert.doesNotMatch(questOnly, /## Structured State/);
     assert.doesNotMatch(questOnly, /## Map Records/);
+});
+
+test('xb tavern pending accepted-turn manager failure does not block the next RP send', async () => {
+    await resetDb();
+    const preset = createDefaultXbTavernPreset();
+    let managerCalls = 0;
+    const first = await runXbTavernTurn({
+        agentConfig: { provider: 'fake-provider', model: 'fake-model' },
+        contextSnapshot: {
+            character: { characterKey: 'char-1', name: 'Aster' },
+        },
+        preset,
+        currentUserMessage: '先记住这一轮。',
+        runManager: true,
+        executeRunOnce: async (options: TavernRunOnceOptions) => ({
+            text: '她把黑匣子交给你保管。',
+            requestSnapshot: buildTavernRequestSnapshot(options.agentConfig, options.messages),
+        }),
+        executeManagerOnce: async () => {
+            throw new Error('first turn manager must not run yet');
+        },
+    });
+
+    assert.equal(first.managerStatus, 'pending');
+    assert.equal(managerCalls, 0);
+
+    let markManagerStarted!: () => void;
+    const managerStarted = new Promise<void>((resolve) => {
+        markManagerStarted = resolve;
+    });
+    let releaseManager!: () => void;
+    const managerRelease = new Promise<void>((resolve) => {
+        releaseManager = resolve;
+    });
+    const turnPromise = runXbTavernTurn({
+        sessionId: first.sessionId,
+        agentConfig: { provider: 'fake-provider', model: 'fake-model' },
+        contextSnapshot: {
+            character: { characterKey: 'char-1', name: 'Aster' },
+        },
+        preset,
+        currentUserMessage: '继续。',
+        runManager: true,
+        executeRunOnce: async (options: TavernRunOnceOptions) => ({
+            text: '她低声说，别让第三个人知道。',
+            requestSnapshot: buildTavernRequestSnapshot(options.agentConfig, options.messages),
+        }),
+        executeManagerOnce: async () => {
+            managerCalls += 1;
+            markManagerStarted();
+            await managerRelease;
+            throw new Error('manager_pre_send_failed');
+        },
+    });
+
+    await managerStarted;
+    const second = await turnPromise;
+    assert.equal(second.error, undefined);
+    assert.equal(second.assistantMessage?.content, '她低声说，别让第三个人知道。');
+    assert.equal(second.managerStatus, 'pending');
+    assert.equal(managerCalls, 1);
+    releaseManager();
+    await waitForPendingAcceptedTurnManagers(first.sessionId);
+    const runs = await listTavernManagerRuns(first.sessionId);
+    const failed = runs.find((run) => run.id === first.managerRunId);
+    assert.equal(failed?.status, 'failed');
+    assert.equal(failed?.error, 'manager_pre_send_failed');
+    const nextPending = runs.find((run) => run.id === second.managerRunId);
+    assert.equal(nextPending?.status, 'pending');
+});
+
+test('xb tavern reroll cancels pending accepted-turn manager work without calling the manager API', async () => {
+    await resetDb();
+    const preset = createDefaultXbTavernPreset();
+    let managerCalls = 0;
+    const first = await runXbTavernTurn({
+        agentConfig: { provider: 'fake-provider', model: 'fake-model' },
+        contextSnapshot: {
+            character: { characterKey: 'char-1', name: 'Aster' },
+        },
+        preset,
+        currentUserMessage: '试一次。',
+        runManager: true,
+        executeRunOnce: async (options: TavernRunOnceOptions) => ({
+            text: '第一版回复。',
+            requestSnapshot: buildTavernRequestSnapshot(options.agentConfig, options.messages),
+        }),
+        executeManagerOnce: async () => {
+            managerCalls += 1;
+            return { text: '不应该维护旧候选。' };
+        },
+    });
+    assert.equal(first.managerStatus, 'pending');
+
+    const rerun = await runXbTavernTurn({
+        sessionId: first.sessionId,
+        agentConfig: { provider: 'fake-provider', model: 'fake-model' },
+        contextSnapshot: {
+            character: { characterKey: 'char-1', name: 'Aster' },
+        },
+        preset,
+        currentUserMessage: 'ignored',
+        reuseUserMessageOrder: first.userMessage.order,
+        runManager: true,
+        executeRunOnce: async (options: TavernRunOnceOptions) => ({
+            text: '最终保留回复。',
+            requestSnapshot: buildTavernRequestSnapshot(options.agentConfig, options.messages),
+        }),
+        executeManagerOnce: async () => {
+            managerCalls += 1;
+            return { text: '不应该维护重 roll 过程。' };
+        },
+    });
+
+    assert.equal(rerun.managerStatus, 'pending');
+    assert.equal(managerCalls, 0);
+    const runs = await listTavernManagerRuns(first.sessionId);
+    const oldPending = runs.find((run) => run.id === first.managerRunId);
+    assert.equal(oldPending?.status, 'cancelled');
+    assert.equal(oldPending?.error, 'manager_source_messages_superseded');
+    assert.equal(runs[0]?.id, rerun.managerRunId);
+    assert.equal(runs[0]?.status, 'pending');
+    const messages = await listTavernMessages(first.sessionId);
+    assert.deepEqual(messages.map((message) => message.content), ['试一次。', '最终保留回复。']);
 });
 
 test('xb tavern run turn retrieves relevant old memory beyond recent summaries', async () => {
@@ -3692,7 +3897,6 @@ test('xb tavern run turn records aborted partial text as assistant message', asy
         preset,
         currentUserMessage: 'Start then stop.',
         runManager: true,
-        awaitManager: true,
         executeRunOnce: async (options: TavernRunOnceOptions) => {
             options.onStreamProgress?.({ text: '# Partial\n\nStill useful.' });
             const error = new Error('aborted by user');
@@ -4079,7 +4283,6 @@ test('xb tavern rerun preserves contract and skips automatic manager work when d
             }),
         },
         runManager: true,
-        awaitManager: true,
         executeRunOnce: async (options: TavernRunOnceOptions) => ({
             text: 'First answer.',
             requestSnapshot: buildTavernRequestSnapshot(options.agentConfig, options.messages),
@@ -4104,7 +4307,6 @@ test('xb tavern rerun preserves contract and skips automatic manager work when d
         currentUserMessage: 'ignored',
         reuseUserMessageOrder: 0,
         runManager: true,
-        awaitManager: true,
         executeRunOnce: async (options: TavernRunOnceOptions) => ({
             text: 'Rerun answer.',
             requestSnapshot: buildTavernRequestSnapshot(options.agentConfig, options.messages),

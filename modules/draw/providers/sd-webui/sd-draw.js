@@ -475,6 +475,58 @@ function getActivePreset(settings = getSettings()) {
     return settings.presets.find(p => p.id === settings.selectedPresetId) || settings.presets[0] || createDefaultPreset();
 }
 
+function getQuickSizeOptions() {
+    return [
+        { value: 'default', label: '跟随预设' },
+        ...SD_SIZE_PRESETS.map((item) => ({
+            value: item.value,
+            label: item.value.replace('x', ' x '),
+        })),
+    ];
+}
+
+export function getQuickSettings() {
+    const settings = getSettings();
+    const presets = (settings.presets || []).map((preset) => ({
+        value: String(preset.id || ''),
+        label: String(preset.name || '未命名'),
+    })).filter((preset) => preset.value);
+    return {
+        provider: 'sd-webui',
+        providerLabel: 'SD WebUI',
+        available: moduleInitialized,
+        auto: settings.mode === 'auto',
+        presets,
+        selectedPresetId: String(settings.selectedPresetId || presets[0]?.value || ''),
+        sizeOptions: getQuickSizeOptions(),
+        selectedSize: String(settings.overrideSize || 'default'),
+    };
+}
+
+export async function updateQuickSettings(patch = {}) {
+    const ok = await updateSettingsPersistent((settings) => {
+        if (Object.prototype.hasOwnProperty.call(patch, 'selectedPresetId')) {
+            settings.selectedPresetId = String(patch.selectedPresetId || '');
+        }
+        if (Object.prototype.hasOwnProperty.call(patch, 'selectedSize')) {
+            settings.overrideSize = String(patch.selectedSize || 'default');
+        }
+        if (Object.prototype.hasOwnProperty.call(patch, 'auto')) {
+            settings.mode = patch.auto === true ? 'auto' : 'manual';
+        }
+    }, '快捷设置已保存', { notify: false, silent: false });
+    if (!ok) {
+        throw new Error('quick_settings_save_failed');
+    }
+    try {
+        const fp = await import('./floating-panel.js');
+        fp.updateAllPresetSelects?.();
+        fp.updateAllSizeSelects?.();
+        fp.updateAutoModeUI?.();
+    } catch {}
+    return getQuickSettings();
+}
+
 function getActivePromptPreset(settings = getSettings()) {
     return settings.promptPresets.find((preset) => preset.id === settings.selectedPromptPresetId)
         || settings.promptPresets[0]
@@ -765,7 +817,7 @@ async function createOverlay() {
 
     overlayElement = document.createElement('div');
     overlayElement.id = 'xiaobaix-sd-draw-overlay';
-    overlayElement.style.cssText = `position:fixed!important;top:0!important;left:0!important;width:100vw!important;height:${window.innerHeight}px!important;z-index:99999!important;display:none;overflow:hidden!important;`;
+    overlayElement.style.cssText = `position:fixed!important;top:0!important;left:0!important;width:100vw!important;height:${window.innerHeight}px!important;z-index:100002!important;display:none;overflow:hidden!important;`;
     const backdrop = document.createElement('div');
     backdrop.className = 'sd-draw-backdrop';
     backdrop.addEventListener('click', hideSettings);
@@ -3305,9 +3357,9 @@ function buildFailedPlaceholderHtml({ slotId, messageId, tags, positive, errorTy
 <div class="xb-nd-failed-title">${escapeHtml(errorType || '生成失败')}</div>
 <div class="xb-nd-failed-desc">${escapeHtml(errorMessage || '点击重试')}</div>
 <div class="xb-nd-failed-btns">
-    <button class="xb-nd-retry-btn" data-action="retry-image">🔄 重新生成</button>
-    <button class="xb-nd-edit-btn" data-action="edit-tags">✏️ 编辑TAG</button>
-    <button class="xb-nd-remove-btn" data-action="remove-placeholder">🗑️ 移除</button>
+    <button class="xb-nd-retry-btn" data-action="retry-image">⟳ 重新生成</button>
+    <button class="xb-nd-edit-btn" data-action="edit-tags">✐ 编辑TAG</button>
+    <button class="xb-nd-remove-btn" data-action="remove-placeholder">✕ 移除</button>
 </div>
 <div class="xb-nd-edit" style="display:none;margin-top:12px;text-align:left;">
     <div style="font-size:11px;color:rgba(255,255,255,0.6);margin-bottom:6px;">编辑 TAG（场景描述）</div>
@@ -4241,6 +4293,8 @@ export async function initSdDraw() {
     window.xiaobaixSdDraw = {
         openSettings,
         getSettings,
+        getQuickSettings,
+        updateQuickSettings,
         testConnection,
         fetchSdModels,
         fetchSdSamplers,

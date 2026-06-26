@@ -1,9 +1,10 @@
 import { nextTick, type ComputedRef, type Ref } from 'vue';
 import { getTavernMemoryFile, writeTavernMemoryFile } from '../../../shared/memory-files';
-import type {
-    TavernMemoryFileListEntry,
-    TavernMemoryFileRecord,
-    TavernMemoryIndexFileEntry,
+import {
+    getLatestTavernUserMessageAtOrBefore,
+    type TavernMemoryFileListEntry,
+    type TavernMemoryFileRecord,
+    type TavernMemoryIndexFileEntry,
 } from '../../../shared/session-db';
 
 export interface TavernMemoryWorkspaceOptions {
@@ -13,11 +14,13 @@ export interface TavernMemoryWorkspaceOptions {
     memoryEditorDirty: ComputedRef<boolean>;
     memoryEditorLoadedPath: Ref<string>;
     memoryEditorMode: Ref<'preview' | 'edit'>;
+    memoryEditorReadOnly: ComputedRef<boolean>;
     memoryEditorStatus: Ref<string>;
     selectedMemoryFileEntry: ComputedRef<TavernMemoryIndexFileEntry | null>;
     selectedMemoryFilePath: Ref<string>;
     selectedMemoryFileRecord: Ref<TavernMemoryFileRecord | null>;
     selectedSessionId: Ref<string>;
+    commitUserAcceptedState: (sessionId?: string, userOrder?: number) => Promise<void>;
     confirmDialog: (options: { title?: string; message?: string; confirmText?: string; cancelText?: string; tone?: 'default' | 'danger' | 'warning' } | string) => Promise<boolean>;
     refreshRecords: (sessionId?: string) => Promise<void>;
 }
@@ -88,13 +91,19 @@ export function useTavernMemoryWorkspace(options: TavernMemoryWorkspaceOptions) 
 
     async function saveSelectedMemoryFile() {
         const file = options.selectedMemoryFileEntry.value;
-        if (!options.selectedSessionId.value || !file) {return;}
+        if (!options.selectedSessionId.value || !file || options.memoryEditorReadOnly.value) {return;}
         options.memoryEditorStatus.value = '保存中';
         try {
-            await writeTavernMemoryFile(options.selectedSessionId.value, file.path, options.memoryEditorDraft.value, { source: 'user' });
+            const userAcceptedAnchorOrder = (await getLatestTavernUserMessageAtOrBefore(
+                options.selectedSessionId.value,
+                Number.POSITIVE_INFINITY,
+            ))?.order ?? -1;
+            const saved = await writeTavernMemoryFile(options.selectedSessionId.value, file.path, options.memoryEditorDraft.value, { source: 'user' });
+            await options.commitUserAcceptedState(options.selectedSessionId.value, userAcceptedAnchorOrder);
             await options.refreshRecords(options.selectedSessionId.value);
             options.memoryEditorLoadedPath.value = file.path;
-            options.memoryEditorBaseContent.value = options.memoryEditorDraft.value;
+            options.memoryEditorBaseContent.value = saved.content;
+            options.memoryEditorDraft.value = saved.content;
             options.memoryEditorMode.value = 'preview';
             options.memoryEditorStatus.value = '';
         } catch (error) {
@@ -103,7 +112,7 @@ export function useTavernMemoryWorkspace(options: TavernMemoryWorkspaceOptions) 
     }
 
     function enterMemoryEditMode() {
-        if (!options.memoryEditorDocumentAvailable.value) {return;}
+        if (!options.memoryEditorDocumentAvailable.value || options.memoryEditorReadOnly.value) {return;}
         options.memoryEditorMode.value = 'edit';
         void nextTick(() => {
             const textarea = document.querySelector<HTMLTextAreaElement>('[data-memory-editor-textarea="true"]');

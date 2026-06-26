@@ -340,6 +340,85 @@ function handleDrawStatus(payload = {}) {
     ...getDrawStatus()
   });
 }
+function refreshDrawStatus() {
+  postToFrame("xb-tavern:draw-status-changed", getDrawStatus());
+}
+function getDrawProviderSettingsFacade(provider = "") {
+  const key = String(provider || "").trim().toLowerCase();
+  if (key === "novelai" || key === "novel") {
+    return window.xiaobaixNovelDraw;
+  }
+  if (key === "sdwebui" || key === "sd-webui" || key === "sd" || key === "stable-diffusion") {
+    return window.xiaobaixSdDraw;
+  }
+  if (key === "comfyui" || key === "comfy") {
+    return window.xiaobaixComfyDraw;
+  }
+  return void 0;
+}
+async function handleDrawOpenSettings(payload = {}) {
+  const requestId = String(payload.requestId || "");
+  try {
+    const status = getDrawStatus();
+    const provider = String(status.provider || "disabled");
+    const settingsFacade = getDrawProviderSettingsFacade(provider);
+    if (typeof settingsFacade?.openSettings !== "function") {
+      throw new Error("\u753B\u56FE\u8BBE\u7F6E\u4E0D\u53EF\u7528");
+    }
+    await settingsFacade.openSettings();
+    replyHostResult(requestId, {
+      ok: true,
+      provider
+    });
+  } catch (error) {
+    replyHostResult(requestId, hostErrorPayload(error, "draw_settings_failed"));
+  }
+}
+async function handleDrawQuickSettings(payload = {}) {
+  const requestId = String(payload.requestId || "");
+  try {
+    const status = getDrawStatus();
+    const provider = String(status.provider || "disabled");
+    const settingsFacade = getDrawProviderSettingsFacade(provider);
+    const quickSettings = typeof settingsFacade?.getQuickSettings === "function" ? await settingsFacade.getQuickSettings() : {
+      provider,
+      available: false,
+      presets: [],
+      sizeOptions: []
+    };
+    replyHostResult(requestId, {
+      ok: true,
+      result: {
+        provider,
+        ...quickSettings || {}
+      }
+    });
+  } catch (error) {
+    replyHostResult(requestId, hostErrorPayload(error, "draw_quick_settings_failed"));
+  }
+}
+async function handleDrawUpdateQuickSettings(payload = {}) {
+  const requestId = String(payload.requestId || "");
+  const patch = payload.payload && typeof payload.payload === "object" ? payload.payload : {};
+  try {
+    const status = getDrawStatus();
+    const provider = String(status.provider || "disabled");
+    const settingsFacade = getDrawProviderSettingsFacade(provider);
+    if (typeof settingsFacade?.updateQuickSettings !== "function") {
+      throw new Error("\u753B\u56FE\u5FEB\u6377\u8BBE\u7F6E\u4E0D\u53EF\u7528");
+    }
+    const quickSettings = await settingsFacade.updateQuickSettings(patch);
+    replyHostResult(requestId, {
+      ok: true,
+      result: {
+        provider,
+        ...quickSettings || {}
+      }
+    });
+  } catch (error) {
+    replyHostResult(requestId, hostErrorPayload(error, "draw_quick_settings_save_failed"));
+  }
+}
 async function handleDrawGenerate(payload = {}) {
   const requestId = String(payload.requestId || "");
   const controller = new AbortController();
@@ -466,6 +545,28 @@ function buildDeletedDrawPlaceholder(slotId, preview = {}, fallback = {}) {
     positive: String(source.positive || ""),
     errorType: TAVERN_DRAW_DELETED_ERROR_TYPE,
     errorMessage: TAVERN_DRAW_DELETED_ERROR_MESSAGE,
+    characterPrompts: cloneFramePayload(getDrawPreviewCharacterPrompts(source)),
+    negativePrompt: String(source.negativePrompt || ""),
+    anchor: String(source.anchor || "")
+  };
+}
+function buildRefreshFailedDrawPlaceholder(slotId, preview = {}, failedInfo = {}, error) {
+  const source = preview && typeof preview === "object" && Object.keys(preview).length ? preview : failedInfo;
+  const errorMessage = error instanceof Error && error.message ? error.message : String(error || "\u751F\u6210\u5931\u8D25");
+  return {
+    slotId,
+    messageId: getDrawPreviewStorageMessageId(source, slotId),
+    source: String(source.source || "tavern"),
+    chatId: String(source.chatId || ""),
+    characterName: String(source.characterName || ""),
+    bookId: String(source.bookId || ""),
+    bookTitle: String(source.bookTitle || ""),
+    chapterPath: String(source.chapterPath || ""),
+    chapterTitle: String(source.chapterTitle || ""),
+    tags: String(source.tags || ""),
+    positive: String(source.positive || source.tags || ""),
+    errorType: "\u751F\u6210\u5931\u8D25",
+    errorMessage,
     characterPrompts: cloneFramePayload(getDrawPreviewCharacterPrompts(source)),
     negativePrompt: String(source.negativePrompt || ""),
     anchor: String(source.anchor || "")
@@ -662,17 +763,24 @@ async function handleDrawImageRefresh(payload = {}) {
   const requestId = String(payload.requestId || "");
   const source = payload.payload && typeof payload.payload === "object" ? payload.payload : payload;
   const slotId = String(source.slotId || "").trim();
+  let refreshFailureContext = null;
   try {
     if (!slotId) {
       throw new Error("slot_id_required");
     }
+    const { getDisplayPreviewForSlot, storePreview, setSlotSelection, deleteFailedRecordsForSlot } = await getDrawGalleryCacheModule();
+    const current = await getDisplayPreviewForSlot(slotId);
+    const preview = current.preview || {};
+    const failedInfo = current.failedInfo || {};
+    refreshFailureContext = {
+      wasFailed: current.isFailed === true || current.hasData !== true,
+      preview,
+      failedInfo
+    };
     const facade = window.xiaobaixDraw;
     if (typeof facade?.generateImage !== "function") {
       throw new Error("\u753B\u56FE\u6A21\u5757\u672A\u521D\u59CB\u5316");
     }
-    const { getDisplayPreviewForSlot, storePreview, setSlotSelection } = await getDrawGalleryCacheModule();
-    const current = await getDisplayPreviewForSlot(slotId);
-    const preview = current.preview || {};
     const tags = String(source.tags || preview.tags || "").trim();
     const characterPrompts = getDrawPreviewCharacterPrompts(preview);
     const negativePrompt = getDrawPromptNegativeInput(facade, preview);
@@ -704,6 +812,9 @@ async function handleDrawImageRefresh(payload = {}) {
       source: "tavern"
     });
     await setSlotSelection(slotId, imgId);
+    if (refreshFailureContext.wasFailed) {
+      await deleteFailedRecordsForSlot(slotId);
+    }
     const messageId = getDrawPreviewMessageId(preview);
     if (messageId >= 0) {
       const { clearDrawSavedEntry } = await getDrawCommonModule();
@@ -711,6 +822,20 @@ async function handleDrawImageRefresh(payload = {}) {
     }
     replyHostResult(requestId, { ok: true, result: await buildDrawImageResult(slotId) });
   } catch (error) {
+    if (slotId && refreshFailureContext?.wasFailed) {
+      try {
+        const { storeFailedPlaceholder } = await getDrawGalleryCacheModule();
+        const { preview, failedInfo } = refreshFailureContext;
+        if (String(preview.tags || failedInfo.tags || "").trim()) {
+          await storeFailedPlaceholder(
+            buildRefreshFailedDrawPlaceholder(slotId, preview, failedInfo, error)
+          );
+          replyHostResult(requestId, { ok: true, result: await buildDrawImageResult(slotId) });
+          return;
+        }
+      } catch {
+      }
+    }
     replyHostResult(requestId, hostErrorPayload(error, "image_refresh_failed"));
   }
 }
@@ -1059,6 +1184,15 @@ function handleFrameMessage(event) {
     case "xb-tavern:draw-status":
       handleDrawStatus(data.payload || {});
       break;
+    case "xb-tavern:draw-open-settings":
+      void handleDrawOpenSettings(data.payload || {});
+      break;
+    case "xb-tavern:draw-quick-settings":
+      void handleDrawQuickSettings(data.payload || {});
+      break;
+    case "xb-tavern:draw-update-quick-settings":
+      void handleDrawUpdateQuickSettings(data.payload || {});
+      break;
     case "xb-tavern:draw-generate":
       void handleDrawGenerate(data.payload || {});
       break;
@@ -1150,6 +1284,7 @@ async function initTavern() {
     open: openTavern,
     close: closeTavern,
     refreshContext,
+    refreshDrawStatus,
     refreshRenderSettings
   };
 }

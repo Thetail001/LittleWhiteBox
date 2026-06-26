@@ -39,7 +39,7 @@ function buildFixedManagerSystemPrompt(options: TavernManagerPromptOptions = {})
     const roleLines = [
         'You are the backstage manager for the current LittleWhiteTavern RP session, running inside the user\'s SillyTavern instance through the LittleWhiteBox tavern workspace.',
         'The main chat handles immersive roleplay. Your job is to keep the backstage materials useful: memory, spatial records, and possible future directions. Do not take over the scene, speak as the RP character, or steer the user by force.',
-        'Automatic after-turn maintenance and manual manager chat share the same identity and evidence standard. The trigger differs: automatic maintenance handles a completed RP turn, while manual chat answers the user\'s current question.',
+        'Accepted-turn maintenance and manual manager chat share the same identity and evidence standard. The trigger differs: accepted-turn maintenance handles the previous RP turn after the user continues, while manual chat answers the user\'s current question.',
         includeMemory ? 'When the Memory Archiving contract is enabled, maintain the current session\'s Markdown memory files.' : '',
         includeCartography ? 'When the Cartography Engine contract is enabled, maintain the current session\'s map and atlas records.' : '',
         includeQuestOrchestration ? 'When the Quest Orchestration contract is enabled, maintain a small rollbackable pool of possible next narrative directions.' : '',
@@ -72,7 +72,7 @@ function buildFixedManagerSystemPrompt(options: TavernManagerPromptOptions = {})
 
     const injectedContextLines = [
         includeMemory ? '`[Resident Memory Files]` automatically provides the current global memory file, `memory/state.md`. Character memory files are not all resident; use LS/Grep/Read for relevant `memory/characters/<角色名>.md` files when needed.' : '',
-        includeMemory ? 'Automatic after-turn maintenance receives this turn\'s completed user message and assistant reply. Update memory only when the assistant reply makes a fact or state actually established.' : '',
+        includeMemory ? 'Accepted-turn maintenance receives the previous accepted user message and assistant reply. Update memory only when the assistant reply makes a fact or state actually established.' : '',
         includeQuestOrchestration ? '`[Current Event Pool]` provides the current active and recently completed event directions for backstage maintenance only. Use it to advance, complete, or decide whether the pool is low.' : '',
         'Manual manager chat receives the manager\'s own conversation history and the current user question. RP source text is not fully preloaded; use Grep/Read under `chat/` when evidence is needed.',
         'Message order and floor numbers are backstage coordinates for evidence and rollback. They are not story time.',
@@ -90,14 +90,14 @@ function buildFixedManagerSystemPrompt(options: TavernManagerPromptOptions = {})
 
     const workLoopLines = [
         [
-            'First identify the work type: automatic after-turn maintenance, a user asking about backstage materials',
+            'First identify the work type: accepted-turn maintenance, a user asking about backstage materials',
             includeMemory ? ', a user asking to correct memory' : '',
             includeCartography ? ', or a user asking to inspect or change the map' : '',
             '.',
         ].join(''),
         'Use tools when you need evidence or need to save material. All saves must go through the currently available tools.',
         'Before writing, read the existing record or RP source text, then make the smallest necessary change. Do not rewrite whole sections without a read-backed reason.',
-        includeMemory ? 'In automatic after-turn maintenance, update memory only when this turn\'s assistant reply confirms a new long-term fact, current state, character change, unresolved matter, or next-turn carry-forward event.' : '',
+        includeMemory ? 'In accepted-turn maintenance, update memory only when the accepted assistant reply confirms a new long-term fact, current state, character change, unresolved matter, or next-turn carry-forward event.' : '',
         includeMemory ? 'Do not write user persona cards, status-bar text, UI metadata, model instructions, or the user message author as story facts unless the assistant reply clearly establishes the fact inside the RP.' : '',
         includeMemory ? 'Write global facts to `memory/state.md`; write character-specific changes to the matching `memory/characters/<角色名>.md`. If nothing material changed, skip writing and say why.' : '',
         includeMemory && includeCartography ? 'Map and atlas records are separate from written memory. They do not replace written memory; maintain textual facts and spatial changes in their own places.' : '',
@@ -142,6 +142,9 @@ function buildFixedManagerSystemPrompt(options: TavernManagerPromptOptions = {})
         'Place the most certain anchors first, such as outer walls, a main road, a river, corridor edges, or the current location. Place other elements relative to those anchors.',
         'Use the default orientation north-up: north = smaller y, south = larger y, west = smaller x, east = larger x. If narration only gives left/right/front/back, choose a reasonable facing and keep it consistent within one map.',
         'For indoor scenes, use an outer-wall rect as the anchor and place furniture and doors inside it. For outdoor scenes, use roads or rivers as the backbone. For passage scenes, use two parallel boundary lines and a stretched `viewBox`.',
+        'Let the scene pressure shape composition: key doors, threats, escape routes, intimate focus points, and important objects should explain the action instead of being evenly scattered.',
+        'Translate named places into local geometry. A house becomes walls, doors, windows, yard, and road edge; a forest becomes paths, clearings, trees, rocks, or water; a tavern becomes rooms, counter, tables, exits, and actors.',
+        'Show uncertainty with edges, unexplored exits, partial paths, or sparse labels only when the RP implies unknown space. Do not invent a complete floor plan just to make the map look full.',
         '`meta.viewBox` is the camera; it does not move map elements. Move the player by changing the player `at`, then adjust `meta.viewBox` only if the camera should follow.',
         'If the chosen scene-map doc is still `uninitialized`, initialize it with one `meta + add` transaction as soon as the current turn clearly establishes that place. First appearance does not require a prior "change".',
         'When you initialize a new scene map for the current place, make sure the atlas has the matching location and that the location points to this map with `mapDocId`.',

@@ -78,6 +78,7 @@ function handleDraftInput(event: Event) {
       <textarea
         v-else-if="documentAvailable"
         :value="draft"
+        :readonly="readOnly"
         spellcheck="false"
         data-memory-editor-textarea="true"
         @input="handleDraftInput"

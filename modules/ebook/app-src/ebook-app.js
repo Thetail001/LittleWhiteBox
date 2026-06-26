@@ -236,6 +236,15 @@ function syncFileGroupFiles(groupNode, group = {}) {
             groupNode.appendChild(nextTree);
         } else if (currentTree.dataset.fileTreeSignature !== nextTree.dataset.fileTreeSignature) {
             currentTree.replaceWith(nextTree);
+        } else {
+            // Structure unchanged — only the active selection may have moved. Toggle the
+            // is-active class in place so we don't rebuild (and lose scroll of) the tree.
+            const activePaths = new Set((group.files || [])
+                .filter((file) => file.active)
+                .map((file) => file.path));
+            currentTree.querySelectorAll('.xb-file[data-path]').forEach((button) => {
+                button.classList.toggle('is-active', activePaths.has(button.dataset.path || ''));
+            });
         }
         return;
     }
@@ -262,6 +271,7 @@ function syncFileGroupFiles(groupNode, group = {}) {
             button = nextButton;
         }
         button.dataset.fileSignature = file.signature;
+        button.classList.toggle('is-active', !!file.active);
         const currentButtons = getDirectFileButtons(groupNode);
         const target = currentButtons[index] || null;
         if (target && target !== button) {

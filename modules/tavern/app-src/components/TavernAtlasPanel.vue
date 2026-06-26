@@ -5,7 +5,8 @@ import type { TavernAtlasActorPosition, TavernAtlasDocument, TavernAtlasLink, Ta
 import { layoutTavernAtlasDocument, type AtlasLayoutNode } from '../atlas-display';
 import {
     atlasGlyphForScale,
-    gameIconTransform,
+    gameIconScaleTransform,
+    gameIconTranslateTransform,
     getTavernGameIconGlyph,
     TAVERN_MAP_ICON_ATTRIBUTION,
 } from '../map-glyphs';
@@ -28,6 +29,20 @@ const props = withDefaults(defineProps<{
 });
 
 const selectedLocationKey = ref('');
+const atlasSvgRef = ref<SVGSVGElement | null>(null);
+const atlasPanOffset = ref<[number, number]>([0, 0]);
+const atlasZoom = ref(1);
+const atlasDrag = ref<{
+    pointerId: number;
+    startClientX: number;
+    startClientY: number;
+    startPanX: number;
+    startPanY: number;
+    viewWidth: number;
+    viewHeight: number;
+    clientWidth: number;
+    clientHeight: number;
+} | null>(null);
 
 const atlas = computed<TavernAtlasDocument>(() => {
     const raw = props.document?.data;
@@ -60,11 +75,30 @@ const selectedLinks = computed(() => {
 });
 const showGraph = computed(() => props.displayMode !== 'detail');
 const showDetail = computed(() => props.displayMode !== 'graph');
+const atlasViewBoxArray = computed<[number, number, number, number]>(() => {
+    const [x, y, width, height] = layout.value.viewBox;
+    const [offsetX, offsetY] = atlasPanOffset.value;
+    const zoom = Math.max(0.5, Math.min(4, atlasZoom.value));
+    const zoomedWidth = width / zoom;
+    const zoomedHeight = height / zoom;
+    return [
+        Number((x + offsetX + (width - zoomedWidth) / 2).toFixed(2)),
+        Number((y + offsetY + (height - zoomedHeight) / 2).toFixed(2)),
+        Number(zoomedWidth.toFixed(2)),
+        Number(zoomedHeight.toFixed(2)),
+    ];
+});
+const atlasViewBox = computed(() => atlasViewBoxArray.value.join(' '));
+const atlasZoomLabel = computed(() => `${Math.round(atlasZoom.value * 100)}%`);
 
 watch([() => atlas.value.activeLocationKey, () => atlas.value.locations.length], ([key]) => {
     if (selectedLocationKey.value && locationMap.value.has(selectedLocationKey.value)) {return;}
     selectedLocationKey.value = String(key || atlas.value.locations[0]?.key || '');
 }, { immediate: true });
+
+watch(() => [props.document?.docId, props.displayMode] as const, () => {
+    resetAtlasPan();
+});
 
 function isAtlasLocation(value: unknown): value is TavernAtlasLocation {
     return !!value && typeof value === 'object' && !Array.isArray(value) && typeof (value as TavernAtlasLocation).key === 'string';
@@ -125,7 +159,104 @@ function atlasNodeGlyph(location: TavernAtlasLocation | null | undefined) {
 }
 
 function atlasNodeGlyphTransform(node: AtlasLayoutNode): string {
-    return gameIconTransform(node.x + 18, node.y + 23, 18);
+    return gameIconTranslateTransform(node.x + 18, node.y + 23);
+}
+
+function atlasNodeGlyphScaleTransform(): string {
+    return gameIconScaleTransform(18);
+}
+
+function atlasLinkForLayout(linkId: string): TavernAtlasLink | undefined {
+    return atlas.value.links.find((item) => item.id === linkId);
+}
+
+function atlasLinkLabel(linkId: string): string {
+    const link = atlasLinkForLayout(linkId);
+    return String(link?.label || link?.kind || '').trim();
+}
+
+function resetAtlasPan() {
+    atlasPanOffset.value = [0, 0];
+    atlasZoom.value = 1;
+    atlasDrag.value = null;
+}
+
+function setAtlasZoom(nextZoom: number, anchor?: { clientX: number; clientY: number }) {
+    const svg = atlasSvgRef.value;
+    const bounds = svg?.getBoundingClientRect();
+    const [oldX, oldY, oldWidth, oldHeight] = atlasViewBoxArray.value;
+    const [baseX, baseY, baseWidth, baseHeight] = layout.value.viewBox;
+    const clampedZoom = Number(Math.max(0.5, Math.min(4, nextZoom)).toFixed(2));
+    if (clampedZoom === atlasZoom.value) {return;}
+
+    let anchorRatioX = 0.5;
+    let anchorRatioY = 0.5;
+    if (anchor && bounds && bounds.width > 0 && bounds.height > 0) {
+        anchorRatioX = Math.max(0, Math.min(1, (anchor.clientX - bounds.left) / bounds.width));
+        anchorRatioY = Math.max(0, Math.min(1, (anchor.clientY - bounds.top) / bounds.height));
+    }
+    const anchorMapX = oldX + oldWidth * anchorRatioX;
+    const anchorMapY = oldY + oldHeight * anchorRatioY;
+    const nextWidth = baseWidth / clampedZoom;
+    const nextHeight = baseHeight / clampedZoom;
+    atlasZoom.value = clampedZoom;
+    atlasPanOffset.value = [
+        Number((anchorMapX - nextWidth * anchorRatioX - baseX - (baseWidth - nextWidth) / 2).toFixed(2)),
+        Number((anchorMapY - nextHeight * anchorRatioY - baseY - (baseHeight - nextHeight) / 2).toFixed(2)),
+    ];
+}
+
+function zoomAtlasBy(step: number) {
+    setAtlasZoom(atlasZoom.value + step);
+}
+
+function handleAtlasPointerDown(event: PointerEvent) {
+    const svg = event.currentTarget instanceof SVGSVGElement ? event.currentTarget : atlasSvgRef.value;
+    if (!svg || event.button !== 0) {return;}
+    const bounds = svg.getBoundingClientRect();
+    if (bounds.width <= 0 || bounds.height <= 0) {return;}
+    const [, , viewWidth, viewHeight] = atlasViewBoxArray.value;
+    const [startPanX, startPanY] = atlasPanOffset.value;
+    atlasDrag.value = {
+        pointerId: event.pointerId,
+        startClientX: event.clientX,
+        startClientY: event.clientY,
+        startPanX,
+        startPanY,
+        viewWidth,
+        viewHeight,
+        clientWidth: bounds.width,
+        clientHeight: bounds.height,
+    };
+    svg.setPointerCapture(event.pointerId);
+}
+
+function handleAtlasPointerMove(event: PointerEvent) {
+    const drag = atlasDrag.value;
+    if (!drag || drag.pointerId !== event.pointerId) {return;}
+    const deltaX = -((event.clientX - drag.startClientX) / drag.clientWidth) * drag.viewWidth;
+    const deltaY = -((event.clientY - drag.startClientY) / drag.clientHeight) * drag.viewHeight;
+    atlasPanOffset.value = [
+        Number((drag.startPanX + deltaX).toFixed(2)),
+        Number((drag.startPanY + deltaY).toFixed(2)),
+    ];
+}
+
+function handleAtlasPointerEnd(event: PointerEvent) {
+    const drag = atlasDrag.value;
+    if (!drag || drag.pointerId !== event.pointerId) {return;}
+    const svg = event.currentTarget instanceof SVGSVGElement ? event.currentTarget : atlasSvgRef.value;
+    if (svg?.hasPointerCapture(event.pointerId)) {
+        svg.releasePointerCapture(event.pointerId);
+    }
+    atlasDrag.value = null;
+}
+
+function handleAtlasWheel(event: WheelEvent) {
+    if (!atlasSvgRef.value) {return;}
+    event.preventDefault();
+    const direction = event.deltaY > 0 ? -1 : 1;
+    setAtlasZoom(atlasZoom.value + direction * 0.18, { clientX: event.clientX, clientY: event.clientY });
 }
 
 </script>
@@ -153,12 +284,49 @@ function atlasNodeGlyphTransform(node: AtlasLayoutNode): string {
       <div
         v-if="showGraph"
         class="tavern-atlas-graph"
+        :class="{ 'is-panning': atlasDrag }"
       >
+        <div
+          class="tavern-map-zoom-controls tavern-atlas-zoom-controls"
+          aria-label="世界图缩放"
+        >
+          <button
+            type="button"
+            aria-label="缩小世界图"
+            :disabled="atlasZoom <= 0.5"
+            @click="zoomAtlasBy(-0.25)"
+          >
+            -
+          </button>
+          <button
+            type="button"
+            class="tavern-map-zoom-value"
+            aria-label="重置世界图缩放"
+            @click="resetAtlasPan"
+          >
+            {{ atlasZoomLabel }}
+          </button>
+          <button
+            type="button"
+            aria-label="放大世界图"
+            :disabled="atlasZoom >= 4"
+            @click="zoomAtlasBy(0.25)"
+          >
+            +
+          </button>
+        </div>
         <svg
-          :viewBox="layout.viewBox.join(' ')"
+          ref="atlasSvgRef"
+          :viewBox="atlasViewBox"
           preserveAspectRatio="xMidYMid meet"
           role="img"
           aria-label="世界图"
+          @pointerdown="handleAtlasPointerDown"
+          @pointermove="handleAtlasPointerMove"
+          @pointerup="handleAtlasPointerEnd"
+          @pointercancel="handleAtlasPointerEnd"
+          @dblclick="resetAtlasPan"
+          @wheel="handleAtlasWheel"
         >
           <defs>
             <filter
@@ -186,10 +354,21 @@ function atlasNodeGlyphTransform(node: AtlasLayoutNode): string {
             v-for="link in layout.links"
             :key="link.id"
             class="tavern-atlas-link"
-            :class="`kind-${atlas.links.find((item) => item.id === link.id)?.kind || 'path'}`"
+            :class="`kind-${atlasLinkForLayout(link.id)?.kind || 'path'}`"
             :d="link.path"
             filter="url(#tavern-atlas-sketch)"
           />
+          <text
+            v-for="link in layout.links"
+            :key="`${link.id}:label`"
+            class="tavern-atlas-link-label"
+            :class="`kind-${atlasLinkForLayout(link.id)?.kind || 'path'}`"
+            :x="link.labelX"
+            :y="link.labelY"
+            text-anchor="middle"
+          >
+            {{ atlasLinkLabel(link.id) }}
+          </text>
           <g
             v-for="node in layout.nodes"
             :key="node.key"
@@ -208,13 +387,19 @@ function atlasNodeGlyphTransform(node: AtlasLayoutNode): string {
               rx="8"
               filter="url(#tavern-atlas-sketch)"
             />
-            <path
+            <g
               v-if="atlasNodeGlyph(locationMap.get(node.key))"
-              class="tavern-atlas-node-glyph"
-              :d="atlasNodeGlyph(locationMap.get(node.key))?.path"
               :transform="atlasNodeGlyphTransform(node)"
-              :fill-rule="atlasNodeGlyph(locationMap.get(node.key))?.fillRule"
-            />
+            >
+              <g :transform="atlasNodeGlyphScaleTransform()">
+                <path
+                  class="tavern-atlas-node-glyph"
+                  :d="atlasNodeGlyph(locationMap.get(node.key))?.path"
+                  transform="translate(-256, -256)"
+                  :fill-rule="atlasNodeGlyph(locationMap.get(node.key))?.fillRule"
+                />
+              </g>
+            </g>
             <text
               :x="node.x + 36"
               :y="node.y + 22"
@@ -389,16 +574,35 @@ function atlasNodeGlyphTransform(node: AtlasLayoutNode): string {
     width: 100%;
     height: 100%;
     min-height: 280px;
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+}
+
+.tavern-atlas-graph.is-panning svg {
+    cursor: grabbing;
 }
 
 .tavern-atlas-link {
     fill: none;
     stroke: #7e6746;
-    stroke-width: 2;
+    stroke-width: 2.1;
     stroke-dasharray: 7 5;
     stroke-linecap: round;
     stroke-linejoin: round;
-    opacity: 0.74;
+    opacity: 0.82;
+}
+
+.tavern-atlas-link.kind-road {
+    stroke: #7a4b25;
+    stroke-width: 2.45;
+    stroke-dasharray: none;
+    opacity: 0.86;
+}
+
+.tavern-atlas-link.kind-path {
+    stroke: #7e6746;
+    stroke-dasharray: 7 5;
 }
 
 .tavern-atlas-link.kind-portal {
@@ -413,6 +617,25 @@ function atlasNodeGlyphTransform(node: AtlasLayoutNode): string {
     stroke: #6f604a;
     stroke-width: 1.8;
     stroke-dasharray: 2 4;
+}
+
+.tavern-atlas-link-label {
+    fill: rgba(45, 33, 24, 0.82);
+    paint-order: stroke;
+    pointer-events: none;
+    stroke: rgba(236, 222, 186, 0.92);
+    stroke-linejoin: round;
+    stroke-width: 5;
+    font: 10px/1 var(--xb-font-ui);
+}
+
+.tavern-atlas-link-label.kind-road {
+    fill: #5a361e;
+    font-weight: 600;
+}
+
+.tavern-atlas-link-label.kind-portal {
+    fill: #653b85;
 }
 
 .tavern-atlas-node {

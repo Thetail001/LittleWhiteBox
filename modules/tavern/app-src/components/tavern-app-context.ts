@@ -198,6 +198,7 @@ export interface TavernCharacterContext {
     movePreview: TavernCommand<[delta: number]>;
     openCharacterWorldbook: TavernCommand<[], Promise<void>>;
     openSession: TavernCommand<[sessionId: string], Promise<void>>;
+    removeSession: TavernCommand<[sessionId: string, event?: Event], Promise<void>>;
     pendingCharacterSessionKey: Ref<string>;
     pendingError: Ref<string>;
     pendingPreviewCharacterKey: Ref<string>;
@@ -264,6 +265,22 @@ export interface TavernMessageWindowState {
     startIndex: number;
     hiddenBefore: number;
     visibleCount: number;
+}
+
+export interface TavernDrawQuickOption {
+    value: string;
+    label: string;
+}
+
+export interface TavernDrawQuickSettings {
+    provider: string;
+    providerLabel: string;
+    available: boolean;
+    auto: boolean;
+    presets: TavernDrawQuickOption[];
+    selectedPresetId: string;
+    sizeOptions: TavernDrawQuickOption[];
+    selectedSize: string;
 }
 
 export interface TavernManagerCompactionOverlay {
@@ -333,10 +350,10 @@ export interface TavernChatContext {
     displayRuntimeThoughtBlocks: TavernCommand<[thoughts?: Array<{ label?: string; text?: string }>], Array<{ label?: string; text?: string }>>;
     displayCharacterName: TavernReadable<string>;
     drawMessage: TavernCommand<[message: TavernMessageRecord], Promise<void>>;
+    drawLatestAssistantMessage: TavernCommand<[], Promise<void>>;
     drawMessageStatusClass: TavernCommand<[message: TavernMessageRecord], string>;
     drawMessageStatusText: TavernCommand<[message: TavernMessageRecord], string>;
     drawMessageTitle: TavernCommand<[message: TavernMessageRecord], string>;
-    drawProgressText: Ref<string>;
     formatMessageTime: TavernCommand<[value: unknown], string>;
     handleChatScroll: TavernCommand;
     handleChatSubmit: TavernCommand;
@@ -349,11 +366,12 @@ export interface TavernChatContext {
     isEditingMessage: TavernCommand<[message: TavernMessageRecord], boolean>;
     isCancellingRun: Ref<boolean>;
     isRunning: Ref<boolean>;
-    latestErrorMessage: TavernReadable<string>;
     markdownSignature: TavernCommand<[text?: string], string>;
     htmlRenderEnabled: Ref<boolean>;
     messageKey: TavernCommand<[message: TavernMessageRecord], string>;
     normalizeTavernSessionState: TavernCommand<[value?: unknown], { turn?: number }>;
+    openTavernDrawSettings: TavernCommand<[], Promise<void>>;
+    refreshTavernDrawQuickSettings: TavernCommand<[], Promise<TavernDrawQuickSettings>>;
     removeSession: TavernCommand<[sessionId: string, event?: Event], Promise<void>>;
     renderChatMarkdown: TavernCommand<[text?: string, options?: { roleplay?: boolean; userName?: string; characterName?: string }], string>;
     rerunFromMessage: TavernCommand<[message: TavernMessageRecord], Promise<void>>;
@@ -376,9 +394,18 @@ export interface TavernChatContext {
     showChatScrollBottom: Ref<boolean>;
     showChatScrollTop: Ref<boolean>;
     startEditMessage: TavernCommand<[message: TavernMessageRecord]>;
+    tavernDrawCapsuleIcon: TavernReadable<string>;
+    tavernDrawCapsuleMainDisabled: TavernReadable<boolean>;
+    tavernDrawCapsuleStatusClass: TavernReadable<string>;
+    tavernDrawCapsuleStatusText: TavernReadable<string>;
+    tavernDrawCapsuleTitle: TavernReadable<string>;
+    tavernDrawCapsuleVisible: TavernReadable<boolean>;
+    tavernDrawQuickSettings: Ref<TavernDrawQuickSettings>;
+    tavernDrawQuickSettingsLoading: Ref<boolean>;
     thoughtBlocks: TavernCommand<[messageOrThoughts: unknown], Array<{ label?: string; text?: string }>>;
     thoughtSummaryLabel: TavernCommand<[messageOrThoughts: unknown, streaming?: boolean], string>;
     updateChatScrollButtons: TavernCommand;
+    updateTavernDrawQuickSettings: TavernCommand<[patch?: Record<string, unknown>], Promise<void>>;
     visibleCharacterAvatar: TavernReadable<string>;
     visibleChatMessages: TavernReadable<TavernMessageRecord[]>;
     visibleUserAvatar: TavernReadable<string>;
@@ -456,6 +483,8 @@ export interface TavernManagerContext {
 
 export interface TavernMemoryContext {
     activeMemoryFiles: TavernReadable<TavernMemoryIndexFileEntry[]>;
+    commitAcceptedState: TavernCommand<[sessionId?: string], Promise<void>>;
+    commitUserAcceptedState: TavernCommand<[sessionId?: string, userOrder?: number], Promise<void>>;
     discardMemoryDraft: TavernCommand;
     enterMemoryEditMode: TavernCommand;
     expandMemoryFileGroup: TavernCommand<[groupKey?: string]>;

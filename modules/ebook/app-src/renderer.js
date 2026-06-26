@@ -1071,13 +1071,15 @@ function getFileGroup(path = '') {
     };
 }
 
-function getStudioFileSignature(file = {}, state = {}) {
+function getStudioFileSignature(file = {}) {
+    // Structural identity only — path + title. The active/selected state is intentionally
+    // excluded so that changing the selected file doesn't alter the signature (which would
+    // force the whole .xb-file-tree to be rebuilt and reset scroll). Selection is synced as a
+    // class toggle in syncFileGroupFiles instead.
     const title = formatFileTitle(file.path);
-    const active = file.path === state.selectedPath;
     return [
         file.path,
         title,
-        active ? 'active' : '',
     ].join(':');
 }
 
@@ -1096,14 +1098,14 @@ function renderSectionFiles(section = {}, files = [], state = {}) {
             lastDirectory = directory;
         }
         const active = file.path === state.selectedPath ? ' is-active' : '';
-        const signature = getStudioFileSignature(file, state);
+        const signature = getStudioFileSignature(file);
         rows.push(`
             <button class="xb-file${active}" data-path="${escapeHtml(file.path)}" data-file-signature="${escapeHtml(signature)}">
                 <span class="xb-file-main">${escapeHtml(formatFileTitle(file.path))}</span>
             </button>
         `);
     });
-    const treeSignature = files.map((file) => getStudioFileSignature(file, state)).join('|');
+    const treeSignature = files.map((file) => getStudioFileSignature(file)).join('|');
     return `<div class="xb-file-tree" data-file-tree-signature="${escapeHtml(treeSignature)}">${rows.join('')}</div>`;
 }
 
@@ -1180,7 +1182,7 @@ export function collectStudioFileSectionModels(state = {}, options = {}) {
             const fileModels = displayFiles.map((file) => {
                 const active = file.path === state.selectedPath;
                 const title = formatFileTitle(file.path);
-                const signature = getStudioFileSignature(file, state);
+                const signature = getStudioFileSignature(file);
                 return {
                     path: file.path,
                     title,

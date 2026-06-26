@@ -308,6 +308,7 @@ function defaultMemoryFiles(sessionId = '', characterName = ''): TavernMemoryFil
 export async function ensureTavernMemoryDefaults(sessionId = '', options: { characterName?: string } = {}): Promise<TavernMemoryFileRecord[]> {
     const id = String(sessionId || '').trim();
     if (!id) {throw new Error('memory_session_required');}
+    if (!await tavernSessionsTable.get(id)) {throw new Error('memory_session_missing');}
     const existing = await tavernMemoryFilesTable.where('sessionId').equals(id).toArray();
     if (existing.length) {return existing.sort((left, right) => left.path.localeCompare(right.path));}
     const files = defaultMemoryFiles(id, options.characterName);

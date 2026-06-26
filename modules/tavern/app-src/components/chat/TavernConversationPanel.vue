@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import TavernScrollControls from '../TavernScrollControls.vue';
 import TavernMessageEditPanel from './TavernMessageEditPanel.vue';
+import TavernDrawCapsule from './TavernDrawCapsule.vue';
 import { useTavernChatContext, useTavernShellContext } from '../tavern-app-context';
 import { useTavernEphemeralDisclosureScope } from '../useTavernEphemeralDisclosureScope';
 import { useTavernMediaQuery } from '../useTavernMediaQuery';
@@ -67,7 +68,6 @@ const {
     isEditingMessage,
     isCancellingRun,
     isRunning,
-    latestErrorMessage,
     markdownSignature,
     htmlRenderEnabled,
     messageKey,
@@ -75,6 +75,7 @@ const {
     rerunFromMessage,
     revealOlderChatMessages,
     roleLabel,
+    removeSession,
     runtimeActionCheckEvents,
     runtimePendingUserMessage,
     runtimeText,
@@ -257,6 +258,10 @@ async function openArchivedSession(sessionId: string) {
     closeSessionArchive();
 }
 
+async function deleteArchivedSession(sessionId: string, event: Event) {
+    await removeSession(sessionId, event);
+}
+
 watch(
     [activeView, chatFocus, selectedSessionId],
     ([view, focus]) => {
@@ -336,6 +341,7 @@ watch(isMobileActionTrayViewport, (isMobile) => {
         </div>
       </div>
       <div class="chat-head-actions">
+        <TavernDrawCapsule />
         <button
           type="button"
           class="contract-trigger"
@@ -702,12 +708,6 @@ watch(isMobileActionTrayViewport, (isMobile) => {
         class="chat-compose-shell"
         :class="{ 'has-text': !!currentUserMessage.trim() }"
       >
-        <div
-          v-if="latestErrorMessage"
-          class="compose-error"
-        >
-          {{ latestErrorMessage }}
-        </div>
         <div class="compose-menu-shell">
           <button
             type="button"
@@ -831,17 +831,37 @@ watch(isMobileActionTrayViewport, (isMobile) => {
           v-if="currentChatCharacterSessions.length"
           class="session-archive-list"
         >
-          <button
+          <div
             v-for="session in currentChatCharacterSessions"
             :key="session.id"
-            type="button"
             class="session-archive-item"
             :class="{ active: session.id === selectedSessionId }"
-            @click="openArchivedSession(session.id)"
           >
-            <span class="session-archive-item-title">{{ sessionDisplayTitle(session) || '未命名会话' }}</span>
-            <span class="session-archive-item-meta">{{ sessionFloorLabel(session) }}</span>
-          </button>
+            <button
+              type="button"
+              class="session-archive-open"
+              @click="openArchivedSession(session.id)"
+            >
+              <span class="session-archive-item-title">{{ sessionDisplayTitle(session) || '未命名会话' }}</span>
+              <span class="session-archive-item-meta">{{ sessionFloorLabel(session) }}</span>
+            </button>
+            <button
+              type="button"
+              class="session-archive-delete"
+              title="删除会话"
+              aria-label="删除会话"
+              @click="deleteArchivedSession(session.id, $event)"
+            >
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+              >
+                <path d="M3 6h18" />
+                <path d="M8 6V4h8v2" />
+                <path d="M6 6l1 15h10l1-15" />
+              </svg>
+            </button>
+          </div>
         </div>
         <p
           v-else

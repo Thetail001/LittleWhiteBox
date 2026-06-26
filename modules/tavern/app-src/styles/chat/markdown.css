@@ -95,9 +95,16 @@
     margin-bottom: 10px;
 }
 
-.xb-tavern-markdown p,
-.xb-tavern-markdown li {
+.xb-tavern-markdown p {
+    font-size: inherit;
+    line-height: inherit;
     white-space: pre-wrap;
+}
+
+.xb-tavern-markdown li {
+    font-size: inherit;
+    line-height: inherit;
+    white-space: normal;
 }
 
 .xb-os-shell.theme-dark .xb-tavern-markdown blockquote {
@@ -180,6 +187,17 @@
     padding-left: 1.45em;
 }
 
+.xb-tavern-markdown li > p {
+    margin: 0;
+    white-space: pre-wrap;
+}
+
+.xb-tavern-markdown li > ul,
+.xb-tavern-markdown li > ol {
+    margin-top: 2px;
+    margin-bottom: 2px;
+}
+
 .xb-tavern-markdown blockquote {
     margin: 0;
     padding-left: 10px;
@@ -235,8 +253,32 @@
 
 .xb-tavern-markdown .xb-tavern-image-failed-wrap {
     display: grid;
-    gap: 12px;
+    gap: 0;
     justify-items: center;
+    text-align: center;
+    padding: 4px 0;
+}
+
+.xb-tavern-markdown .xb-tavern-image-failed-icon {
+    color: rgba(248, 113, 113, 0.9);
+    font-size: 24px;
+    line-height: 1;
+    margin-bottom: 8px;
+}
+
+.xb-tavern-markdown .xb-tavern-image-failed-title {
+    color: var(--xb-text-main);
+    font-size: 13px;
+    line-height: 1.4;
+    margin-bottom: 4px;
+}
+
+.xb-tavern-markdown .xb-tavern-image-failed-desc {
+    color: var(--xb-text-muted);
+    font: 11px/1.5 var(--xb-font-ui);
+    margin-bottom: 12px;
+    word-break: break-word;
+    max-width: 460px;
 }
 
 .xb-tavern-markdown .xb-tavern-image img {
@@ -411,6 +453,13 @@
     text-align: left;
 }
 
+.xb-tavern-markdown .xb-tavern-image-edit.is-inline {
+    position: static;
+    width: 100%;
+    max-width: 520px;
+    margin: 12px 0 0;
+}
+
 .xb-tavern-markdown .xb-tavern-image-edit-label {
     display: block;
     color: rgba(255, 255, 255, 0.6);
@@ -499,24 +548,36 @@
     flex-wrap: wrap;
     justify-content: center;
     gap: 8px;
+    margin-top: 4px;
 }
 
 .xb-tavern-markdown .xb-tavern-image-failed-actions button {
-    min-height: 32px;
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.08);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    min-height: 34px;
+    padding: 8px 16px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.1);
     color: var(--xb-text-main);
-    padding: 0 14px;
+    font: 12px/1 var(--xb-font-ui);
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
 }
 
 .xb-tavern-markdown .xb-tavern-image-failed-actions button:hover {
-    background: rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.2);
 }
 
 .xb-tavern-markdown .xb-tavern-image-failed-actions button[data-action="refresh-image"] {
-    border-color: rgba(212, 165, 116, 0.35);
-    background: rgba(212, 165, 116, 0.18);
+    border-color: rgba(212, 165, 116, 0.5);
+    background: rgba(212, 165, 116, 0.2);
+}
+
+.xb-tavern-markdown .xb-tavern-image-failed-actions button[data-action="refresh-image"]:hover {
+    background: rgba(212, 165, 116, 0.35);
 }
 
 .xb-tavern-markdown .xb-tavern-inline-image {

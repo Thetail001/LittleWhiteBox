@@ -15,6 +15,7 @@ import TavernAssistantPresetSettingsPanel from '../settings/TavernAssistantPrese
 import TavernBaseSettingsPanel from '../settings/TavernBaseSettingsPanel.vue';
 import TavernChatPresetSettingsPanel from '../settings/TavernChatPresetSettingsPanel.vue';
 import TavernConversationPanel from './TavernConversationPanel.vue';
+import TavernDrawCapsule from './TavernDrawCapsule.vue';
 import TavernManagerPanel from './TavernManagerPanel.vue';
 import TavernRegexSettingsPanel from '../settings/TavernRegexSettingsPanel.vue';
 import TavernWorkspacePanel from './TavernWorkspacePanel.vue';
@@ -555,6 +556,10 @@ onUpdated(() => {
           </button>
         </div>
         <div class="chat-mobile-action-group">
+          <TavernDrawCapsule
+            v-if="chatFocus === 'chat'"
+            mobile
+          />
           <button
             type="button"
             class="chat-mobile-icon-button chat-mobile-utility-button"
