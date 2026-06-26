@@ -189,13 +189,24 @@ test('tavern mobile overlay viewport updates are frame-throttled', () => {
     const hostSource = readRepoFile('modules/tavern/tavern.ts');
 
     assert.match(hostSource, /let overlayResizeFrame = 0;/);
+    assert.match(hostSource, /let overlayKeyboardSettleTimers: number\[\] = \[\];/);
     assert.match(hostSource, /let cachedTavernMobileTopOffset: number \| null = null;/);
     assert.match(hostSource, /function getTavernMobileTopOffset\(forceRefresh = false\): number \{[\s\S]*cachedTavernMobileTopOffset !== null[\s\S]*getComputedStyle\(document\.documentElement\)/);
+    assert.match(hostSource, /function getTavernMobileViewportHeight\(topOffset = getTavernMobileTopOffset\(\)\): number \{[\s\S]*window\.visualViewport\?\.height[\s\S]*keyboardLooksOpen[\s\S]*Math\.max\(layoutHeight, visualHeight\)/);
     assert.match(hostSource, /const viewportHeight = getTavernMobileViewportHeight\(topOffset\);/);
     assert.match(hostSource, /function scheduleTavernOverlayViewport\(overlay: HTMLElement, forceTopOffsetRefresh = false\): void \{[\s\S]*window\.requestAnimationFrame\(\(\) => \{[\s\S]*applyTavernOverlayViewport\(overlay\);/);
+    assert.match(hostSource, /function scheduleTavernOverlayViewportSettle\(overlay: HTMLElement, forceTopOffsetRefresh = false\): void \{[\s\S]*\[40, 120, 260, 520, 900, 1400\][\s\S]*scheduleTavernOverlayViewport\(overlay, true\);/);
     assert.match(hostSource, /overlayResizeHandler = \(\) => scheduleTavernOverlayViewport\(overlay, true\);/);
+    assert.match(hostSource, /overlayKeyboardSettleHandler = \(\) => scheduleTavernOverlayViewportSettle\(overlay, true\);/);
+    assert.match(hostSource, /case 'xb-tavern:viewport-settle':[\s\S]*scheduleTavernOverlayViewportSettle\(overlay, true\);/);
     assert.match(hostSource, /window\.cancelAnimationFrame\(overlayResizeFrame\);/);
+    assert.match(hostSource, /clearOverlayKeyboardSettleTimers\(\);/);
     assert.doesNotMatch(hostSource, /overlayResizeHandler = \(\) => applyTavernOverlayViewport\(overlay\);/);
+
+    const appSource = readRepoFile('modules/tavern/app-src/App.vue');
+    assert.match(appSource, /function handleKeyboardViewportFocus\(event: FocusEvent\)[\s\S]*postToHost\('xb-tavern:viewport-settle'/);
+    assert.match(appSource, /document\.addEventListener\('focusin', handleKeyboardViewportFocus, true\);[\s\S]*document\.addEventListener\('focusout', handleKeyboardViewportFocus, true\);/);
+    assert.match(appSource, /document\.removeEventListener\('focusin', handleKeyboardViewportFocus, true\);[\s\S]*document\.removeEventListener\('focusout', handleKeyboardViewportFocus, true\);/);
 });
 
 test('tavern assistant preset settings expose state and character memory rules', () => {

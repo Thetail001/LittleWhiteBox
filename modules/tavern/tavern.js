@@ -53,6 +53,8 @@ let initialConfigPromise = null;
 let messageHandlerInstalled = false;
 let overlayResizeHandler = null;
 let overlayResizeFrame = 0;
+let overlayKeyboardSettleHandler = null;
+let overlayKeyboardSettleTimers = [];
 let cachedTavernMobileTopOffset = null;
 const pendingDrawRequests = /* @__PURE__ */ new Map();
 let latestStartupProgress = { percent: 5, action: "createOverlay" };
@@ -121,7 +123,15 @@ function getTavernMobileTopOffset(forceRefresh = false) {
   return cachedTavernMobileTopOffset;
 }
 function getTavernMobileViewportHeight(topOffset = getTavernMobileTopOffset()) {
-  return Math.max(240, window.innerHeight - topOffset);
+  const layoutHeight = Math.max(
+    0,
+    Number(window.innerHeight) || document.documentElement.clientHeight || 0
+  );
+  const visualHeight = Number(window.visualViewport?.height);
+  const hasVisualHeight = Number.isFinite(visualHeight) && visualHeight > 0;
+  const keyboardLooksOpen = hasVisualHeight && visualHeight + 80 < layoutHeight;
+  const viewportHeight = hasVisualHeight ? keyboardLooksOpen ? visualHeight : Math.max(layoutHeight, visualHeight) : layoutHeight;
+  return Math.max(240, Math.round(viewportHeight - topOffset));
 }
 function applyTavernOverlayViewport(overlay = document.getElementById(OVERLAY_ID)) {
   if (!(overlay instanceof HTMLElement)) {
@@ -156,15 +166,31 @@ function scheduleTavernOverlayViewport(overlay, forceTopOffsetRefresh = false) {
     applyTavernOverlayViewport(overlay);
   });
 }
+function clearOverlayKeyboardSettleTimers() {
+  overlayKeyboardSettleTimers.forEach((timer) => window.clearTimeout(timer));
+  overlayKeyboardSettleTimers = [];
+}
+function scheduleTavernOverlayViewportSettle(overlay, forceTopOffsetRefresh = false) {
+  clearOverlayKeyboardSettleTimers();
+  scheduleTavernOverlayViewport(overlay, forceTopOffsetRefresh);
+  [40, 120, 260, 520, 900, 1400].forEach((delay) => {
+    overlayKeyboardSettleTimers.push(window.setTimeout(() => {
+      scheduleTavernOverlayViewport(overlay, true);
+    }, delay));
+  });
+}
 function installOverlayResizeHandler(overlay) {
   if (overlayResizeHandler) {
     return;
   }
   overlayResizeHandler = () => scheduleTavernOverlayViewport(overlay, true);
+  overlayKeyboardSettleHandler = () => scheduleTavernOverlayViewportSettle(overlay, true);
   window.addEventListener("resize", overlayResizeHandler);
   window.addEventListener("orientationchange", overlayResizeHandler);
   window.visualViewport?.addEventListener("resize", overlayResizeHandler);
   window.visualViewport?.addEventListener("scroll", overlayResizeHandler);
+  window.addEventListener("focusin", overlayKeyboardSettleHandler, true);
+  window.addEventListener("focusout", overlayKeyboardSettleHandler, true);
 }
 function removeOverlayResizeHandler() {
   if (!overlayResizeHandler) {
@@ -174,7 +200,13 @@ function removeOverlayResizeHandler() {
   window.removeEventListener("orientationchange", overlayResizeHandler);
   window.visualViewport?.removeEventListener("resize", overlayResizeHandler);
   window.visualViewport?.removeEventListener("scroll", overlayResizeHandler);
+  if (overlayKeyboardSettleHandler) {
+    window.removeEventListener("focusin", overlayKeyboardSettleHandler, true);
+    window.removeEventListener("focusout", overlayKeyboardSettleHandler, true);
+  }
   overlayResizeHandler = null;
+  overlayKeyboardSettleHandler = null;
+  clearOverlayKeyboardSettleTimers();
   if (overlayResizeFrame) {
     window.cancelAnimationFrame(overlayResizeFrame);
     overlayResizeFrame = 0;
@@ -1169,6 +1201,13 @@ function handleFrameMessage(event) {
     case "xb-tavern:startup-progress":
       postStartupProgress(data.payload || {});
       break;
+    case "xb-tavern:viewport-settle": {
+      const overlay = document.getElementById(OVERLAY_ID);
+      if (overlay instanceof HTMLElement) {
+        scheduleTavernOverlayViewportSettle(overlay, true);
+      }
+      break;
+    }
     case "xb-tavern:close":
       closeTavern();
       break;

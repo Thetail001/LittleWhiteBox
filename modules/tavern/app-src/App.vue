@@ -606,6 +606,22 @@ const {
     reportStartupProgress,
     requestHost,
 } = hostBridge;
+
+function isKeyboardViewportTarget(target: EventTarget | null): target is HTMLElement {
+    if (!(target instanceof HTMLElement)) {return false;}
+    if (target.isContentEditable) {return true;}
+    const tagName = target.tagName.toLowerCase();
+    if (tagName === 'textarea') {return true;}
+    if (tagName !== 'input') {return false;}
+    const type = String((target as HTMLInputElement).type || 'text').toLowerCase();
+    return !['button', 'checkbox', 'color', 'file', 'hidden', 'image', 'radio', 'range', 'reset', 'submit'].includes(type);
+}
+
+function handleKeyboardViewportFocus(event: FocusEvent) {
+    if (!isKeyboardViewportTarget(event.target)) {return;}
+    postToHost('xb-tavern:viewport-settle', { reason: event.type });
+}
+
 const chatScrollAnchorConfig = {
     itemSelector: '.chat-bubble[data-chat-anchor-key], .chat-history-gate[data-chat-anchor-key]',
     datasetKey: 'chatAnchorKey',
@@ -4141,6 +4157,8 @@ async function runPostReadyStartupTasks() {
 
 onMounted(async () => {
     hostBridge.mount();
+    document.addEventListener('focusin', handleKeyboardViewportFocus, true);
+    document.addEventListener('focusout', handleKeyboardViewportFocus, true);
     managerRecordsPollTimer = window.setInterval(() => {
         void pollLiveManagerRecords();
     }, 2000);
@@ -4154,6 +4172,8 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+    document.removeEventListener('focusin', handleKeyboardViewportFocus, true);
+    document.removeEventListener('focusout', handleKeyboardViewportFocus, true);
     hostBridge.dispose(new Error('tavern_unmounted'));
     disposeMarkdownTools();
     clearRuntimeAssistantLiveState();
