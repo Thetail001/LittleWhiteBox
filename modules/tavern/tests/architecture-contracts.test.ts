@@ -771,18 +771,32 @@ test('tavern atlas only opens scene maps that actually exist', () => {
     assert.match(workspacePanelSource, /!!atlasDocument\.value\.activeLocationKey && !atlasActiveMapDocId\.value/);
 });
 
-test('tavern edit and delete roll back accepted memory and event state together', () => {
+test('tavern edit and delete route accepted rollback through its feature boundary', () => {
     const appSource = readRepoFile('modules/tavern/app-src/App.vue');
+    const rollbackSource = readRepoFile('modules/tavern/app-src/features/accepted-rollback/accepted-rollback.ts');
 
-    assert.match(appSource, /restoreAcceptedStateBeforeMessage/);
-    assert.match(appSource, /restoreTavernMemoryToFloor\(id, order - 1\)/);
-    assert.match(appSource, /restoreTavernTasksToFloor\(id, order - 1\)/);
-    assert.match(appSource, /trimTavernMemorySnapshotsFromFloor\(id, order\)/);
-    assert.match(appSource, /trimTavernTaskSnapshotsFromFloor\(id, order\)/);
-    assert.match(appSource, /async function describeAcceptedStateRollbackImpact/);
-    assert.match(appSource, /describeTavernMemoryRestoreImpact\(sessionId, targetFloor\)/);
-    assert.match(appSource, /describeTavernTaskRestoreImpact\(sessionId, targetFloor\)/);
-    assert.match(appSource, /describeXbTavernManagerRollbackImpactForMessageRange\(sessionId, changedOrder\)/);
+    assert.match(appSource, /from '\.\/features\/accepted-rollback\/accepted-rollback'/);
+    assert.match(appSource, /describeAcceptedStateRollbackImpact\(message\.sessionId, message\.order\)/);
+    assert.match(appSource, /rollbackImpactLines\(impact\)/);
+    assert.match(appSource, /cancelAcceptedRollbackManagersBeforeMessage\(message\.sessionId, message\.order\)/);
+    assert.match(appSource, /restoreAcceptedMemoryAndTaskStateBeforeMessage\(message\.sessionId, message\.order\)/);
+    assert.match(appSource, /cancelAcceptedRollbackManagersBeforeMessage\(message\.sessionId, fromOrder\)/);
+    assert.match(appSource, /restoreAcceptedMemoryAndTaskStateBeforeMessage\(message\.sessionId, fromOrder\)/);
+    assert.match(appSource, /cancelDrawJobsForMessageRange\(message\.sessionId, fromOrder\);[\s\S]*await cancelAcceptedRollbackManagersBeforeMessage\(message\.sessionId, fromOrder\);[\s\S]*const deleted = await deleteTavernMessages\(message\.sessionId, ordersToDelete\);[\s\S]*if \(deleted > 0\) \{[\s\S]*await restoreAcceptedMemoryAndTaskStateBeforeMessage\(message\.sessionId, fromOrder\);[\s\S]*\}/);
+    assert.doesNotMatch(appSource, /async function restoreAcceptedStateBeforeMessage/);
+    assert.doesNotMatch(appSource, /async function describeAcceptedStateRollbackImpact/);
+    assert.doesNotMatch(appSource, /function rollbackImpactLines\(impact: AcceptedStateRollbackImpact\)/);
+    assert.doesNotMatch(appSource, /describeTavernMemoryRestoreImpact|restoreTavernMemoryToFloor|trimTavernMemorySnapshotsFromFloor/);
+    assert.doesNotMatch(appSource, /describeTavernTaskRestoreImpact|restoreTavernTasksToFloor|trimTavernTaskSnapshotsFromFloor/);
+    assert.doesNotMatch(appSource, /describeXbTavernManagerRollbackImpactForMessageRange/);
+    assert.match(rollbackSource, /export async function cancelAcceptedRollbackManagersBeforeMessage/);
+    assert.match(rollbackSource, /export async function restoreAcceptedMemoryAndTaskStateBeforeMessage/);
+    assert.match(rollbackSource, /export async function describeAcceptedStateRollbackImpact/);
+    assert.match(rollbackSource, /export function rollbackImpactLines/);
+    assert.match(rollbackSource, /memory:[\s\S]*tasks:[\s\S]*managers:/);
+    assert.match(rollbackSource, /willRollbackState:[\s\S]*willCancelWork:/);
+    assert.doesNotMatch(rollbackSource, /export async function rollbackAcceptedStateBeforeMessage/);
+    assert.doesNotMatch(rollbackSource, /export async function restoreAcceptedStateBeforeMessage/);
     assert.doesNotMatch(appSource, /acceptedStateRollbackNoticeForFloor|会话记忆、人物记忆和事件线索会回滚/);
     assert.doesNotMatch(appSource, /restoreMemoryStateBeforeMessage|memoryRollbackNoticeForFloor/);
 });
@@ -2018,15 +2032,15 @@ test('tavern edited RP messages use native macro substitution before saving', ()
     assert.match(appSource, /async function saveEditMessage\(message: TavernMessageRecord, options: \{ rollbackState\?: boolean; content\?: string \} = \{\}\) \{/);
     assert.doesNotMatch(appSource, /async function saveEditMessage\(message: TavernMessageRecord, options: \{ rerun\?: boolean/);
     assert.doesNotMatch(appSource, /shouldClearRuntimeEvents/);
-    assert.match(appSource, /async function describeAcceptedStateRollbackImpact\(sessionId: string, changedOrder: number\): Promise<AcceptedStateRollbackImpact>[\s\S]*willRollbackState: memory\.changed \|\| tasks\.changed,/);
-    assert.match(appSource, /function rollbackImpactLines\(impact: AcceptedStateRollbackImpact\): string\[] \{/);
+    assert.doesNotMatch(appSource, /function rollbackImpactLines\(impact: AcceptedStateRollbackImpact\): string\[] \{/);
+    assert.match(appSource, /rollbackImpactLines\(impact\)/);
     assert.match(appSource, /const impact = await describeAcceptedStateRollbackImpact\(message\.sessionId, message\.order\);[\s\S]*if \(impact\.willRollbackState \|\| impact\.willCancelWork\)/);
     assert.doesNotMatch(appSource, /回滚这一楼之后的记忆和事件状态/);
     assert.match(appSource, /applyTavernSubstituteParams\(\[\{\s*id: `edit:\$\{message\.sessionId\}:\$\{message\.order\}`,[\s\S]*buildUiSubstituteParamsOptions/);
     assert.match(appSource, /const substitutedContent = await substituteEditedMessageContent\(message, content\);[\s\S]*const regexedContent = await applyEditRegexToMessageContent\(message, substitutedContent\);[\s\S]*updateTavernMessage\(message\.sessionId, message\.order, \{\s*content: regexedContent,/);
     assert.doesNotMatch(appSource, /\.\.\.\(shouldClearRuntimeEvents \? \{ runtimeEvents: \[\] \} : \{\}\),/);
     assert.doesNotMatch(appSource, /\.\.\.\(message\.role === 'user' \? \{ runtimeEvents: \[\] \} : \{\}\)/);
-    assert.match(appSource, /if \(updated && shouldRollbackState\) \{[\s\S]*await cancelAndRollbackXbTavernManagersForMessageRange\(message\.sessionId, message\.order\);[\s\S]*await restoreAcceptedStateBeforeMessage\(message\.sessionId, message\.order\);[\s\S]*\}/);
+    assert.match(appSource, /if \(updated && shouldRollbackState\) \{[\s\S]*await cancelAcceptedRollbackManagersBeforeMessage\(message\.sessionId, message\.order\);[\s\S]*await restoreAcceptedMemoryAndTaskStateBeforeMessage\(message\.sessionId, message\.order\);[\s\S]*\}/);
     assert.match(appSource, /if \(shouldRollbackState\) \{[\s\S]*await refreshManagerRecords\(selectedSessionId\.value\);[\s\S]*\}/);
     assert.match(appSource, /if \(updated && shouldRollbackState\) \{[\s\S]*await rebuildSelectedSessionRuntimeState\(\);[\s\S]*\}/);
 });

@@ -20,12 +20,9 @@ import {
 } from '../shared/message-assembler';
 import { buildXbTavernBrain } from '../shared/brain';
 import {
-    describeTavernMemoryRestoreImpact,
     getTavernMemoryIndex,
     getTavernMemoryFile,
     rebuildTavernMemoryDerivedIndex,
-    restoreTavernMemoryToFloor,
-    trimTavernMemorySnapshotsFromFloor,
 } from '../shared/memory-files';
 import {
     createTavernSession,
@@ -65,7 +62,7 @@ import {
     type TavernTaskRecord,
 } from '../shared/session-db';
 import { getTavernAtlasStateForSession, getTavernMapStateForSession, type TavernMapStateDocumentItem } from '../shared/structured-state';
-import { describeTavernTaskRestoreImpact, listTavernTasks, restoreTavernTasksToFloor, trimTavernTaskSnapshotsFromFloor } from '../shared/tasks';
+import { listTavernTasks } from '../shared/tasks';
 import { saveAcceptedStateSnapshot } from '../shared/accepted-state';
 import {
     normalizeTavernSessionContract,
@@ -98,12 +95,17 @@ import {
 } from './manager-tool-display';
 import {
     cancelAndRollbackXbTavernManagersForMessageRange,
-    describeXbTavernManagerRollbackImpactForMessageRange,
     ensureTavernManagerChatBudget,
     runXbTavernManagerAfterTurn,
     runXbTavernManagerChat,
     type TavernManagerProtocolEvent,
 } from './runtime/manager';
+import {
+    cancelAcceptedRollbackManagersBeforeMessage,
+    describeAcceptedStateRollbackImpact,
+    rollbackImpactLines,
+    restoreAcceptedMemoryAndTaskStateBeforeMessage,
+} from './features/accepted-rollback/accepted-rollback';
 import TavernAboutPage from './components/TavernAboutPage.vue';
 import TavernHomePage from './components/TavernHomePage.vue';
 import TavernChatPage from './components/chat/TavernChatPage.vue';
@@ -3950,69 +3952,6 @@ function handleComposeInput(event: Event) {
         : { minHeight: 36, maxHeight: 76 });
 }
 
-async function restoreAcceptedStateBeforeMessage(sessionId = '', changedOrder = 0) {
-    const id = String(sessionId || '').trim();
-    const order = Number(changedOrder);
-    if (!id || !Number.isFinite(order)) {return;}
-    await restoreTavernMemoryToFloor(id, order - 1);
-    await restoreTavernTasksToFloor(id, order - 1);
-    await trimTavernMemorySnapshotsFromFloor(id, order);
-    await trimTavernTaskSnapshotsFromFloor(id, order);
-    await rebuildTavernMemoryDerivedIndex(id);
-}
-
-type AcceptedStateRollbackImpact = {
-    targetFloor: number;
-    memory: { changed: boolean; currentFileCount: number; targetFileCount: number; changedPaths: string[] };
-    tasks: { changed: boolean; currentTaskCount: number; targetTaskCount: number };
-    managers: {
-        affectedRuns: number;
-        pendingRuns: number;
-        writtenMemoryFiles: number;
-        writtenTaskRuns: number;
-        hasWrittenState: boolean;
-    };
-    willRollbackState: boolean;
-    willCancelWork: boolean;
-};
-
-async function describeAcceptedStateRollbackImpact(sessionId: string, changedOrder: number): Promise<AcceptedStateRollbackImpact> {
-    const targetFloor = Number(changedOrder) - 1;
-    const [memory, tasks, managers] = await Promise.all([
-        describeTavernMemoryRestoreImpact(sessionId, targetFloor),
-        describeTavernTaskRestoreImpact(sessionId, targetFloor),
-        describeXbTavernManagerRollbackImpactForMessageRange(sessionId, changedOrder),
-    ]);
-    return {
-        targetFloor,
-        memory,
-        tasks,
-        managers,
-        willRollbackState: memory.changed || tasks.changed,
-        willCancelWork: managers.pendingRuns > 0,
-    };
-}
-
-function rollbackImpactTargetLabel(targetFloor: number): string {
-    return targetFloor >= 0 ? `第 ${targetFloor + 1} 楼后的状态` : '开局前状态';
-}
-
-function rollbackImpactLines(impact: AcceptedStateRollbackImpact): string[] {
-    const target = rollbackImpactTargetLabel(impact.targetFloor);
-    const lines: string[] = [];
-    if (impact.memory.changed && impact.tasks.changed) {
-        lines.push(`会话记忆和事件线索会恢复到${target}。`);
-    } else if (impact.memory.changed) {
-        lines.push(`会话记忆会恢复到${target}。`);
-    } else if (impact.tasks.changed) {
-        lines.push(`事件线索会恢复到${target}。`);
-    }
-    if (impact.managers.pendingRuns) {
-        lines.push(`将取消 ${impact.managers.pendingRuns} 个尚未执行的后台维护。`);
-    }
-    return lines;
-}
-
 async function saveEditMessage(message: TavernMessageRecord, options: { rollbackState?: boolean; content?: string } = {}) {
     if (!canEditMessage(message)) {return;}
     const draft = 'content' in options
@@ -4050,8 +3989,8 @@ async function saveEditMessage(message: TavernMessageRecord, options: { rollback
         content: regexedContent,
     });
     if (updated && shouldRollbackState) {
-        await cancelAndRollbackXbTavernManagersForMessageRange(message.sessionId, message.order);
-        await restoreAcceptedStateBeforeMessage(message.sessionId, message.order);
+        await cancelAcceptedRollbackManagersBeforeMessage(message.sessionId, message.order);
+        await restoreAcceptedMemoryAndTaskStateBeforeMessage(message.sessionId, message.order);
     }
     if (updated && selectedSessionId.value) {
         await loadSelectedSessionMessageWindow({ sessionId: selectedSessionId.value });
@@ -4120,10 +4059,10 @@ async function deleteMessageTurn(message: TavernMessageRecord) {
         tone: 'danger',
     })) {return;}
     cancelDrawJobsForMessageRange(message.sessionId, fromOrder);
-    await cancelAndRollbackXbTavernManagersForMessageRange(message.sessionId, fromOrder);
+    await cancelAcceptedRollbackManagersBeforeMessage(message.sessionId, fromOrder);
     const deleted = await deleteTavernMessages(message.sessionId, ordersToDelete);
     if (deleted > 0) {
-        await restoreAcceptedStateBeforeMessage(message.sessionId, fromOrder);
+        await restoreAcceptedMemoryAndTaskStateBeforeMessage(message.sessionId, fromOrder);
     }
     if (selectedSessionId.value) {
         await loadSelectedSessionMessageWindow({ sessionId: selectedSessionId.value });
