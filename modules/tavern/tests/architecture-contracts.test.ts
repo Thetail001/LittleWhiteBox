@@ -67,6 +67,14 @@ function extractFunctionSource(source: string, signature: string): string {
     assert.fail(`Unclosed function: ${signature}`);
 }
 
+function extractSourceBetween(source: string, startMarker: string, endMarker: string): string {
+    const start = source.indexOf(startMarker);
+    assert.notEqual(start, -1, `Missing source marker: ${startMarker}`);
+    const end = source.indexOf(endMarker, start + startMarker.length);
+    assert.notEqual(end, -1, `Missing source marker: ${endMarker}`);
+    return source.slice(start, end);
+}
+
 const sourceFiles = collectSourceFiles(tavernRoot);
 
 function sourceMatches(pattern: RegExp): Array<{ path: string; line: number; text: string }> {
@@ -841,11 +849,20 @@ test('tavern UI context is grouped by page responsibility instead of one flat ba
     const contextSource = readRepoFile('modules/tavern/app-src/components/tavern-app-context.ts');
     const appSource = readRepoFile('modules/tavern/app-src/App.vue');
     const chatPageSource = readRepoFile('modules/tavern/app-src/components/chat/TavernChatPage.vue');
+    const characterPanelSource = readRepoFile('modules/tavern/app-src/components/TavernCharacterWorkspacePanel.vue');
     const conversationPanelSource = readRepoFile('modules/tavern/app-src/components/chat/TavernConversationPanel.vue');
     const managerPanelSource = readRepoFile('modules/tavern/app-src/components/chat/TavernManagerPanel.vue');
     const workspacePanelSource = readRepoFile('modules/tavern/app-src/components/chat/TavernWorkspacePanel.vue');
     const settingsPageSource = readRepoFile('modules/tavern/app-src/components/settings/TavernSettingsPage.vue');
     const settingsControllerSource = readRepoFile('modules/tavern/app-src/components/settings/useTavernSettingsController.ts');
+    const characterContextType = extractSourceBetween(contextSource, 'export interface TavernCharacterContext', 'export interface TavernSessionContext');
+    const sessionContextType = extractSourceBetween(contextSource, 'export interface TavernSessionContext', 'export interface TavernRegexScriptDraft');
+    const chatContextType = extractSourceBetween(contextSource, 'export interface TavernChatContext', 'export interface TavernManagerContext');
+    const workspaceContextType = extractSourceBetween(contextSource, 'export interface TavernWorkspaceContext', 'export interface TavernSettingsContext');
+    const characterContextObject = extractSourceBetween(appSource, 'const characterContext = {', 'const chatContext = {');
+    const sessionContextObject = extractSourceBetween(appSource, 'const sessionContext = {', 'const characterContext = {');
+    const chatContextObject = extractSourceBetween(appSource, 'const chatContext = {', 'const managerContext = {');
+    const workspaceContextObject = extractSourceBetween(appSource, 'const workspaceContext = {', 'const appUiContext = {');
 
     assert.doesNotMatch(contextSource, /TavernContextBucket/);
     assert.doesNotMatch(contextSource, /Record<string,\s*any>/);
@@ -866,12 +883,49 @@ test('tavern UI context is grouped by page responsibility instead of one flat ba
     assert.match(appSource, /useTavernSettingsController/);
     assert.match(appSource, /settings: settingsContext/);
     assert.match(settingsControllerSource, /settingsContext = \{/);
-    assert.doesNotMatch(`${chatPageSource}\n${conversationPanelSource}\n${managerPanelSource}\n${workspacePanelSource}\n${settingsPageSource}`, /useTavernAppUiContext\(/);
+    assert.doesNotMatch(`${chatPageSource}\n${characterPanelSource}\n${conversationPanelSource}\n${managerPanelSource}\n${workspacePanelSource}\n${settingsPageSource}`, /useTavernAppUiContext\(/);
     assert.match(conversationPanelSource, /useTavernChatContext/);
+    assert.match(`${chatPageSource}\n${characterPanelSource}\n${conversationPanelSource}\n${workspacePanelSource}`, /useTavernSessionContext/);
     assert.match(managerPanelSource, /useTavernManagerContext/);
     assert.match(workspacePanelSource, /useTavernWorkspaceContext/);
     assert.doesNotMatch(workspacePanelSource, /useTavernChatContext/);
     assert.match(settingsPageSource, /useTavernSettingsContext/);
+
+    const chatSessionFields = [
+        'createNewChatSession',
+        'currentChatCharacterSessions',
+        'chatMessages',
+        'chatMessageWindow',
+        'removeSession',
+        'selectedSessionId',
+        'selectSession',
+        'sessionDisplayTitle',
+        'sessionFloorLabel',
+        'sessions',
+        'visibleChatMessages',
+    ];
+    for (const field of chatSessionFields) {
+        assert.match(sessionContextType, new RegExp(`\\b${field}\\b`));
+        assert.match(sessionContextObject, new RegExp(`\\b${field}\\b`));
+        assert.doesNotMatch(chatContextType, new RegExp(`\\b${field}\\b`));
+        assert.doesNotMatch(chatContextObject, new RegExp(`\\b${field}\\b`));
+    }
+
+    for (const field of ['openSession', 'removeSession', 'selectedCharacterSessions', 'sessionFloorLabel']) {
+        assert.doesNotMatch(characterContextType, new RegExp(`\\b${field}\\b`));
+        assert.doesNotMatch(characterContextObject, new RegExp(`\\b${field}\\b`));
+    }
+    for (const field of ['removeSession', 'selectedCharacterSessions', 'sessionFloorLabel']) {
+        assert.match(sessionContextType, new RegExp(`\\b${field}\\b`));
+        assert.match(sessionContextObject, new RegExp(`\\b${field}\\b`));
+    }
+
+    for (const field of ['currentAssistantFloor', 'selectedSessionId']) {
+        assert.match(sessionContextType, new RegExp(`\\b${field}\\b`));
+        assert.match(sessionContextObject, new RegExp(`\\b${field}\\b`));
+        assert.doesNotMatch(workspaceContextType, new RegExp(`\\b${field}\\b`));
+        assert.doesNotMatch(workspaceContextObject, new RegExp(`\\b${field}\\b`));
+    }
 });
 
 test('tavern character cards are available as a settings workspace', () => {
@@ -1786,7 +1840,6 @@ test('tavern streaming action-check UI renders from live runtime events and keep
     assert.match(appSource, /const currentChatCharacterSessions = computed<TavernSessionRecord\[\]>\(\(\) => \{[\s\S]*selectedSession\.value\?\.characterKey[\s\S]*effectiveContext\.value\.character\?\.characterKey[\s\S]*\.filter\(\(session\) => String\(session\.characterKey \|\| ''\)\.trim\(\) === characterKey\)/);
     assert.match(appSource, /watch\(\(\) => currentChatCharacterSessions\.value\.map\(\(session\) => session\.id\)\.join\('\|'\), \(\) => \{[\s\S]*refreshSessionMessageCountsForSessions\(currentChatCharacterSessions\.value\)/);
     assert.match(appSource, /const sessionContext = \{[\s\S]*currentChatCharacterSessions,/);
-    assert.match(appSource, /const chatContext = \{[\s\S]*currentChatCharacterSessions,/);
     assert.doesNotMatch(conversationPanelSource, /useTavernCharacterContext|selectedCharacterSessions/);
     assert.match(conversationPanelSource, /v-if="sessionArchiveOpen"[\s\S]*class="character-session-archive-overlay chat-session-archive-overlay"[\s\S]*v-for="session in currentChatCharacterSessions"[\s\S]*@click="openArchivedSession\(session\.id\)"/);
     assert.match(managerPanelSource, /v-model="managerInputDraft"[\s\S]*rows="1"/);
@@ -1957,6 +2010,7 @@ test('tavern character archive separates new chat from existing session selectio
     const sessionSource = readRepoFile('modules/tavern/app-src/features/session/useTavernSessionController.ts');
     const previewCss = readRepoFile('modules/tavern/app-src/styles/characters/preview.css');
     const sessionDbSource = readRepoFile('modules/tavern/shared/session-db.ts');
+    const characterContextObject = extractSourceBetween(appSource, 'const characterContext = {', 'const chatContext = {');
 
     assert.match(appSource, /const selectedCharacterSessions = computed<TavernSessionRecord\[\]>/);
     assert.match(appSource, /selectedCharacterSessions,/);
@@ -1968,7 +2022,10 @@ test('tavern character archive separates new chat from existing session selectio
     assert.match(appSource, /watch\(\(\) => selectedCharacterSessions\.value\.map\(\(session\) => session\.id\)\.join\('\|'\)[\s\S]*refreshSessionMessageCountsForSessions\(selectedCharacterSessions\.value\)/);
     assert.match(sessionDbSource, /export async function countTavernMessages[\s\S]*\.where\('sessionId'\)\.equals\(id\)\.count\(\)/);
     assert.doesNotMatch(sessionDbSource, /countTavernMessages[\s\S]*toArray\(\)\)\.length/);
-    assert.match(appSource, /openSession: selectSession/);
+    assert.doesNotMatch(characterContextObject, /openSession: selectSession/);
+    assert.match(characterSource, /useTavernSessionContext/);
+    assert.match(characterSource, /selectSession: openSessionById/);
+    assert.match(characterSource, /function openSession\(sessionId: string\)[\s\S]*openSessionById\(id\)/);
     assert.match(characterSource, /selectedCharacterSessions,/);
     assert.match(characterSource, /sessionFloorLabel,/);
     assert.match(characterSource, /function sessionArchiveMeta\(session: TavernSessionRecord\)[\s\S]*sessionFloorLabel\(session\)/);

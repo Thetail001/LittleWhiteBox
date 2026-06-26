@@ -4,7 +4,7 @@ import TavernAtlasPanel from '../TavernAtlasPanel.vue';
 import TavernEventPanel from '../TavernEventPanel.vue';
 import TavernMapPanel from '../TavernMapPanel.vue';
 import TavernMemoryEditor from '../TavernMemoryEditor.vue';
-import { useTavernMemoryContext, useTavernWorkspaceContext } from '../tavern-app-context';
+import { useTavernMemoryContext, useTavernSessionContext, useTavernWorkspaceContext } from '../tavern-app-context';
 import { useMobileSheetDrag } from './useMobileSheetDrag';
 import { createSeedMapDocument } from '../../../shared/map-state-seed';
 import type { TavernAtlasDocument, TavernMapDocument, TavernMapElement } from '../../../shared/structured-state';
@@ -19,6 +19,7 @@ const emit = defineEmits<{
 }>();
 
 const memory = useTavernMemoryContext();
+const session = useTavernSessionContext();
 const workspace = useTavernWorkspaceContext();
 const {
     chatWorkspacePanel,
@@ -55,13 +56,15 @@ const {
     atlasActiveLocationKey,
     atlasStateDocument,
     atlasStatePatches,
-    currentAssistantFloor,
     mapStateDocuments,
     mapStateDocument,
     mapStatePatches,
     sessionContract,
     tavernTasks,
 } = workspace;
+const {
+    currentAssistantFloor,
+} = session;
 
 const stateWorkspaceView = ref<'scene' | 'world'>('scene');
 const mapPreviewDocId = ref('');

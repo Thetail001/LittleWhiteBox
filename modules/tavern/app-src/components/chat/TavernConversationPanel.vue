@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue';
 import TavernScrollControls from '../TavernScrollControls.vue';
 import TavernMessageEditPanel from './TavernMessageEditPanel.vue';
 import TavernDrawCapsule from './TavernDrawCapsule.vue';
-import { useTavernChatContext, useTavernDrawContext, useTavernShellContext } from '../tavern-app-context';
+import { useTavernChatContext, useTavernDrawContext, useTavernSessionContext, useTavernShellContext } from '../tavern-app-context';
 import { useTavernEphemeralDisclosureScope } from '../useTavernEphemeralDisclosureScope';
 import { useTavernMediaQuery } from '../useTavernMediaQuery';
 import {
@@ -23,6 +23,7 @@ const emit = defineEmits<{
 
 const shell = useTavernShellContext();
 const chat = useTavernChatContext();
+const session = useTavernSessionContext();
 const draw = useTavernDrawContext();
 const {
     activeView,
@@ -36,13 +37,9 @@ const {
     canEditMessage,
     canRerunMessage,
     canSendMessage,
-    createNewChatSession,
-    currentChatCharacterSessions,
     chatComposeTextareaRef,
     chatFocus,
     chatLayout,
-    chatMessages,
-    chatMessageWindow,
     chatScrollControlsActive,
     chatScrollRef,
     currentUserMessage,
@@ -70,7 +67,6 @@ const {
     rerunFromMessage,
     revealOlderChatMessages,
     roleLabel,
-    removeSession,
     runtimeActionCheckEvents,
     runtimePendingUserMessage,
     runtimeText,
@@ -79,19 +75,26 @@ const {
     saveEditMessage,
     scrollChatToBottom,
     scrollChatToTop,
-    selectedSessionId,
-    selectSession,
-    sessionDisplayTitle,
-    sessionFloorLabel,
     showChatScrollBottom,
     showChatScrollTop,
     startEditMessage,
     thoughtBlocks,
     thoughtSummaryLabel,
     visibleCharacterAvatar,
-    visibleChatMessages,
     visibleUserAvatar,
 } = chat;
+const {
+    chatMessages,
+    chatMessageWindow,
+    createNewChatSession,
+    currentChatCharacterSessions,
+    removeSession,
+    selectedSessionId,
+    selectSession,
+    sessionDisplayTitle,
+    sessionFloorLabel,
+    visibleChatMessages,
+} = session;
 const {
     canDrawMessage,
     drawMessage,
@@ -876,5 +879,4 @@ watch(isMobileActionTrayViewport, (isMobile) => {
     </div>
   </section>
 </template>
-
 

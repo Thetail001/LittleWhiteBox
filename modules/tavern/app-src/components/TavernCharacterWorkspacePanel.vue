@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue';
-import { useTavernCharacterContext } from './tavern-app-context';
+import { useTavernCharacterContext, useTavernSessionContext } from './tavern-app-context';
 import { useTavernEphemeralDisclosureScope } from './useTavernEphemeralDisclosureScope';
 import type { TavernSessionRecord } from '../../shared/session-db';
 
@@ -17,8 +17,6 @@ const {
     loadMore,
     movePreview,
     openCharacterWorldbook,
-    openSession: openSessionById,
-    removeSession,
     pendingCharacterSessionKey,
     pendingError,
     pendingPreviewCharacterKey,
@@ -30,13 +28,17 @@ const {
     selectGreeting,
     selectLastVisible,
     selectedCharacter,
-    selectedCharacterSessions,
     selectedGreetingIndex,
-    sessionFloorLabel,
     shortText,
     syncWorldbookState,
     visibleCharacters,
 } = useTavernCharacterContext();
+const {
+    removeSession,
+    selectedCharacterSessions,
+    selectSession: openSessionById,
+    sessionFloorLabel,
+} = useTavernSessionContext();
 
 const listRef = ref<HTMLElement | null>(null);
 const sessionArchiveOpen = ref(false);

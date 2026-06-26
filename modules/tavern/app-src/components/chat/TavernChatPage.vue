@@ -6,6 +6,7 @@ import {
     useTavernCharacterContext,
     useTavernChatContext,
     useTavernManagerContext,
+    useTavernSessionContext,
     useTavernSettingsContext,
     useTavernShellContext,
     useTavernWorkspaceContext,
@@ -38,6 +39,7 @@ const shell = useTavernShellContext();
 const character = useTavernCharacterContext();
 const chat = useTavernChatContext();
 const manager = useTavernManagerContext();
+const session = useTavernSessionContext();
 const settings = useTavernSettingsContext();
 const workspace = useTavernWorkspaceContext();
 const {
@@ -48,14 +50,17 @@ const {
 const {
     chatAutoScroll,
     chatLayout,
-    chatMessageWindow,
     chatScrollRef,
     currentAuthorNote,
     saveCurrentAuthorNote,
     messageKey,
     updateChatScrollButtons,
-    visibleChatMessages,
 } = chat;
+const {
+    chatMessageWindow,
+    selectedSessionId,
+    visibleChatMessages,
+} = session;
 const {
     managerAutoScroll,
     managerMessageWindow,
@@ -66,7 +71,6 @@ const {
 const {
     chatWorkspacePanel,
     saveSessionContract,
-    selectedSessionId,
     sessionContract,
 } = workspace;
 const {
