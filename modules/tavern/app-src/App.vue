@@ -106,6 +106,7 @@ import {
     rollbackImpactLines,
     restoreAcceptedMemoryAndTaskStateBeforeMessage,
 } from './features/accepted-rollback/accepted-rollback';
+import { useTavernDrawController } from './features/draw/useTavernDrawController';
 import TavernAboutPage from './components/TavernAboutPage.vue';
 import TavernHomePage from './components/TavernHomePage.vue';
 import TavernChatPage from './components/chat/TavernChatPage.vue';
@@ -214,24 +215,6 @@ const runtimeUserMessageVisible = ref(false);
 const runtimePendingUserMessage = ref('');
 const isRunning = ref(false);
 const isCancellingRun = ref(false);
-const tavernDrawStatus = ref({ provider: 'disabled', enabled: false, ready: false });
-const DEFAULT_TAVERN_DRAW_QUICK_SETTINGS: TavernDrawQuickSettings = {
-    provider: 'disabled',
-    providerLabel: '',
-    available: false,
-    auto: false,
-    presets: [],
-    selectedPresetId: '',
-    sizeOptions: [],
-    selectedSize: '',
-};
-const tavernDrawQuickSettings = ref<TavernDrawQuickSettings>({ ...DEFAULT_TAVERN_DRAW_QUICK_SETTINGS });
-const tavernDrawQuickSettingsLoading = ref(false);
-const drawJobs = ref<Record<string, TavernDrawJob>>({});
-const drawQueue = ref<string[]>([]);
-const drawRequestJobKeys = new Map<string, string>();
-let drawCooldownTimer: number | null = null;
-let drawFinishSerial = 0;
 let runtimeStreamFrame = 0;
 let pendingRuntimeStreamSnapshot: TavernRunStreamSnapshot | null = null;
 const sessions = ref<TavernSessionRecord[]>([]);
@@ -340,40 +323,7 @@ interface PendingRuntimeDisplayRegexRequest {
     latest: DisplayRegexTextRequest;
     inFlight: boolean;
 }
-type TavernDrawJobStatus = 'queued' | 'running' | 'success' | 'failed' | 'cancelled';
-interface TavernDrawQuickOption {
-    value: string;
-    label: string;
-}
-interface TavernDrawQuickSettings {
-    provider: string;
-    providerLabel: string;
-    available: boolean;
-    auto: boolean;
-    presets: TavernDrawQuickOption[];
-    selectedPresetId: string;
-    sizeOptions: TavernDrawQuickOption[];
-    selectedSize: string;
-}
-interface TavernDrawJob {
-    key: string;
-    sessionId: string;
-    order: number;
-    role: string;
-    status: TavernDrawJobStatus;
-    statusKind: 'running' | 'success' | 'error';
-    progressText: string;
-    requestId: string;
-    sourceTextHash: string;
-    queuedAt: number;
-    startedAt: number;
-    finishedAt: number;
-    finishId: number;
-    controller?: AbortController;
-}
 const pendingHostRequests = new Map<string, PendingHostRequest>();
-const DRAW_COMPLETION_NOTICE_TEXT = '配图已生成';
-const DRAW_COOLDOWN_TICK_MS = 100;
 function normalizedSearchText(value = '') {
     return String(value || '').trim().toLocaleLowerCase();
 }
@@ -749,6 +699,27 @@ const visibleUserAvatar = computed(() => {
     const url = userAvatar.value;
     return url && !brokenAvatarUrls.value[url] ? url : '';
 });
+const drawContext = useTavernDrawController({
+    selectedSessionId,
+    loadedSessionMessages,
+    selectedSession,
+    effectiveCharacterName: computed(() => String(effectiveCharacter.value.name || '')),
+    isEditingMessage,
+    messageKey,
+    roleLabel,
+    createHostRequestId,
+    requestHost,
+    getTavernMessage,
+    updateTavernMessage,
+    loadSelectedSessionMessageWindow,
+    flashMessageAction,
+    showToast: showTavernToast,
+    describeError,
+    markdownSignature,
+    stripTavernImageMarkers,
+    enhanceChatMarkdown,
+    nextTick,
+});
 const liveCharacter = computed(() => context.value.character || {});
 const liveCharacterKey = computed(() => String(liveCharacter.value.characterKey || '').trim());
 function findCharacterByKey(characterKey = ''): TavernCharacterOption | null {
@@ -969,45 +940,6 @@ const chatMessageWindow = computed(() => {
     };
 });
 const visibleChatMessages = computed(() => loadedSessionMessages.value);
-const latestDrawableAssistantMessage = computed(() => findLatestDrawableAssistantMessage());
-const tavernDrawCapsuleVisible = computed(() => (
-    tavernDrawStatus.value.enabled === true
-    && String(tavernDrawStatus.value.provider || 'disabled') !== 'disabled'
-));
-const tavernDrawCapsuleStatusText = computed(() => {
-    const message = latestDrawableAssistantMessage.value;
-    return message ? drawMessageStatusText(message) : '';
-});
-const tavernDrawCapsuleStatusClass = computed(() => {
-    const message = latestDrawableAssistantMessage.value;
-    return message ? drawMessageStatusClass(message) : '';
-});
-const tavernDrawCapsuleWorking = computed(() => {
-    const message = latestDrawableAssistantMessage.value;
-    return !!message && isDrawingMessage(message);
-});
-const tavernDrawCapsuleMainDisabled = computed(() => (
-    tavernDrawCapsuleVisible.value
-    && !tavernDrawStatus.value.ready
-    && !tavernDrawCapsuleWorking.value
-));
-const tavernDrawCapsuleTitle = computed(() => {
-    const message = latestDrawableAssistantMessage.value;
-    if (message) {
-        const statusText = tavernDrawCapsuleStatusText.value;
-        if (statusText) {return statusText;}
-        if (tavernDrawCapsuleWorking.value) {return drawMessageTitle(message);}
-    }
-    if (!tavernDrawStatus.value.ready) {return '画图模块初始化中';}
-    return message ? '为最新回复画图' : '没有可配图的回复';
-});
-const tavernDrawCapsuleIcon = computed(() => {
-    if (tavernDrawCapsuleWorking.value) {return '■';}
-    const statusClass = tavernDrawCapsuleStatusClass.value;
-    if (statusClass.includes('success')) {return '✓';}
-    if (statusClass.includes('error')) {return '!';}
-    return '🎨';
-});
 const {
     archivedManagerRuns,
     currentManagerWorkRun,
@@ -1412,305 +1344,6 @@ function requestHost(type: string, payload: Record<string, unknown> = {}, option
         }
         pendingHostRequests.set(requestId, { resolve, reject, type, abort: options.signal ? abort : undefined, signal: options.signal });
     });
-}
-
-function findAnchorPosition(content = '', anchor = '') {
-    const text = String(content || '');
-    const normalizedAnchor = String(anchor || '').trim();
-    if (!text || !normalizedAnchor) {return -1;}
-    const directIndex = text.indexOf(normalizedAnchor);
-    if (directIndex >= 0) {return directIndex + normalizedAnchor.length;}
-    const compactText = text.replace(/\s+/g, '');
-    const compactAnchor = normalizedAnchor.replace(/\s+/g, '');
-    if (!compactAnchor) {return -1;}
-    const compactIndex = compactText.indexOf(compactAnchor);
-    if (compactIndex < 0) {return -1;}
-    let compactCursor = 0;
-    for (let index = 0; index < text.length; index += 1) {
-        if (/\s/.test(text[index])) {continue;}
-        compactCursor += 1;
-        if (compactCursor >= compactIndex + compactAnchor.length) {
-            return index + 1;
-        }
-    }
-    return -1;
-}
-
-function findNearestSentenceEnd(content = '', startPos = -1) {
-    const text = String(content || '');
-    if (startPos < 0 || !text) {return startPos;}
-    if (startPos >= text.length) {return text.length;}
-    const maxLookAhead = 80;
-    const endLimit = Math.min(text.length, startPos + maxLookAhead);
-    const basicEnders = new Set(['。', '！', '？', '!', '?', '…']);
-    const closingMarks = new Set(['”', '“', '’', '‘', '」', '』', '】', '）', ')', '"', "'", '*', '~', '～', ']']);
-    const eatClosingMarks = (position: number) => {
-        let next = position;
-        while (next < text.length && closingMarks.has(text[next])) {
-            next += 1;
-        }
-        return next;
-    };
-    if (startPos > 0 && basicEnders.has(text[startPos - 1])) {
-        return eatClosingMarks(startPos);
-    }
-    for (let offset = 0; offset < maxLookAhead && startPos + offset < endLimit; offset += 1) {
-        const position = startPos + offset;
-        const char = text[position];
-        if (char === '\n') {return position + 1;}
-        if (basicEnders.has(char)) {return eatClosingMarks(position + 1);}
-        if (char === '.' && text.slice(position, position + 3) === '...') {
-            return eatClosingMarks(position + 3);
-        }
-    }
-    return startPos;
-}
-
-function insertTavernImageMarker(content = '', image: Record<string, unknown> = {}) {
-    const slotId = String(image.slotId || '').trim();
-    if (!slotId) {return { content, inserted: false, appended: false };}
-    const marker = `[tavern-image:${slotId}]`;
-    const text = String(content || '');
-    if (text.includes(marker)) {return { content: text, inserted: false, appended: false };}
-    let position = findAnchorPosition(text, String(image.anchor || ''));
-    if (position >= 0) {
-        position = findNearestSentenceEnd(text, position);
-    }
-    if (position >= 0) {
-        const before = text.slice(0, position);
-        const after = text.slice(position);
-        let insertText = marker;
-        if (before.length > 0 && !before.endsWith('\n')) {insertText = `\n${insertText}`;}
-        if (after.length > 0 && !after.startsWith('\n')) {insertText = `${insertText}\n`;}
-        return {
-            content: `${before}${insertText}${after}`,
-            inserted: true,
-            appended: false,
-        };
-    }
-    const needNewline = text.length > 0 && !text.endsWith('\n');
-    return {
-        content: `${text}${needNewline ? '\n' : ''}${marker}`,
-        inserted: true,
-        appended: true,
-    };
-}
-
-function insertTavernImageMarkers(content = '', images: unknown[] = []) {
-    let nextContent = String(content || '');
-    let inserted = 0;
-    let appended = 0;
-    (Array.isArray(images) ? images : []).forEach((rawImage) => {
-        const image = rawImage && typeof rawImage === 'object' ? rawImage as Record<string, unknown> : {};
-        if (!image.slotId) {return;}
-        const result = insertTavernImageMarker(nextContent, image);
-        nextContent = result.content;
-        if (result.inserted) {inserted += 1;}
-        if (result.appended) {appended += 1;}
-    });
-    return { content: nextContent, inserted, appended };
-}
-
-function formatDrawProgress(stateName = '', data: Record<string, unknown> = {}) {
-    const current = Number(data.current) || 0;
-    const total = Number(data.total) || 0;
-    const countText = total ? ` ${current}/${total}` : '';
-    switch (stateName) {
-        case 'llm':
-            return '正在分析画面';
-        case 'gen':
-            return total ? `准备生成 ${total} 张图` : '准备生成图片';
-        case 'queued':
-            return Number(data.ahead) > 0 ? `画图排队中，前方 ${Number(data.ahead)} 个任务` : `画图排队中${countText}`;
-        case 'progress':
-            return `正在生成图片${countText}`;
-        case 'cooldown': {
-            const remainingMs = Number.isFinite(Number(data.remainingMs))
-                ? Number(data.remainingMs)
-                : Number(data.duration);
-            if (!Number.isFinite(remainingMs) || remainingMs <= 0) {return '等待画图冷却';}
-            return `等待下一张图片${total ? ` ${data.nextIndex || current}/${total}` : ''}，剩余 ${(remainingMs / 1000).toFixed(1)}s`;
-        }
-        case 'success': {
-            const success = Number(data.success) || 0;
-            const finalTotal = total || success;
-            if (finalTotal > 0 && success === 0) {
-                return `画图结束，${finalTotal} 张都失败`;
-            }
-            return `画图完成 ${success}/${finalTotal}`;
-        }
-        default:
-            return '正在处理画图';
-    }
-}
-
-function clearDrawCooldownTimer() {
-    if (drawCooldownTimer) {
-        window.clearInterval(drawCooldownTimer);
-        drawCooldownTimer = null;
-    }
-}
-
-function setDrawJob(jobKey = '', patch: Partial<TavernDrawJob>): void {
-    const key = String(jobKey || '').trim();
-    if (!key) {return;}
-    const existing = drawJobs.value[key];
-    if (!existing) {return;}
-    drawJobs.value = {
-        ...drawJobs.value,
-        [key]: {
-            ...existing,
-            ...patch,
-        },
-    };
-}
-
-function removeDrawJob(jobKey = ''): void {
-    const key = String(jobKey || '').trim();
-    if (!key || !drawJobs.value[key]) {return;}
-    const next = { ...drawJobs.value };
-    delete next[key];
-    drawJobs.value = next;
-}
-
-function finishDrawJobStatus(jobKey = '', patch: Partial<TavernDrawJob>, durationMs = 0): void {
-    const key = String(jobKey || '').trim();
-    if (!key) {return;}
-    const finishedAt = Date.now();
-    const finishId = drawFinishSerial += 1;
-    setDrawJob(key, {
-        ...patch,
-        finishedAt,
-        finishId,
-        controller: undefined,
-    });
-    if (durationMs > 0) {
-        window.setTimeout(() => {
-            const current = drawJobs.value[key];
-            if (!current || ['queued', 'running'].includes(current.status) || current.finishId !== finishId) {return;}
-            removeDrawJob(key);
-        }, durationMs);
-    }
-}
-
-function startDrawCooldownCountdown(jobKey: string, data: Record<string, unknown> = {}) {
-    clearDrawCooldownTimer();
-    const duration = Math.max(0, Number(data.duration) || 0);
-    const endsAt = Date.now() + duration;
-    const updateCountdown = () => {
-        const job = drawJobs.value[jobKey];
-        if (!job || job.status !== 'running') {
-            clearDrawCooldownTimer();
-            return;
-        }
-        const remainingMs = Math.max(0, endsAt - Date.now());
-        setDrawJob(jobKey, {
-            statusKind: 'running',
-            progressText: formatDrawProgress('cooldown', {
-                ...data,
-                remainingMs,
-            }),
-        });
-        if (remainingMs <= 0) {
-            clearDrawCooldownTimer();
-        }
-    };
-    updateCountdown();
-    if (duration > 0) {
-        drawCooldownTimer = window.setInterval(updateCountdown, DRAW_COOLDOWN_TICK_MS);
-    }
-}
-
-function applyTavernDrawStatus(payload: Record<string, unknown> = {}) {
-    tavernDrawStatus.value = {
-        provider: String(payload.provider || 'disabled'),
-        enabled: payload.enabled === true,
-        ready: payload.ready === true,
-    };
-    if (!tavernDrawStatus.value.enabled || tavernDrawStatus.value.provider === 'disabled') {
-        tavernDrawQuickSettings.value = { ...DEFAULT_TAVERN_DRAW_QUICK_SETTINGS };
-    }
-}
-
-async function refreshTavernDrawStatus() {
-    try {
-        const result = await requestHost('xb-tavern:draw-status', {});
-        applyTavernDrawStatus(result);
-        if (tavernDrawCapsuleVisible.value) {
-            void refreshTavernDrawQuickSettings();
-        }
-    } catch {
-        applyTavernDrawStatus({ provider: 'disabled', enabled: false, ready: false });
-    }
-    return tavernDrawStatus.value;
-}
-
-function normalizeDrawQuickOption(value: unknown): TavernDrawQuickOption | null {
-    if (!value || typeof value !== 'object') {return null;}
-    const source = value as Record<string, unknown>;
-    const optionValue = String(source.value || '').trim();
-    if (!optionValue) {return null;}
-    return {
-        value: optionValue,
-        label: String(source.label || optionValue).trim() || optionValue,
-    };
-}
-
-function normalizeTavernDrawQuickSettings(payload: Record<string, unknown> = {}): TavernDrawQuickSettings {
-    const source = payload.result && typeof payload.result === 'object'
-        ? payload.result as Record<string, unknown>
-        : payload;
-    const presets = Array.isArray(source.presets)
-        ? source.presets.map(normalizeDrawQuickOption).filter((item): item is TavernDrawQuickOption => !!item)
-        : [];
-    const sizeOptions = Array.isArray(source.sizeOptions)
-        ? source.sizeOptions.map(normalizeDrawQuickOption).filter((item): item is TavernDrawQuickOption => !!item)
-        : [];
-    const selectedPresetId = String(source.selectedPresetId || presets[0]?.value || '').trim();
-    const selectedSize = String(source.selectedSize || sizeOptions[0]?.value || '').trim();
-    return {
-        provider: String(source.provider || tavernDrawStatus.value.provider || 'disabled'),
-        providerLabel: String(source.providerLabel || '').trim(),
-        available: source.available === true && presets.length > 0 && sizeOptions.length > 0,
-        auto: source.auto === true,
-        presets,
-        selectedPresetId,
-        sizeOptions,
-        selectedSize,
-    };
-}
-
-async function refreshTavernDrawQuickSettings(): Promise<TavernDrawQuickSettings> {
-    if (!tavernDrawCapsuleVisible.value) {
-        tavernDrawQuickSettings.value = { ...DEFAULT_TAVERN_DRAW_QUICK_SETTINGS };
-        return tavernDrawQuickSettings.value;
-    }
-    tavernDrawQuickSettingsLoading.value = true;
-    try {
-        const result = await requestHost('xb-tavern:draw-quick-settings', {});
-        tavernDrawQuickSettings.value = normalizeTavernDrawQuickSettings(result);
-    } catch {
-        tavernDrawQuickSettings.value = {
-            ...DEFAULT_TAVERN_DRAW_QUICK_SETTINGS,
-            provider: tavernDrawStatus.value.provider,
-        };
-    } finally {
-        tavernDrawQuickSettingsLoading.value = false;
-    }
-    return tavernDrawQuickSettings.value;
-}
-
-async function updateTavernDrawQuickSettings(patch: Record<string, unknown> = {}): Promise<void> {
-    if (!tavernDrawCapsuleVisible.value || tavernDrawQuickSettingsLoading.value) {return;}
-    tavernDrawQuickSettingsLoading.value = true;
-    try {
-        const result = await requestHost('xb-tavern:draw-update-quick-settings', { payload: patch });
-        tavernDrawQuickSettings.value = normalizeTavernDrawQuickSettings(result);
-    } catch (error) {
-        showTavernToast(`画图快捷设置保存失败：${describeError(error)}`, { tone: 'warning', durationMs: 3600 });
-    } finally {
-        tavernDrawQuickSettingsLoading.value = false;
-    }
 }
 
 async function applyTavernRegex(items: TavernApplyRegexItem[]): Promise<TavernApplyRegexResult> {
@@ -2473,31 +2106,7 @@ function onHostMessage(event: MessageEvent) {
         resolveHostRequest(data.payload || {});
         return;
     }
-    if (data.type === 'xb-tavern:draw-status-changed') {
-        applyTavernDrawStatus(data.payload || {});
-        if (tavernDrawCapsuleVisible.value) {
-            void refreshTavernDrawQuickSettings();
-        }
-        return;
-    }
-    if (data.type === 'xb-tavern:draw-progress') {
-        const payload = data.payload || {};
-        const requestId = String(payload.requestId || '').trim();
-        const jobKey = drawRequestJobKeys.get(requestId);
-        if (jobKey && drawJobs.value[jobKey]) {
-            const state = String(payload.state || '');
-            if (payload.state === 'cooldown') {
-                startDrawCooldownCountdown(jobKey, payload.data || {});
-            } else {
-                clearDrawCooldownTimer();
-                setDrawJob(jobKey, {
-                    statusKind: state === 'success' ? 'success' : 'running',
-                    progressText: formatDrawProgress(state, payload.data || {}),
-                });
-            }
-        }
-        return;
-    }
+    if (drawContext.handleHostMessage(data)) {return;}
     if (data.type === TAVERN_INLINE_IMAGE_PROGRESS_EVENT) {
         window.dispatchEvent(new CustomEvent(TAVERN_INLINE_IMAGE_PROGRESS_EVENT, {
             detail: data.payload && typeof data.payload === 'object' ? data.payload : {},
@@ -3159,7 +2768,7 @@ async function removeSession(sessionId: string, event?: Event) {
     if (isDeletingSelectedSession && isRunning.value) {
         activeRunController.value?.abort();
     }
-    cancelDrawJobsForSession(id);
+    drawContext.cancelJobsForSession(id);
     await cancelAndRollbackXbTavernManagersForMessageRange(id, 0);
     const removed = await deleteTavernSession(id);
     if (!removed) {return;}
@@ -3483,109 +3092,6 @@ function managerActionFeedback(message: TavernManagerMessageRecord, action: stri
     return messageActionFeedback.value[`${managerMessageKey(message)}:${action}`] || '';
 }
 
-function drawJobForMessage(message: TavernMessageRecord): TavernDrawJob | null {
-    return drawJobs.value[messageKey(message)] || null;
-}
-
-function isActiveDrawJob(job?: TavernDrawJob | null): boolean {
-    return job?.status === 'queued' || job?.status === 'running';
-}
-
-function runningDrawJobKey(): string {
-    return Object.values(drawJobs.value).find((job) => job.status === 'running')?.key || '';
-}
-
-function updateQueuedDrawJobStatuses(): void {
-    drawQueue.value.forEach((key, index) => {
-        const job = drawJobs.value[key];
-        if (!job || job.status !== 'queued') {return;}
-        setDrawJob(key, {
-            progressText: index > 0 ? `排队中，前方 ${index} 个任务` : '排队中',
-            statusKind: 'running',
-        });
-    });
-}
-
-function isDrawingMessage(message: TavernMessageRecord) {
-    return isActiveDrawJob(drawJobForMessage(message));
-}
-
-function drawMessageStatusText(message: TavernMessageRecord) {
-    return drawJobForMessage(message)?.progressText || '';
-}
-
-function drawMessageStatusClass(message: TavernMessageRecord) {
-    const job = drawJobForMessage(message);
-    return job ? `is-${job.statusKind}` : '';
-}
-
-function canDrawMessage(message: TavernMessageRecord) {
-    if (isDrawingMessage(message)) {return true;}
-    if (isEditingMessage(message) || message.error) {return false;}
-    if (!['user', 'assistant'].includes(message.role)) {return false;}
-    return !!stripTavernImageMarkers(message.content || '');
-}
-
-function findLatestDrawableAssistantMessage(): TavernMessageRecord | null {
-    const messages = [...loadedSessionMessages.value].sort((left, right) => right.order - left.order);
-    return messages.find((message) => (
-        message.sessionId === selectedSessionId.value
-        && message.role === 'assistant'
-        && canDrawMessage(message)
-    )) || null;
-}
-
-function drawSourceTextHash(content = ''): string {
-    return markdownSignature(stripTavernImageMarkers(content));
-}
-
-function drawMessageTitle(message: TavernMessageRecord) {
-    const job = drawJobForMessage(message);
-    if (job?.status === 'queued') {
-        return drawMessageStatusText(message) || '取消画图';
-    }
-    if (job?.status === 'running') {
-        return drawMessageStatusText(message) || '停止画图';
-    }
-    if (!canDrawMessage(message)) {
-        return '这条消息暂不能画图';
-    }
-    if (tavernDrawStatus.value.enabled && tavernDrawStatus.value.ready) {
-        return '为这条消息画图';
-    }
-    return '为这条消息画图';
-}
-
-async function drawLatestAssistantMessage(): Promise<void> {
-    if (!tavernDrawCapsuleVisible.value) {return;}
-    const message = latestDrawableAssistantMessage.value;
-    if (!message) {
-        showTavernToast('没有可配图的回复', { tone: 'info', durationMs: 2200 });
-        return;
-    }
-    if (isDrawingMessage(message)) {
-        await drawMessage(message);
-        return;
-    }
-    if (!tavernDrawStatus.value.ready) {
-        const status = await refreshTavernDrawStatus();
-        if (!status.ready) {
-            showTavernToast('画图模块初始化中', { tone: 'info', durationMs: 2200 });
-            return;
-        }
-    }
-    await drawMessage(message);
-}
-
-async function openTavernDrawSettings(): Promise<void> {
-    try {
-        await requestHost('xb-tavern:draw-open-settings', {});
-        void refreshTavernDrawStatus();
-    } catch (error) {
-        showTavernToast(`打开画图设置失败：${describeError(error)}`, { tone: 'warning', durationMs: 4200 });
-    }
-}
-
 async function copyTextWithFallback(text = '') {
     const normalized = String(text || '');
     if (!normalized) {return false;}
@@ -3623,266 +3129,6 @@ async function copyMessage(message: TavernMessageRecord) {
 async function copyManagerMessage(message: TavernManagerMessageRecord) {
     const ok = await copyTextWithFallback(message.content || '');
     flashManagerMessageAction(message, 'copy', ok);
-}
-
-function cancelDrawJob(jobKey = ''): void {
-    const key = String(jobKey || '').trim();
-    const job = drawJobs.value[key];
-    if (!job || !isActiveDrawJob(job)) {return;}
-    if (job.status === 'queued') {
-        drawQueue.value = drawQueue.value.filter((item) => item !== key);
-        updateQueuedDrawJobStatuses();
-        finishDrawJobStatus(key, {
-            status: 'cancelled',
-            statusKind: 'error',
-            progressText: '配图已取消',
-        }, 1800);
-        return;
-    }
-    job.controller?.abort();
-    clearDrawCooldownTimer();
-    setDrawJob(key, {
-        progressText: '正在停止画图',
-        statusKind: 'running',
-    });
-}
-
-function cancelDrawJobsForMessageRange(sessionId = '', fromOrder = 0): void {
-    const id = String(sessionId || '').trim();
-    const startOrder = Number(fromOrder);
-    if (!id || !Number.isFinite(startOrder)) {return;}
-    Object.values(drawJobs.value).forEach((job) => {
-        if (job.sessionId === id && Number(job.order) >= startOrder) {
-            cancelDrawJob(job.key);
-        }
-    });
-}
-
-function cancelDrawJobsForSession(sessionId = ''): void {
-    const id = String(sessionId || '').trim();
-    if (!id) {return;}
-    Object.values(drawJobs.value).forEach((job) => {
-        if (job.sessionId === id) {
-            cancelDrawJob(job.key);
-        }
-    });
-}
-
-function abortAllDrawJobs(): void {
-    Object.values(drawJobs.value).forEach((job) => {
-        job.controller?.abort();
-    });
-    drawQueue.value = [];
-    drawRequestJobKeys.clear();
-}
-
-function enqueueDrawMessageJob(message: TavernMessageRecord): void {
-    const key = messageKey(message);
-    const now = Date.now();
-    drawJobs.value = {
-        ...drawJobs.value,
-        [key]: {
-            key,
-            sessionId: message.sessionId,
-            order: message.order,
-            role: message.role,
-            status: 'queued',
-            statusKind: 'running',
-            progressText: '排队中',
-            requestId: '',
-            sourceTextHash: '',
-            queuedAt: now,
-            startedAt: 0,
-            finishedAt: 0,
-            finishId: 0,
-        },
-    };
-    drawQueue.value = [...drawQueue.value.filter((item) => item !== key), key];
-    updateQueuedDrawJobStatuses();
-    void processNextDrawJob();
-}
-
-async function processNextDrawJob(): Promise<void> {
-    if (runningDrawJobKey()) {return;}
-    const nextKey = drawQueue.value.find((key) => drawJobs.value[key]?.status === 'queued') || '';
-    if (!nextKey) {return;}
-    drawQueue.value = drawQueue.value.filter((key) => key !== nextKey);
-    updateQueuedDrawJobStatuses();
-    await runDrawJob(nextKey);
-}
-
-function validateDrawableMessage(message: TavernMessageRecord | null, job: TavernDrawJob): string {
-    if (!message) {return '消息已不存在';}
-    if (message.sessionId !== job.sessionId || message.order !== job.order || message.role !== job.role) {return '消息已变化';}
-    if (message.error) {return '错误消息不能画图';}
-    if (!['user', 'assistant'].includes(message.role)) {return '这条消息暂不能画图';}
-    if (!stripTavernImageMarkers(message.content || '')) {return '消息正文为空';}
-    return '';
-}
-
-async function runDrawJob(jobKey = ''): Promise<void> {
-    const job = drawJobs.value[jobKey];
-    if (!job || job.status !== 'queued') {return;}
-    const requestId = createHostRequestId('draw');
-    const controller = new AbortController();
-    setDrawJob(jobKey, {
-        status: 'running',
-        statusKind: 'running',
-        progressText: '正在准备画图',
-        requestId,
-        controller,
-        startedAt: Date.now(),
-    });
-    drawRequestJobKeys.set(requestId, jobKey);
-    try {
-        const currentMessage = await getTavernMessage(job.sessionId, job.order);
-        const currentError = validateDrawableMessage(currentMessage, job);
-        if (currentError) {
-            finishDrawJobStatus(jobKey, {
-                status: 'cancelled',
-                statusKind: 'error',
-                progressText: currentError,
-            }, 2600);
-            return;
-        }
-        const status = await refreshTavernDrawStatus();
-        if (!status.enabled || !status.ready) {
-            finishDrawJobStatus(jobKey, {
-                status: 'failed',
-                statusKind: 'error',
-                progressText: '请开启小白X画图模块',
-            }, 3200);
-            flashMessageAction(currentMessage!, 'draw', false);
-            return;
-        }
-        const cleanText = stripTavernImageMarkers(currentMessage!.content || '');
-        const sourceTextHash = markdownSignature(cleanText);
-        setDrawJob(jobKey, { sourceTextHash });
-        const resultPayload = await requestHost('xb-tavern:draw-generate', {
-            payload: {
-                source: 'tavern',
-                text: cleanText,
-                title: roleLabel(currentMessage!.role),
-                sessionId: currentMessage!.sessionId,
-                messageOrder: currentMessage!.order,
-                role: currentMessage!.role,
-                characterName: selectedSession.value?.characterName || effectiveCharacter.value.name || '',
-            },
-        }, { signal: controller.signal, requestId });
-        if (controller.signal.aborted) {
-            finishDrawJobStatus(jobKey, {
-                status: 'cancelled',
-                statusKind: 'error',
-                progressText: '配图已取消',
-            }, 1800);
-            flashMessageAction(currentMessage!, 'draw', false);
-            return;
-        }
-        const latestMessage = await getTavernMessage(job.sessionId, job.order);
-        const latestError = validateDrawableMessage(latestMessage, job);
-        if (latestError) {
-            finishDrawJobStatus(jobKey, {
-                status: 'cancelled',
-                statusKind: 'error',
-                progressText: latestError,
-            }, 2600);
-            flashMessageAction(currentMessage!, 'draw', false);
-            return;
-        }
-        if (controller.signal.aborted) {
-            finishDrawJobStatus(jobKey, {
-                status: 'cancelled',
-                statusKind: 'error',
-                progressText: '配图已取消',
-            }, 1800);
-            flashMessageAction(latestMessage!, 'draw', false);
-            return;
-        }
-        const latestSourceTextHash = drawSourceTextHash(latestMessage!.content || '');
-        if (latestSourceTextHash !== sourceTextHash) {
-            finishDrawJobStatus(jobKey, {
-                status: 'cancelled',
-                statusKind: 'error',
-                progressText: '源楼层已变化',
-            }, 2600);
-            flashMessageAction(latestMessage!, 'draw', false);
-            return;
-        }
-        const result = (resultPayload.result || resultPayload) as Record<string, unknown>;
-        const images = Array.isArray(result.images) ? result.images : [];
-        const insertion = insertTavernImageMarkers(latestMessage!.content || '', images);
-        if (!insertion.inserted) {
-            const success = Number(result.success) || 0;
-            const total = Number(result.total) || images.length;
-            const text = total > 0 && success === 0
-                ? `画图任务结束：${total} 张都失败了，未插入图片。`
-                : success > 0
-                    ? `画图完成 ${success}/${total || success}，但没有返回可用图片占位。`
-                    : '画图任务结束，但没有返回可用图片。';
-            finishDrawJobStatus(jobKey, {
-                status: 'failed',
-                statusKind: 'error',
-                progressText: text,
-            }, 4200);
-            flashMessageAction(latestMessage!, 'draw', false);
-            return;
-        }
-        const updated = await updateTavernMessage(latestMessage!.sessionId, latestMessage!.order, { content: insertion.content });
-        if (updated && selectedSessionId.value === latestMessage!.sessionId) {
-            await loadSelectedSessionMessageWindow({ sessionId: latestMessage!.sessionId });
-        }
-        const success = Number(result.success) || 0;
-        const total = Number(result.total) || images.length;
-        const allFailed = total > 0 && success === 0;
-        const fallbackText = insertion.appended ? `，${insertion.appended} 张追加到末尾` : '';
-        const failureText = total > 0 ? `配图失败：${total} 张都失败了` : '配图失败';
-        finishDrawJobStatus(jobKey, {
-            status: allFailed ? 'failed' : 'success',
-            statusKind: allFailed ? 'error' : 'success',
-            progressText: allFailed ? failureText : `${DRAW_COMPLETION_NOTICE_TEXT}${fallbackText}`,
-        }, allFailed ? 4200 : 2600);
-        flashMessageAction(updated || latestMessage!, 'draw', !allFailed && !!updated);
-        void nextTick(enhanceChatMarkdown);
-    } catch (error) {
-        const current = await getTavernMessage(job.sessionId, job.order).catch((): null => null);
-        const text = describeError(error);
-        if (/abort|已取消|request_aborted/i.test(text)) {
-            finishDrawJobStatus(jobKey, {
-                status: 'cancelled',
-                statusKind: 'error',
-                progressText: '配图已取消',
-            }, 1800);
-        } else {
-            finishDrawJobStatus(jobKey, {
-                status: 'failed',
-                statusKind: 'error',
-                progressText: `配图失败：${text}`,
-            }, 4200);
-        }
-        if (current) {
-            flashMessageAction(current, 'draw', false);
-        }
-    } finally {
-        drawRequestJobKeys.delete(requestId);
-        const current = drawJobs.value[jobKey];
-        if (current?.controller === controller) {
-            setDrawJob(jobKey, { controller: undefined });
-        }
-        void processNextDrawJob();
-    }
-}
-
-async function drawMessage(message: TavernMessageRecord) {
-    const existing = drawJobForMessage(message);
-    if (isActiveDrawJob(existing)) {
-        cancelDrawJob(existing!.key);
-        return;
-    }
-    if (!canDrawMessage(message)) {
-        flashMessageAction(message, 'draw', false);
-        return;
-    }
-    enqueueDrawMessageJob(message);
 }
 
 function startEditMessage(message: TavernMessageRecord) {
@@ -3984,7 +3230,7 @@ async function saveEditMessage(message: TavernMessageRecord, options: { rollback
     }
     const substitutedContent = await substituteEditedMessageContent(message, content);
     const regexedContent = await applyEditRegexToMessageContent(message, substitutedContent);
-    cancelDrawJob(messageKey(message));
+    drawContext.cancelJob(messageKey(message));
     const updated = await updateTavernMessage(message.sessionId, message.order, {
         content: regexedContent,
     });
@@ -4058,7 +3304,7 @@ async function deleteMessageTurn(message: TavernMessageRecord) {
         confirmText: '删除',
         tone: 'danger',
     })) {return;}
-    cancelDrawJobsForMessageRange(message.sessionId, fromOrder);
+    drawContext.cancelJobsForMessageRange(message.sessionId, fromOrder);
     await cancelAcceptedRollbackManagersBeforeMessage(message.sessionId, fromOrder);
     const deleted = await deleteTavernMessages(message.sessionId, ordersToDelete);
     if (deleted > 0) {
@@ -4089,7 +3335,7 @@ async function rerunFromMessage(message: TavernMessageRecord) {
         flashMessageAction(message, 'rerun', false);
         return;
     }
-    cancelDrawJobsForMessageRange(message.sessionId, userMessage.order + 1);
+    drawContext.cancelJobsForMessageRange(message.sessionId, userMessage.order + 1);
     flashMessageAction(message, 'rerun', true);
     await runOnce({
         messageText: userMessage.content,
@@ -4817,7 +4063,7 @@ async function runOnce(options: { messageText?: string; reuseUserMessageOrder?: 
     }
     resetChatMessageWindowState();
     if (isReusedUserMessageRun && selectedSessionId.value) {
-        cancelDrawJobsForMessageRange(selectedSessionId.value, reusedUserMessageOrder + 1);
+        drawContext.cancelJobsForMessageRange(selectedSessionId.value, reusedUserMessageOrder + 1);
         pruneLoadedSessionMessagesFromOrder(selectedSessionId.value, reusedUserMessageOrder + 1);
     }
     const shouldShowPendingUserMessage = !isReusedUserMessageRun;
@@ -5109,10 +4355,10 @@ provide(TAVERN_APP_UI_CONTEXT, {
         syncWorldbookState: syncCharacterWorldbookState,
         visibleCharacters: visibleCharacterCards,
     },
+    draw: drawContext,
     chat: {
         actionFeedback,
         cancelEditMessage,
-        canDrawMessage,
         canEditMessage,
         canRerunMessage,
         canSendMessage,
@@ -5138,11 +4384,6 @@ provide(TAVERN_APP_UI_CONTEXT, {
         displayRuntimeRenderProjection,
         displayRuntimeThoughtBlocks,
         displayCharacterName,
-        drawMessage,
-        drawLatestAssistantMessage,
-        drawMessageStatusClass,
-        drawMessageStatusText,
-        drawMessageTitle,
         formatMessageTime,
         handleChatScroll,
         handleChatSubmit,
@@ -5151,7 +4392,6 @@ provide(TAVERN_APP_UI_CONTEXT, {
         handleChatWheel,
         handleComposeInput,
         handleComposeKeydown,
-        isDrawingMessage,
         isEditingMessage,
         isCancellingRun,
         isRunning,
@@ -5159,8 +4399,6 @@ provide(TAVERN_APP_UI_CONTEXT, {
         htmlRenderEnabled,
         messageKey,
         normalizeTavernSessionState,
-        openTavernDrawSettings,
-        refreshTavernDrawQuickSettings,
         removeSession,
         renderChatMarkdown,
         rerunFromMessage,
@@ -5183,18 +4421,9 @@ provide(TAVERN_APP_UI_CONTEXT, {
         showChatScrollBottom,
         showChatScrollTop,
         startEditMessage,
-        tavernDrawCapsuleIcon,
-        tavernDrawCapsuleMainDisabled,
-        tavernDrawCapsuleStatusClass,
-        tavernDrawCapsuleStatusText,
-        tavernDrawCapsuleTitle,
-        tavernDrawCapsuleVisible,
-        tavernDrawQuickSettings,
-        tavernDrawQuickSettingsLoading,
         thoughtBlocks,
         thoughtSummaryLabel,
         updateChatScrollButtons,
-        updateTavernDrawQuickSettings,
         visibleCharacterAvatar,
         visibleChatMessages,
         visibleUserAvatar,
@@ -5372,14 +4601,14 @@ onMounted(async () => {
     syncApiSettingsConfigFromAgentConfig();
     await nextTick();
     postToHost('xb-tavern:frame-ready');
-    void refreshTavernDrawStatus();
+    void drawContext.refreshTavernDrawStatus();
 });
 
 onUnmounted(() => {
     window.removeEventListener('message', onHostMessage);
     disposeMarkdownTools();
     clearRuntimeAssistantLiveState();
-    clearDrawCooldownTimer();
+    drawContext.clearCooldownTimer();
     setHostChatCompletionsRequestHeadersProvider(null);
     pendingHostRequests.forEach((request) => {
         if (request.abort && request.signal) {
@@ -5390,7 +4619,7 @@ onUnmounted(() => {
     pendingHostRequests.clear();
     activeRunController.value?.abort();
     managerAssistantController.value?.abort();
-    abortAllDrawJobs();
+    drawContext.abortAllJobs();
     chatScrollPane.cleanup();
     managerScrollPane.cleanup();
     if (tavernToastTimer) {

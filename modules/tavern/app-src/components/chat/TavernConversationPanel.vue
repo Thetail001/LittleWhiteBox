@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue';
 import TavernScrollControls from '../TavernScrollControls.vue';
 import TavernMessageEditPanel from './TavernMessageEditPanel.vue';
 import TavernDrawCapsule from './TavernDrawCapsule.vue';
-import { useTavernChatContext, useTavernShellContext } from '../tavern-app-context';
+import { useTavernChatContext, useTavernDrawContext, useTavernShellContext } from '../tavern-app-context';
 import { useTavernEphemeralDisclosureScope } from '../useTavernEphemeralDisclosureScope';
 import { useTavernMediaQuery } from '../useTavernMediaQuery';
 import {
@@ -23,6 +23,7 @@ const emit = defineEmits<{
 
 const shell = useTavernShellContext();
 const chat = useTavernChatContext();
+const draw = useTavernDrawContext();
 const {
     activeView,
     homeThemeDark,
@@ -32,7 +33,6 @@ const {
 const {
     actionFeedback,
     cancelEditMessage,
-    canDrawMessage,
     canEditMessage,
     canRerunMessage,
     canSendMessage,
@@ -52,10 +52,6 @@ const {
     displayMessageThoughtBlocks,
     displayRuntimeRenderProjection,
     displayRuntimeThoughtBlocks,
-    drawMessage,
-    drawMessageStatusClass,
-    drawMessageStatusText,
-    drawMessageTitle,
     formatMessageTime,
     handleChatScroll,
     handleChatSubmit,
@@ -64,7 +60,6 @@ const {
     handleChatWheel,
     handleComposeInput,
     handleComposeKeydown,
-    isDrawingMessage,
     isEditingMessage,
     isCancellingRun,
     isRunning,
@@ -97,6 +92,14 @@ const {
     visibleChatMessages,
     visibleUserAvatar,
 } = chat;
+const {
+    canDrawMessage,
+    drawMessage,
+    drawMessageStatusClass,
+    drawMessageStatusText,
+    drawMessageTitle,
+    isDrawingMessage,
+} = draw;
 function setChatScrollRef(element: Element | null) {
     chatScrollRef.value = element instanceof HTMLElement ? element : null;
 }
