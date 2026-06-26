@@ -2079,6 +2079,16 @@ test('StatePatch rejects material styling escape hatches and invalid enum churn'
     const oldFill = (afterLegacyFill?.data as TavernMapDocument).elements.find((element) => element.id === 'old-fill');
     assert.equal(oldFill?.material, 'wood');
     assert.equal(oldFill?.fill, undefined);
+    const legacyFillPatches = await listTavernStructuredStatePatches({ sessionId: session.id });
+    const legacyFillReplay = applyTrustedMapPatchOps(
+        createSeedMapDocument(),
+        legacyFillPatches.flatMap((patch) => patch.ops as Array<Record<string, unknown>>),
+    );
+    const replayedOldFill = legacyFillReplay.elements.find((element) => element.id === 'old-fill');
+    assert.equal(replayedOldFill?.material, 'wood');
+    assert.equal(replayedOldFill?.fill, undefined);
+    const legacyFillModify = legacyFillPatches.at(-1)?.ops as Array<{ op?: string; id?: string; set?: Record<string, unknown> }> | undefined;
+    assert.deepEqual(legacyFillModify?.find((op) => op.op === 'modify' && op.id === 'old-fill')?.set, { fill: null, material: 'wood' });
 
     const invalid = await executeTavernStateTool(session.id, 'MapPatch', {
         ops: [
@@ -2092,6 +2102,44 @@ test('StatePatch rejects material styling escape hatches and invalid enum churn'
     assert.equal(invalid.warnings?.some((warning) => /invalid map mood: cozy/i.test(warning)), true);
     assert.equal(invalid.warnings?.some((warning) => /invalid map material.*oak wood/i.test(warning)), true);
     assert.equal(invalid.warnings?.some((warning) => /invalid map certainty.*maybe/i.test(warning)), true);
+});
+
+test('StatePatch replay preserves canonical field deletions', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Map replay canonical deletions' });
+    const write = await executeTavernStateTool(session.id, 'MapPatch', {
+        ops: [
+            { op: 'add', element: { id: 'door', at: [20, 20], icon: 'o', cat: 'door', certainty: 'inferred' } },
+            { op: 'add', element: { id: 'floor', at: [0, 0], rect: [80, 60], cat: 'terrain', material: 'wood' } },
+        ],
+    });
+    assert.equal(write.ok, true);
+
+    const clear = await executeTavernStateTool(session.id, 'MapPatch', {
+        ops: [
+            { op: 'modify', id: 'door', set: { certainty: 'confirmed' } },
+            { op: 'modify', id: 'floor', set: { material: null } },
+        ],
+    });
+    assert.equal(clear.ok, true);
+
+    const record = await getTavernStructuredStateDocument(session.id, 'tavern.map', 'main');
+    const stored = record?.data as TavernMapDocument;
+    const patches = await listTavernStructuredStatePatches({ sessionId: session.id });
+    const replayed = applyTrustedMapPatchOps(
+        createSeedMapDocument(),
+        patches.flatMap((patch) => patch.ops as Array<Record<string, unknown>>),
+    );
+    const effectiveClearOps = patches.at(-1)?.ops as Array<{ op?: string; id?: string; set?: Record<string, unknown> }> | undefined;
+
+    assert.equal(stored.elements.find((element) => element.id === 'door')?.certainty, undefined);
+    assert.equal(stored.elements.find((element) => element.id === 'floor')?.material, undefined);
+    assert.equal(replayed.elements.find((element) => element.id === 'door')?.certainty, undefined);
+    assert.equal(replayed.elements.find((element) => element.id === 'floor')?.material, undefined);
+    assert.deepEqual(effectiveClearOps?.find((op) => op.op === 'modify' && op.id === 'door')?.set, { certainty: null });
+    assert.deepEqual(effectiveClearOps?.find((op) => op.op === 'modify' && op.id === 'floor')?.set, { material: null });
 });
 
 test('StatePatch label lifecycle skips terrain and light and clears stale derived labels', async () => {

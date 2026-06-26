@@ -429,7 +429,7 @@ function certaintyOpacity(element: TavernMapElement): number {
 function elementFill(element: TavernMapElement): string {
     if (!canMapElementUseAreaFill(element.cat)) {return element.fill ? String(element.fill) : 'none';}
     const material = materialEntry(element.material);
-    if (material?.layer === 'fill') {return material.paint;}
+    if (material?.layer === 'fill') {return hasAreaShape(element) ? material.paint : 'none';}
     if (element.fill) {return String(element.fill);}
     const fills: Record<string, string> = {
         water: 'rgba(63, 136, 167, 0.24)',

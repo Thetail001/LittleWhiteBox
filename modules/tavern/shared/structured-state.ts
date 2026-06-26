@@ -118,6 +118,8 @@ export interface TavernMapElement {
     style?: TavernMapStyle;
 }
 
+export type TavernMapElementPatchSet = Partial<{ [K in keyof TavernMapElement]: TavernMapElement[K] | null }>;
+
 export interface TavernMapDocument {
     meta: TavernMapDocumentMeta;
     elements: TavernMapElement[];
@@ -163,7 +165,7 @@ export interface TavernAtlasDocument {
 export type TavernMapPatchOp =
     | { op: 'meta'; set: Partial<TavernMapDocumentMeta> }
     | { op: 'add'; element: TavernMapElement }
-    | { op: 'modify'; id: string; set: Partial<TavernMapElement> }
+    | { op: 'modify'; id: string; set: TavernMapElementPatchSet }
     | { op: 'remove'; id: string; _internalSoft?: true };
 
 export type TavernAtlasPatchOp =
@@ -1779,6 +1781,27 @@ function buildNextElement(current: TavernMapElement, set: Partial<TavernMapEleme
     return finalizeElement(next, current.id, { allowReservedId: isSeedLabelId(current.id), warnings, source: 'model-input' });
 }
 
+function buildCanonicalElementReplaySet(current: TavernMapElement, next: TavernMapElement): TavernMapElementPatchSet {
+    const set: TavernMapElementPatchSet = {};
+    const keys = new Set<keyof TavernMapElement>([
+        ...Object.keys(current) as Array<keyof TavernMapElement>,
+        ...Object.keys(next) as Array<keyof TavernMapElement>,
+    ]);
+    keys.delete('id');
+    keys.forEach((key) => {
+        const currentHasKey = Object.prototype.hasOwnProperty.call(current, key);
+        const nextHasKey = Object.prototype.hasOwnProperty.call(next, key);
+        if (nextHasKey && !deepEqual(current[key], next[key])) {
+            set[key] = cloneJson(next[key]) as never;
+            return;
+        }
+        if (currentHasKey && !nextHasKey) {
+            set[key] = null as never;
+        }
+    });
+    return set;
+}
+
 function hasGeometryShape(element: Partial<TavernMapElement>): boolean {
     return MAP_GEOMETRY_KEYS.some((key) => {
         if (key === 'circle') {return typeof element.circle === 'number';}
@@ -2013,14 +2036,13 @@ function applyMapOps(source: TavernMapDocument, rawOps: unknown[]): {
             && hasGeometryCandidate
             && !!text
             && canMapElementHaveDerivedLabel(geometryCandidate.cat);
-        const geometrySet = hasGeometryCandidate && setHasText ? textlessSet : set;
         const next = shouldUpsertDerivedLabel
             ? geometryCandidate
             : candidate;
         let modifiedGeometry = false;
         if (!deepEqual(current, next)) {
             document.elements[index] = next;
-            effectiveOps.push({ op: 'modify', id, set: cloneJson(geometrySet) });
+            effectiveOps.push({ op: 'modify', id, set: buildCanonicalElementReplaySet(current, next) });
             changed = true;
             appliedCount += 1;
             changedIds.add(id);
