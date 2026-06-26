@@ -762,7 +762,9 @@ test('tavern map update badge stays collapsed until requested', () => {
     assert.doesNotMatch(contextSource, /activateMapDocument/);
     assert.match(mapCss, /\.tavern-chat\.xb-page \.tavern-map-canvas svg \{[\s\S]*cursor: grab;[\s\S]*touch-action: none;[\s\S]*user-select: none;/);
     assert.match(mapCss, /\.tavern-chat\.xb-page \.tavern-map-canvas\.is-panning svg \{[\s\S]*cursor: grabbing;/);
-    assert.match(mapCss, /\.tavern-chat\.xb-page \.tavern-map-zoom-controls \{[\s\S]*position: absolute;[\s\S]*right: 14px;[\s\S]*top: 14px;/);
+    assert.match(mapCss, /\.tavern-chat\.xb-page \.tavern-map-compact-controls\.is-floating \{[\s\S]*max-width: calc\(100% - 74px\);/);
+    assert.match(mapCss, /\.tavern-chat\.xb-page \.tavern-map-zoom-controls \{[\s\S]*position: absolute;[\s\S]*right: 10px;[\s\S]*top: 10px;[\s\S]*grid-template-columns: 22px 34px 22px;/);
+    assert.match(mapCss, /@media \(max-width: 640px\) \{[\s\S]*\.tavern-chat\.xb-page \.tavern-map-zoom-controls \{[\s\S]*right: 8px;[\s\S]*top: 8px;[\s\S]*grid-template-columns: 20px 30px 20px;/);
     assert.match(mapCss, /\.tavern-chat\.xb-page \.tavern-map-badge-shell \{[\s\S]*position: absolute;[\s\S]*top: 14px;[\s\S]*left: 16px;/);
     assert.match(mapCss, /\.tavern-chat\.xb-page \.tavern-map-timeline-control \{[\s\S]*position: absolute;[\s\S]*left: 16px;[\s\S]*bottom: 16px;/);
     assert.doesNotMatch(mapCss, /tavern-map-active-button/);

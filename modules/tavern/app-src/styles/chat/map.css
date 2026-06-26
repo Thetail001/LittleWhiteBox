@@ -105,7 +105,7 @@
     top: 9px;
     left: 50%;
     z-index: 5;
-    max-width: calc(100% - 86px);
+    max-width: calc(100% - 74px);
     transform: translateX(-50%);
 }
 
@@ -117,32 +117,32 @@
 
 .tavern-chat.xb-page .tavern-map-zoom-controls {
     position: absolute;
-    right: 14px;
-    top: 14px;
+    right: 10px;
+    top: 10px;
     z-index: 5;
     display: grid;
-    grid-template-columns: 26px minmax(44px, auto) 26px;
+    grid-template-columns: 22px 34px 22px;
     align-items: center;
     overflow: hidden;
     border: 1px solid rgba(70, 52, 31, 0.18);
-    border-radius: 7px;
-    background: rgba(230, 216, 174, 0.52);
+    border-radius: 6px;
+    background: rgba(230, 216, 174, 0.44);
     box-shadow:
-        inset 0 0 0 1px rgba(255, 248, 220, 0.18),
-        0 8px 18px rgba(58, 43, 25, 0.08);
-    backdrop-filter: blur(4px);
+        inset 0 0 0 1px rgba(255, 248, 220, 0.14),
+        0 6px 14px rgba(58, 43, 25, 0.08);
+    backdrop-filter: blur(5px);
 }
 
 .tavern-chat.xb-page .tavern-map-zoom-controls button {
-    height: 26px;
+    height: 22px;
     min-width: 0;
     border: 0;
     border-right: 1px solid rgba(70, 52, 31, 0.14);
     border-radius: 0;
     background: transparent;
     color: rgba(74, 55, 34, 0.82);
-    font: 760 12px/1 var(--xb-font-ui);
-    padding: 0 7px;
+    font: 760 11px/1 var(--xb-font-ui);
+    padding: 0;
 }
 
 .tavern-chat.xb-page .tavern-map-zoom-controls button:last-child {
@@ -161,7 +161,7 @@
 
 .tavern-chat.xb-page .tavern-map-zoom-controls .tavern-map-zoom-value {
     color: rgba(77, 57, 34, 0.68);
-    font: 720 10px/1 var(--xb-font-mono);
+    font: 720 9px/1 var(--xb-font-mono);
 }
 
 .tavern-chat.xb-page .theme-dark .tavern-map-compact-controls,
@@ -172,10 +172,10 @@
 .tavern-chat.xb-page .theme-dark .tavern-map-zoom-controls,
 .tavern-chat.xb-page .theme-blueprint .tavern-map-zoom-controls {
     border-color: rgba(177, 205, 218, 0.18);
-    background: rgba(23, 35, 42, 0.42);
+    background: rgba(23, 35, 42, 0.36);
     box-shadow:
         inset 0 0 0 1px rgba(206, 230, 240, 0.06),
-        0 8px 18px rgba(0, 0, 0, 0.18);
+        0 6px 14px rgba(0, 0, 0, 0.16);
 }
 
 .tavern-chat.xb-page .theme-dark .tavern-map-zoom-controls button,
@@ -198,6 +198,32 @@
 .tavern-chat.xb-page .theme-dark .tavern-map-zoom-controls .tavern-map-zoom-value,
 .tavern-chat.xb-page .theme-blueprint .tavern-map-zoom-controls .tavern-map-zoom-value {
     color: rgba(214, 232, 238, 0.64);
+}
+
+@media (max-width: 640px) {
+    .tavern-chat.xb-page .tavern-map-compact-controls.is-floating {
+        top: 8px;
+        max-width: calc(100% - 68px);
+    }
+
+    .tavern-chat.xb-page .tavern-map-compact-controls .tavern-map-select {
+        max-width: min(46vw, 150px);
+    }
+
+    .tavern-chat.xb-page .tavern-map-zoom-controls {
+        right: 8px;
+        top: 8px;
+        grid-template-columns: 20px 30px 20px;
+    }
+
+    .tavern-chat.xb-page .tavern-map-zoom-controls button {
+        height: 20px;
+        font-size: 10px;
+    }
+
+    .tavern-chat.xb-page .tavern-map-zoom-controls .tavern-map-zoom-value {
+        font-size: 8px;
+    }
 }
 
 .tavern-chat.xb-page .tavern-map-canvas svg {
