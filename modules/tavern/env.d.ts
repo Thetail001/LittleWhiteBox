@@ -33,6 +33,7 @@ declare module '*.js' {
     export function getRequestHeaders(): Record<string, string>;
     export function getThumbnailUrl(type: string, file: string, t?: boolean): string;
     export function getContext(): Record<string, unknown>;
+    export function writeExtensionField(characterId: string | number, key: string, value: unknown): Promise<void>;
     export function getUserAvatars(doRender?: boolean, openPageAt?: string): Promise<string[]>;
     export function setUserAvatar(
         imgfile: string,
@@ -133,6 +134,7 @@ declare module '*.js' {
     export const substitute_find_regex: { NONE: number; RAW: number; ESCAPED: number };
     export const RegexProvider: { instance?: { clear?: () => void } } | undefined;
     export function getRegexedString(rawString: string, placement: number, options?: Record<string, unknown>): string;
+    export function runRegexScript(regexScript: Record<string, unknown>, rawString: string, options?: Record<string, unknown>): string;
     export function getScriptsByType(scriptType: number, options?: { allowedOnly?: boolean }): Array<Record<string, unknown>>;
     export function saveScriptsByType(scripts: Array<Record<string, unknown>>, scriptType: number): Promise<void>;
     export function isScopedScriptsAllowed(character?: unknown): boolean;

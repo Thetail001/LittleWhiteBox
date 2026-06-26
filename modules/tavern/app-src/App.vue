@@ -705,9 +705,13 @@ const effectiveContext = computed<XbTavernContext>(() => ({
         ? buildContextHistory(loadedSessionMessages.value)
         : context.value.history,
 }));
-const currentWorldbookNativeCharacterId = computed(() => (
-    resolveCurrentNativeCharacterId(String(selectedSession.value?.characterKey || effectiveContext.value.character?.characterKey || '').trim(), { optional: true })
-));
+const currentNativeCharacterId = computed(() => {
+    const characterKey = String(selectedSession.value?.characterKey || effectiveContext.value.character?.characterKey || '').trim();
+    const byKey = characterKey ? resolveCurrentNativeCharacterId(characterKey, { optional: true }) : '';
+    return byKey
+        || String(selectedSession.value?.contextSnapshot?.character?.nativeCharacterId || '').trim()
+        || String(effectiveContext.value.character?.nativeCharacterId || '').trim();
+});
 const {
     activeAssistantPreset,
     applyHostChatPreset,
@@ -731,7 +735,7 @@ const {
     agentConfig,
     tavernDisplaySettings,
     effectiveContext,
-    currentWorldbookNativeCharacterId,
+    currentNativeCharacterId,
     homeThemeDark,
     isRunning,
     confirmDialog: confirmTavernDialog,
@@ -1315,7 +1319,10 @@ async function applyTavernRegex(items: TavernApplyRegexItem[]): Promise<TavernAp
         return { items: [], changedCount: 0 };
     }
     const response = await requestHost('xb-tavern:apply-regex', {
-        payload: { items },
+        payload: {
+            nativeCharacterId: String(currentNativeCharacterId.value || '').trim(),
+            items,
+        },
     });
     const result = (response.result || response) as Partial<TavernApplyRegexResult>;
     return {

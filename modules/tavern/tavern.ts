@@ -1186,13 +1186,13 @@ async function handleRegexRequest(type: string, payload: Record<string, unknown>
     try {
         let result: unknown;
         if (type === 'xb-tavern:list-regex-scripts') {
-            result = listTavernRegexScripts(payload.payload);
+            result = await listTavernRegexScripts(payload.payload);
         } else if (type === 'xb-tavern:save-regex-script') {
             result = await saveTavernRegexScript(payload.payload);
         } else if (type === 'xb-tavern:delete-regex-script') {
             result = await deleteTavernRegexScript(payload.payload);
         } else if (type === 'xb-tavern:apply-regex') {
-            result = applyTavernRegex(payload.payload);
+            result = await applyTavernRegex(payload.payload);
         }
         replyHostResult(requestId, {
             ok: true,

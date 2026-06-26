@@ -3,8 +3,14 @@ import {
     eventSource,
     event_types,
     getCurrentChatId,
+    getOneCharacter,
     saveSettingsDebounced,
+    unshallowCharacter,
 } from '../../../../../../../script.js';
+import {
+    extension_settings,
+    writeExtensionField,
+} from '../../../../../../extensions.js';
 import * as nativeRegexEngine from '../../../../../../extensions/regex/engine.js';
 import type { TavernApplyRegexItem, TavernApplyRegexResult, TavernRegexPlacementKey } from '../shared/regex';
 
@@ -13,11 +19,11 @@ const {
     allowScopedScripts,
     getCurrentPresetAPI,
     getCurrentPresetName,
-    getRegexedString,
     getScriptsByType,
     isPresetScriptsAllowed,
     isScopedScriptsAllowed,
     regex_placement,
+    runRegexScript,
     saveScriptsByType,
     SCRIPT_TYPES,
     substitute_find_regex,
@@ -54,6 +60,12 @@ function cloneJson<T>(value: T): T {
 
 function text(value: unknown): string {
     return String(value || '').trim();
+}
+
+function normalizedNativeCharacterId(nativeCharacterId: unknown): string {
+    const normalized = text(nativeCharacterId);
+    const index = Number(normalized);
+    return normalized && Number.isInteger(index) && index >= 0 ? normalized : '';
 }
 
 function normalizeScriptType(value: unknown): number {
@@ -161,13 +173,43 @@ function normalizeRegexScript(input: unknown, scriptType?: number, index?: numbe
     };
 }
 
-function currentCharacter(nativeCharacterId: unknown): unknown {
-    const index = Number(nativeCharacterId);
-    return Number.isFinite(index) ? characters?.[index] : undefined;
+function currentCharacter(nativeCharacterId: unknown): Record<string, unknown> {
+    const normalizedId = normalizedNativeCharacterId(nativeCharacterId);
+    if (!normalizedId) {return {};}
+    return asRecord(characters?.[Number(normalizedId)]);
 }
 
-function buildGroup(scriptType: number, key: string, label: string, nativeCharacterId: unknown): Record<string, unknown> {
-    const scripts = getScriptsByType(scriptType).map((script, index) => normalizeRegexScript(script, scriptType, index));
+async function hydrateCharacter(nativeCharacterId: unknown): Promise<Record<string, unknown>> {
+    const normalizedId = normalizedNativeCharacterId(nativeCharacterId);
+    if (!normalizedId) {return {};}
+    const character = currentCharacter(normalizedId);
+    const avatar = text(character.avatar);
+    if (avatar && avatar !== 'none' && (character.shallow === true || !text(character.json_data))) {
+        if (character.shallow === true) {
+            await unshallowCharacter(String(normalizedId));
+        } else {
+            await getOneCharacter(avatar);
+        }
+    }
+    return currentCharacter(normalizedId);
+}
+
+function readScopedScripts(character: Record<string, unknown>): TavernRegexScript[] {
+    const data = asRecord(character.data);
+    const extensions = asRecord(data.extensions);
+    const scripts = Array.isArray(extensions.regex_scripts) ? extensions.regex_scripts : [];
+    return scripts.map((script, index) => normalizeRegexScript(script, SCRIPT_TYPES.SCOPED, index));
+}
+
+function readScriptsByType(scriptType: number, nativeCharacter: Record<string, unknown>): TavernRegexScript[] {
+    if (scriptType === SCRIPT_TYPES.SCOPED) {
+        return readScopedScripts(nativeCharacter);
+    }
+    return getScriptsByType(scriptType).map((script, index) => normalizeRegexScript(script, scriptType, index));
+}
+
+function buildGroup(scriptType: number, key: string, label: string, nativeCharacterId: unknown, nativeCharacter: Record<string, unknown>): Record<string, unknown> {
+    const scripts = readScriptsByType(scriptType, nativeCharacter);
     const presetApi = getCurrentPresetAPI();
     const presetName = getCurrentPresetName();
     return {
@@ -176,7 +218,7 @@ function buildGroup(scriptType: number, key: string, label: string, nativeCharac
         scriptType,
         scripts,
         allowed: scriptType === SCRIPT_TYPES.SCOPED
-            ? !!nativeCharacterId && isScopedScriptsAllowed(currentCharacter(nativeCharacterId))
+            ? !!normalizedNativeCharacterId(nativeCharacterId) && isScopedScriptsAllowed(nativeCharacter)
             : scriptType === SCRIPT_TYPES.PRESET
                 ? isPresetScriptsAllowed(presetApi, presetName)
                 : true,
@@ -197,14 +239,15 @@ async function syncNativeRegexUiAfterWrite(): Promise<void> {
     }
 }
 
-export function listTavernRegexScripts(input: unknown = {}): Record<string, unknown> {
+export async function listTavernRegexScripts(input: unknown = {}): Promise<Record<string, unknown>> {
     const source = asRecord(input);
-    const nativeCharacterId = text(source.nativeCharacterId);
+    const nativeCharacterId = normalizedNativeCharacterId(source.nativeCharacterId);
+    const nativeCharacter = nativeCharacterId ? await hydrateCharacter(nativeCharacterId) : {};
     return {
         groups: [
-            buildGroup(SCRIPT_TYPES.GLOBAL, 'global', '全局', nativeCharacterId),
-            buildGroup(SCRIPT_TYPES.SCOPED, 'scoped', '当前角色', nativeCharacterId),
-            buildGroup(SCRIPT_TYPES.PRESET, 'preset', '预设正则', nativeCharacterId),
+            buildGroup(SCRIPT_TYPES.GLOBAL, 'global', '全局', nativeCharacterId, nativeCharacter),
+            buildGroup(SCRIPT_TYPES.SCOPED, 'scoped', '当前角色', nativeCharacterId, nativeCharacter),
+            buildGroup(SCRIPT_TYPES.PRESET, 'preset', '预设正则', nativeCharacterId, nativeCharacter),
         ],
         placements: {
             userInput: regex_placement.USER_INPUT,
@@ -218,7 +261,7 @@ export function listTavernRegexScripts(input: unknown = {}): Record<string, unkn
 
 export async function saveTavernRegexScript(input: unknown): Promise<Record<string, unknown>> {
     const source = asRecord(input);
-    const nativeCharacterId = text(source.nativeCharacterId);
+    const nativeCharacterId = normalizedNativeCharacterId(source.nativeCharacterId);
     const scriptType = normalizeScriptType(source.scriptType);
     const script = normalizeRegexScript(source.script);
     if (scriptType === SCRIPT_TYPES.SCOPED && !nativeCharacterId) {
@@ -227,22 +270,30 @@ export async function saveTavernRegexScript(input: unknown): Promise<Record<stri
     if (!script.scriptName) {
         throw new Error('正则名称不能为空。');
     }
-    const scripts = getScriptsByType(scriptType).map((item, index) => normalizeRegexScript(item, scriptType, index));
+    const nativeCharacter = scriptType === SCRIPT_TYPES.SCOPED ? await hydrateCharacter(nativeCharacterId) : {};
+    if (scriptType === SCRIPT_TYPES.SCOPED && !Object.keys(nativeCharacter).length) {
+        throw new Error('角色卡已不存在，无法保存当前角色正则。');
+    }
+    const scripts = readScriptsByType(scriptType, nativeCharacter);
     const index = scripts.findIndex((item) => item.id === script.id);
     if (index >= 0) {
         scripts[index] = script;
     } else {
         scripts.push(script);
     }
-    await saveScriptsByType(scripts, scriptType);
     if (scriptType === SCRIPT_TYPES.SCOPED) {
-        allowScopedScripts(currentCharacter(nativeCharacterId));
+        await writeExtensionField(nativeCharacterId, 'regex_scripts', scripts);
+    } else {
+        await saveScriptsByType(scripts, scriptType);
+    }
+    if (scriptType === SCRIPT_TYPES.SCOPED) {
+        allowScopedScripts(nativeCharacter);
     } else if (scriptType === SCRIPT_TYPES.PRESET) {
         allowPresetScripts(getCurrentPresetAPI(), getCurrentPresetName());
     }
     await syncNativeRegexUiAfterWrite();
     return {
-        ...listTavernRegexScripts({ nativeCharacterId }),
+        ...await listTavernRegexScripts({ nativeCharacterId }),
         savedScriptId: script.id,
         savedScriptType: scriptType,
     };
@@ -250,7 +301,7 @@ export async function saveTavernRegexScript(input: unknown): Promise<Record<stri
 
 export async function deleteTavernRegexScript(input: unknown): Promise<Record<string, unknown>> {
     const source = asRecord(input);
-    const nativeCharacterId = text(source.nativeCharacterId);
+    const nativeCharacterId = normalizedNativeCharacterId(source.nativeCharacterId);
     const scriptType = normalizeScriptType(source.scriptType);
     if (scriptType === SCRIPT_TYPES.SCOPED && !nativeCharacterId) {
         throw new Error('缺少角色身份，无法删除当前角色正则。');
@@ -259,16 +310,63 @@ export async function deleteTavernRegexScript(input: unknown): Promise<Record<st
     if (!id) {
         throw new Error('缺少正则 ID。');
     }
-    const scripts = getScriptsByType(scriptType)
-        .map((item, index) => normalizeRegexScript(item, scriptType, index))
-        .filter((item) => item.id !== id);
-    await saveScriptsByType(scripts, scriptType);
+    const nativeCharacter = scriptType === SCRIPT_TYPES.SCOPED ? await hydrateCharacter(nativeCharacterId) : {};
+    if (scriptType === SCRIPT_TYPES.SCOPED && !Object.keys(nativeCharacter).length) {
+        throw new Error('角色卡已不存在，无法删除当前角色正则。');
+    }
+    const scripts = readScriptsByType(scriptType, nativeCharacter).filter((item) => item.id !== id);
+    if (scriptType === SCRIPT_TYPES.SCOPED) {
+        await writeExtensionField(nativeCharacterId, 'regex_scripts', scripts);
+    } else {
+        await saveScriptsByType(scripts, scriptType);
+    }
     await syncNativeRegexUiAfterWrite();
-    return listTavernRegexScripts({ nativeCharacterId });
+    return await listTavernRegexScripts({ nativeCharacterId });
 }
 
-export function applyTavernRegex(input: unknown): TavernApplyRegexResult {
+function shouldUseRegexScript(script: TavernRegexScript, placement: number, options: Record<string, unknown>): boolean {
+    if (!Array.isArray(script.placement) || !script.placement.includes(placement)) {return false;}
+    const isMarkdown = options.isMarkdown === true;
+    const isPrompt = options.isPrompt === true;
+    const isEdit = options.isEdit === true;
+    const matchesSurface = (script.markdownOnly && isMarkdown)
+        || (script.promptOnly && isPrompt)
+        || (!script.markdownOnly && !script.promptOnly && !isMarkdown && !isPrompt);
+    if (!matchesSurface) {return false;}
+    if (isEdit && !script.runOnEdit) {return false;}
+    const depth = Number(options.depth);
+    if (Number.isFinite(depth)) {
+        const minDepth = Number(script.minDepth);
+        if (Number.isFinite(minDepth) && script.minDepth !== null && minDepth >= -1 && depth < minDepth) {return false;}
+        const maxDepth = Number(script.maxDepth);
+        if (Number.isFinite(maxDepth) && script.maxDepth !== null && maxDepth >= 0 && depth > maxDepth) {return false;}
+    }
+    return true;
+}
+
+function buildApplicableRegexScripts(nativeCharacterId: string): TavernRegexScript[] {
+    const settings = extension_settings as Record<string, unknown>;
+    const disabledExtensions = Array.isArray(settings.disabledExtensions) ? settings.disabledExtensions : [];
+    const disabled = disabledExtensions.includes('regex');
+    if (disabled) {return [];}
+    const nativeCharacter = currentCharacter(nativeCharacterId);
+    const globalScripts = getScriptsByType(SCRIPT_TYPES.GLOBAL, { allowedOnly: true })
+        .map((script, index) => normalizeRegexScript(script, SCRIPT_TYPES.GLOBAL, index));
+    const scopedScripts = nativeCharacterId && isScopedScriptsAllowed(nativeCharacter)
+        ? readScopedScripts(nativeCharacter)
+        : [];
+    const presetScripts = getScriptsByType(SCRIPT_TYPES.PRESET, { allowedOnly: true })
+        .map((script, index) => normalizeRegexScript(script, SCRIPT_TYPES.PRESET, index));
+    return [...globalScripts, ...scopedScripts, ...presetScripts];
+}
+
+export async function applyTavernRegex(input: unknown): Promise<TavernApplyRegexResult> {
     const source = asRecord(input);
+    const nativeCharacterId = normalizedNativeCharacterId(source.nativeCharacterId);
+    if (nativeCharacterId) {
+        await hydrateCharacter(nativeCharacterId);
+    }
+    const regexScripts = buildApplicableRegexScripts(nativeCharacterId);
     const rawItems = Array.isArray(source.items) ? source.items : [];
     let changedCount = 0;
     const items = rawItems.map((rawItem, index) => {
@@ -276,12 +374,13 @@ export function applyTavernRegex(input: unknown): TavernApplyRegexResult {
         const id = text((item as TavernApplyRegexItem).id) || `item-${index}`;
         const placement = normalizePlacementKey((item as TavernApplyRegexItem).placement);
         const original = String((item as TavernApplyRegexItem).text || '');
-        const textResult = getRegexedString(
-            original,
-            placementToNative(placement),
-            normalizeRegexOptions((item as TavernApplyRegexItem).options),
-        );
-        const textValue = String(textResult || '');
+        const nativePlacement = placementToNative(placement);
+        const options = normalizeRegexOptions((item as TavernApplyRegexItem).options);
+        const textValue = regexScripts.reduce((current, script) => (
+            shouldUseRegexScript(script, nativePlacement, options)
+                ? String(runRegexScript(script, current, { characterOverride: text(options.characterOverride) }) || '')
+                : current
+        ), original);
         const changed = textValue !== original;
         if (changed) {changedCount += 1;}
         return {

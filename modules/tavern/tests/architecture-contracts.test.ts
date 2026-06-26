@@ -375,9 +375,9 @@ test('tavern character and global worldbook actions stay on native ST boundaries
     assert.match(settingsControllerSource, /openSettingsWorkspace\('worldbooks'\)/);
     assert.match(appSource, /openWorldbookWorkspace\(String\(payload\.name \|\| ''\)\)/);
     assert.match(appSource, /openWorldbookWorkspace\(targetName\)/);
-    assert.match(appSource, /const currentWorldbookNativeCharacterId = computed\(\(\) => \([\s\S]*resolveCurrentNativeCharacterId\(String\(selectedSession\.value\?\.characterKey/);
-    assert.match(appSource, /useTavernSettingsController\(\{[\s\S]*effectiveContext,[\s\S]*currentWorldbookNativeCharacterId,/);
-    assert.match(settingsControllerSource, /async function syncWorldbooksForCurrentCharacter\(\)[\s\S]*const requestSerial = \+\+worldbookSyncRequestSerial;[\s\S]*options\.currentWorldbookNativeCharacterId\.value[\s\S]*requestHost\('xb-tavern:get-character-worldbook-state'[\s\S]*requestSerial !== worldbookSyncRequestSerial[\s\S]*boundName && payload\.boundExists === true[\s\S]*syncWorldbooksFromHost\(\{ preferredName: boundName, requestSerial \}\)/);
+    assert.match(appSource, /const currentNativeCharacterId = computed\(\(\) => \{[\s\S]*const characterKey = String\(selectedSession\.value\?\.characterKey \|\| effectiveContext\.value\.character\?\.characterKey \|\| ''\)\.trim\(\);[\s\S]*resolveCurrentNativeCharacterId\(characterKey, \{ optional: true \}\)/);
+    assert.match(appSource, /useTavernSettingsController\(\{[\s\S]*effectiveContext,[\s\S]*currentNativeCharacterId,/);
+    assert.match(settingsControllerSource, /async function syncWorldbooksForCurrentCharacter\(\)[\s\S]*const requestSerial = \+\+worldbookSyncRequestSerial;[\s\S]*options\.currentNativeCharacterId\.value[\s\S]*requestHost\('xb-tavern:get-character-worldbook-state'[\s\S]*requestSerial !== worldbookSyncRequestSerial[\s\S]*boundName && payload\.boundExists === true[\s\S]*syncWorldbooksFromHost\(\{ preferredName: boundName, requestSerial \}\)/);
     assert.match(settingsControllerSource, /async function syncWorldbooksFromHost\(syncOptions: TavernWorldbookSyncOptions = \{\}\)[\s\S]*const requestSerial = syncOptions\.requestSerial \|\| \+\+worldbookSyncRequestSerial;[\s\S]*if \(requestSerial !== worldbookSyncRequestSerial\) \{return;\}/);
     assert.match(settingsControllerSource, /const fallbackName = syncOptions\.selectFirst[\s\S]*: '';/);
     assert.doesNotMatch(settingsControllerSource, /worldbookOptions\.value\[0\]\?\.name[\s\S]*selectedWorldbookName\.value = syncOptions\.keepSelection/);
@@ -2349,12 +2349,20 @@ test('tavern character identity uses stable keys and explicit native ids', () =>
     assert.match(appSource, /postToHost\('xb-tavern:refresh-context', \{ nativeCharacterId, includeHistory: false \}\)/);
     assert.doesNotMatch(appSource, /postToHost\('xb-tavern:refresh-context', \{\}\)/);
     assert.doesNotMatch(appSource, /selectedCharacterId|selectedCharacterPreviewId|pendingCharacterPreviewId|pendingCharacterSessionId|session\.characterId|payload: \{ characterId/);
-    assert.match(settingsControllerSource, /function refreshCurrentHostContext\(\): void \{[\s\S]*const nativeCharacterId = String\(options\.currentWorldbookNativeCharacterId\.value \|\| ''\)\.trim\(\);[\s\S]*options\.postToHost\('xb-tavern:refresh-context', \{ nativeCharacterId, includeHistory: false \}\);/);
+    assert.match(settingsControllerSource, /function refreshCurrentHostContext\(\): void \{[\s\S]*const nativeCharacterId = String\(options\.currentNativeCharacterId\.value \|\| ''\)\.trim\(\);[\s\S]*options\.postToHost\('xb-tavern:refresh-context', \{ nativeCharacterId, includeHistory: false \}\);/);
     assert.doesNotMatch(settingsControllerSource, /postToHost\('xb-tavern:refresh-context', \{\}\)/);
 
     assert.match(worldbookSource, /payload\.nativeCharacterId/);
     assert.doesNotMatch(worldbookSource, /payload\.characterId|isCurrentCharacter|currentCharacterId/);
     assert.match(nativePromptSource, /context\.character\?\.nativeCharacterId/);
     assert.match(regexSource, /function currentCharacter\(nativeCharacterId: unknown\)/);
+    assert.match(regexSource, /function readScopedScripts\(character: Record<string, unknown>\): TavernRegexScript\[\][\s\S]*extensions\.regex_scripts/);
+    assert.match(regexSource, /await writeExtensionField\(nativeCharacterId, 'regex_scripts', scripts\)/);
+    assert.match(regexSource, /runRegexScript\(script, current, \{ characterOverride: text\(options\.characterOverride\) \}\)/);
+    assert.doesNotMatch(regexSource, /getRegexedString/);
+    assert.doesNotMatch(regexSource, /getScriptsByType\(SCRIPT_TYPES\.SCOPED/);
+    assert.doesNotMatch(regexSource, /saveScriptsByType\(scripts, SCRIPT_TYPES\.SCOPED/);
     assert.doesNotMatch(regexSource, /this_chid/);
+    assert.match(appSource, /payload: \{[\s\S]*nativeCharacterId: String\(currentNativeCharacterId\.value \|\| ''\)\.trim\(\),[\s\S]*items,[\s\S]*\}/);
+    assert.match(appSource, /String\(selectedSession\.value\?\.contextSnapshot\?\.character\?\.nativeCharacterId \|\| ''\)\.trim\(\)/);
 });
