@@ -325,7 +325,8 @@
 
 .tavern-chat.xb-page .map-scene-surface,
 .tavern-chat.xb-page .map-light-layer,
-.tavern-chat.xb-page .map-mood-overlay {
+.tavern-chat.xb-page .map-mood-overlay,
+.tavern-chat.xb-page .map-vignette-overlay {
     pointer-events: none;
 }
 

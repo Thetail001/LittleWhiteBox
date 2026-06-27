@@ -1091,6 +1091,14 @@ const moodOverlay = computed(() => {
     return { ...overlay, x, y, width, height, style };
 });
 
+const vignetteOverlay = computed(() => {
+    const [x, y, width, height] = viewBoxArray.value;
+    const style: CSSProperties = {
+        mixBlendMode: 'multiply',
+    };
+    return { x, y, width, height, fill: 'url(#map-vignette-radial)', style };
+});
+
 function scheduleTimelineNext() {
     clearTimelineTimer();
     if (replayMode.value !== 'timeline' || !canReplayTimeline.value || timelineFrames.value.length <= 1) {return;}
@@ -2365,6 +2373,28 @@ function handleMapWheel(event: WheelEvent) {
               stop-opacity="0.18"
             />
           </radialGradient>
+          <radialGradient
+            id="map-vignette-radial"
+            cx="50%"
+            cy="48%"
+            r="76%"
+          >
+            <stop
+              offset="0%"
+              stop-color="#ffffff"
+              stop-opacity="1"
+            />
+            <stop
+              offset="62%"
+              stop-color="#ffffff"
+              stop-opacity="1"
+            />
+            <stop
+              offset="100%"
+              stop-color="#1a1d2e"
+              stop-opacity="1"
+            />
+          </radialGradient>
           <clipPath
             v-for="item in avatarImageItems"
             :id="item.avatarClipId"
@@ -2475,6 +2505,15 @@ function handleMapWheel(event: WheelEvent) {
           :height="moodOverlay.height"
           :fill="moodOverlay.fill"
           :style="moodOverlay.style"
+        />
+        <rect
+          class="map-vignette-overlay"
+          :x="vignetteOverlay.x"
+          :y="vignetteOverlay.y"
+          :width="vignetteOverlay.width"
+          :height="vignetteOverlay.height"
+          :fill="vignetteOverlay.fill"
+          :style="vignetteOverlay.style"
         />
         <g class="map-label-layer">
           <text
