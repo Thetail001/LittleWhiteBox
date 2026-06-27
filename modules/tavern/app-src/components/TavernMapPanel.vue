@@ -1482,10 +1482,30 @@ function handleMapWheel(event: WheelEvent) {
               stroke-width="0.6"
               fill="none"
             />
-            <circle cx="2" cy="2" r="0.8" fill="#1a0e05" />
-            <circle cx="18" cy="2" r="0.8" fill="#1a0e05" />
-            <circle cx="22" cy="12" r="0.8" fill="#1a0e05" />
-            <circle cx="38" cy="12" r="0.8" fill="#1a0e05" />
+            <circle
+              cx="2"
+              cy="2"
+              r="0.8"
+              fill="#1a0e05"
+            />
+            <circle
+              cx="18"
+              cy="2"
+              r="0.8"
+              fill="#1a0e05"
+            />
+            <circle
+              cx="22"
+              cy="12"
+              r="0.8"
+              fill="#1a0e05"
+            />
+            <circle
+              cx="38"
+              cy="12"
+              r="0.8"
+              fill="#1a0e05"
+            />
           </pattern>
           <pattern
             id="mat-stone"
@@ -1603,8 +1623,17 @@ function handleMapWheel(event: WheelEvent) {
             height="48"
             patternUnits="userSpaceOnUse"
           >
-            <rect width="48" height="48" fill="#e8e3dc" />
-            <rect width="48" height="48" fill="#f2eee8" opacity="0.5" />
+            <rect
+              width="48"
+              height="48"
+              fill="#e8e3dc"
+            />
+            <rect
+              width="48"
+              height="48"
+              fill="#f2eee8"
+              opacity="0.5"
+            />
             <path
               d="M0 14 Q12 8 24 14 T48 14"
               stroke="#d2ccc2"
@@ -1647,8 +1676,17 @@ function handleMapWheel(event: WheelEvent) {
             height="16"
             patternUnits="userSpaceOnUse"
           >
-            <rect width="16" height="16" fill="#6b5b73" />
-            <rect width="16" height="16" fill="#74647c" opacity="0.4" />
+            <rect
+              width="16"
+              height="16"
+              fill="#6b5b73"
+            />
+            <rect
+              width="16"
+              height="16"
+              fill="#74647c"
+              opacity="0.4"
+            />
             <path
               d="M0 4 H16 M0 12 H16"
               stroke="#5a4b62"
@@ -1667,8 +1705,20 @@ function handleMapWheel(event: WheelEvent) {
               stroke-width="0.6"
               opacity="0.5"
             />
-            <circle cx="2" cy="2" r="0.7" fill="#857391" opacity="0.5" />
-            <circle cx="10" cy="8" r="0.7" fill="#5a4b62" opacity="0.6" />
+            <circle
+              cx="2"
+              cy="2"
+              r="0.7"
+              fill="#857391"
+              opacity="0.5"
+            />
+            <circle
+              cx="10"
+              cy="8"
+              r="0.7"
+              fill="#5a4b62"
+              opacity="0.6"
+            />
           </pattern>
           <pattern
             id="mat-tatami"
@@ -1676,8 +1726,17 @@ function handleMapWheel(event: WheelEvent) {
             height="40"
             patternUnits="userSpaceOnUse"
           >
-            <rect width="80" height="40" fill="#c9b878" />
-            <rect width="80" height="40" fill="#d3c282" opacity="0.4" />
+            <rect
+              width="80"
+              height="40"
+              fill="#c9b878"
+            />
+            <rect
+              width="80"
+              height="40"
+              fill="#d3c282"
+              opacity="0.4"
+            />
             <path
               d="M0 4 H80 M0 8 H80 M0 12 H80 M0 16 H80 M0 20 H80 M0 24 H80 M0 28 H80 M0 32 H80 M0 36 H80"
               stroke="#b3a268"
@@ -1712,8 +1771,17 @@ function handleMapWheel(event: WheelEvent) {
             height="40"
             patternUnits="userSpaceOnUse"
           >
-            <rect width="40" height="40" fill="#e0cb96" />
-            <rect width="40" height="40" fill="#ead7a4" opacity="0.4" />
+            <rect
+              width="40"
+              height="40"
+              fill="#e0cb96"
+            />
+            <rect
+              width="40"
+              height="40"
+              fill="#ead7a4"
+              opacity="0.4"
+            />
             <path
               d="M0 10 Q10 7 20 10 T40 10"
               stroke="#d3bd84"
@@ -1728,12 +1796,44 @@ function handleMapWheel(event: WheelEvent) {
               fill="none"
               opacity="0.5"
             />
-            <circle cx="6" cy="6" r="0.8" fill="#c2a96e" />
-            <circle cx="22" cy="14" r="0.6" fill="#fff" opacity="0.7" />
-            <circle cx="30" cy="8" r="0.7" fill="#c2a96e" />
-            <circle cx="14" cy="30" r="0.8" fill="#c2a96e" />
-            <circle cx="34" cy="32" r="0.6" fill="#fff" opacity="0.6" />
-            <circle cx="4" cy="34" r="0.7" fill="#c2a96e" />
+            <circle
+              cx="6"
+              cy="6"
+              r="0.8"
+              fill="#c2a96e"
+            />
+            <circle
+              cx="22"
+              cy="14"
+              r="0.6"
+              fill="#fff"
+              opacity="0.7"
+            />
+            <circle
+              cx="30"
+              cy="8"
+              r="0.7"
+              fill="#c2a96e"
+            />
+            <circle
+              cx="14"
+              cy="30"
+              r="0.8"
+              fill="#c2a96e"
+            />
+            <circle
+              cx="34"
+              cy="32"
+              r="0.6"
+              fill="#fff"
+              opacity="0.6"
+            />
+            <circle
+              cx="4"
+              cy="34"
+              r="0.7"
+              fill="#c2a96e"
+            />
           </pattern>
           <pattern
             id="mat-marble"
@@ -1741,8 +1841,17 @@ function handleMapWheel(event: WheelEvent) {
             height="80"
             patternUnits="userSpaceOnUse"
           >
-            <rect width="80" height="80" fill="#eef0f3" />
-            <rect width="80" height="80" fill="#f6f7fa" opacity="0.5" />
+            <rect
+              width="80"
+              height="80"
+              fill="#eef0f3"
+            />
+            <rect
+              width="80"
+              height="80"
+              fill="#f6f7fa"
+              opacity="0.5"
+            />
             <path
               d="M0 20 Q20 10 35 28 T70 32 Q78 36 80 30"
               stroke="#c2c7d0"
@@ -1785,12 +1894,45 @@ function handleMapWheel(event: WheelEvent) {
             height="40"
             patternUnits="userSpaceOnUse"
           >
-            <rect width="40" height="40" fill="#5a0c14" />
-            <ellipse cx="14" cy="12" rx="11" ry="8" fill="#3d070e" />
-            <ellipse cx="30" cy="28" rx="9" ry="11" fill="#48090f" />
-            <ellipse cx="20" cy="22" rx="6" ry="4" fill="#6e1018" opacity="0.7" />
-            <circle cx="34" cy="8" r="2" fill="#3d070e" />
-            <circle cx="6" cy="32" r="2.5" fill="#3d070e" />
+            <rect
+              width="40"
+              height="40"
+              fill="#5a0c14"
+            />
+            <ellipse
+              cx="14"
+              cy="12"
+              rx="11"
+              ry="8"
+              fill="#3d070e"
+            />
+            <ellipse
+              cx="30"
+              cy="28"
+              rx="9"
+              ry="11"
+              fill="#48090f"
+            />
+            <ellipse
+              cx="20"
+              cy="22"
+              rx="6"
+              ry="4"
+              fill="#6e1018"
+              opacity="0.7"
+            />
+            <circle
+              cx="34"
+              cy="8"
+              r="2"
+              fill="#3d070e"
+            />
+            <circle
+              cx="6"
+              cy="32"
+              r="2.5"
+              fill="#3d070e"
+            />
           </pattern>
           <pattern
             id="mat-water"
@@ -1866,8 +2008,20 @@ function handleMapWheel(event: WheelEvent) {
               stroke-width="1"
               fill="none"
             />
-            <circle cx="10" cy="8" r="1" fill="#54883f" opacity="0.6" />
-            <circle cx="22" cy="6" r="1" fill="#4a7a38" opacity="0.6" />
+            <circle
+              cx="10"
+              cy="8"
+              r="1"
+              fill="#54883f"
+              opacity="0.6"
+            />
+            <circle
+              cx="22"
+              cy="6"
+              r="1"
+              fill="#4a7a38"
+              opacity="0.6"
+            />
           </pattern>
           <pattern
             id="mat-dirt"
@@ -1900,9 +2054,26 @@ function handleMapWheel(event: WheelEvent) {
               fill="#4a3420"
               opacity="0.8"
             />
-            <circle cx="16" cy="26" r="2.4" fill="#6e5536" opacity="0.6" />
-            <circle cx="31" cy="30" r="1.3" fill="#4a3420" />
-            <circle cx="4" cy="28" r="1.2" fill="#73593a" opacity="0.6" />
+            <circle
+              cx="16"
+              cy="26"
+              r="2.4"
+              fill="#6e5536"
+              opacity="0.6"
+            />
+            <circle
+              cx="31"
+              cy="30"
+              r="1.3"
+              fill="#4a3420"
+            />
+            <circle
+              cx="4"
+              cy="28"
+              r="1.2"
+              fill="#73593a"
+              opacity="0.6"
+            />
             <path
               d="M12 6 q4 2 8 1 M20 32 q4 1 8 -1"
               stroke="#4a3420"
@@ -1938,11 +2109,36 @@ function handleMapWheel(event: WheelEvent) {
               fill="#cdd9e8"
               opacity="0.5"
             />
-            <circle cx="6" cy="6" r="1" fill="#fff" />
-            <circle cx="22" cy="8" r="1.2" fill="#fff" />
-            <circle cx="30" cy="14" r="0.9" fill="#fff" />
-            <circle cx="14" cy="28" r="1.1" fill="#fff" />
-            <circle cx="32" cy="32" r="0.9" fill="#fff" />
+            <circle
+              cx="6"
+              cy="6"
+              r="1"
+              fill="#fff"
+            />
+            <circle
+              cx="22"
+              cy="8"
+              r="1.2"
+              fill="#fff"
+            />
+            <circle
+              cx="30"
+              cy="14"
+              r="0.9"
+              fill="#fff"
+            />
+            <circle
+              cx="14"
+              cy="28"
+              r="1.1"
+              fill="#fff"
+            />
+            <circle
+              cx="32"
+              cy="32"
+              r="0.9"
+              fill="#fff"
+            />
           </pattern>
           <pattern
             id="mat-metal"
@@ -1977,12 +2173,42 @@ function handleMapWheel(event: WheelEvent) {
               stroke="#2a2d33"
               stroke-width="2"
             />
-            <circle cx="6" cy="6" r="1.8" fill="#5c626c" />
-            <circle cx="34" cy="6" r="1.8" fill="#5c626c" />
-            <circle cx="6" cy="34" r="1.8" fill="#5c626c" />
-            <circle cx="34" cy="34" r="1.8" fill="#5c626c" />
-            <circle cx="6" cy="6" r="0.7" fill="#23262b" />
-            <circle cx="34" cy="6" r="0.7" fill="#23262b" />
+            <circle
+              cx="6"
+              cy="6"
+              r="1.8"
+              fill="#5c626c"
+            />
+            <circle
+              cx="34"
+              cy="6"
+              r="1.8"
+              fill="#5c626c"
+            />
+            <circle
+              cx="6"
+              cy="34"
+              r="1.8"
+              fill="#5c626c"
+            />
+            <circle
+              cx="34"
+              cy="34"
+              r="1.8"
+              fill="#5c626c"
+            />
+            <circle
+              cx="6"
+              cy="6"
+              r="0.7"
+              fill="#23262b"
+            />
+            <circle
+              cx="34"
+              cy="6"
+              r="0.7"
+              fill="#23262b"
+            />
           </pattern>
           <pattern
             id="mat-rune"
@@ -2025,7 +2251,13 @@ function handleMapWheel(event: WheelEvent) {
               fill="#c9a8ff"
               opacity="0.6"
             />
-            <circle cx="24" cy="24" r="2" fill="#d9c0ff" opacity="0.8" />
+            <circle
+              cx="24"
+              cy="24"
+              r="2"
+              fill="#d9c0ff"
+              opacity="0.8"
+            />
           </pattern>
           <radialGradient id="grad-warm">
             <stop
