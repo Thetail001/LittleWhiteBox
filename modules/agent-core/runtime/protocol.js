@@ -24,13 +24,21 @@ export function normalizeToolCalls(toolCalls = [], options = {}) {
         ? options.createId
         : (index) => `${fallbackPrefix}-${Date.now()}-${index + 1}`;
 
+    const seen = new Set();
     return (Array.isArray(toolCalls) ? toolCalls : [])
         .map((toolCall, index) => ({
             id: String(toolCall?.id || createId(index) || `${fallbackPrefix}-${index + 1}`),
             name: String(toolCall?.name || '').trim(),
             arguments: normalizeToolCallArguments(toolCall),
         }))
-        .filter((toolCall) => toolCall.name);
+        .filter((toolCall) => toolCall.name)
+        .map((toolCall, index) => {
+            if (seen.has(toolCall.id)) {
+                toolCall.id = createId(index) || `${fallbackPrefix}-${Date.now()}-${index + 1}`;
+            }
+            seen.add(toolCall.id);
+            return toolCall;
+        });
 }
 
 export function normalizeThoughtBlocks(thoughts = []) {

@@ -498,6 +498,35 @@ export function buildNativeMessages(task, model = '') {
         });
     }
 
+    // Global deduplication of tool_call_id across all messages
+    const usedToolCallIds = new Set();
+    const idRemap = new Map(); // oldId -> newId
+
+    // First pass: identify duplicates in assistant tool_calls
+    normalizedMessages.forEach((message) => {
+        if (message.role === 'assistant' && Array.isArray(message.tool_calls)) {
+            message.tool_calls.forEach((toolCall) => {
+                const id = toolCall?.id;
+                if (!id) return;
+                if (usedToolCallIds.has(id)) {
+                    const newId = `${id}-dedup-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+                    idRemap.set(id, newId);
+                    toolCall.id = newId;
+                    usedToolCallIds.add(newId);
+                } else {
+                    usedToolCallIds.add(id);
+                }
+            });
+        }
+    });
+
+    // Second pass: update tool messages to match remapped IDs
+    normalizedMessages.forEach((message) => {
+        if (message.role === 'tool' && message.tool_call_id && idRemap.has(message.tool_call_id)) {
+            message.tool_call_id = idRemap.get(message.tool_call_id);
+        }
+    });
+
     return normalizeFinalClaudeLikeMessageRole(normalizedMessages, model);
 }
 

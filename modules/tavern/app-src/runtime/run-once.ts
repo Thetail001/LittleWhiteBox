@@ -1433,8 +1433,9 @@ export function buildContextHistory(messages: TavernMessageRecord[] = []): XbTav
             content: stripTavernImageMarkers(message.content),
             ...(message.name ? { name: message.name } : {}),
             ...(Array.isArray(message.thoughts) && message.thoughts.length ? { thoughts: message.thoughts } : {}),
+            ...(message.role === 'tool' && message.toolCallId ? { tool_call_id: message.toolCallId } : {}),
         }))
-        .filter((message) => String(message.content || '').trim());
+        .filter((message) => message.role === 'tool' || String(message.content || '').trim());
 }
 
 function findCompletedAssistantForUser(messages: TavernMessageRecord[] = [], userIndex = -1): TavernMessageRecord | null {

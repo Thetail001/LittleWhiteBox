@@ -95,6 +95,7 @@ export interface TavernMessageRecord {
     presetName?: string;
     requestSnapshot?: unknown;
     runtimeEvents?: TavernRuntimeEvent[];
+    toolCallId?: string | null;
 }
 
 export interface TavernManagerMessageRecord {
@@ -326,6 +327,7 @@ export type TavernAppendMessageInput = XbTavernMessage & {
     presetName?: string;
     requestSnapshot?: unknown;
     runtimeEvents?: TavernRuntimeEvent[];
+    toolCallId?: string;
 };
 
 export type TavernAppendManagerMessageInput = {
@@ -1020,6 +1022,7 @@ export async function appendTavernMessage(sessionId: string, message: TavernAppe
             presetName: 'presetName' in message ? String(message.presetName || '') : undefined,
             requestSnapshot: 'requestSnapshot' in message ? cloneSerializable(message.requestSnapshot, undefined) : undefined,
             runtimeEvents: 'runtimeEvents' in message ? normalizeMessageRuntimeEvents(message.runtimeEvents) : [],
+            toolCallId: 'toolCallId' in message ? String(message.toolCallId || '') || null : null,
         };
         await tavernMessagesTable.put(record);
         await tavernSessionsTable.update(id, { updatedAt: timestamp });
