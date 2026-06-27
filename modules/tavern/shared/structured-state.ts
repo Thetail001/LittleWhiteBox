@@ -509,7 +509,18 @@ function positiveNumberPair(value: unknown): [number, number] | null {
 
 function normalizeCategory(value: unknown, fallback: TavernMapElementCategory): TavernMapElementCategory {
     const text = String(value || '').trim();
-    if (text === 'floor' || text === 'ground') {return 'terrain';}
+    if ([
+        'floor',
+        'ground',
+        'surface',
+        'base',
+        'area',
+        'deck',
+        'platform',
+        'walkway',
+        'clearing',
+        'yard',
+    ].includes(text)) {return 'terrain';}
     if (text && MAP_ELEMENT_CATEGORIES.has(text as TavernMapElementCategory)) {return text as TavernMapElementCategory;}
     return fallback;
 }
@@ -1105,7 +1116,7 @@ function createMapDigest(document: TavernMapDocument, revision = 0): string {
         actors.length ? `场景人物：${actors.join('、')}` : '',
         exits.length ? `出入口：${exits.join('、')}` : '',
         interactives.length ? `可互动：${interactives.join('、')}` : '',
-        terrain.length ? `地形：${terrain.join('、')}` : '',
+        terrain.length ? `主表面/地形：${terrain.join('、')}` : '',
         labels.length ? `标注：${labels.join(', ')}` : '',
     ].filter(Boolean).join('\n');
 }
@@ -2729,12 +2740,12 @@ function buildMapElementSchema() {
             cat: {
                 type: 'string',
                 enum: [...MAP_ELEMENT_CATEGORIES],
-                description: 'Semantic category such as wall, door, marker, actor, terrain, road, light, or label. Use terrain for walkable ground/floor; do not use floor, ground, or region.',
+                description: 'Semantic category such as wall, door, marker, actor, terrain, road, light, or label. Use terrain for the main continuous scene surface or filled base area: floor, ground, deck, platform, clearing, yard, roadbed, shoreline area, or any large closed support surface. Do not use floor, ground, surface, deck, platform, base, area, or region as category names.',
             },
             material: {
                 type: 'string',
                 enum: [...TAVERN_MAP_MATERIALS],
-                description: 'Optional renderer-owned material enum. Use only when RP facts confirm it. Common values include wood, stone, tile, carpet, bed-sheet, fabric, tatami, sand, marble, blood, water, grass, dirt, snow, metal, rune, warm-light, cold-light, shadow, or unknown. Use bed-sheet/fabric for bedding, upholstery, curtains, cushions, or other furniture/soft goods, not floor/ground terrain. Do not invent material names.',
+                description: 'Optional renderer-owned material enum. Use only when RP facts confirm it. Common values include wood, stone, tile, carpet, bed-sheet, fabric, tatami, sand, marble, blood, water, grass, dirt, snow, metal, rune, warm-light, cold-light, shadow, or unknown. Use bed-sheet/fabric for bedding, upholstery, curtains, cushions, or other furniture/soft goods, not the main terrain surface. Do not invent material names.',
             },
             certainty: {
                 type: 'string',
@@ -3006,9 +3017,9 @@ export function getTavernStateToolDefinitions(): Array<{ type: 'function'; funct
                     'Use `meta` to update document fields such as name, viewBox, theme, status, mood, or hint. Mood enum is neutral/warm/cold/dark/mystic/danger/calm; write it only when the scene facts support it.',
                     'Each element has `id` and `cat`, plus exactly one shape field: `rect`, `circle`, `path`, `curve`, `icon`, or `text`. Most elements use `at:[x,y]`; `path` and `curve` may omit `at` and use the first point as the anchor.',
                     'Omit unused shape keys entirely. Never send empty `path:[]`, `curve:[]`, `points:[]`, or `line:[]`; for a rectangular room use only `rect`, for the player marker use only `circle`.',
-                    'Minimal first scene-map example: `{"docType":"tavern.map","docId":"main","activate":true,"ops":[{"op":"meta","set":{"name":"测试房间","viewBox":[0,0,320,220],"status":"active"}},{"op":"add","element":{"id":"room","cat":"wall","at":[30,30],"rect":[240,140],"text":"房间"}},{"op":"add","element":{"id":"player","cat":"actor","actorKey":"player","at":[150,110],"circle":8,"text":"玩家"}}]}`.',
-                    'Use semantic material/certainty instead of renderer styling. Material enum is unknown/wood/stone/tile/carpet/bed-sheet/fabric/tatami/sand/marble/blood/water/grass/dirt/snow/metal/rune/warm-light/cold-light/shadow. Use bed-sheet/fabric only for bedding, upholstery, curtains, cushions, or other furniture/soft goods, not floor/ground terrain. Certainty enum is confirmed/inferred/unknown; omit confirmed fields.',
-                    'Use cat:"terrain" for ground/floor, cat:"light" for light/glow/shadow areas, and material for appearance. Do not use floor, ground, region, subtype, opacity, zIndex, rotation, visual scale, blur, or custom fill colors in new map patches.',
+                    'Minimal first scene-map example: `{"docType":"tavern.map","docId":"main","activate":true,"ops":[{"op":"meta","set":{"name":"测试房间","viewBox":[0,0,320,220],"status":"active"}},{"op":"add","element":{"id":"room-surface","cat":"terrain","at":[30,30],"rect":[240,140],"material":"wood"}},{"op":"add","element":{"id":"room-wall","cat":"wall","at":[30,30],"rect":[240,140],"text":"房间"}},{"op":"add","element":{"id":"player","cat":"actor","actorKey":"player","at":[150,110],"circle":8,"text":"玩家"}}]}`.',
+                    'Use semantic material/certainty instead of renderer styling. Material enum is unknown/wood/stone/tile/carpet/bed-sheet/fabric/tatami/sand/marble/blood/water/grass/dirt/snow/metal/rune/warm-light/cold-light/shadow. Use bed-sheet/fabric only for bedding, upholstery, curtains, cushions, or other furniture/soft goods, not the main terrain surface. Certainty enum is confirmed/inferred/unknown; omit confirmed fields.',
+                    'Use cat:"terrain" for the main continuous scene surface or filled base area: indoor floor, outdoor ground, deck, platform, clearing, yard, roadbed, shoreline area, or any large closed support surface. Then draw walls, edges, shell outlines, doors, furniture, hazards, labels, and actors on top. Do not use floor, ground, surface, deck, platform, base, area, region, subtype, opacity, zIndex, rotation, visual scale, blur, or custom fill colors in new map patches.',
                     'For `cat:"actor"`, optional `actorKey` is the full-session identity key. If omitted, the element id is used. The runtime keeps only the latest actor with the same final key across all map documents.',
                     'With `at`, `path` and `curve` points are relative offsets. Without `at`, the points are treated as absolute coordinates and the stored result becomes relative to the first point.',
                     'If one add element contains label-eligible geometry plus text, the runtime splits the text into a system label element automatically. Terrain/light/grid geometry does not derive labels.',

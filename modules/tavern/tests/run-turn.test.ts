@@ -1977,9 +1977,10 @@ test('xb tavern run turn starts accepted-turn manager work on the next user send
     assert.match(managerPrompt, /keep editing the same explicit scene name/i);
     assert.match(managerPrompt, /separate explicit scene name/i);
     assert.match(managerPrompt, /Actors use .*actorKey/i);
-    assert.match(managerPrompt, /Indoor and vehicle scenes usually start from/i);
+    assert.match(managerPrompt, /Indoor, vehicle, structure, cave, platform, rooftop/i);
     assert.match(managerPrompt, /Scene-map construction order/i);
-    assert.match(managerPrompt, /Closed or contained scenes must have an outer boundary/i);
+    assert.match(managerPrompt, /Closed or contained scenes usually need both a filled main surface/i);
+    assert.match(managerPrompt, /Use `cat:\\?"terrain\\?"` for the main continuous scene surface or filled base area/i);
     assert.match(managerPrompt, /Open scenes are the exception/i);
     assert.match(managerPrompt, /Let the scene pressure shape composition/i);
     assert.match(managerPrompt, /Translate place names into local geometry/i);

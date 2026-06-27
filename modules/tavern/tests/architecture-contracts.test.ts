@@ -773,16 +773,21 @@ test('tavern map update badge stays collapsed until requested', () => {
     assert.match(mapPanelSource, /const sceneSurfaceElement = computed\(\(\) => getTavernMapSceneSurfaceElement\(activeMapDocument\.value\)\)/);
     assert.match(mapPanelSource, /const visibleRenderItems = computed<MapRenderItem\[\]>\(\(\) => \{[\s\S]*sceneSurfaceElementId\.value[\s\S]*filter\(\(item\) => item\.element\.id !== surfaceId\)/);
     assert.match(mapPanelSource, /:class="\[`theme-\$\{theme\}`, `mode-\$\{replayMode\}`, \{ 'is-panning': mapDrag, 'has-scene-surface': sceneSurface \}\]"/);
-    assert.match(mapPanelSource, /class="map-scene-surface"[\s\S]*:fill="sceneSurface\.fill"[\s\S]*class="map-fill-layer"/);
-    assert.match(mapPanelSource, /id="tavern-map-shadow"[\s\S]*<feDropShadow[\s\S]*flood-opacity="0\.42"/);
-    assert.match(mapPanelSource, /id="tavern-mat-texture"[\s\S]*<feTurbulence[\s\S]*baseFrequency="0\.7"[\s\S]*<feBlend[\s\S]*mode="multiply"/);
-    assert.match(mapPanelSource, /id="mat-wood"[\s\S]*id="mat-stone"[\s\S]*id="mat-tile"[\s\S]*id="mat-carpet"[\s\S]*id="mat-bed-sheet"[\s\S]*id="mat-fabric"[\s\S]*id="mat-tatami"[\s\S]*id="mat-sand"[\s\S]*id="mat-marble"[\s\S]*id="mat-blood"[\s\S]*id="mat-water"[\s\S]*id="mat-grass"[\s\S]*id="mat-dirt"[\s\S]*id="mat-snow"[\s\S]*id="mat-metal"[\s\S]*id="mat-rune"/);
-    assert.match(mapPanelSource, /id="grad-warm"[\s\S]*stop-color="#ffd9a0"[\s\S]*id="grad-cold"[\s\S]*stop-color="#cfe4ff"/);
-    assert.match(mapPanelSource, /class="map-scene-surface"[\s\S]*filter="url\(#tavern-mat-texture\)"[\s\S]*<g class="map-fill-layer">/);
+    assert.match(mapPanelSource, /const svgDefsNonce = ref\(0\)/);
+    assert.match(mapPanelSource, /function svgDefId\(id: string\)[\s\S]*return `\$\{svgLocalId\(id\)\}-r\$\{svgDefsNonce\.value\}`;/);
+    assert.match(mapPanelSource, /function scopeSvgUrl\(value: string\)[\s\S]*replace\(\/url\\\(#\(\[\^\)\]\+\)\\\)\/g/);
+    assert.match(mapPanelSource, /function redrawMapRenderLayer\(\)[\s\S]*svgDefsNonce\.value \+= 1;[\s\S]*replayKey\.value \+= 1;/);
+    assert.match(mapPanelSource, /class="map-scene-surface"[\s\S]*:fill="sceneSurface\.fill"[\s\S]*:filter="svgUrl\('tavern-mat-texture'\)"[\s\S]*class="map-fill-layer"/);
+    assert.match(mapPanelSource, /:id="svgDefId\('tavern-map-shadow'\)"[\s\S]*<feDropShadow[\s\S]*flood-opacity="0\.42"/);
+    assert.match(mapPanelSource, /:id="svgDefId\('tavern-mat-texture'\)"[\s\S]*<feTurbulence[\s\S]*baseFrequency="0\.7"[\s\S]*<feBlend[\s\S]*mode="multiply"/);
+    assert.match(mapPanelSource, /:id="svgDefId\('mat-wood'\)"[\s\S]*:id="svgDefId\('mat-stone'\)"[\s\S]*:id="svgDefId\('mat-tile'\)"[\s\S]*:id="svgDefId\('mat-carpet'\)"[\s\S]*:id="svgDefId\('mat-bed-sheet'\)"[\s\S]*:id="svgDefId\('mat-fabric'\)"[\s\S]*:id="svgDefId\('mat-tatami'\)"[\s\S]*:id="svgDefId\('mat-sand'\)"[\s\S]*:id="svgDefId\('mat-marble'\)"[\s\S]*:id="svgDefId\('mat-blood'\)"[\s\S]*:id="svgDefId\('mat-water'\)"[\s\S]*:id="svgDefId\('mat-grass'\)"[\s\S]*:id="svgDefId\('mat-dirt'\)"[\s\S]*:id="svgDefId\('mat-snow'\)"[\s\S]*:id="svgDefId\('mat-metal'\)"[\s\S]*:id="svgDefId\('mat-rune'\)"/);
+    assert.match(mapPanelSource, /:id="svgDefId\('grad-warm'\)"[\s\S]*stop-color="#ffd9a0"[\s\S]*:id="svgDefId\('grad-cold'\)"[\s\S]*stop-color="#cfe4ff"/);
+    assert.doesNotMatch(mapPanelSource, /id="(?:tavern-mat-texture|mat-metal|mood-cold|map-vignette-radial)"|filter="url\(#tavern-mat-texture\)"|filter="url\(#tavern-map-sketch\)"|filter="url\(#tavern-map-shadow\)"/);
     assert.doesNotMatch(mapPanelSource, /<g\s+class="map-fill-layer"[\s\S]{0,120}filter="url\(#tavern-mat-texture\)"/);
-    assert.match(mapPanelSource, /class="map-line-layer"[\s\S]*filter="url\(#tavern-map-sketch\)"[\s\S]*v-for="item in regularLineCasingItems"/);
-    assert.match(mapPanelSource, /<g filter="url\(#tavern-map-shadow\)">[\s\S]*v-for="item in gameIconLineItems"/);
-    assert.match(mapPanelSource, /class="map-avatar-layer"[\s\S]*filter="url\(#tavern-map-shadow\)"/);
+    assert.match(mapPanelSource, /class="map-line-layer"[\s\S]*:filter="svgUrl\('tavern-map-sketch'\)"[\s\S]*v-for="item in regularLineCasingItems"/);
+    assert.match(mapPanelSource, /<g :filter="svgUrl\('tavern-map-shadow'\)">[\s\S]*v-for="item in gameIconLineItems"/);
+    assert.match(mapPanelSource, /class="map-avatar-layer"[\s\S]*:filter="svgUrl\('tavern-map-shadow'\)"/);
+    assert.match(mapPanelSource, /class="tavern-map-redraw-button"[\s\S]*title="重绘地图渲染层"[\s\S]*@click="redrawMapRenderLayer"/);
     assert.match(mapPanelSource, /class="tavern-map-zoom-controls"[\s\S]*@click="zoomMapBy\(-0\.25\)"[\s\S]*{{ mapZoomLabel }}[\s\S]*@click="zoomMapBy\(0\.25\)"/);
     assert.match(mapPanelSource, /@pointerdown="handleMapPointerDown"[\s\S]*@pointermove="handleMapPointerMove"[\s\S]*@pointerup="handleMapPointerEnd"[\s\S]*@pointercancel="handleMapPointerEnd"[\s\S]*@wheel="handleMapWheel"/);
     assert.match(mapPanelSource, /function pickPenAnimationItem[\s\S]*!item\.gameIcon[\s\S]*item\.layer !== 'label'[\s\S]*!!item\.path/);
@@ -792,13 +797,14 @@ test('tavern map update badge stays collapsed until requested', () => {
     assert.doesNotMatch(contextSource, /activateMapDocument/);
     assert.match(mapCss, /\.tavern-chat\.xb-page \.tavern-map-canvas svg \{[\s\S]*cursor: grab;[\s\S]*touch-action: none;[\s\S]*user-select: none;/);
     assert.match(mapCss, /\.tavern-chat\.xb-page \.tavern-map-canvas\.is-panning svg \{[\s\S]*cursor: grabbing;/);
+    assert.match(mapCss, /\.tavern-chat\.xb-page \.tavern-map-redraw-button \{[\s\S]*position: absolute;[\s\S]*left: 16px;[\s\S]*bottom: 16px;/);
     assert.match(mapCss, /\.tavern-chat\.xb-page \.tavern-map-canvas\.has-scene-surface::before \{/);
     assert.match(mapCss, /\.tavern-chat\.xb-page \.map-scene-surface,[\s\S]*\.tavern-chat\.xb-page \.map-light-layer,[\s\S]*\.tavern-chat\.xb-page \.map-mood-overlay,[\s\S]*\.tavern-chat\.xb-page \.map-vignette-overlay \{[\s\S]*pointer-events: none;/);
     assert.match(mapCss, /\.tavern-chat\.xb-page \.tavern-map-compact-controls\.is-floating \{[\s\S]*max-width: calc\(100% - 74px\);/);
     assert.match(mapCss, /\.tavern-chat\.xb-page \.tavern-map-zoom-controls \{[\s\S]*position: absolute;[\s\S]*right: 10px;[\s\S]*top: 10px;[\s\S]*grid-template-columns: 22px 34px 22px;/);
     assert.match(mapCss, /@media \(max-width: 640px\) \{[\s\S]*\.tavern-chat\.xb-page \.tavern-map-zoom-controls \{[\s\S]*right: 8px;[\s\S]*top: 8px;[\s\S]*grid-template-columns: 20px 30px 20px;/);
     assert.match(mapCss, /\.tavern-chat\.xb-page \.tavern-map-badge-shell \{[\s\S]*position: absolute;[\s\S]*top: 14px;[\s\S]*left: 16px;/);
-    assert.match(mapCss, /\.tavern-chat\.xb-page \.tavern-map-timeline-control \{[\s\S]*position: absolute;[\s\S]*left: 16px;[\s\S]*bottom: 16px;/);
+    assert.match(mapCss, /\.tavern-chat\.xb-page \.tavern-map-timeline-control \{[\s\S]*position: absolute;[\s\S]*left: 54px;[\s\S]*bottom: 16px;/);
     assert.doesNotMatch(mapCss, /tavern-map-active-button/);
 });
 
@@ -825,8 +831,8 @@ test('tavern scene map player marker uses current user identity instead of gener
     assert.match(mapPanelSource, /id: `\$\{element\.id\}-player-outline`,[\s\S]*layer: 'avatar',[\s\S]*dash: '3 2'/);
     assert.match(mapPanelSource, /id: `\$\{element\.id\}-glyph`,[\s\S]*layer: 'line',[\s\S]*gameIcon: true/);
     assert.match(mapPanelSource, /const avatarImageItems = computed<MapAvatarImageItem\[\]>/);
-    assert.match(mapPanelSource, /<clipPath[\s\S]*v-for="item in avatarImageItems"[\s\S]*<circle[\s\S]*:r="item\.avatarSize \/ 2"/);
-    assert.match(mapPanelSource, /<image[\s\S]*v-for="item in avatarImageItems"[\s\S]*:clip-path="`url\(#\$\{item\.avatarClipId\}\)`"[\s\S]*preserveAspectRatio="xMidYMid slice"/);
+    assert.match(mapPanelSource, /<clipPath[\s\S]*v-for="item in avatarImageItems"[\s\S]*:id="svgDefId\(item\.avatarClipId\)"[\s\S]*<circle[\s\S]*:r="item\.avatarSize \/ 2"/);
+    assert.match(mapPanelSource, /<image[\s\S]*v-for="item in avatarImageItems"[\s\S]*:clip-path="scopeSvgUrl\(`url\(#\$\{item\.avatarClipId\}\)`\)"[\s\S]*preserveAspectRatio="xMidYMid slice"/);
     assert.ok(
         mapPanelSource.indexOf('class="map-avatar-layer"') > mapPanelSource.indexOf('class="map-removed-layer"'),
         'player avatar layer must render after every map content layer',

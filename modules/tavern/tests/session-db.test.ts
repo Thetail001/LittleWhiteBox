@@ -274,7 +274,8 @@ test('new tavern sessions start with a seed map document', async () => {
     assert.match(hint, /Outdoor MapSceneEdit example/);
     assert.match(hint, /at least one spatial geometry element/);
     assert.match(hint, /Scene-map construction order/i);
-    assert.match(hint, /Closed or contained scenes must have an outer boundary/i);
+    assert.match(hint, /Closed or contained scenes usually need both a filled main surface/i);
+    assert.match(hint, /floor, ground, deck, platform, clearing, yard, roadbed, shoreline area/i);
     assert.match(hint, /Open scenes are the exception/i);
     assert.doesNotMatch(hint, /MapPatch|activate:true/);
     assert.equal((await listTavernStructuredStatePatches({ sessionId: session.id })).length, 0);
@@ -1424,8 +1425,9 @@ test('MapPatch tool schema documents canonical ops and camera semantics', () => 
     assert.match(patchTool?.function.description || '', /Minimal first scene-map example/i);
     assert.match(patchTool?.function.description || '', /Mood enum is neutral\/warm\/cold\/dark\/mystic\/danger\/calm/i);
     assert.match(patchTool?.function.description || '', /Material enum is unknown\/wood\/stone\/tile\/carpet\/bed-sheet\/fabric\/tatami\/sand\/marble\/blood\/water\/grass\/dirt\/snow\/metal\/rune\/warm-light\/cold-light\/shadow/i);
-    assert.match(patchTool?.function.description || '', /Use cat:"terrain" for ground\/floor, cat:"light"/i);
-    assert.match(patchTool?.function.description || '', /Do not use floor, ground, region, subtype, opacity/i);
+    assert.match(patchTool?.function.description || '', /Use cat:"terrain" for the main continuous scene surface or filled base area/i);
+    assert.match(patchTool?.function.description || '', /indoor floor, outdoor ground, deck, platform, clearing, yard, roadbed, shoreline area/i);
+    assert.match(patchTool?.function.description || '', /Do not use floor, ground, surface, deck, platform, base, area, region, subtype, opacity/i);
     assert.match(patchTool?.function.description || '', /visual scale/i);
     assert.match(patchTool?.function.description || '', /splits the text into a system label element automatically/i);
     assert.match(patchTool?.function.description || '', /Do not put house\/castle\/village\/forest\/temple\/shop icons inside a scene map/i);
@@ -3209,6 +3211,31 @@ test('MapSceneEdit treats rect at as center so model-centered layouts stay align
     }), true);
 });
 
+test('MapSceneEdit normalizes natural main-surface category aliases to terrain', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Scene edit terrain aliases' });
+    const result = await executeTavernStateTool(session.id, 'MapSceneEdit', {
+        scene: '环形平台',
+        viewBox: [0, 0, 300, 180],
+        elements: [
+            { id: 'main-deck', cat: 'deck', shape: 'rect', geo: { center: [150, 90], size: [240, 120] }, material: 'metal' },
+            { id: 'upper-surface', cat: 'surface', shape: 'rect', geo: { center: [150, 74], size: [160, 48] }, material: 'metal' },
+            { id: 'east-platform', cat: 'platform', shape: 'rect', geo: { center: [236, 90], size: [42, 66] }, material: 'metal' },
+            { id: 'guard-rail', cat: 'wall', shape: 'rect', geo: { center: [150, 90], size: [240, 120] }, material: 'metal', label: '护栏' },
+        ],
+    });
+    const scene = await executeTavernStateTool(session.id, 'MapSceneRead', { scene: '环形平台', mode: 'document' });
+    const document = scene.document as TavernMapDocument;
+
+    assert.equal(result.ok, true);
+    assert.equal(document.elements.find((element) => element.id === 'main-deck')?.cat, 'terrain');
+    assert.equal(document.elements.find((element) => element.id === 'upper-surface')?.cat, 'terrain');
+    assert.equal(document.elements.find((element) => element.id === 'east-platform')?.cat, 'terrain');
+    assert.equal(document.elements.find((element) => element.id === 'guard-rail')?.cat, 'wall');
+});
+
 test('MapSceneEdit repeats the same scene intent without increasing scene revision', async () => {
     await db.delete();
     await db.open();
@@ -4385,7 +4412,8 @@ test('tavern auto manager prompt omits unauthorized module instructions from bot
     assert.match(mapPrompt, /MapAtlasRead/);
     assert.match(mapPrompt, /MapSceneEdit/);
     assert.match(mapPrompt, /Scene-map construction order/i);
-    assert.match(mapPrompt, /Closed or contained scenes must have an outer boundary/i);
+    assert.match(mapPrompt, /Closed or contained scenes usually need both a filled main surface/i);
+    assert.match(mapPrompt, /Use `cat:\\"terrain\\"` for the main continuous scene surface or filled base area/i);
     assert.match(mapPrompt, /Open scenes are the exception/i);
     assert.match(mapPrompt, /This contract authorizes only the map system\. Do not write memory Markdown\./i);
     assert.doesNotMatch(mapPrompt, /Edit and Write/);

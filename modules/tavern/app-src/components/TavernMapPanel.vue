@@ -130,6 +130,7 @@ const emit = defineEmits<{
 }>();
 
 const replayKey = ref(0);
+const svgDefsNonce = ref(0);
 const replayMode = ref<MapReplayMode>('patch');
 const timelineIndex = ref(0);
 const localSelectedDocId = ref('');
@@ -148,6 +149,18 @@ const mapDrag = ref<{
     clientHeight: number;
 } | null>(null);
 let timelineTimer: number | undefined;
+
+function svgDefId(id: string): string {
+    return `${svgLocalId(id)}-r${svgDefsNonce.value}`;
+}
+
+function svgUrl(id: string): string {
+    return `url(#${svgDefId(id)})`;
+}
+
+function scopeSvgUrl(value: string): string {
+    return String(value || '').replace(/url\(#([^)]+)\)/g, (_match, id: string) => svgUrl(id));
+}
 
 function cloneValue<T>(value: T): T {
     return JSON.parse(JSON.stringify(value)) as T;
@@ -304,7 +317,7 @@ const sceneSurface = computed<MapSceneSurface | null>(() => {
         y,
         width,
         height,
-        fill: getTavernMapSceneSurfaceFill(element),
+        fill: scopeSvgUrl(getTavernMapSceneSurfaceFill(element)),
         style: {
             opacity: getTavernMapSceneSurfaceOpacity(element),
         },
@@ -370,6 +383,11 @@ function resetMapPan() {
     mapPanOffset.value = [0, 0];
     mapZoom.value = 1;
     mapDrag.value = null;
+}
+
+function redrawMapRenderLayer() {
+    svgDefsNonce.value += 1;
+    replayKey.value += 1;
 }
 
 function setMapZoom(nextZoom: number, anchor?: { clientX: number; clientY: number }) {
@@ -1080,12 +1098,12 @@ const penStyle = computed(() => {
 const moodOverlay = computed(() => {
     const mood = String(activeMapDocument.value?.meta?.mood || 'neutral');
     const overlays: Record<string, { fill: string; blend: MapBlendMode; opacity: number }> = {
-        warm: { fill: 'url(#mood-warm)', blend: 'overlay', opacity: 0.34 },
-        cold: { fill: 'url(#mood-cold)', blend: 'multiply', opacity: 0.28 },
-        dark: { fill: 'url(#mood-dark)', blend: 'multiply', opacity: 0.36 },
-        mystic: { fill: 'url(#mood-mystic)', blend: 'screen', opacity: 0.22 },
-        danger: { fill: 'url(#mood-danger)', blend: 'multiply', opacity: 0.26 },
-        calm: { fill: 'url(#mood-calm)', blend: 'screen', opacity: 0.18 },
+        warm: { fill: svgUrl('mood-warm'), blend: 'overlay', opacity: 0.34 },
+        cold: { fill: svgUrl('mood-cold'), blend: 'multiply', opacity: 0.28 },
+        dark: { fill: svgUrl('mood-dark'), blend: 'multiply', opacity: 0.36 },
+        mystic: { fill: svgUrl('mood-mystic'), blend: 'screen', opacity: 0.22 },
+        danger: { fill: svgUrl('mood-danger'), blend: 'multiply', opacity: 0.26 },
+        calm: { fill: svgUrl('mood-calm'), blend: 'screen', opacity: 0.18 },
     };
     const overlay = overlays[mood];
     if (!overlay) {return null;}
@@ -1102,7 +1120,7 @@ const vignetteOverlay = computed(() => {
     const style: CSSProperties = {
         mixBlendMode: 'multiply',
     };
-    return { x, y, width, height, fill: 'url(#map-vignette-radial)', style };
+    return { x, y, width, height, fill: svgUrl('map-vignette-radial'), style };
 });
 
 function scheduleTimelineNext() {
@@ -1375,7 +1393,7 @@ function handleMapWheel(event: WheelEvent) {
       >
         <defs>
           <filter
-            id="tavern-map-sketch"
+            :id="svgDefId('tavern-map-sketch')"
             x="-5%"
             y="-5%"
             width="110%"
@@ -1395,7 +1413,7 @@ function handleMapWheel(event: WheelEvent) {
             />
           </filter>
           <filter
-            id="tavern-map-glow"
+            :id="svgDefId('tavern-map-glow')"
             x="-30%"
             y="-30%"
             width="160%"
@@ -1411,7 +1429,7 @@ function handleMapWheel(event: WheelEvent) {
             </feMerge>
           </filter>
           <filter
-            id="tavern-map-shadow"
+            :id="svgDefId('tavern-map-shadow')"
             x="-20%"
             y="-20%"
             width="140%"
@@ -1426,7 +1444,7 @@ function handleMapWheel(event: WheelEvent) {
             />
           </filter>
           <filter
-            id="tavern-mat-texture"
+            :id="svgDefId('tavern-mat-texture')"
             x="0"
             y="0"
             width="100%"
@@ -1452,7 +1470,7 @@ function handleMapWheel(event: WheelEvent) {
             />
           </filter>
           <pattern
-            id="mat-wood"
+            :id="svgDefId('mat-wood')"
             width="40"
             height="20"
             patternUnits="userSpaceOnUse"
@@ -1522,7 +1540,7 @@ function handleMapWheel(event: WheelEvent) {
             />
           </pattern>
           <pattern
-            id="mat-stone"
+            :id="svgDefId('mat-stone')"
             width="48"
             height="48"
             patternUnits="userSpaceOnUse"
@@ -1563,7 +1581,7 @@ function handleMapWheel(event: WheelEvent) {
             />
           </pattern>
           <pattern
-            id="mat-tile"
+            :id="svgDefId('mat-tile')"
             width="32"
             height="32"
             patternUnits="userSpaceOnUse"
@@ -1597,7 +1615,7 @@ function handleMapWheel(event: WheelEvent) {
             />
           </pattern>
           <pattern
-            id="mat-carpet"
+            :id="svgDefId('mat-carpet')"
             width="24"
             height="24"
             patternUnits="userSpaceOnUse"
@@ -1632,7 +1650,7 @@ function handleMapWheel(event: WheelEvent) {
             />
           </pattern>
           <pattern
-            id="mat-bed-sheet"
+            :id="svgDefId('mat-bed-sheet')"
             width="48"
             height="48"
             patternUnits="userSpaceOnUse"
@@ -1685,7 +1703,7 @@ function handleMapWheel(event: WheelEvent) {
             />
           </pattern>
           <pattern
-            id="mat-fabric"
+            :id="svgDefId('mat-fabric')"
             width="16"
             height="16"
             patternUnits="userSpaceOnUse"
@@ -1735,7 +1753,7 @@ function handleMapWheel(event: WheelEvent) {
             />
           </pattern>
           <pattern
-            id="mat-tatami"
+            :id="svgDefId('mat-tatami')"
             width="80"
             height="40"
             patternUnits="userSpaceOnUse"
@@ -1780,7 +1798,7 @@ function handleMapWheel(event: WheelEvent) {
             />
           </pattern>
           <pattern
-            id="mat-sand"
+            :id="svgDefId('mat-sand')"
             width="40"
             height="40"
             patternUnits="userSpaceOnUse"
@@ -1850,7 +1868,7 @@ function handleMapWheel(event: WheelEvent) {
             />
           </pattern>
           <pattern
-            id="mat-marble"
+            :id="svgDefId('mat-marble')"
             width="80"
             height="80"
             patternUnits="userSpaceOnUse"
@@ -1903,7 +1921,7 @@ function handleMapWheel(event: WheelEvent) {
             />
           </pattern>
           <pattern
-            id="mat-blood"
+            :id="svgDefId('mat-blood')"
             width="40"
             height="40"
             patternUnits="userSpaceOnUse"
@@ -1949,7 +1967,7 @@ function handleMapWheel(event: WheelEvent) {
             />
           </pattern>
           <pattern
-            id="mat-water"
+            :id="svgDefId('mat-water')"
             width="44"
             height="24"
             patternUnits="userSpaceOnUse"
@@ -1988,7 +2006,7 @@ function handleMapWheel(event: WheelEvent) {
             />
           </pattern>
           <pattern
-            id="mat-grass"
+            :id="svgDefId('mat-grass')"
             width="28"
             height="28"
             patternUnits="userSpaceOnUse"
@@ -2038,7 +2056,7 @@ function handleMapWheel(event: WheelEvent) {
             />
           </pattern>
           <pattern
-            id="mat-dirt"
+            :id="svgDefId('mat-dirt')"
             width="36"
             height="36"
             patternUnits="userSpaceOnUse"
@@ -2097,7 +2115,7 @@ function handleMapWheel(event: WheelEvent) {
             />
           </pattern>
           <pattern
-            id="mat-snow"
+            :id="svgDefId('mat-snow')"
             width="36"
             height="36"
             patternUnits="userSpaceOnUse"
@@ -2155,7 +2173,7 @@ function handleMapWheel(event: WheelEvent) {
             />
           </pattern>
           <pattern
-            id="mat-metal"
+            :id="svgDefId('mat-metal')"
             width="40"
             height="40"
             patternUnits="userSpaceOnUse"
@@ -2225,7 +2243,7 @@ function handleMapWheel(event: WheelEvent) {
             />
           </pattern>
           <pattern
-            id="mat-rune"
+            :id="svgDefId('mat-rune')"
             width="48"
             height="48"
             patternUnits="userSpaceOnUse"
@@ -2273,7 +2291,7 @@ function handleMapWheel(event: WheelEvent) {
               opacity="0.8"
             />
           </pattern>
-          <radialGradient id="grad-warm">
+          <radialGradient :id="svgDefId('grad-warm')">
             <stop
               offset="0%"
               stop-color="#ffd9a0"
@@ -2290,7 +2308,7 @@ function handleMapWheel(event: WheelEvent) {
               stop-opacity="0"
             />
           </radialGradient>
-          <radialGradient id="grad-cold">
+          <radialGradient :id="svgDefId('grad-cold')">
             <stop
               offset="0%"
               stop-color="#cfe4ff"
@@ -2307,7 +2325,7 @@ function handleMapWheel(event: WheelEvent) {
               stop-opacity="0"
             />
           </radialGradient>
-          <radialGradient id="mood-warm">
+          <radialGradient :id="svgDefId('mood-warm')">
             <stop
               offset="0%"
               stop-color="#ffcf88"
@@ -2319,7 +2337,7 @@ function handleMapWheel(event: WheelEvent) {
               stop-opacity="0.45"
             />
           </radialGradient>
-          <radialGradient id="mood-cold">
+          <radialGradient :id="svgDefId('mood-cold')">
             <stop
               offset="0%"
               stop-color="#8ab6ff"
@@ -2331,7 +2349,7 @@ function handleMapWheel(event: WheelEvent) {
               stop-opacity="0.62"
             />
           </radialGradient>
-          <radialGradient id="mood-dark">
+          <radialGradient :id="svgDefId('mood-dark')">
             <stop
               offset="0%"
               stop-color="#1d2530"
@@ -2343,7 +2361,7 @@ function handleMapWheel(event: WheelEvent) {
               stop-opacity="0.78"
             />
           </radialGradient>
-          <radialGradient id="mood-mystic">
+          <radialGradient :id="svgDefId('mood-mystic')">
             <stop
               offset="0%"
               stop-color="#a77dff"
@@ -2355,7 +2373,7 @@ function handleMapWheel(event: WheelEvent) {
               stop-opacity="0.32"
             />
           </radialGradient>
-          <radialGradient id="mood-danger">
+          <radialGradient :id="svgDefId('mood-danger')">
             <stop
               offset="0%"
               stop-color="#c9463d"
@@ -2367,7 +2385,7 @@ function handleMapWheel(event: WheelEvent) {
               stop-opacity="0.56"
             />
           </radialGradient>
-          <radialGradient id="mood-calm">
+          <radialGradient :id="svgDefId('mood-calm')">
             <stop
               offset="0%"
               stop-color="#c4e8d1"
@@ -2380,7 +2398,7 @@ function handleMapWheel(event: WheelEvent) {
             />
           </radialGradient>
           <radialGradient
-            id="map-vignette-radial"
+            :id="svgDefId('map-vignette-radial')"
             cx="50%"
             cy="48%"
             r="76%"
@@ -2403,8 +2421,8 @@ function handleMapWheel(event: WheelEvent) {
           </radialGradient>
           <clipPath
             v-for="item in avatarImageItems"
-            :id="item.avatarClipId"
-            :key="item.avatarClipId"
+            :id="svgDefId(item.avatarClipId)"
+            :key="`${item.avatarClipId}-${svgDefsNonce}`"
           >
             <circle
               :cx="item.avatarX + item.avatarSize / 2"
@@ -2421,7 +2439,7 @@ function handleMapWheel(event: WheelEvent) {
           :width="sceneSurface.width"
           :height="sceneSurface.height"
           :fill="sceneSurface.fill"
-          filter="url(#tavern-mat-texture)"
+          :filter="svgUrl('tavern-mat-texture')"
           :style="sceneSurface.style"
         />
         <g class="map-fill-layer">
@@ -2429,7 +2447,7 @@ function handleMapWheel(event: WheelEvent) {
             v-for="item in fillItems"
             :key="item.id"
             :d="item.path"
-            :fill="item.fill"
+            :fill="scopeSvgUrl(item.fill)"
             :transform="item.transform"
             :fill-rule="item.fillRule"
             :class="itemClass(item)"
@@ -2438,13 +2456,13 @@ function handleMapWheel(event: WheelEvent) {
         </g>
         <g
           class="map-line-layer"
-          filter="url(#tavern-map-sketch)"
+          :filter="svgUrl('tavern-map-sketch')"
         >
           <path
             v-for="item in regularLineCasingItems"
             :key="item.id"
             :d="item.path"
-            :fill="item.fill"
+            :fill="scopeSvgUrl(item.fill)"
             :stroke="item.color"
             :stroke-width="item.strokeWidth"
             :stroke-dasharray="item.dash"
@@ -2459,7 +2477,7 @@ function handleMapWheel(event: WheelEvent) {
             v-for="item in regularLineCoreItems"
             :key="item.id"
             :d="item.path"
-            :fill="item.fill"
+            :fill="scopeSvgUrl(item.fill)"
             :stroke="item.color"
             :stroke-width="item.strokeWidth"
             :stroke-dasharray="item.dash"
@@ -2471,7 +2489,7 @@ function handleMapWheel(event: WheelEvent) {
             :style="itemStyle(item)"
           />
         </g>
-        <g filter="url(#tavern-map-shadow)">
+        <g :filter="svgUrl('tavern-map-shadow')">
           <g
             v-for="item in gameIconLineItems"
             :key="item.id"
@@ -2482,7 +2500,7 @@ function handleMapWheel(event: WheelEvent) {
             <g :transform="item.glyphScaleTransform">
               <path
                 :d="item.path"
-                :fill="item.fill"
+                :fill="scopeSvgUrl(item.fill)"
                 :fill-rule="item.fillRule"
                 transform="translate(-256, -256)"
                 class="map-game-icon-path"
@@ -2495,7 +2513,7 @@ function handleMapWheel(event: WheelEvent) {
             v-for="item in lightItems"
             :key="item.id"
             :d="item.path"
-            :fill="item.fill"
+            :fill="scopeSvgUrl(item.fill)"
             :transform="item.transform"
             :fill-rule="item.fillRule"
             :class="itemClass(item)"
@@ -2545,7 +2563,7 @@ function handleMapWheel(event: WheelEvent) {
             v-for="item in removedFillItems"
             :key="`removed-fill-${item.id}`"
             :d="item.path"
-            :fill="item.fill"
+            :fill="scopeSvgUrl(item.fill)"
             :transform="item.transform"
             :fill-rule="item.fillRule"
             :class="itemClass(item)"
@@ -2555,7 +2573,7 @@ function handleMapWheel(event: WheelEvent) {
             v-for="item in removedLightItems"
             :key="`removed-light-${item.id}`"
             :d="item.path"
-            :fill="item.fill"
+            :fill="scopeSvgUrl(item.fill)"
             :transform="item.transform"
             :fill-rule="item.fillRule"
             :class="itemClass(item)"
@@ -2565,7 +2583,7 @@ function handleMapWheel(event: WheelEvent) {
             v-for="item in regularRemovedLineItems"
             :key="`removed-line-${item.id}`"
             :d="item.path"
-            :fill="item.fill"
+            :fill="scopeSvgUrl(item.fill)"
             :stroke="item.color"
             :stroke-width="item.strokeWidth"
             :stroke-dasharray="item.dash"
@@ -2586,7 +2604,7 @@ function handleMapWheel(event: WheelEvent) {
             <g :transform="item.glyphScaleTransform">
               <path
                 :d="item.path"
-                :fill="item.fill"
+                :fill="scopeSvgUrl(item.fill)"
                 :fill-rule="item.fillRule"
                 transform="translate(-256, -256)"
                 class="map-game-icon-path"
@@ -2613,7 +2631,7 @@ function handleMapWheel(event: WheelEvent) {
         </g>
         <g
           class="map-avatar-layer"
-          filter="url(#tavern-map-shadow)"
+          :filter="svgUrl('tavern-map-shadow')"
         >
           <image
             v-for="item in avatarImageItems"
@@ -2623,7 +2641,7 @@ function handleMapWheel(event: WheelEvent) {
             :y="item.avatarY"
             :width="item.avatarSize"
             :height="item.avatarSize"
-            :clip-path="`url(#${item.avatarClipId})`"
+            :clip-path="scopeSvgUrl(`url(#${item.avatarClipId})`)"
             preserveAspectRatio="xMidYMid slice"
             :class="itemClass(item)"
             :style="itemStyle(item)"
@@ -2632,7 +2650,7 @@ function handleMapWheel(event: WheelEvent) {
             v-for="item in avatarPathItems"
             :key="item.id"
             :d="item.path"
-            :fill="item.fill"
+            :fill="scopeSvgUrl(item.fill)"
             :stroke="item.strokeWidth > 0 ? item.color : undefined"
             :stroke-width="item.strokeWidth || undefined"
             :stroke-dasharray="item.dash || undefined"
@@ -2655,6 +2673,15 @@ function handleMapWheel(event: WheelEvent) {
         class="tavern-map-progress"
         :style="progressStyle"
       />
+      <button
+        type="button"
+        class="tavern-map-redraw-button"
+        title="重绘地图渲染层"
+        aria-label="重绘地图渲染层"
+        @click="redrawMapRenderLayer"
+      >
+        ⟳
+      </button>
       <div
         v-if="showMapBadge"
         class="tavern-map-badge-shell"
