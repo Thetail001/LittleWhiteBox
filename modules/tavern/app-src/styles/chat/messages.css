@@ -170,7 +170,7 @@
 }
 
 .chat-bubble.pending-user {
-    contain: layout style paint;
+    contain: layout style;
     opacity: 0.78;
     animation: tavern-pending-user-arrive 160ms ease-out both;
 }
@@ -211,7 +211,7 @@
 }
 
 .chat-bubble.streaming {
-    contain: layout style paint;
+    contain: layout style;
     border-color: var(--xb-rule-strong);
     border-left-color: var(--xb-cyan);
     background:

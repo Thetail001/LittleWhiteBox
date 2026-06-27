@@ -5427,30 +5427,50 @@ test('tavern manager cleans image markers from prompt without using content for 
     await db.delete();
     await db.open();
 
+    const host = globalThis as unknown as {
+        localStorage?: { getItem: (key: string) => string | null };
+    };
+    const previousStorage = host.localStorage;
+    host.localStorage = {
+        getItem: (key: string) => key === 'summary_panel_config'
+            ? JSON.stringify({ textFilterRules: [{ start: '<status>', end: '</status>' }] })
+            : null,
+    };
+
     const session = await createTavernSession({ title: 'Image marker freshness' });
-    const userMessage = await appendTavernMessage(session.id, { role: 'user', content: '原句。' });
-    const assistantMessage = await appendTavernMessage(session.id, { role: 'assistant', content: '原回复。' });
-    await updateTavernMessage(session.id, userMessage.order, { content: '原句。\n[tavern-image : user-slot]' });
-    await updateTavernMessage(session.id, assistantMessage.order, { content: '[img : assistant-slot]\n原回复。\n[图片 : 完成图]' });
+    const userMessage = await appendTavernMessage(session.id, { role: 'user', content: '原句。\n<status>旧状态栏</status>' });
+    const assistantMessage = await appendTavernMessage(session.id, { role: 'assistant', content: '原回复。\n<state>旧内心状态</state>' });
+    await updateTavernMessage(session.id, userMessage.order, { content: '原句。\n<status>状态栏：莉娜站在门边。</status>\n[tavern-image : user-slot]' });
+    await updateTavernMessage(session.id, assistantMessage.order, { content: '[img : assistant-slot]\n原回复。\n<state>她仍在观察银钥匙。</state>\n[图片 : 完成图]' });
     let promptText = '';
 
-    const result = await runXbTavernManagerAfterTurn({
-        sessionId: session.id,
-        agentConfig: {},
-        userMessage,
-        assistantMessage,
-        turn: 1,
-        executeManagerOnce: async (options) => {
-            promptText = JSON.stringify(options.messages);
-            return { text: '只检查图片标记。' };
-        },
-    });
+    try {
+        const result = await runXbTavernManagerAfterTurn({
+            sessionId: session.id,
+            agentConfig: {},
+            userMessage,
+            assistantMessage,
+            turn: 1,
+            executeManagerOnce: async (options) => {
+                promptText = JSON.stringify(options.messages);
+                return { text: '只检查图片标记。' };
+            },
+        });
 
-    const run = (await listTavernManagerRuns(session.id))[0];
-    assert.equal(result.ok, true);
-    assert.equal(result.error, undefined);
-    assert.equal(run?.status, 'completed');
-    assert.doesNotMatch(promptText, /tavern-image|\[img\s*:|\[图片\s*:/);
+        const run = (await listTavernManagerRuns(session.id))[0];
+        assert.equal(result.ok, true);
+        assert.equal(result.error, undefined);
+        assert.equal(run?.status, 'completed');
+        assert.doesNotMatch(promptText, /tavern-image|\[img\s*:|\[图片\s*:/);
+        assert.match(promptText, /状态栏：莉娜站在门边/);
+        assert.match(promptText, /她仍在观察银钥匙/);
+    } finally {
+        if (previousStorage) {
+            host.localStorage = previousStorage;
+        } else {
+            delete host.localStorage;
+        }
+    }
 });
 
 test('tavern manager keeps written memory when source message content changes mid-run', async () => {

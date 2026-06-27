@@ -909,6 +909,11 @@ test('tavern data rollback helpers keep paired state writes inside transactions'
 
     assert.match(acceptedStateSource, /db\.transaction\(\s*'rw'[\s\S]*saveTavernMemorySnapshot\(id, floor\)[\s\S]*saveTavernTaskSnapshot\(id, floor\)/);
     assert.match(memoryRetrievalSource, /export function cleanSourceTextForManager[\s\S]*tavern-image\|img\|图片[\s\S]*\\s\*:/);
+    const managerCleanBody = memoryRetrievalSource.slice(
+        memoryRetrievalSource.indexOf('export function cleanSourceTextForManager'),
+        memoryRetrievalSource.indexOf('function memoryFileTitle'),
+    );
+    assert.doesNotMatch(managerCleanBody, /applyMemoryTextFilterRules|<state>|<status|tts/);
     assert.match(managerSource, /async function resolveCurrentManagerSourceMessages/);
     assert.match(managerSource, /const currentSourceMessages = await resolveCurrentManagerSourceMessages\(input\)/);
     assert.match(managerSource, /buildAutoManagerMessages\(input, currentSourceMessages\)/);
@@ -1858,6 +1863,9 @@ test('tavern streaming action-check UI renders from live runtime events and keep
     assert.doesNotMatch(conversationPanelSource, /inline-runtime-event/);
     assert.doesNotMatch(cssSource, /\.chat-bubble \.chat-runtime-event/);
     assert.match(cssSource, /\.bubble-identity \{[\s\S]*display: grid;[\s\S]*justify-items: start;/);
+    assert.match(cssSource, /\.chat-bubble\.pending-user \{[\s\S]*contain: layout style;/);
+    assert.match(cssSource, /\.chat-bubble\.streaming \{[\s\S]*contain: layout style;/);
+    assert.doesNotMatch(cssSource, /\.chat-bubble\.(?:pending-user|streaming) \{[\s\S]*contain: layout style paint;/);
     assert.match(cssSource, /\.chat-bubble>\.message-actions \{[\s\S]*position: absolute;[\s\S]*top: -1px;[\s\S]*right: -1px;[\s\S]*border-radius: 0 10px 0 8px;[\s\S]*opacity: 0;/);
     assert.match(cssSource, /\.bubble-meta-line \{[\s\S]*display: inline-flex;[\s\S]*gap: 6px;/);
     assert.match(cssSource, /\.message-floor-label \{[\s\S]*padding: 3px 8px;/);
@@ -1995,6 +2003,11 @@ test('tavern streaming action-check UI renders from live runtime events and keep
     assert.match(managerCss, /\.tavern-chat\.xb-page \.manager-compose \{[\s\S]*grid-template-columns: minmax\(0, 1fr\) 36px;/);
     assert.match(managerCss, /\.tavern-chat\.xb-page \.chat-manager \{[\s\S]*--xb-compose-safe-space: 46px;/);
     assert.doesNotMatch(managerCss, /\.tavern-chat\.xb-page \.manager-work-band \{[^}]*display: none;/);
+    assert.match(managerCss, /\.tavern-chat\.xb-page \.manager-work-band > summary \{[\s\S]*grid-template-columns: auto minmax\(0, 1fr\);[\s\S]*grid-template-areas:\s*"marker kind"\s*"\. summary"\s*"\. metric";/);
+    assert.match(managerCss, /\.tavern-chat\.xb-page \.manager-work-band-body \{[\s\S]*grid-template-columns: minmax\(0, 1fr\);/);
+    assert.match(managerCss, /\.tavern-chat\.xb-page \.manager-work-status-grid \{[\s\S]*grid-template-columns: minmax\(0, 1fr\);/);
+    assert.doesNotMatch(managerCss, /manager-work-band > summary \{[\s\S]*grid-template-columns: auto auto minmax\(0, 1fr\) auto;/);
+    assert.doesNotMatch(managerCss, /manager-work-band-body \{[\s\S]*grid-template-columns: minmax\(220px, 0\.8fr\) minmax\(260px, 1\.2fr\);/);
     assert.doesNotMatch(managerCss, /\.tavern-chat\.xb-page \.manager-compose button\.primary-action \{[^}]*min-width: 82px;/);
     assert.doesNotMatch(managerCss, /\.tavern-chat\.xb-page \.manager-compose button\.primary-action \{[^}]*min-height: 58px;/);
     assert.doesNotMatch(conversationPanelSource, /class="compose-error"/);
