@@ -3405,10 +3405,10 @@ test('xb tavern simulated request injects only the active map digest without ful
         activate: true,
         ops: [{
             op: 'meta',
-            set: { name: 'Office', theme: 'parchment', viewBox: [0, 0, 500, 400], status: 'active' },
+            set: { name: 'Office', theme: 'parchment', viewBox: [0, 0, 500, 400], status: 'active', mood: 'cold' },
         }, {
             op: 'add',
-            element: { id: 'office-desk', at: [80, 80], rect: [120, 60], cat: 'furniture', text: 'Desk' },
+            element: { id: 'office-desk', at: [80, 80], rect: [120, 60], cat: 'furniture', text: 'Desk', material: 'metal' },
         }],
     });
 
@@ -3435,6 +3435,8 @@ test('xb tavern simulated request injects only the active map digest without ful
     assert.match(result.buildSnapshot.rawMessagesJson, /状态摘要/);
     assert.match(result.buildSnapshot.rawMessagesJson, /Office/);
     assert.match(result.buildSnapshot.rawMessagesJson, /Desk/);
+    assert.match(result.buildSnapshot.rawMessagesJson, /可互动/);
+    assert.doesNotMatch(result.buildSnapshot.rawMessagesJson, /氛围：|材质：|cold|metal/);
     assert.doesNotMatch(result.buildSnapshot.rawMessagesJson, /Hidden Cellar/);
     assert.doesNotMatch(result.buildSnapshot.rawMessagesJson, /revision 1|tavern\.map\/office|tavern\.map\/main|docId|docType/);
     assert.doesNotMatch(result.buildSnapshot.rawMessagesJson, /"elements"/);

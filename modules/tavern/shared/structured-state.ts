@@ -1025,23 +1025,63 @@ function normalizeMapDocumentFromRecord(document: TavernStructuredStateDocumentR
     return normalizeMapDocument(document.data, createSeedMapDocument().meta, 'stored-document');
 }
 
+function uniqueShortList(values: string[] = [], limit = 8): string[] {
+    return [...new Set(values.map((value) => normalizeText(value, 40)).filter(Boolean))].slice(0, limit);
+}
+
+function fallbackMapElementName(element: TavernMapElement): string {
+    const icon = normalizeText(element.icon, 40);
+    if (icon && !['o', 'x', '+'].includes(icon)) {return icon;}
+    return normalizeText(String(element.id || '').replace(/^__label__/, '').replace(/[-_]+/g, ' '), 40);
+}
+
+function actorMapElementName(element: TavernMapElement): string {
+    const actorKey = normalizeActorKey(element.actorKey || element.id);
+    if (actorKey === 'player') {return '玩家';}
+    return normalizeText(element.text, 40)
+        || normalizeText(element.actorKey, 40)
+        || fallbackMapElementName(element);
+}
+
+function labeledMapElementName(element: TavernMapElement, labelsByBaseId: Map<string, string>): string {
+    return normalizeText(element.text, 40)
+        || normalizeText(labelsByBaseId.get(element.id), 40)
+        || fallbackMapElementName(element);
+}
+
 function createMapDigest(document: TavernMapDocument, revision = 0): string {
     void revision;
     if (document.meta.status !== 'active' || !hasSpatialMapContent(document.elements)) {return '';}
     const title = normalizeText(document.meta.name || 'Map', 80) || 'Map';
-    const labels = document.elements
-        .filter((element) => typeof element.text === 'string' && element.text.trim())
-        .map((element) => normalizeText(element.text, 40))
-        .filter(Boolean)
-        .slice(0, 8);
-    const materials = [...new Set(document.elements
-        .map((element) => element.material)
-        .filter(Boolean))]
-        .slice(0, 5);
+    const labelsByBaseId = new Map<string, string>();
+    const labels = uniqueShortList(document.elements
+        .filter((element) => element.cat === 'label' && typeof element.text === 'string' && element.text.trim())
+        .map((element) => {
+            if (isSeedLabelId(element.id)) {
+                const baseId = element.id.slice(buildSeedLabelId('').length);
+                const text = normalizeText(element.text, 40);
+                if (baseId && text) {labelsByBaseId.set(baseId, text);}
+            }
+            return normalizeText(element.text, 40);
+        }), 8);
+    const sceneElements = document.elements.filter((element) => element.cat !== 'label' && !isSeedLabelId(element.id));
+    const namesFor = (cats: TavernMapElementCategory[]) => uniqueShortList(sceneElements
+        .filter((element) => cats.includes(element.cat))
+        .map((element) => labeledMapElementName(element, labelsByBaseId)), 8);
+    const actors = uniqueShortList(sceneElements
+        .filter((element) => element.cat === 'actor')
+        .map(actorMapElementName), 8);
+    const exits = uniqueShortList(sceneElements
+        .filter((element) => element.cat === 'door' || ['stairs', 'portal', 'arrow-n', 'arrow-s', 'arrow-e', 'arrow-w'].includes(String(element.icon || '')))
+        .map((element) => labeledMapElementName(element, labelsByBaseId)), 8);
+    const interactives = namesFor(['furniture', 'danger', 'secret', 'magic', 'marker']);
+    const terrain = namesFor(['terrain', 'road', 'water']);
     return [
         `地图：${title}`,
-        document.meta.mood && document.meta.mood !== 'neutral' ? `氛围：${document.meta.mood}` : '',
-        materials.length ? `材质：${materials.join(', ')}` : '',
+        actors.length ? `场景人物：${actors.join('、')}` : '',
+        exits.length ? `出入口：${exits.join('、')}` : '',
+        interactives.length ? `可互动：${interactives.join('、')}` : '',
+        terrain.length ? `地形：${terrain.join('、')}` : '',
         labels.length ? `标注：${labels.join(', ')}` : '',
     ].filter(Boolean).join('\n');
 }
@@ -4179,6 +4219,18 @@ function mapDigestLabels(digest = ''): string {
         .trim() || '';
 }
 
+function mapDigestSceneLines(digest = ''): string[] {
+    const lines = String(digest || '')
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean);
+    const title = lines.find((line) => line.startsWith('地图：'))?.replace(/^地图：/, '').trim();
+    return [
+        title ? `当前场景：${title}` : '',
+        ...lines.filter((line) => !line.startsWith('地图：') && !line.startsWith('标注：')),
+    ].filter(Boolean);
+}
+
 export async function buildTavernSpatialStateDigest(sessionId = ''): Promise<string> {
     await ensureSeedStructuredStateDocument(sessionId, { touchSession: false });
     const atlasRecord = await getTavernStructuredStateDocument(sessionId, ATLAS_DOC_TYPE, DEFAULT_ATLAS_DOC_ID);
@@ -4213,6 +4265,7 @@ export async function buildTavernSpatialStateDigest(sessionId = ''): Promise<str
         : null;
     const mapDigest = mapRecord ? createMapDigest(normalizeMapDocumentFromRecord(mapRecord), mapRecord.revision) : '';
     const sceneLabels = mapDigestLabels(mapDigest);
+    const sceneLines = mapDigestSceneLines(mapDigest);
 
     return [
         `当前地点：${atlasLocationLabel(active)}`,
@@ -4221,6 +4274,7 @@ export async function buildTavernSpatialStateDigest(sessionId = ''): Promise<str
         visited.length ? `已探索地点：${visited.join('、')}` : '',
         mentioned.length ? `已知但未到达：${mentioned.join('、')}` : '',
         actorLines.length ? `人物位置：${actorLines.join('，')}` : '',
+        ...sceneLines,
         sceneLabels ? `当前场景标注：${sceneLabels}` : active.mapDocId ? '当前场景标注：暂无' : '当前地点暂无详细地图',
     ].filter(Boolean).join('\n');
 }
