@@ -1377,7 +1377,13 @@ function buildConversationMessageUnit(message, index, depthByMessage) {
 function normalizeHistoryMessage(message = {}) {
   const role = message.is_user === true ? "user" : normalizeRole(message.role, "assistant");
   if (role === "tool") {
-    return null;
+    const toolCallId = message.tool_call_id || message.toolCallId || "";
+    const content = String(message.content || message.mes || message.message || "");
+    return {
+      role: "tool",
+      content,
+      tool_call_id: String(toolCallId || "")
+    };
   }
   return makeMessage(role, message.content || message.mes || message.message, {
     ...message.name ? { name: String(message.name) } : {},
