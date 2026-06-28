@@ -641,7 +641,8 @@ test('tavern chat exposes local settings modals without leaving the session', ()
     assert.match(chatPageSource, /const quickSettingsOpen = ref<ChatQuickWorkspace \| null>\(null\)/);
     assert.match(chatPageSource, /const chatAppMenuItems:[\s\S]*key: 'characters'[\s\S]*key: 'api'[\s\S]*key: 'chatPreset'[\s\S]*key: 'assistantPreset'[\s\S]*key: 'worldbooks'[\s\S]*key: 'regex'[\s\S]*key: 'base'/);
     assert.match(chatPageSource, /mobileLabel: '角色卡'[\s\S]*mobileLabel: 'API 配置'[\s\S]*mobileLabel: '聊天预设'[\s\S]*mobileLabel: '助手预设'[\s\S]*mobileLabel: '世界书'[\s\S]*mobileLabel: '基础设置'/);
-    assert.match(chatPageSource, /class="home-corner-actions page-corner-actions chat-app-menu-shell"[\s\S]*title="首页"[\s\S]*class="home-icon-button chat-app-menu-button"[\s\S]*title="酒馆操作菜单"/);
+    assert.match(chatPageSource, /class="home-corner-actions page-corner-actions chat-app-menu-shell"[\s\S]*title="首页"[\s\S]*class="home-icon-button chat-app-menu-button chat-app-menu-button-desktop"[\s\S]*title="酒馆操作菜单"/);
+    assert.match(chatPageSource, /class="xb-sidebar settings-sidebar chat-character-sidebar"[\s\S]*class="chat-character-card"[\s\S]*@click="openChatAppWorkspace\('characters'\)"[\s\S]*v-for="item in chatAppMenuItems"[\s\S]*class="guide-step"[\s\S]*@click="openChatAppWorkspace\(item\.key\)"/);
     assert.match(chatPageSource, /class="chat-mobile-action-group"[\s\S]*title="首页"[\s\S]*class="chat-mobile-icon-button chat-mobile-utility-button chat-app-menu-button"[\s\S]*title="酒馆操作菜单"/);
     assert.doesNotMatch(chatPageSource, /class="chat-mobile-icon-button chat-mobile-utility-button"[\s\S]*title="聊天预设"[\s\S]*@click="openChatAppWorkspace\('chatPreset'\)"/);
     assert.doesNotMatch(chatPageSource, /class="chat-mobile-icon-button chat-mobile-utility-button"[\s\S]*title="API 配置"[\s\S]*@click="openChatAppWorkspace\('api'\)"/);
@@ -668,6 +669,11 @@ test('tavern chat exposes local settings modals without leaving the session', ()
     assert.match(chatLayoutCss, /\.chat-quick-settings-dialog \{[\s\S]*grid-template-rows: auto minmax\(0, 1fr\);/);
     assert.match(chatPageSource, /class="chat-quick-settings-overlay"[\s\S]*:class="quickSettingsLayoutClass"[\s\S]*class="chat-quick-settings-dialog"[\s\S]*:class="quickSettingsLayoutClass"/);
     assert.match(chatLayoutCss, /@media \(max-width: 760px\) \{[\s\S]*\.tavern-chat\.xb-page \.chat-quick-settings-overlay\.is-characters-workspace \{[\s\S]*align-items: stretch;[\s\S]*padding: 0;[\s\S]*\.tavern-chat\.xb-page \.chat-quick-settings-dialog\.is-characters-workspace \{[\s\S]*height: 100%;[\s\S]*max-height: none;[\s\S]*border-radius: 0;/);
+    assert.match(chatLayoutCss, /\.tavern-chat\.xb-page(?:,[\s\S]*?\.tavern-chat\.xb-page\.chat-focus-manager)? \{[\s\S]*grid-template-columns: 236px minmax\(520px, 0\.98fr\) minmax\(460px, 1\.02fr\);/);
+    assert.match(chatLayoutCss, /\.tavern-chat\.xb-page \.chat-character-sidebar \{[\s\S]*border-right: 1px solid var\(--xb-line\);[\s\S]*background: var\(--xb-chat-sidebar-bg\);/);
+    assert.match(chatLayoutCss, /\.tavern-chat\.xb-page \.chat-character-card \{[\s\S]*grid-template-columns: 58px minmax\(0, 1fr\);[\s\S]*border-radius: 14px;/);
+    assert.match(chatLayoutCss, /\.tavern-chat\.xb-page \.chat-app-menu-button-desktop,[\s\S]*\.tavern-chat\.xb-page \.chat-app-menu-popover-desktop \{[\s\S]*display: none;/);
+    assert.match(chatLayoutCss, /@media \(max-width: 1220px\) \{[\s\S]*\.tavern-chat\.xb-page \.chat-character-sidebar \{[\s\S]*display: none;[\s\S]*\.tavern-chat\.xb-page \.chat-app-menu-button-desktop \{[\s\S]*display: grid;[\s\S]*\.tavern-chat\.xb-page \.chat-app-menu-popover-desktop \{[\s\S]*display: grid;/);
     assert.match(chatLayoutCss, /\.tavern-chat\.xb-page \.chat-app-menu-popover \{[\s\S]*top: calc\(100% \+ 8px\);[\s\S]*right: 0;[\s\S]*display: grid;[\s\S]*width: 132px;/);
     assert.match(chatLayoutCss, /\.tavern-chat\.xb-page \.chat-app-menu-item \{[\s\S]*width: 100%;[\s\S]*min-height: 32px;/);
     assert.match(chatLayoutCss, /@media \(max-width: 760px\) \{[\s\S]*\.tavern-chat\.xb-page \.chat-app-menu-shell-mobile \{[\s\S]*position: relative;[\s\S]*\.tavern-chat\.xb-page \.chat-app-menu-shell-mobile \.chat-app-menu-popover \{[\s\S]*width: 108px;/);
@@ -1890,8 +1896,9 @@ test('tavern streaming action-check UI renders from live runtime events and keep
     assert.doesNotMatch(chatPageSource, /TavernChatSidebar|chatSidePanel|shouldMountChatDirectory|openMobileSessionsPanel|mobileChatPanel = ref<'none' \| 'directory'|is-mobile-directory-open/);
     assert.doesNotMatch(appSource, /CHAT_SIDEBAR|chatSidebar|chatSidePanel|ChatSidePanel/);
     assert.doesNotMatch(contextSource, /CHAT_SIDEBAR|chatSidebar|chatSidePanel/);
-    assert.match(layoutCss, /\.tavern-chat\.xb-page,[\s\S]*grid-template-columns: minmax\(520px, 0\.98fr\) minmax\(460px, 1\.02fr\);/);
-    assert.match(layoutCss, /@media \(max-width: 980px\) \{[\s\S]*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 0\.86fr\);/);
+    assert.match(layoutCss, /\.tavern-chat\.xb-page,[\s\S]*grid-template-columns: 236px minmax\(520px, 0\.98fr\) minmax\(460px, 1\.02fr\);/);
+    assert.match(layoutCss, /\.tavern-chat\.xb-page \.chat-character-sidebar \{[\s\S]*overflow: hidden auto;[\s\S]*border-right: 1px solid var\(--xb-line\);/);
+    assert.match(layoutCss, /@media \(max-width: 1220px\) \{[\s\S]*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 0\.86fr\);/);
     assert.doesNotMatch(layoutCss, /@media \(max-width: 980px\) \{[\s\S]*\.chat-head-actions button:last-child \{[\s\S]*display: none;/);
     assert.match(layoutCss, /\.chat-head \{[\s\S]*justify-content: space-between;/);
     assert.match(conversationPanelSource, /<header class="chat-head">[\s\S]*class="chat-head-main"[\s\S]*class="xb-workspace-controller chat-layout-controller"[\s\S]*chatLayout === 'chat'[\s\S]*chatLayout === 'balanced'[\s\S]*chatLayout === 'editor'[\s\S]*class="chat-head-actions"/);

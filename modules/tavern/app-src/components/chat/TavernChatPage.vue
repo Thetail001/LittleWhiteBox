@@ -46,12 +46,14 @@ const {
     activeView,
     chatFocus,
     homeThemeDark,
+    rememberBrokenAvatar,
 } = shell;
 const {
     chatAutoScroll,
     chatLayout,
     chatScrollRef,
     currentAuthorNote,
+    displayCharacterName,
     isRunning,
     saveCurrentAuthorNote,
     messageKey,
@@ -59,6 +61,7 @@ const {
     runtimeText,
     runtimeThoughts,
     updateChatScrollButtons,
+    visibleCharacterAvatar,
 } = chat;
 const {
     chatMessageWindow,
@@ -559,7 +562,7 @@ onUpdated(() => {
       </button>
       <button
         type="button"
-        class="home-icon-button chat-app-menu-button"
+        class="home-icon-button chat-app-menu-button chat-app-menu-button-desktop"
         title="酒馆操作菜单"
         aria-label="酒馆操作菜单"
         :aria-expanded="chatAppMenuOpen"
@@ -576,7 +579,7 @@ onUpdated(() => {
       </button>
       <div
         v-if="chatAppMenuOpen"
-        class="chat-app-menu-popover"
+        class="chat-app-menu-popover chat-app-menu-popover-desktop"
         role="menu"
         aria-label="酒馆操作"
       >
@@ -789,6 +792,49 @@ onUpdated(() => {
       aria-label="收起面板"
       @click="closeMobileChatPanel"
     />
+    <aside
+      v-if="!isMobileChatViewport"
+      class="xb-sidebar settings-sidebar chat-character-sidebar"
+    >
+      <div class="panel guide-card chat-character-guide">
+        <button
+          type="button"
+          class="chat-character-card"
+          :class="{ active: quickSettingsOpen === 'characters' }"
+          title="角色卡"
+          aria-label="角色卡"
+          @click="openChatAppWorkspace('characters')"
+        >
+          <span class="chat-character-avatar">
+            <img
+              v-if="visibleCharacterAvatar"
+              :src="visibleCharacterAvatar"
+              alt=""
+              @error="rememberBrokenAvatar(visibleCharacterAvatar)"
+            >
+            <span v-else>{{ String(displayCharacterName || 'C').slice(0, 1) }}</span>
+          </span>
+          <span class="chat-character-card-text">
+            <strong>{{ displayCharacterName }}</strong>
+          </span>
+        </button>
+        <div class="guide-steps chat-character-steps">
+          <button
+            v-for="item in chatAppMenuItems"
+            :key="item.key"
+            type="button"
+            class="guide-step"
+            :class="{ active: quickSettingsOpen === item.key }"
+            @click="openChatAppWorkspace(item.key)"
+          >
+            <strong>
+              <span class="guide-label-full">{{ item.label }}</span>
+              <span class="guide-label-mobile">{{ item.mobileLabel }}</span>
+            </strong>
+          </button>
+        </div>
+      </div>
+    </aside>
     <section
       class="chat-workbench"
       :class="{ 'is-manager': chatFocus === 'manager' }"
