@@ -1,6 +1,6 @@
 import { applyTextEdits } from '../../agent-core/tools/text-edit.js';
 
-import { getTavernStateToolDefinitions } from './structured-state';
+import { getTavernManagerStateToolDefinitions } from './structured-state';
 import { getTavernTaskToolDefinitions } from './tasks';
 import type { XbTavernContext, XbTavernWorldBook, XbTavernWorldEntry } from './message-assembler';
 import db, {
@@ -489,6 +489,51 @@ export async function trimTavernMemorySnapshotsFromFloor(sessionId = '', fromFlo
         await tavernMemorySnapshotsTable.bulkDelete(affected.map((snapshot) => [snapshot.sessionId, snapshot.floor]));
         return affected.length;
     });
+}
+
+export async function describeTavernMemoryRestoreImpact(sessionId = '', targetFloor = -1): Promise<{
+    changed: boolean;
+    currentFileCount: number;
+    targetFileCount: number;
+    changedPaths: string[];
+}> {
+    const id = String(sessionId || '').trim();
+    if (!id) {
+        return { changed: false, currentFileCount: 0, targetFileCount: 0, changedPaths: [] };
+    }
+    const snapshot = await getLatestTavernMemorySnapshot(id, targetFloor);
+    const currentFiles = await listTavernMemoryFiles(id, { includeStale: true });
+    let targetFiles: TavernMemoryFileRecord[];
+    if (snapshot) {
+        targetFiles = snapshot.files.map((entry) => cloneJson(entry.file));
+    } else {
+        const session = await tavernSessionsTable.get(id);
+        targetFiles = [{
+            sessionId: id,
+            path: 'memory/state.md',
+            content: buildDefaultTavernMemoryStateContent(session?.characterName || ''),
+            status: 'active',
+            source: 'default',
+            createdAt: 0,
+            updatedAt: 0,
+        }];
+    }
+    const currentFingerprint = memorySnapshotCollectionFingerprint(currentFiles);
+    const targetFingerprint = memorySnapshotCollectionFingerprint(targetFiles);
+    const currentByPath = new Map(
+        currentFiles.map((file) => [normalizeTavernMemoryPath(file.path), memorySnapshotFileFingerprint(file)] as const),
+    );
+    const targetByPath = new Map(
+        targetFiles.map((file) => [normalizeTavernMemoryPath(file.path), memorySnapshotFileFingerprint(file)] as const),
+    );
+    const changedPaths = [...new Set([...currentByPath.keys(), ...targetByPath.keys()])]
+        .filter((path) => currentByPath.get(path) !== targetByPath.get(path));
+    return {
+        changed: currentFingerprint !== targetFingerprint,
+        currentFileCount: currentFiles.length,
+        targetFileCount: targetFiles.length,
+        changedPaths,
+    };
 }
 
 export async function restoreTavernMemoryToFloor(sessionId = '', targetFloor = -1): Promise<TavernMemoryFileRecord[]> {
@@ -1508,7 +1553,7 @@ export function getTavernMemoryToolDefinitions(): Array<{ type: 'function'; func
 export function getTavernManagerToolDefinitions(): Array<{ type: 'function'; function: { name: string; description: string; parameters: unknown } }> {
     return [
         ...getTavernSourceFileToolDefinitions(),
-        ...getTavernStateToolDefinitions(),
+        ...getTavernManagerStateToolDefinitions(),
         ...getTavernTaskToolDefinitions(),
     ];
 }

@@ -334,14 +334,18 @@
 .tavern-chat.xb-page .manager-work-band > summary {
     cursor: pointer;
     display: grid;
-    grid-template-columns: auto auto minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 14px;
-    min-height: 40px;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas:
+        "marker kind"
+        ". summary"
+        ". metric";
+    align-items: start;
+    gap: 3px 10px;
+    min-height: 46px;
     list-style: none;
     font-family: var(--xb-font-mono);
     font-size: 12px;
-    padding: 0 34px;
+    padding: 8px 34px;
 }
 
 .tavern-chat.xb-page .manager-work-band > summary::-webkit-details-marker {
@@ -350,6 +354,8 @@
 
 .tavern-chat.xb-page .manager-work-band > summary::before {
     content: "+";
+    grid-area: marker;
+    line-height: 1.35;
     color: var(--xb-manager-accent);
     font-weight: 700;
 }
@@ -363,8 +369,17 @@
 }
 
 .tavern-chat.xb-page .manager-work-band > summary strong {
+    grid-area: kind;
     color: var(--xb-manager-text);
     white-space: nowrap;
+}
+
+.tavern-chat.xb-page .manager-work-band > summary span {
+    grid-area: summary;
+}
+
+.tavern-chat.xb-page .manager-work-band > summary em {
+    grid-area: metric;
 }
 
 .tavern-chat.xb-page .manager-work-band > summary span,
@@ -377,13 +392,13 @@
 
 .tavern-chat.xb-page .manager-work-band > summary em {
     font-style: normal;
-    text-align: right;
+    text-align: left;
 }
 
 .tavern-chat.xb-page .manager-work-band-body {
     display: grid;
-    grid-template-columns: minmax(220px, 0.8fr) minmax(260px, 1.2fr);
-    gap: 14px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 9px;
     max-height: 280px;
     overflow: auto;
     border-top: 1px solid rgba(255, 255, 255, 0.08);
@@ -405,9 +420,9 @@
 .tavern-chat.xb-page .manager-tool-round-title,
 .tavern-chat.xb-page .manager-tool-head {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 2px;
 }
 
 .tavern-chat.xb-page .manager-tool-round-title strong,
@@ -510,9 +525,9 @@
 
 .tavern-chat.xb-page .manager-work-section-head {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
     min-width: 0;
 }
 
@@ -551,6 +566,7 @@
 
 .tavern-chat.xb-page .manager-work-status-grid {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: 6px;
     border-top: 1px solid var(--xb-manager-line);
     border-bottom: 1px solid var(--xb-manager-line);
@@ -601,9 +617,9 @@
 .tavern-chat.xb-page .manager-work-history > summary {
     cursor: pointer;
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 2px;
     list-style: none;
     color: var(--xb-manager-muted);
     font-family: var(--xb-font-mono);
@@ -621,9 +637,9 @@
 
 .tavern-chat.xb-page .manager-history-row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 12px;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: 4px;
     border-top: 1px solid var(--xb-manager-line);
     padding: 9px 10px;
 }
@@ -650,9 +666,9 @@
 }
 
 .tavern-chat.xb-page .manager-history-row span {
-    max-width: 220px;
+    max-width: none;
     overflow: hidden;
-    text-align: right;
+    text-align: left;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
@@ -990,32 +1006,9 @@
     }
 
     .tavern-chat.xb-page .manager-work-band > summary {
-        grid-template-columns: auto auto minmax(0, 1fr);
-        gap: 8px;
         min-height: 42px;
         padding-top: 6px;
         padding-bottom: 6px;
-    }
-
-    .tavern-chat.xb-page .manager-work-band > summary em {
-        grid-column: 2 / -1;
-        text-align: left;
-    }
-
-    .tavern-chat.xb-page .manager-work-section-head {
-        align-items: flex-start;
-        flex-direction: column;
-        gap: 6px;
-    }
-
-    .tavern-chat.xb-page .manager-history-row {
-        grid-template-columns: minmax(0, 1fr);
-        gap: 4px;
-    }
-
-    .tavern-chat.xb-page .manager-history-row span {
-        max-width: none;
-        text-align: left;
     }
 }
 

@@ -8,6 +8,7 @@ import {
 import { normalizeTavernDisplaySettings, type TavernDisplaySettings } from '../shared/settings';
 import { TAVERN_INLINE_IMAGE_PROGRESS_EVENT, useTavernMarkdownTools } from './components/chat/useTavernMarkdownTools';
 import { useTavernScrollPane } from './components/chat/useTavernScrollPane';
+import { captureElementScrollState, restoreElementScrollState, type ElementScrollSnapshot } from './scroll-state';
 import { setHostChatCompletionsRequestHeadersProvider } from '../../../shared/host-llm/chat-completions/client.js';
 import {
     normalizeXbTavernAuthorNote,
@@ -23,30 +24,21 @@ import {
     getTavernMemoryIndex,
     getTavernMemoryFile,
     rebuildTavernMemoryDerivedIndex,
-    restoreTavernMemoryToFloor,
-    trimTavernMemorySnapshotsFromFloor,
 } from '../shared/memory-files';
 import {
     createTavernSession,
     appendTavernMessage,
     appendTavernManagerMessage,
-    countTavernMessages,
-    deleteTavernSession,
     deleteTavernManagerMessages,
     deleteTavernMessages,
-    getLatestTavernAssistantOrder,
     getLatestTavernUserMessageAtOrBefore,
     getTavernMessage,
     listTavernManagerMessages,
-    getSelectedTavernSessionId,
     listTavernManagerRuns,
     listTavernMessageOrdersFrom,
     listTavernMessages,
-    loadTavernMessageWindow,
-    listTavernSessions,
     normalizeTavernSessionState,
     replaceTavernSessionState,
-    setSelectedTavernSessionId,
     updateTavernSessionState,
     updateTavernManagerMessage,
     updateTavernMessage,
@@ -64,7 +56,7 @@ import {
     type TavernTaskRecord,
 } from '../shared/session-db';
 import { getTavernAtlasStateForSession, getTavernMapStateForSession, type TavernMapStateDocumentItem } from '../shared/structured-state';
-import { listTavernTasks, restoreTavernTasksToFloor, trimTavernTaskSnapshotsFromFloor } from '../shared/tasks';
+import { listTavernTasks } from '../shared/tasks';
 import { saveAcceptedStateSnapshot } from '../shared/accepted-state';
 import {
     normalizeTavernSessionContract,
@@ -82,10 +74,8 @@ import {
     buildContextHistory,
     deriveTavernSessionStateFromMessagesAsync,
     resolveTavernContextWindow,
-    runXbTavernTurn,
     simulateXbTavernRequest,
     type TavernBuildNativeChatPromptRuntime,
-    type TavernRunStreamSnapshot,
 } from './runtime/run-once';
 import {
     buildManagerChatDisplayItems,
@@ -102,6 +92,16 @@ import {
     runXbTavernManagerChat,
     type TavernManagerProtocolEvent,
 } from './runtime/manager';
+import {
+    cancelAcceptedRollbackManagersBeforeMessage,
+    describeAcceptedStateRollbackImpact,
+    rollbackImpactLines,
+    restoreAcceptedMemoryAndTaskStateBeforeMessage,
+} from './features/accepted-rollback/accepted-rollback';
+import { createTavernChatRunState, useTavernChatRunController } from './features/chat-run/useTavernChatRunController';
+import { useTavernDrawController } from './features/draw/useTavernDrawController';
+import { useTavernHostBridge, type TavernHostMessageData } from './features/host-bridge/useTavernHostBridge';
+import { createTavernSessionState, useTavernSessionController } from './features/session/useTavernSessionController';
 import TavernAboutPage from './components/TavernAboutPage.vue';
 import TavernHomePage from './components/TavernHomePage.vue';
 import TavernChatPage from './components/chat/TavernChatPage.vue';
@@ -116,9 +116,17 @@ import {
 } from './components/settings/useTavernSettingsController';
 import {
     TAVERN_APP_UI_CONTEXT,
+    type TavernAppUiContext,
+    type TavernCharacterContext,
     type TavernCharacterOption,
     type TavernCharacterWorldbookState,
+    type TavernChatContext,
     type TavernDialogOptions,
+    type TavernManagerContext,
+    type TavernMemoryContext,
+    type TavernSessionContext,
+    type TavernShellContext,
+    type TavernWorkspaceContext,
 } from './components/tavern-app-context';
 
 interface TavernDiagnostics {
@@ -160,8 +168,6 @@ interface TavernDialogState {
     resolve: (value: boolean | string | null) => void;
 }
 
-const SOURCE_APP = 'xb-tavern-app';
-const SOURCE_HOST = 'xb-tavern-host';
 const CHARACTER_ARCHIVE_BATCH_SIZE = 48;
 const MANAGER_RUN_VISIBLE_LIMIT = 12;
 const MEMORY_TURN_INITIAL_LIMIT = 36;
@@ -194,50 +200,43 @@ const pendingCharacterGreetingIndex = ref(0);
 const pendingCharacterError = ref('');
 const selectedSessionCharacterError = ref('');
 const statusText = ref('等待读取角色与会话');
-const currentUserMessage = ref('');
 const historyMode = ref<'raw' | 'squash'>('raw');
-const runtimeText = ref('');
-const runtimeThoughts = ref<Array<{ label?: string; text?: string }>>([]);
-const runtimeError = ref('');
+const chatRunState = createTavernChatRunState();
+const {
+    currentUserMessage,
+    isCancellingRun,
+    isRunning,
+    runtimeActionCheckEvents,
+    runtimeError,
+    runtimeFinalizedAssistantMessage,
+    runtimeModel,
+    runtimePendingUserMessage,
+    runtimeProvider,
+    runtimeText,
+    runtimeThoughts,
+    runtimeUserMessageVisible,
+} = chatRunState;
 const tavernToast = ref<{
     id: number;
     message: string;
     tone: 'info' | 'warning' | 'danger';
 } | null>(null);
-const runtimeProvider = ref('');
-const runtimeModel = ref('');
-const runtimeUserMessageVisible = ref(false);
-const runtimePendingUserMessage = ref('');
-const isRunning = ref(false);
-const isCancellingRun = ref(false);
-const tavernDrawStatus = ref({ provider: 'disabled', enabled: false, ready: false });
-const DEFAULT_TAVERN_DRAW_QUICK_SETTINGS: TavernDrawQuickSettings = {
-    provider: 'disabled',
-    providerLabel: '',
-    available: false,
-    auto: false,
-    presets: [],
-    selectedPresetId: '',
-    sizeOptions: [],
-    selectedSize: '',
-};
-const tavernDrawQuickSettings = ref<TavernDrawQuickSettings>({ ...DEFAULT_TAVERN_DRAW_QUICK_SETTINGS });
-const tavernDrawQuickSettingsLoading = ref(false);
-const drawJobs = ref<Record<string, TavernDrawJob>>({});
-const drawQueue = ref<string[]>([]);
-const drawRequestJobKeys = new Map<string, string>();
-let drawCooldownTimer: number | null = null;
-let drawFinishSerial = 0;
-let runtimeStreamFrame = 0;
-let pendingRuntimeStreamSnapshot: TavernRunStreamSnapshot | null = null;
-const sessions = ref<TavernSessionRecord[]>([]);
-const selectedSessionId = ref('');
-const loadedSessionMessages = ref<TavernMessageRecord[]>([]);
-const selectedSessionMessageTotal = ref(0);
-const loadedSessionMessageStartOrder = ref<number | null>(null);
-const loadedSessionMessageEndOrder = ref<number | null>(null);
-const selectedSessionLatestAssistantOrder = ref(-1);
-const sessionMessageCounts = ref<Record<string, number>>({});
+const sessionState = createTavernSessionState();
+const {
+    chatMessages,
+    currentAssistantFloor,
+    latestSessionMessage,
+    loadedSessionMessageEndOrder,
+    loadedSessionMessageStartOrder,
+    loadedSessionMessages,
+    selectedSession,
+    selectedSessionId,
+    selectedSessionLatestAssistantOrder,
+    selectedSessionMessageTotal,
+    sessionMessageCounts,
+    sessions,
+    visibleChatMessages,
+} = sessionState;
 const managerRuns = ref<TavernManagerRunRecord[]>([]);
 const tavernTasks = ref<TavernTaskRecord[]>([]);
 const memoryFiles = ref<TavernMemoryIndexFileEntry[]>([]);
@@ -274,7 +273,6 @@ interface TavernManagerLiveProtocolState {
 
 const LIVE_MANAGER_PROTOCOL_ORDER_BASE = 1000000000;
 const managerLiveProtocolState = ref<TavernManagerLiveProtocolState | null>(null);
-const runtimeActionCheckEvents = ref<TavernActionCheckRuntimeEvent[]>([]);
 const managerCompactionOverlay = ref<{
     id: string;
     active: boolean;
@@ -312,13 +310,6 @@ function readInitialTavernThemeDark(): boolean {
     }
     return false;
 }
-interface PendingHostRequest {
-    resolve: (value: Record<string, unknown>) => void;
-    reject: (error: Error) => void;
-    type: string;
-    abort?: () => void;
-    signal?: AbortSignal;
-}
 interface DisplayRegexTextRequest {
     key: string;
     text: string;
@@ -336,40 +327,6 @@ interface PendingRuntimeDisplayRegexRequest {
     latest: DisplayRegexTextRequest;
     inFlight: boolean;
 }
-type TavernDrawJobStatus = 'queued' | 'running' | 'success' | 'failed' | 'cancelled';
-interface TavernDrawQuickOption {
-    value: string;
-    label: string;
-}
-interface TavernDrawQuickSettings {
-    provider: string;
-    providerLabel: string;
-    available: boolean;
-    auto: boolean;
-    presets: TavernDrawQuickOption[];
-    selectedPresetId: string;
-    sizeOptions: TavernDrawQuickOption[];
-    selectedSize: string;
-}
-interface TavernDrawJob {
-    key: string;
-    sessionId: string;
-    order: number;
-    role: string;
-    status: TavernDrawJobStatus;
-    statusKind: 'running' | 'success' | 'error';
-    progressText: string;
-    requestId: string;
-    sourceTextHash: string;
-    queuedAt: number;
-    startedAt: number;
-    finishedAt: number;
-    finishId: number;
-    controller?: AbortController;
-}
-const pendingHostRequests = new Map<string, PendingHostRequest>();
-const DRAW_COMPLETION_NOTICE_TEXT = '配图已生成';
-const DRAW_COOLDOWN_TICK_MS = 100;
 function normalizedSearchText(value = '') {
     return String(value || '').trim().toLocaleLowerCase();
 }
@@ -406,7 +363,6 @@ function normalizeTextList(value: unknown): string[] {
         : [];
 }
 
-const selectedSession = computed(() => sessions.value.find((item) => item.id === selectedSessionId.value) || null);
 const currentAuthorNote = computed<XbTavernAuthorNote>(() => normalizeXbTavernAuthorNote(selectedSession.value?.contextSnapshot?.authorNote));
 const sessionRuntimeState = computed(() => normalizeTavernSessionState(selectedSession.value?.state || {}));
 const sessionContract = computed<TavernSessionContract>(() => normalizeTavernSessionContract(sessionRuntimeState.value.contract));
@@ -422,10 +378,12 @@ const chatLayout = ref<ChatLayout>('balanced');
 const chatComposeTextareaRef = ref<HTMLTextAreaElement | null>(null);
 const managerComposeTextareaRef = ref<HTMLTextAreaElement | null>(null);
 const managerWorkRef = ref<HTMLElement | null>(null);
+let flushDeferredChatDomCommits = () => false;
 const chatScrollPane = useTavernScrollPane({
     totalItems: () => selectedSessionMessageTotal.value,
     defaultLimit: hiddenOutsideCount,
     loadBatchSize,
+    onReturnToBottom: () => flushDeferredChatDomCommits(),
 });
 const managerScrollPane = useTavernScrollPane({
     totalItems: () => managerChatMessageDisplayItems.value.length,
@@ -444,7 +402,6 @@ const showManagerScrollBottom = managerScrollPane.showScrollBottom;
 const managerScrollControlsActive = managerScrollPane.scrollControlsActive;
 const chatMessageWindowLimit = chatScrollPane.messageWindowLimit;
 const managerMessageWindowLimit = managerScrollPane.messageWindowLimit;
-let suppressNextChatWindowLimitReload = false;
 const editingMessageKey = ref('');
 const editingMessageDraft = ref('');
 const showPromptInspector = ref(false);
@@ -455,7 +412,6 @@ const simulateRequestStatus = ref('');
 const simulateRequestError = ref('');
 const messageActionFeedback = ref<Record<string, 'success' | 'error'>>({});
 const displayRegexCache = ref<Record<string, string>>({});
-const activeRunController = ref<AbortController | null>(null);
 const managerAssistantController = ref<AbortController | null>(null);
 const tavernDialog = ref<TavernDialogState | null>(null);
 const tavernDialogInputRef = ref<HTMLInputElement | null>(null);
@@ -640,6 +596,67 @@ function handleTavernDialogTab(event: KeyboardEvent) {
     }
 }
 
+const hostBridge = useTavernHostBridge({
+    onHostRequestResolved: (type) => {
+        if (['xb-tavern:list-regex-scripts', 'xb-tavern:save-regex-script', 'xb-tavern:delete-regex-script'].includes(type)) {
+            clearDisplayRegexCache();
+        }
+    },
+});
+const {
+    createHostRequestId,
+    postToHost,
+    reportStartupProgress,
+    requestHost,
+} = hostBridge;
+
+function isKeyboardViewportTarget(target: EventTarget | null): target is HTMLElement {
+    if (!(target instanceof HTMLElement)) {return false;}
+    if (target.isContentEditable) {return true;}
+    const tagName = target.tagName.toLowerCase();
+    if (tagName === 'textarea') {return true;}
+    if (tagName !== 'input') {return false;}
+    const type = String((target as HTMLInputElement).type || 'text').toLowerCase();
+    return !['button', 'checkbox', 'color', 'file', 'hidden', 'image', 'radio', 'range', 'reset', 'submit'].includes(type);
+}
+
+function handleKeyboardViewportFocus(event: FocusEvent) {
+    if (!isKeyboardViewportTarget(event.target)) {return;}
+    postToHost('xb-tavern:viewport-settle', { reason: event.type });
+}
+
+const chatScrollAnchorConfig = {
+    itemSelector: '.chat-bubble[data-chat-anchor-key], .chat-history-gate[data-chat-anchor-key]',
+    datasetKey: 'chatAnchorKey',
+};
+
+function restoreDetachedChatScrollAfterMarkdown(snapshot: ElementScrollSnapshot | null) {
+    if (!snapshot || chatAutoScroll.value !== false) {return;}
+    restoreElementScrollState(chatScrollRef.value, snapshot, chatScrollAnchorConfig, {
+        preserveScrollTop: true,
+    });
+    chatScrollPane.updateScrollButtons();
+}
+
+function preserveDetachedChatScrollDuringMarkdown<T>(mutation: () => T): T {
+    const snapshot = chatAutoScroll.value === false
+        ? captureElementScrollState(chatScrollRef.value, chatScrollAnchorConfig)
+        : null;
+    try {
+        return mutation();
+    } finally {
+        restoreDetachedChatScrollAfterMarkdown(snapshot);
+        if (snapshot && typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+            window.requestAnimationFrame(() => {
+                restoreDetachedChatScrollAfterMarkdown(snapshot);
+                window.requestAnimationFrame(() => {
+                    restoreDetachedChatScrollAfterMarkdown(snapshot);
+                });
+            });
+        }
+    }
+}
+
 const {
     clearMarkdownCache,
     disposeMarkdownTools,
@@ -659,6 +676,7 @@ const {
     confirmDialog: confirmTavernDialog,
     requestHost,
     showToast: showTavernToast,
+    preserveChatScroll: preserveDetachedChatScrollDuringMarkdown,
     getHtmlFrameAvatarUrls: () => ({
         user: String(effectiveContext.value.user?.avatar || ''),
         char: String(effectiveContext.value.character?.avatar || ''),
@@ -687,9 +705,20 @@ const effectiveContext = computed<XbTavernContext>(() => ({
         ? buildContextHistory(loadedSessionMessages.value)
         : context.value.history,
 }));
-const currentWorldbookNativeCharacterId = computed(() => (
-    resolveCurrentNativeCharacterId(String(selectedSession.value?.characterKey || effectiveContext.value.character?.characterKey || '').trim(), { optional: true })
-));
+const currentNativeCharacterId = computed(() => {
+    const characterKey = String(selectedSession.value?.characterKey || effectiveContext.value.character?.characterKey || '').trim();
+    const byKey = characterKey ? resolveCurrentNativeCharacterId(characterKey, { optional: true }) : '';
+    return byKey
+        || String(selectedSession.value?.contextSnapshot?.character?.nativeCharacterId || '').trim()
+        || String(effectiveContext.value.character?.nativeCharacterId || '').trim();
+});
+const regexNativeCharacterId = computed(() => {
+    const previewKey = activeView.value === 'settings' && activeSettingsWorkspace.value === 'regex'
+        ? String(selectedCharacterPreviewKey.value || '').trim()
+        : '';
+    const previewNativeCharacterId = previewKey ? resolveCurrentNativeCharacterId(previewKey, { optional: true }) : '';
+    return previewNativeCharacterId || currentNativeCharacterId.value;
+});
 const {
     activeAssistantPreset,
     applyHostChatPreset,
@@ -713,7 +742,8 @@ const {
     agentConfig,
     tavernDisplaySettings,
     effectiveContext,
-    currentWorldbookNativeCharacterId,
+    currentNativeCharacterId,
+    regexNativeCharacterId,
     homeThemeDark,
     isRunning,
     confirmDialog: confirmTavernDialog,
@@ -745,6 +775,59 @@ const visibleUserAvatar = computed(() => {
     const url = userAvatar.value;
     return url && !brokenAvatarUrls.value[url] ? url : '';
 });
+const drawContext = useTavernDrawController({
+    selectedSessionId,
+    loadedSessionMessages,
+    selectedSession,
+    effectiveCharacterName: computed(() => String(effectiveCharacter.value.name || '')),
+    isEditingMessage,
+    messageKey,
+    roleLabel,
+    createHostRequestId,
+    requestHost,
+    getTavernMessage,
+    updateTavernMessage,
+    loadSelectedSessionMessageWindow,
+    flashMessageAction,
+    showToast: showTavernToast,
+    describeError,
+    markdownSignature,
+    stripTavernImageMarkers,
+    enhanceChatMarkdown,
+    nextTick,
+});
+const sessionController = useTavernSessionController(sessionState, {
+    activeView,
+    chatFocus,
+    chatMessageWindowLimit,
+    hiddenOutsideCount,
+    isRunning,
+    selectedCharacterPreviewKey,
+    selectedSessionCharacterError,
+    applySessionSnapshotContext,
+    cancelAndRollbackManagersForSession: (sessionId) => cancelAndRollbackXbTavernManagersForMessageRange(sessionId, 0),
+    cancelDrawJobsForSession: drawContext.cancelJobsForSession,
+    confirmDeleteSession: (title) => confirmTavernDialog({
+        title: '删除会话',
+        message: `删除「${title}」？`,
+        confirmText: '删除',
+        tone: 'danger',
+    }),
+    describeSessionTitle: sessionDisplayTitle,
+    invalidateMemoryFileRecordLoad: () => invalidateMemoryFileRecordLoad(),
+    openCharacterSettingsWorkspace: () => {
+        openSettingsWorkspace('characters');
+    },
+    refreshManagerRecords,
+    reportStartupProgress,
+    resetChatMessageWindowState: () => resetChatMessageWindowState(),
+    resetSessionPreviewState,
+    scrollChatToBottom: (force) => scrollChatToBottom(force),
+    syncCharacterWorldbookState,
+    syncSessionCharacterContextSafely,
+    abortActiveRun: () => chatRunController.abortActiveRun(),
+});
+const chatMessageWindow = sessionController.chatMessageWindow;
 const liveCharacter = computed(() => context.value.character || {});
 const liveCharacterKey = computed(() => String(liveCharacter.value.characterKey || '').trim());
 function findCharacterByKey(characterKey = ''): TavernCharacterOption | null {
@@ -939,71 +1022,6 @@ const displayCharacterName = computed(() => (
 ));
 const lastRequestSnapshot = computed(() => selectedSession.value?.state?.lastRequestSnapshot as RequestAuditSnapshot | undefined);
 const lastRequestRawJson = computed(() => String(lastRequestSnapshot.value?.rawRequestJson || lastRequestSnapshot.value?.rawMessagesJson || ''));
-const chatMessages = computed(() => loadedSessionMessages.value);
-function latestMessageInMemory(messages: TavernMessageRecord[]) {
-    let latest: TavernMessageRecord | null = null;
-    messages.forEach((message) => {
-        if (!latest || message.order > latest.order) {
-            latest = message;
-        }
-    });
-    return latest;
-}
-
-const latestSessionMessage = computed(() => latestMessageInMemory(loadedSessionMessages.value));
-const currentAssistantFloor = computed(() => selectedSessionLatestAssistantOrder.value);
-const chatMessageWindow = computed(() => {
-    const total = Math.max(0, Math.floor(Number(selectedSessionMessageTotal.value) || 0));
-    const visibleCount = loadedSessionMessages.value.length;
-    const hiddenBefore = Math.max(0, total - visibleCount);
-    return {
-        startIndex: hiddenBefore,
-        hiddenBefore,
-        visibleCount,
-        limit: chatMessageWindowLimit.value,
-        total,
-    };
-});
-const visibleChatMessages = computed(() => loadedSessionMessages.value);
-const latestDrawableAssistantMessage = computed(() => findLatestDrawableAssistantMessage());
-const tavernDrawCapsuleVisible = computed(() => (
-    tavernDrawStatus.value.enabled === true
-    && String(tavernDrawStatus.value.provider || 'disabled') !== 'disabled'
-));
-const tavernDrawCapsuleStatusText = computed(() => {
-    const message = latestDrawableAssistantMessage.value;
-    return message ? drawMessageStatusText(message) : '';
-});
-const tavernDrawCapsuleStatusClass = computed(() => {
-    const message = latestDrawableAssistantMessage.value;
-    return message ? drawMessageStatusClass(message) : '';
-});
-const tavernDrawCapsuleWorking = computed(() => {
-    const message = latestDrawableAssistantMessage.value;
-    return !!message && isDrawingMessage(message);
-});
-const tavernDrawCapsuleMainDisabled = computed(() => (
-    tavernDrawCapsuleVisible.value
-    && !tavernDrawStatus.value.ready
-    && !tavernDrawCapsuleWorking.value
-));
-const tavernDrawCapsuleTitle = computed(() => {
-    const message = latestDrawableAssistantMessage.value;
-    if (message) {
-        const statusText = tavernDrawCapsuleStatusText.value;
-        if (statusText) {return statusText;}
-        if (tavernDrawCapsuleWorking.value) {return drawMessageTitle(message);}
-    }
-    if (!tavernDrawStatus.value.ready) {return '画图模块初始化中';}
-    return message ? '为最新回复画图' : '没有可配图的回复';
-});
-const tavernDrawCapsuleIcon = computed(() => {
-    if (tavernDrawCapsuleWorking.value) {return '■';}
-    const statusClass = tavernDrawCapsuleStatusClass.value;
-    if (statusClass.includes('success')) {return '✓';}
-    if (statusClass.includes('error')) {return '!';}
-    return '🎨';
-});
 const {
     archivedManagerRuns,
     currentManagerWorkRun,
@@ -1028,54 +1046,17 @@ const {
     managerRuns,
     visibleRunLimit: MANAGER_RUN_VISIBLE_LIMIT,
 });
-function rememberSessionMessageCount(sessionId = '', count = 0) {
-    const id = String(sessionId || '').trim();
-    if (!id) {return;}
-    const nextCount = Math.max(0, Math.floor(Number(count) || 0));
-    if (sessionMessageCounts.value[id] === nextCount) {return;}
-    sessionMessageCounts.value = {
-        ...sessionMessageCounts.value,
-        [id]: nextCount,
-    };
-}
-
-function forgetSessionMessageCount(sessionId = '') {
-    const id = String(sessionId || '').trim();
-    if (!id || !(id in sessionMessageCounts.value)) {return;}
-    const next = { ...sessionMessageCounts.value };
-    delete next[id];
-    sessionMessageCounts.value = next;
-}
 
 function sessionFloorCount(session?: TavernSessionRecord | null) {
-    const id = String(session?.id || '').trim();
-    if (!id) {return 0;}
-    if (id === selectedSessionId.value) {return selectedSessionMessageTotal.value;}
-    return Math.max(0, Number(sessionMessageCounts.value[id]) || 0);
+    return sessionController.sessionFloorCount(session);
 }
 
 function sessionFloorLabel(session?: TavernSessionRecord | null) {
-    const id = String(session?.id || '').trim();
-    if (id && id !== selectedSessionId.value && !(id in sessionMessageCounts.value)) {
-        return '统计中';
-    }
-    return `第 ${sessionFloorCount(session)} 楼`;
+    return sessionController.sessionFloorLabel(session);
 }
 
 async function refreshSessionMessageCountsForSessions(targetSessions: TavernSessionRecord[] = []) {
-    const visibleIds = targetSessions
-        .map((session) => String(session.id || '').trim())
-        .filter(Boolean);
-    const missingIds = [...new Set(visibleIds)]
-        .filter((id) => id !== selectedSessionId.value && !(id in sessionMessageCounts.value));
-    if (!missingIds.length) {return;}
-    const entries = await Promise.all(missingIds.map(async (id) => [id, await countTavernMessages(id)] as const));
-    const next = { ...sessionMessageCounts.value };
-    entries.forEach(([id, count]) => {
-        if (id === selectedSessionId.value || id in sessionMessageCounts.value) {return;}
-        next[id] = Math.max(0, Math.floor(Number(count) || 0));
-    });
-    sessionMessageCounts.value = next;
+    await sessionController.refreshSessionMessageCountsForSessions(targetSessions);
 }
 
 const activeMemoryFiles = computed(() => memoryFiles.value.filter((file) => file.status !== 'stale'));
@@ -1259,21 +1240,6 @@ const chatSubtitle = computed(() => {
 });
 const canSendMessage = computed(() => !isCancellingRun.value && (isRunning.value || (!selectedSessionCharacterError.value && !!currentUserMessage.value.trim())));
 const canSendManagerMessage = computed(() => !isManagerAssistantCancelling.value && (isManagerAssistantRunning.value || (!!selectedSessionId.value && !!managerInputDraft.value.trim())));
-function clonePostMessagePayload<T>(value: T): T {
-    const seen = new WeakSet<object>();
-    try {
-        return JSON.parse(JSON.stringify(value, (_key, item) => {
-            if (typeof item === 'bigint') {return String(item);}
-            if (typeof item === 'function' || typeof item === 'symbol') {return undefined;}
-            if (!item || typeof item !== 'object') {return item;}
-            if (seen.has(item)) {return undefined;}
-            seen.add(item);
-            return item;
-        })) as T;
-    } catch {
-        return {} as T;
-    }
-}
 
 watch(characterSearchText, () => {
     characterVisibleLimit.value = CHARACTER_ARCHIVE_BATCH_SIZE;
@@ -1323,13 +1289,6 @@ watch(memoryFileSearchText, () => {
     memoryFileGroupVisibleLimits.value = {};
 });
 
-watch([
-    () => selectedSessionId.value,
-    () => selectedSessionMessageTotal.value,
-], ([sessionId, count]) => {
-    rememberSessionMessageCount(String(sessionId || ''), Number(count) || 0);
-});
-
 watch(() => selectedCharacterSessions.value.map((session) => session.id).join('|'), () => {
     void refreshSessionMessageCountsForSessions(selectedCharacterSessions.value);
 }, { immediate: true });
@@ -1363,364 +1322,28 @@ function showTavernToast(
     }, Math.max(1200, options.durationMs ?? 3600));
 }
 
-function postToHost(type: string, payload: Record<string, unknown> = {}) {
-    const safePayload = clonePostMessagePayload(payload);
-    window.parent?.postMessage({ source: SOURCE_APP, type, payload: safePayload }, window.location.origin);
-}
-
-function reportStartupProgress(percent: number, action: string) {
-    postToHost('xb-tavern:startup-progress', { percent, action });
-}
-
-function createHostRequestId(prefix = 'host') {
-    return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function createAbortError() {
-    try {
-        return new DOMException('request_aborted', 'AbortError') as unknown as Error;
-    } catch {
-        return new Error('request_aborted');
-    }
-}
-
-function requestHost(type: string, payload: Record<string, unknown> = {}, options: { signal?: AbortSignal; requestId?: string } = {}) {
-    const requestId = String(options.requestId || '').trim() || createHostRequestId();
-    if (options.signal?.aborted) {
-        return Promise.reject(createAbortError());
-    }
-    postToHost(type, { ...payload, requestId });
-    return new Promise<Record<string, unknown>>((resolve, reject) => {
-        const cleanup = () => {
-            const pending = pendingHostRequests.get(requestId);
-            if (pending?.abort && options.signal) {
-                options.signal.removeEventListener('abort', pending.abort);
-            }
-            pendingHostRequests.delete(requestId);
-        };
-        const abort = () => {
-            cleanup();
-            postToHost('xb-tavern:cancel-request', { requestId });
-            reject(createAbortError());
-        };
-        if (options.signal) {
-            options.signal.addEventListener('abort', abort, { once: true });
-        }
-        pendingHostRequests.set(requestId, { resolve, reject, type, abort: options.signal ? abort : undefined, signal: options.signal });
-    });
-}
-
-function findAnchorPosition(content = '', anchor = '') {
-    const text = String(content || '');
-    const normalizedAnchor = String(anchor || '').trim();
-    if (!text || !normalizedAnchor) {return -1;}
-    const directIndex = text.indexOf(normalizedAnchor);
-    if (directIndex >= 0) {return directIndex + normalizedAnchor.length;}
-    const compactText = text.replace(/\s+/g, '');
-    const compactAnchor = normalizedAnchor.replace(/\s+/g, '');
-    if (!compactAnchor) {return -1;}
-    const compactIndex = compactText.indexOf(compactAnchor);
-    if (compactIndex < 0) {return -1;}
-    let compactCursor = 0;
-    for (let index = 0; index < text.length; index += 1) {
-        if (/\s/.test(text[index])) {continue;}
-        compactCursor += 1;
-        if (compactCursor >= compactIndex + compactAnchor.length) {
-            return index + 1;
-        }
-    }
-    return -1;
-}
-
-function findNearestSentenceEnd(content = '', startPos = -1) {
-    const text = String(content || '');
-    if (startPos < 0 || !text) {return startPos;}
-    if (startPos >= text.length) {return text.length;}
-    const maxLookAhead = 80;
-    const endLimit = Math.min(text.length, startPos + maxLookAhead);
-    const basicEnders = new Set(['。', '！', '？', '!', '?', '…']);
-    const closingMarks = new Set(['”', '“', '’', '‘', '」', '』', '】', '）', ')', '"', "'", '*', '~', '～', ']']);
-    const eatClosingMarks = (position: number) => {
-        let next = position;
-        while (next < text.length && closingMarks.has(text[next])) {
-            next += 1;
-        }
-        return next;
-    };
-    if (startPos > 0 && basicEnders.has(text[startPos - 1])) {
-        return eatClosingMarks(startPos);
-    }
-    for (let offset = 0; offset < maxLookAhead && startPos + offset < endLimit; offset += 1) {
-        const position = startPos + offset;
-        const char = text[position];
-        if (char === '\n') {return position + 1;}
-        if (basicEnders.has(char)) {return eatClosingMarks(position + 1);}
-        if (char === '.' && text.slice(position, position + 3) === '...') {
-            return eatClosingMarks(position + 3);
-        }
-    }
-    return startPos;
-}
-
-function insertTavernImageMarker(content = '', image: Record<string, unknown> = {}) {
-    const slotId = String(image.slotId || '').trim();
-    if (!slotId) {return { content, inserted: false, appended: false };}
-    const marker = `[tavern-image:${slotId}]`;
-    const text = String(content || '');
-    if (text.includes(marker)) {return { content: text, inserted: false, appended: false };}
-    let position = findAnchorPosition(text, String(image.anchor || ''));
-    if (position >= 0) {
-        position = findNearestSentenceEnd(text, position);
-    }
-    if (position >= 0) {
-        const before = text.slice(0, position);
-        const after = text.slice(position);
-        let insertText = marker;
-        if (before.length > 0 && !before.endsWith('\n')) {insertText = `\n${insertText}`;}
-        if (after.length > 0 && !after.startsWith('\n')) {insertText = `${insertText}\n`;}
-        return {
-            content: `${before}${insertText}${after}`,
-            inserted: true,
-            appended: false,
-        };
-    }
-    const needNewline = text.length > 0 && !text.endsWith('\n');
-    return {
-        content: `${text}${needNewline ? '\n' : ''}${marker}`,
-        inserted: true,
-        appended: true,
-    };
-}
-
-function insertTavernImageMarkers(content = '', images: unknown[] = []) {
-    let nextContent = String(content || '');
-    let inserted = 0;
-    let appended = 0;
-    (Array.isArray(images) ? images : []).forEach((rawImage) => {
-        const image = rawImage && typeof rawImage === 'object' ? rawImage as Record<string, unknown> : {};
-        if (!image.slotId) {return;}
-        const result = insertTavernImageMarker(nextContent, image);
-        nextContent = result.content;
-        if (result.inserted) {inserted += 1;}
-        if (result.appended) {appended += 1;}
-    });
-    return { content: nextContent, inserted, appended };
-}
-
-function formatDrawProgress(stateName = '', data: Record<string, unknown> = {}) {
-    const current = Number(data.current) || 0;
-    const total = Number(data.total) || 0;
-    const countText = total ? ` ${current}/${total}` : '';
-    switch (stateName) {
-        case 'llm':
-            return '正在分析画面';
-        case 'gen':
-            return total ? `准备生成 ${total} 张图` : '准备生成图片';
-        case 'queued':
-            return Number(data.ahead) > 0 ? `画图排队中，前方 ${Number(data.ahead)} 个任务` : `画图排队中${countText}`;
-        case 'progress':
-            return `正在生成图片${countText}`;
-        case 'cooldown': {
-            const remainingMs = Number.isFinite(Number(data.remainingMs))
-                ? Number(data.remainingMs)
-                : Number(data.duration);
-            if (!Number.isFinite(remainingMs) || remainingMs <= 0) {return '等待画图冷却';}
-            return `等待下一张图片${total ? ` ${data.nextIndex || current}/${total}` : ''}，剩余 ${(remainingMs / 1000).toFixed(1)}s`;
-        }
-        case 'success': {
-            const success = Number(data.success) || 0;
-            const finalTotal = total || success;
-            if (finalTotal > 0 && success === 0) {
-                return `画图结束，${finalTotal} 张都失败`;
-            }
-            return `画图完成 ${success}/${finalTotal}`;
-        }
-        default:
-            return '正在处理画图';
-    }
-}
-
-function clearDrawCooldownTimer() {
-    if (drawCooldownTimer) {
-        window.clearInterval(drawCooldownTimer);
-        drawCooldownTimer = null;
-    }
-}
-
-function setDrawJob(jobKey = '', patch: Partial<TavernDrawJob>): void {
-    const key = String(jobKey || '').trim();
-    if (!key) {return;}
-    const existing = drawJobs.value[key];
-    if (!existing) {return;}
-    drawJobs.value = {
-        ...drawJobs.value,
-        [key]: {
-            ...existing,
-            ...patch,
-        },
-    };
-}
-
-function removeDrawJob(jobKey = ''): void {
-    const key = String(jobKey || '').trim();
-    if (!key || !drawJobs.value[key]) {return;}
-    const next = { ...drawJobs.value };
-    delete next[key];
-    drawJobs.value = next;
-}
-
-function finishDrawJobStatus(jobKey = '', patch: Partial<TavernDrawJob>, durationMs = 0): void {
-    const key = String(jobKey || '').trim();
-    if (!key) {return;}
-    const finishedAt = Date.now();
-    const finishId = drawFinishSerial += 1;
-    setDrawJob(key, {
-        ...patch,
-        finishedAt,
-        finishId,
-        controller: undefined,
-    });
-    if (durationMs > 0) {
-        window.setTimeout(() => {
-            const current = drawJobs.value[key];
-            if (!current || ['queued', 'running'].includes(current.status) || current.finishId !== finishId) {return;}
-            removeDrawJob(key);
-        }, durationMs);
-    }
-}
-
-function startDrawCooldownCountdown(jobKey: string, data: Record<string, unknown> = {}) {
-    clearDrawCooldownTimer();
-    const duration = Math.max(0, Number(data.duration) || 0);
-    const endsAt = Date.now() + duration;
-    const updateCountdown = () => {
-        const job = drawJobs.value[jobKey];
-        if (!job || job.status !== 'running') {
-            clearDrawCooldownTimer();
-            return;
-        }
-        const remainingMs = Math.max(0, endsAt - Date.now());
-        setDrawJob(jobKey, {
-            statusKind: 'running',
-            progressText: formatDrawProgress('cooldown', {
-                ...data,
-                remainingMs,
-            }),
-        });
-        if (remainingMs <= 0) {
-            clearDrawCooldownTimer();
-        }
-    };
-    updateCountdown();
-    if (duration > 0) {
-        drawCooldownTimer = window.setInterval(updateCountdown, DRAW_COOLDOWN_TICK_MS);
-    }
-}
-
-function applyTavernDrawStatus(payload: Record<string, unknown> = {}) {
-    tavernDrawStatus.value = {
-        provider: String(payload.provider || 'disabled'),
-        enabled: payload.enabled === true,
-        ready: payload.ready === true,
-    };
-    if (!tavernDrawStatus.value.enabled || tavernDrawStatus.value.provider === 'disabled') {
-        tavernDrawQuickSettings.value = { ...DEFAULT_TAVERN_DRAW_QUICK_SETTINGS };
-    }
-}
-
-async function refreshTavernDrawStatus() {
-    try {
-        const result = await requestHost('xb-tavern:draw-status', {});
-        applyTavernDrawStatus(result);
-        if (tavernDrawCapsuleVisible.value) {
-            void refreshTavernDrawQuickSettings();
-        }
-    } catch {
-        applyTavernDrawStatus({ provider: 'disabled', enabled: false, ready: false });
-    }
-    return tavernDrawStatus.value;
-}
-
-function normalizeDrawQuickOption(value: unknown): TavernDrawQuickOption | null {
-    if (!value || typeof value !== 'object') {return null;}
-    const source = value as Record<string, unknown>;
-    const optionValue = String(source.value || '').trim();
-    if (!optionValue) {return null;}
-    return {
-        value: optionValue,
-        label: String(source.label || optionValue).trim() || optionValue,
-    };
-}
-
-function normalizeTavernDrawQuickSettings(payload: Record<string, unknown> = {}): TavernDrawQuickSettings {
-    const source = payload.result && typeof payload.result === 'object'
-        ? payload.result as Record<string, unknown>
-        : payload;
-    const presets = Array.isArray(source.presets)
-        ? source.presets.map(normalizeDrawQuickOption).filter((item): item is TavernDrawQuickOption => !!item)
-        : [];
-    const sizeOptions = Array.isArray(source.sizeOptions)
-        ? source.sizeOptions.map(normalizeDrawQuickOption).filter((item): item is TavernDrawQuickOption => !!item)
-        : [];
-    const selectedPresetId = String(source.selectedPresetId || presets[0]?.value || '').trim();
-    const selectedSize = String(source.selectedSize || sizeOptions[0]?.value || '').trim();
-    return {
-        provider: String(source.provider || tavernDrawStatus.value.provider || 'disabled'),
-        providerLabel: String(source.providerLabel || '').trim(),
-        available: source.available === true && presets.length > 0 && sizeOptions.length > 0,
-        auto: source.auto === true,
-        presets,
-        selectedPresetId,
-        sizeOptions,
-        selectedSize,
-    };
-}
-
-async function refreshTavernDrawQuickSettings(): Promise<TavernDrawQuickSettings> {
-    if (!tavernDrawCapsuleVisible.value) {
-        tavernDrawQuickSettings.value = { ...DEFAULT_TAVERN_DRAW_QUICK_SETTINGS };
-        return tavernDrawQuickSettings.value;
-    }
-    tavernDrawQuickSettingsLoading.value = true;
-    try {
-        const result = await requestHost('xb-tavern:draw-quick-settings', {});
-        tavernDrawQuickSettings.value = normalizeTavernDrawQuickSettings(result);
-    } catch {
-        tavernDrawQuickSettings.value = {
-            ...DEFAULT_TAVERN_DRAW_QUICK_SETTINGS,
-            provider: tavernDrawStatus.value.provider,
-        };
-    } finally {
-        tavernDrawQuickSettingsLoading.value = false;
-    }
-    return tavernDrawQuickSettings.value;
-}
-
-async function updateTavernDrawQuickSettings(patch: Record<string, unknown> = {}): Promise<void> {
-    if (!tavernDrawCapsuleVisible.value || tavernDrawQuickSettingsLoading.value) {return;}
-    tavernDrawQuickSettingsLoading.value = true;
-    try {
-        const result = await requestHost('xb-tavern:draw-update-quick-settings', { payload: patch });
-        tavernDrawQuickSettings.value = normalizeTavernDrawQuickSettings(result);
-    } catch (error) {
-        showTavernToast(`画图快捷设置保存失败：${describeError(error)}`, { tone: 'warning', durationMs: 3600 });
-    } finally {
-        tavernDrawQuickSettingsLoading.value = false;
-    }
-}
-
-async function applyTavernRegex(items: TavernApplyRegexItem[]): Promise<TavernApplyRegexResult> {
+async function applyTavernRegex(items: TavernApplyRegexItem[], options: { nativeCharacterId?: string } = {}): Promise<TavernApplyRegexResult> {
     if (!items.length) {
         return { items: [], changedCount: 0 };
     }
+    const hasExplicitNativeCharacterId = Object.prototype.hasOwnProperty.call(options, 'nativeCharacterId');
+    const nativeCharacterId = String(hasExplicitNativeCharacterId ? options.nativeCharacterId || '' : currentNativeCharacterId.value || '').trim();
     const response = await requestHost('xb-tavern:apply-regex', {
-        payload: { items },
+        payload: {
+            nativeCharacterId,
+            items,
+        },
     });
     const result = (response.result || response) as Partial<TavernApplyRegexResult>;
     return {
         items: Array.isArray(result.items) ? result.items : [],
         changedCount: Number(result.changedCount) || 0,
     };
+}
+
+function applyTavernRegexForNativeCharacter(nativeCharacterId = '') {
+    const resolvedNativeCharacterId = String(nativeCharacterId || '').trim();
+    return (items: TavernApplyRegexItem[]) => applyTavernRegex(items, { nativeCharacterId: resolvedNativeCharacterId });
 }
 
 function clearRuntimeDisplayRegexRequests() {
@@ -1812,6 +1435,7 @@ function displayRegexCacheKey(
     return [
         kind,
         message.sessionId,
+        String(currentNativeCharacterId.value || ''),
         String(message.order),
         message.role,
         String(message.name || ''),
@@ -1842,6 +1466,7 @@ function runtimeDisplayRegexCacheKey(
         'runtime',
         kind,
         selectedSessionId.value,
+        String(currentNativeCharacterId.value || ''),
         String(latestOrder),
         'assistant',
         String(input.index ?? ''),
@@ -2281,7 +1906,7 @@ async function saveCurrentAuthorNote(note: XbTavernAuthorNote): Promise<void> {
         characterName: String(nextContext.character?.name || session.characterName || ''),
     });
     if (updatedSession) {
-        sessions.value = sessions.value.map((item) => item.id === updatedSession.id ? updatedSession : item);
+        sessionController.updateSessionRecord(updatedSession);
     }
     if (selectedSessionId.value !== sessionId) {return;}
     context.value = nextContext;
@@ -2325,7 +1950,7 @@ async function syncSessionCharacterContext(options: { sessionId?: string; force?
         characterName: String(nextContext.character?.name || session.characterName || ''),
     });
     if (updatedSession) {
-        sessions.value = sessions.value.map((item) => item.id === updatedSession.id ? updatedSession : item);
+        sessionController.updateSessionRecord(updatedSession);
     }
     return nextContext;
 }
@@ -2347,36 +1972,6 @@ async function resolveRuntimeContextForSession(sessionId = selectedSessionId.val
     } catch (error) {
         setSelectedSessionCharacterError(error, targetSessionId);
         throw error;
-    }
-}
-
-function resolveHostRequest(payload: Record<string, unknown> = {}) {
-    const requestId = String(payload.requestId || '');
-    const pending = pendingHostRequests.get(requestId);
-    if (!pending) {return;}
-    if (pending.abort && pending.signal) {
-        pending.signal.removeEventListener('abort', pending.abort);
-    }
-    pendingHostRequests.delete(requestId);
-    if (payload.ok === false) {
-        const errorText = String(payload.error || 'host_request_failed');
-        const error = new Error(`${pending.type}: ${errorText}`);
-        const errorStack = String(payload.errorStack || '');
-        if (errorStack) {
-            error.stack = `${error.message}\n${errorStack}`;
-        }
-        console.error('[小白酒馆] host request failed', {
-            type: pending.type,
-            error: errorText,
-            errorName: String(payload.errorName || ''),
-            errorStack,
-        });
-        pending.reject(error);
-        return;
-    }
-    pending.resolve(payload);
-    if (['xb-tavern:list-regex-scripts', 'xb-tavern:save-regex-script', 'xb-tavern:delete-regex-script'].includes(pending.type)) {
-        clearDisplayRegexCache();
     }
 }
 
@@ -2461,60 +2056,42 @@ function hasCharacterPreviewDetails(character: TavernCharacterOption | null | un
     );
 }
 
-function onHostMessage(event: MessageEvent) {
-    if (event.origin !== window.location.origin) {return;}
-    const data = event.data || {};
-    if (data.source !== SOURCE_HOST) {return;}
-    if (data.type === 'xb-tavern:host-result') {
-        resolveHostRequest(data.payload || {});
-        return;
-    }
-    if (data.type === 'xb-tavern:draw-status-changed') {
-        applyTavernDrawStatus(data.payload || {});
-        if (tavernDrawCapsuleVisible.value) {
-            void refreshTavernDrawQuickSettings();
-        }
-        return;
-    }
-    if (data.type === 'xb-tavern:draw-progress') {
-        const payload = data.payload || {};
-        const requestId = String(payload.requestId || '').trim();
-        const jobKey = drawRequestJobKeys.get(requestId);
-        if (jobKey && drawJobs.value[jobKey]) {
-            const state = String(payload.state || '');
-            if (payload.state === 'cooldown') {
-                startDrawCooldownCountdown(jobKey, payload.data || {});
-            } else {
-                clearDrawCooldownTimer();
-                setDrawJob(jobKey, {
-                    statusKind: state === 'success' ? 'success' : 'running',
-                    progressText: formatDrawProgress(state, payload.data || {}),
-                });
-            }
-        }
-        return;
-    }
+function hostMessagePayload(data: TavernHostMessageData): Record<string, unknown> {
+    return data.payload && typeof data.payload === 'object' ? data.payload : {};
+}
+
+function handleInlineImageProgressHostMessage(data: TavernHostMessageData) {
     if (data.type === TAVERN_INLINE_IMAGE_PROGRESS_EVENT) {
         window.dispatchEvent(new CustomEvent(TAVERN_INLINE_IMAGE_PROGRESS_EVENT, {
-            detail: data.payload && typeof data.payload === 'object' ? data.payload : {},
+            detail: hostMessagePayload(data),
         }));
-        return;
+        return true;
     }
+    return false;
+}
+
+function handleConfigHostMessage(data: TavernHostMessageData) {
     if (data.type === 'xb-tavern:config') {
-        reportStartupProgress(80, 'applyHostPayload');
-        applyHostPayload(data.payload || {});
+        reportStartupProgress(88, 'applyHostPayload');
+        applyHostPayload(hostMessagePayload(data));
         initialConfigApplied = true;
         startPostReadyStartupTasksAfterInitialConfig();
-        return;
+        return true;
     }
     if (data.type === 'xb-tavern:context') {
-        applyHostPayload(data.payload || {});
-        return;
+        applyHostPayload(hostMessagePayload(data));
+        return true;
     }
     if (data.type === 'xb-tavern:config-saved') {
-        handleApiConfigSaved(data.payload || {});
+        handleApiConfigSaved(hostMessagePayload(data));
+        return true;
     }
+    return false;
 }
+
+hostBridge.addMessageHandler((data) => drawContext.handleHostMessage(data));
+hostBridge.addMessageHandler(handleInlineImageProgressHostMessage);
+hostBridge.addMessageHandler(handleConfigHostMessage);
 
 function openCharacterSelect() {
     pendingCharacterError.value = '';
@@ -2701,143 +2278,28 @@ async function enterSelectedCharacter() {
     await selectCharacterAndCreateSession(targetKey);
 }
 
-let selectedMessageWindowLoadSequence = 0;
-
 function clearLoadedSessionMessageWindow() {
-    loadedSessionMessages.value = [];
-    selectedSessionMessageTotal.value = 0;
-    loadedSessionMessageStartOrder.value = null;
-    loadedSessionMessageEndOrder.value = null;
-    selectedSessionLatestAssistantOrder.value = -1;
+    sessionController.clearLoadedSessionMessageWindow();
 }
 
 async function loadSelectedSessionMessageWindow(options: { reset?: boolean; sessionId?: string } = {}) {
-    reportStartupProgress(92, 'loadSelectedSessionMessageWindow');
-    const sessionId = String(options.sessionId || selectedSessionId.value || '').trim();
-    const sequence = selectedMessageWindowLoadSequence + 1;
-    selectedMessageWindowLoadSequence = sequence;
-    if (!sessionId) {
-        clearLoadedSessionMessageWindow();
-        return;
-    }
-    if (options.reset) {
-        resetChatMessageWindowState();
-    }
-    const limit = Math.max(1, Math.floor(Number(chatMessageWindowLimit.value) || hiddenOutsideCount.value || 1));
-    const [windowResult, latestAssistantOrder] = await Promise.all([
-        loadTavernMessageWindow(sessionId, limit),
-        getLatestTavernAssistantOrder(sessionId),
-    ]);
-    if (sequence !== selectedMessageWindowLoadSequence || sessionId !== selectedSessionId.value) {return;}
-    loadedSessionMessages.value = windowResult.messages;
-    selectedSessionMessageTotal.value = windowResult.total;
-    loadedSessionMessageStartOrder.value = windowResult.loadedStartOrder;
-    loadedSessionMessageEndOrder.value = windowResult.loadedEndOrder;
-    selectedSessionLatestAssistantOrder.value = latestAssistantOrder ?? -1;
-    rememberSessionMessageCount(sessionId, windowResult.total);
+    await sessionController.loadSelectedSessionMessageWindow(options);
 }
 
 function upsertLoadedSessionMessage(message: TavernMessageRecord) {
-    const messageSessionId = String(message.sessionId || '').trim();
-    if (!messageSessionId || messageSessionId !== selectedSessionId.value) {return;}
-    const currentMessages = loadedSessionMessages.value;
-    const existingIndex = currentMessages.findIndex((item) => item.sessionId === message.sessionId && item.order === message.order);
-    if (existingIndex >= 0) {
-        loadedSessionMessages.value = currentMessages.map((item, index) => index === existingIndex ? message : item);
-    } else {
-        const messageOrder = Number(message.order);
-        const tailOrder = Number(currentMessages.at(-1)?.order);
-        if (!currentMessages.length || !Number.isFinite(messageOrder) || !Number.isFinite(tailOrder) || messageOrder >= tailOrder) {
-            loadedSessionMessages.value = [...currentMessages, message];
-        } else {
-            const insertIndex = currentMessages.findIndex((item) => Number(item.order) > messageOrder);
-            loadedSessionMessages.value = insertIndex >= 0
-                ? [...currentMessages.slice(0, insertIndex), message, ...currentMessages.slice(insertIndex)]
-                : [...currentMessages, message];
-        }
-        selectedSessionMessageTotal.value = Math.max(
-            Math.max(0, Math.floor(Number(selectedSessionMessageTotal.value) || 0)) + 1,
-            loadedSessionMessages.value.length,
-        );
-    }
-    const messageOrder = Number(message.order);
-    if (Number.isFinite(messageOrder)) {
-        loadedSessionMessageStartOrder.value = loadedSessionMessageStartOrder.value === null
-            ? messageOrder
-            : Math.min(loadedSessionMessageStartOrder.value, messageOrder);
-        loadedSessionMessageEndOrder.value = loadedSessionMessageEndOrder.value === null
-            ? messageOrder
-            : Math.max(loadedSessionMessageEndOrder.value, messageOrder);
-        if (message.role === 'assistant') {
-            selectedSessionLatestAssistantOrder.value = Math.max(selectedSessionLatestAssistantOrder.value, messageOrder);
-        }
-    }
-    rememberSessionMessageCount(messageSessionId, selectedSessionMessageTotal.value);
+    sessionController.upsertLoadedSessionMessage(message);
 }
 
 function pruneLoadedSessionMessagesFromOrder(sessionId = '', fromOrder = Number.POSITIVE_INFINITY): number {
-    const targetSessionId = String(sessionId || '').trim();
-    const firstRemovedOrder = Number(fromOrder);
-    if (!targetSessionId || targetSessionId !== selectedSessionId.value || !Number.isFinite(firstRemovedOrder)) {return 0;}
-    const currentMessages = loadedSessionMessages.value;
-    const remainingMessages = currentMessages.filter((message) => (
-        message.sessionId !== targetSessionId || Number(message.order) < firstRemovedOrder
-    ));
-    const removedCount = currentMessages.length - remainingMessages.length;
-    if (removedCount <= 0) {return 0;}
-    loadedSessionMessages.value = remainingMessages;
-    selectedSessionMessageTotal.value = Math.max(
-        remainingMessages.length,
-        Math.max(0, Math.floor(Number(selectedSessionMessageTotal.value) || 0) - removedCount),
-    );
-    const remainingOrders = remainingMessages
-        .map((message) => Number(message.order))
-        .filter((order) => Number.isFinite(order));
-    loadedSessionMessageStartOrder.value = remainingOrders.length ? Math.min(...remainingOrders) : null;
-    loadedSessionMessageEndOrder.value = remainingOrders.length ? Math.max(...remainingOrders) : null;
-    selectedSessionLatestAssistantOrder.value = remainingMessages
-        .filter((message) => message.role === 'assistant' && Number.isFinite(Number(message.order)))
-        .reduce((latest, message) => Math.max(latest, Number(message.order)), -1);
-    rememberSessionMessageCount(targetSessionId, selectedSessionMessageTotal.value);
-    return removedCount;
-}
-
-function sessionUpdatedSortValue(session: TavernSessionRecord): number {
-    return Number(session.updatedAt) || Number(session.createdAt) || 0;
+    return sessionController.pruneLoadedSessionMessagesFromOrder(sessionId, fromOrder);
 }
 
 function touchSessionLocally(sessionId: string, updatedAt = Date.now()) {
-    const id = String(sessionId || '').trim();
-    if (!id) {return;}
-    const timestamp = Number(updatedAt) || Date.now();
-    let touched = false;
-    const nextSessions = sessions.value.map((session) => {
-        if (session.id !== id) {return session;}
-        touched = true;
-        return {
-            ...session,
-            updatedAt: Math.max(sessionUpdatedSortValue(session), timestamp),
-        };
-    });
-    if (!touched) {return;}
-    sessions.value = nextSessions.sort((left, right) => sessionUpdatedSortValue(right) - sessionUpdatedSortValue(left));
+    sessionController.touchSessionLocally(sessionId, updatedAt);
 }
 
 async function refreshSessions() {
-    reportStartupProgress(88, 'refreshSessions');
-    sessions.value = await listTavernSessions();
-    const storedSessionId = String(await getSelectedTavernSessionId() || '').trim();
-    selectedSessionId.value = sessions.value.some((session) => session.id === storedSessionId)
-        ? storedSessionId
-        : '';
-    if (storedSessionId && !selectedSessionId.value) {
-        await setSelectedTavernSessionId('');
-    }
-    await loadSelectedSessionMessageWindow();
-    await refreshManagerRecords(selectedSessionId.value);
-    if (selectedSessionId.value) {
-        void syncSessionCharacterContextSafely({ sessionId: selectedSessionId.value });
-    }
+    await sessionController.refreshSessions();
 }
 
 async function saveSessionContract(nextContract: Partial<TavernSessionContract> = {}) {
@@ -2850,7 +2312,7 @@ async function saveSessionContract(nextContract: Partial<TavernSessionContract> 
         }),
     });
     if (!updated) {return null;}
-    sessions.value = sessions.value.map((session) => session.id === updated.id ? updated : session);
+    sessionController.updateSessionRecord(updated);
     return updated;
 }
 
@@ -2962,9 +2424,7 @@ async function rebuildSelectedSessionRuntimeState() {
 
 function resetSessionPreviewState() {
     simulateRequestSequence += 1;
-    currentUserMessage.value = '';
-    runtimeText.value = '';
-    runtimeError.value = '';
+    chatRunController.resetChatRunPreviewState();
     simulateRequestInput.value = '';
     simulateRequestJson.value = '';
     simulateRequestStatus.value = '';
@@ -3036,7 +2496,7 @@ async function createSessionFromContext(options: { includeFirstMessage?: boolean
     if (options.includeFirstMessage !== false) {
         await appendFirstMessageIfPresent(session.id, snapshotContext, options.greetingIndex);
     }
-    selectedSessionId.value = session.id;
+    sessionController.setSelectedSessionId(session.id);
     await refreshSessions();
     return session;
 }
@@ -3094,11 +2554,7 @@ async function selectCharacterAndCreateSession(characterKey: string) {
     const greetingIndex = wasPreviewed ? selectedCharacterGreetingIndex.value : 0;
     selectedCharacterPreviewKey.value = targetKey;
     selectedCharacterGreetingIndex.value = greetingIndex;
-    selectedSessionId.value = '';
-    selectedSessionCharacterError.value = '';
-    clearLoadedSessionMessageWindow();
-    await setSelectedTavernSessionId('');
-    await refreshManagerRecords('');
+    await sessionController.clearSelectedSession({ persist: true, refreshManager: true });
     resetSessionPreviewState();
     pendingCharacterError.value = '';
     statusText.value = '正在读取角色卡';
@@ -3114,83 +2570,12 @@ async function selectCharacterAndCreateSession(characterKey: string) {
 }
 
 async function selectSession(sessionId: string) {
-    resetSessionPreviewState();
-    invalidateMemoryFileRecordLoad();
-    selectedSessionId.value = sessionId;
-    selectedSessionCharacterError.value = '';
-    const session = sessions.value.find((item) => item.id === sessionId) || null;
-    applySessionSnapshotContext(session);
-    await setSelectedTavernSessionId(sessionId);
-    await loadSelectedSessionMessageWindow({ reset: true, sessionId });
-    await refreshManagerRecords(sessionId);
-    void syncSessionCharacterContextSafely({ sessionId, force: true });
-    activeView.value = 'chat';
-    chatFocus.value = 'chat';
-    scrollChatToBottom(true);
+    await sessionController.selectSession(sessionId);
 }
 
 async function removeSession(sessionId: string, event?: Event) {
     event?.stopPropagation();
-    const id = String(sessionId || '').trim();
-    if (!id) {return;}
-    const session = sessions.value.find((item) => item.id === id);
-    const deletedCharacterKey = String(session?.characterKey || '').trim();
-    const isDeletingSelectedSession = id === selectedSessionId.value;
-    const nextSameCharacterSession = deletedCharacterKey
-        ? sessions.value
-            .filter((item) => item.id !== id && String(item.characterKey || '').trim() === deletedCharacterKey)
-            .slice()
-            .sort((left, right) => (
-                (Number(right.updatedAt) || Number(right.createdAt) || 0)
-                - (Number(left.updatedAt) || Number(left.createdAt) || 0)
-            ))[0]
-        : null;
-    const title = sessionDisplayTitle(session) || '这个会话';
-    if (!await confirmTavernDialog({
-        title: '删除会话',
-        message: `删除「${title}」？`,
-        confirmText: '删除',
-        tone: 'danger',
-    })) {return;}
-    if (isDeletingSelectedSession && isRunning.value) {
-        activeRunController.value?.abort();
-    }
-    cancelDrawJobsForSession(id);
-    await cancelAndRollbackXbTavernManagersForMessageRange(id, 0);
-    const removed = await deleteTavernSession(id);
-    if (!removed) {return;}
-    forgetSessionMessageCount(id);
-    if (!isDeletingSelectedSession) {
-        await refreshSessions();
-        activeView.value = selectedSessionId.value ? 'chat' : 'home';
-        if (selectedSessionId.value) {
-            chatFocus.value = 'chat';
-            scrollChatToBottom(true);
-        }
-        return;
-    }
-    resetSessionPreviewState();
-    if (nextSameCharacterSession?.id) {
-        selectedSessionId.value = nextSameCharacterSession.id;
-        await setSelectedTavernSessionId(nextSameCharacterSession.id);
-        await refreshSessions();
-        activeView.value = 'chat';
-        chatFocus.value = 'chat';
-        scrollChatToBottom(true);
-        return;
-    }
-    selectedSessionId.value = '';
-    selectedSessionCharacterError.value = '';
-    clearLoadedSessionMessageWindow();
-    await setSelectedTavernSessionId('');
-    await refreshSessions();
-    if (deletedCharacterKey) {
-        selectedCharacterPreviewKey.value = deletedCharacterKey;
-        void syncCharacterWorldbookState(deletedCharacterKey);
-        openSettingsWorkspace('characters');
-        return;
-    }
-    activeView.value = 'home';
+    await sessionController.removeSession(sessionId);
 }
 
 function openChatView() {
@@ -3223,6 +2608,7 @@ async function simulateApiRequest() {
     simulateRequestStatus.value = '模拟中';
     try {
         const runtimeContext = await resolveRuntimeContextForSession(requestSessionId);
+        const runtimeApplyRegex = applyTavernRegexForNativeCharacter(runtimeContext.character?.nativeCharacterId);
         const runtimePreset = await refreshRuntimeChatPresetFromHost();
         const result = await simulateXbTavernRequest({
             sessionId: requestSessionId,
@@ -3233,7 +2619,7 @@ async function simulateApiRequest() {
             runtimeState: normalizeTavernSessionState(selectedSession.value?.state || {}),
             diagnostics: diagnostics.value,
             historyMode: historyMode.value,
-            applyRegex: applyTavernRegex,
+            applyRegex: runtimeApplyRegex,
             applySubstituteParams: applyTavernSubstituteParams,
             getNativeWorldInfoRuntime: getNativeWorldbookRuntime,
             buildNativeChatPrompt,
@@ -3479,136 +2865,52 @@ function managerActionFeedback(message: TavernManagerMessageRecord, action: stri
     return messageActionFeedback.value[`${managerMessageKey(message)}:${action}`] || '';
 }
 
-function drawJobForMessage(message: TavernMessageRecord): TavernDrawJob | null {
-    return drawJobs.value[messageKey(message)] || null;
-}
-
-function isActiveDrawJob(job?: TavernDrawJob | null): boolean {
-    return job?.status === 'queued' || job?.status === 'running';
-}
-
-function runningDrawJobKey(): string {
-    return Object.values(drawJobs.value).find((job) => job.status === 'running')?.key || '';
-}
-
-function updateQueuedDrawJobStatuses(): void {
-    drawQueue.value.forEach((key, index) => {
-        const job = drawJobs.value[key];
-        if (!job || job.status !== 'queued') {return;}
-        setDrawJob(key, {
-            progressText: index > 0 ? `排队中，前方 ${index} 个任务` : '排队中',
-            statusKind: 'running',
-        });
-    });
-}
-
-function isDrawingMessage(message: TavernMessageRecord) {
-    return isActiveDrawJob(drawJobForMessage(message));
-}
-
-function drawMessageStatusText(message: TavernMessageRecord) {
-    return drawJobForMessage(message)?.progressText || '';
-}
-
-function drawMessageStatusClass(message: TavernMessageRecord) {
-    const job = drawJobForMessage(message);
-    return job ? `is-${job.statusKind}` : '';
-}
-
-function canDrawMessage(message: TavernMessageRecord) {
-    if (isDrawingMessage(message)) {return true;}
-    if (isEditingMessage(message) || message.error) {return false;}
-    if (!['user', 'assistant'].includes(message.role)) {return false;}
-    return !!stripTavernImageMarkers(message.content || '');
-}
-
-function findLatestDrawableAssistantMessage(): TavernMessageRecord | null {
-    const messages = [...loadedSessionMessages.value].sort((left, right) => right.order - left.order);
-    return messages.find((message) => (
-        message.sessionId === selectedSessionId.value
-        && message.role === 'assistant'
-        && canDrawMessage(message)
-    )) || null;
-}
-
-function drawSourceTextHash(content = ''): string {
-    return markdownSignature(stripTavernImageMarkers(content));
-}
-
-function drawMessageTitle(message: TavernMessageRecord) {
-    const job = drawJobForMessage(message);
-    if (job?.status === 'queued') {
-        return drawMessageStatusText(message) || '取消画图';
-    }
-    if (job?.status === 'running') {
-        return drawMessageStatusText(message) || '停止画图';
-    }
-    if (!canDrawMessage(message)) {
-        return '这条消息暂不能画图';
-    }
-    if (tavernDrawStatus.value.enabled && tavernDrawStatus.value.ready) {
-        return '为这条消息画图';
-    }
-    return '为这条消息画图';
-}
-
-async function drawLatestAssistantMessage(): Promise<void> {
-    if (!tavernDrawCapsuleVisible.value) {return;}
-    const message = latestDrawableAssistantMessage.value;
-    if (!message) {
-        showTavernToast('没有可配图的回复', { tone: 'info', durationMs: 2200 });
-        return;
-    }
-    if (isDrawingMessage(message)) {
-        await drawMessage(message);
-        return;
-    }
-    if (!tavernDrawStatus.value.ready) {
-        const status = await refreshTavernDrawStatus();
-        if (!status.ready) {
-            showTavernToast('画图模块初始化中', { tone: 'info', durationMs: 2200 });
-            return;
-        }
-    }
-    await drawMessage(message);
-}
-
-async function openTavernDrawSettings(): Promise<void> {
-    try {
-        await requestHost('xb-tavern:draw-open-settings', {});
-        void refreshTavernDrawStatus();
-    } catch (error) {
-        showTavernToast(`打开画图设置失败：${describeError(error)}`, { tone: 'warning', durationMs: 4200 });
-    }
-}
-
 async function copyTextWithFallback(text = '') {
     const normalized = String(text || '');
     if (!normalized) {return false;}
+    try {
+        const textarea = document.createElement('textarea');
+        try {
+            textarea.value = normalized;
+            textarea.setAttribute('readonly', 'readonly');
+            textarea.style.position = 'fixed';
+            textarea.style.left = '0';
+            textarea.style.top = '0';
+            textarea.style.width = '2em';
+            textarea.style.height = '2em';
+            textarea.style.padding = '0';
+            textarea.style.border = '0';
+            textarea.style.outline = '0';
+            textarea.style.boxShadow = 'none';
+            textarea.style.background = 'transparent';
+            textarea.style.opacity = '0';
+            textarea.style.pointerEvents = 'none';
+            textarea.style.fontSize = '16px';
+            document.body.appendChild(textarea);
+            try {
+                textarea.focus({ preventScroll: true });
+            } catch {
+                textarea.focus();
+            }
+            textarea.select();
+            textarea.setSelectionRange(0, textarea.value.length);
+            const copied = document.execCommand('copy');
+            if (copied) {return true;}
+        } finally {
+            textarea.remove();
+        }
+    } catch {
+        // Fall through to the async clipboard path.
+    }
     try {
         if (navigator.clipboard?.writeText) {
             await navigator.clipboard.writeText(normalized);
             return true;
         }
     } catch {
-        // Fall through to the DOM-based clipboard path.
+        // Fall through to false.
     }
-    try {
-        const textarea = document.createElement('textarea');
-        textarea.value = normalized;
-        textarea.setAttribute('readonly', 'readonly');
-        textarea.style.position = 'fixed';
-        textarea.style.opacity = '0';
-        textarea.style.pointerEvents = 'none';
-        document.body.appendChild(textarea);
-        textarea.select();
-        textarea.setSelectionRange(0, textarea.value.length);
-        const copied = document.execCommand('copy');
-        textarea.remove();
-        return copied;
-    } catch {
-        return false;
-    }
+    return false;
 }
 
 async function copyMessage(message: TavernMessageRecord) {
@@ -3619,266 +2921,6 @@ async function copyMessage(message: TavernMessageRecord) {
 async function copyManagerMessage(message: TavernManagerMessageRecord) {
     const ok = await copyTextWithFallback(message.content || '');
     flashManagerMessageAction(message, 'copy', ok);
-}
-
-function cancelDrawJob(jobKey = ''): void {
-    const key = String(jobKey || '').trim();
-    const job = drawJobs.value[key];
-    if (!job || !isActiveDrawJob(job)) {return;}
-    if (job.status === 'queued') {
-        drawQueue.value = drawQueue.value.filter((item) => item !== key);
-        updateQueuedDrawJobStatuses();
-        finishDrawJobStatus(key, {
-            status: 'cancelled',
-            statusKind: 'error',
-            progressText: '配图已取消',
-        }, 1800);
-        return;
-    }
-    job.controller?.abort();
-    clearDrawCooldownTimer();
-    setDrawJob(key, {
-        progressText: '正在停止画图',
-        statusKind: 'running',
-    });
-}
-
-function cancelDrawJobsForMessageRange(sessionId = '', fromOrder = 0): void {
-    const id = String(sessionId || '').trim();
-    const startOrder = Number(fromOrder);
-    if (!id || !Number.isFinite(startOrder)) {return;}
-    Object.values(drawJobs.value).forEach((job) => {
-        if (job.sessionId === id && Number(job.order) >= startOrder) {
-            cancelDrawJob(job.key);
-        }
-    });
-}
-
-function cancelDrawJobsForSession(sessionId = ''): void {
-    const id = String(sessionId || '').trim();
-    if (!id) {return;}
-    Object.values(drawJobs.value).forEach((job) => {
-        if (job.sessionId === id) {
-            cancelDrawJob(job.key);
-        }
-    });
-}
-
-function abortAllDrawJobs(): void {
-    Object.values(drawJobs.value).forEach((job) => {
-        job.controller?.abort();
-    });
-    drawQueue.value = [];
-    drawRequestJobKeys.clear();
-}
-
-function enqueueDrawMessageJob(message: TavernMessageRecord): void {
-    const key = messageKey(message);
-    const now = Date.now();
-    drawJobs.value = {
-        ...drawJobs.value,
-        [key]: {
-            key,
-            sessionId: message.sessionId,
-            order: message.order,
-            role: message.role,
-            status: 'queued',
-            statusKind: 'running',
-            progressText: '排队中',
-            requestId: '',
-            sourceTextHash: '',
-            queuedAt: now,
-            startedAt: 0,
-            finishedAt: 0,
-            finishId: 0,
-        },
-    };
-    drawQueue.value = [...drawQueue.value.filter((item) => item !== key), key];
-    updateQueuedDrawJobStatuses();
-    void processNextDrawJob();
-}
-
-async function processNextDrawJob(): Promise<void> {
-    if (runningDrawJobKey()) {return;}
-    const nextKey = drawQueue.value.find((key) => drawJobs.value[key]?.status === 'queued') || '';
-    if (!nextKey) {return;}
-    drawQueue.value = drawQueue.value.filter((key) => key !== nextKey);
-    updateQueuedDrawJobStatuses();
-    await runDrawJob(nextKey);
-}
-
-function validateDrawableMessage(message: TavernMessageRecord | null, job: TavernDrawJob): string {
-    if (!message) {return '消息已不存在';}
-    if (message.sessionId !== job.sessionId || message.order !== job.order || message.role !== job.role) {return '消息已变化';}
-    if (message.error) {return '错误消息不能画图';}
-    if (!['user', 'assistant'].includes(message.role)) {return '这条消息暂不能画图';}
-    if (!stripTavernImageMarkers(message.content || '')) {return '消息正文为空';}
-    return '';
-}
-
-async function runDrawJob(jobKey = ''): Promise<void> {
-    const job = drawJobs.value[jobKey];
-    if (!job || job.status !== 'queued') {return;}
-    const requestId = createHostRequestId('draw');
-    const controller = new AbortController();
-    setDrawJob(jobKey, {
-        status: 'running',
-        statusKind: 'running',
-        progressText: '正在准备画图',
-        requestId,
-        controller,
-        startedAt: Date.now(),
-    });
-    drawRequestJobKeys.set(requestId, jobKey);
-    try {
-        const currentMessage = await getTavernMessage(job.sessionId, job.order);
-        const currentError = validateDrawableMessage(currentMessage, job);
-        if (currentError) {
-            finishDrawJobStatus(jobKey, {
-                status: 'cancelled',
-                statusKind: 'error',
-                progressText: currentError,
-            }, 2600);
-            return;
-        }
-        const status = await refreshTavernDrawStatus();
-        if (!status.enabled || !status.ready) {
-            finishDrawJobStatus(jobKey, {
-                status: 'failed',
-                statusKind: 'error',
-                progressText: '请开启小白X画图模块',
-            }, 3200);
-            flashMessageAction(currentMessage!, 'draw', false);
-            return;
-        }
-        const cleanText = stripTavernImageMarkers(currentMessage!.content || '');
-        const sourceTextHash = markdownSignature(cleanText);
-        setDrawJob(jobKey, { sourceTextHash });
-        const resultPayload = await requestHost('xb-tavern:draw-generate', {
-            payload: {
-                source: 'tavern',
-                text: cleanText,
-                title: roleLabel(currentMessage!.role),
-                sessionId: currentMessage!.sessionId,
-                messageOrder: currentMessage!.order,
-                role: currentMessage!.role,
-                characterName: selectedSession.value?.characterName || effectiveCharacter.value.name || '',
-            },
-        }, { signal: controller.signal, requestId });
-        if (controller.signal.aborted) {
-            finishDrawJobStatus(jobKey, {
-                status: 'cancelled',
-                statusKind: 'error',
-                progressText: '配图已取消',
-            }, 1800);
-            flashMessageAction(currentMessage!, 'draw', false);
-            return;
-        }
-        const latestMessage = await getTavernMessage(job.sessionId, job.order);
-        const latestError = validateDrawableMessage(latestMessage, job);
-        if (latestError) {
-            finishDrawJobStatus(jobKey, {
-                status: 'cancelled',
-                statusKind: 'error',
-                progressText: latestError,
-            }, 2600);
-            flashMessageAction(currentMessage!, 'draw', false);
-            return;
-        }
-        if (controller.signal.aborted) {
-            finishDrawJobStatus(jobKey, {
-                status: 'cancelled',
-                statusKind: 'error',
-                progressText: '配图已取消',
-            }, 1800);
-            flashMessageAction(latestMessage!, 'draw', false);
-            return;
-        }
-        const latestSourceTextHash = drawSourceTextHash(latestMessage!.content || '');
-        if (latestSourceTextHash !== sourceTextHash) {
-            finishDrawJobStatus(jobKey, {
-                status: 'cancelled',
-                statusKind: 'error',
-                progressText: '源楼层已变化',
-            }, 2600);
-            flashMessageAction(latestMessage!, 'draw', false);
-            return;
-        }
-        const result = (resultPayload.result || resultPayload) as Record<string, unknown>;
-        const images = Array.isArray(result.images) ? result.images : [];
-        const insertion = insertTavernImageMarkers(latestMessage!.content || '', images);
-        if (!insertion.inserted) {
-            const success = Number(result.success) || 0;
-            const total = Number(result.total) || images.length;
-            const text = total > 0 && success === 0
-                ? `画图任务结束：${total} 张都失败了，未插入图片。`
-                : success > 0
-                    ? `画图完成 ${success}/${total || success}，但没有返回可用图片占位。`
-                    : '画图任务结束，但没有返回可用图片。';
-            finishDrawJobStatus(jobKey, {
-                status: 'failed',
-                statusKind: 'error',
-                progressText: text,
-            }, 4200);
-            flashMessageAction(latestMessage!, 'draw', false);
-            return;
-        }
-        const updated = await updateTavernMessage(latestMessage!.sessionId, latestMessage!.order, { content: insertion.content });
-        if (updated && selectedSessionId.value === latestMessage!.sessionId) {
-            await loadSelectedSessionMessageWindow({ sessionId: latestMessage!.sessionId });
-        }
-        const success = Number(result.success) || 0;
-        const total = Number(result.total) || images.length;
-        const allFailed = total > 0 && success === 0;
-        const fallbackText = insertion.appended ? `，${insertion.appended} 张追加到末尾` : '';
-        const failureText = total > 0 ? `配图失败：${total} 张都失败了` : '配图失败';
-        finishDrawJobStatus(jobKey, {
-            status: allFailed ? 'failed' : 'success',
-            statusKind: allFailed ? 'error' : 'success',
-            progressText: allFailed ? failureText : `${DRAW_COMPLETION_NOTICE_TEXT}${fallbackText}`,
-        }, allFailed ? 4200 : 2600);
-        flashMessageAction(updated || latestMessage!, 'draw', !allFailed && !!updated);
-        void nextTick(enhanceChatMarkdown);
-    } catch (error) {
-        const current = await getTavernMessage(job.sessionId, job.order).catch((): null => null);
-        const text = describeError(error);
-        if (/abort|已取消|request_aborted/i.test(text)) {
-            finishDrawJobStatus(jobKey, {
-                status: 'cancelled',
-                statusKind: 'error',
-                progressText: '配图已取消',
-            }, 1800);
-        } else {
-            finishDrawJobStatus(jobKey, {
-                status: 'failed',
-                statusKind: 'error',
-                progressText: `配图失败：${text}`,
-            }, 4200);
-        }
-        if (current) {
-            flashMessageAction(current, 'draw', false);
-        }
-    } finally {
-        drawRequestJobKeys.delete(requestId);
-        const current = drawJobs.value[jobKey];
-        if (current?.controller === controller) {
-            setDrawJob(jobKey, { controller: undefined });
-        }
-        void processNextDrawJob();
-    }
-}
-
-async function drawMessage(message: TavernMessageRecord) {
-    const existing = drawJobForMessage(message);
-    if (isActiveDrawJob(existing)) {
-        cancelDrawJob(existing!.key);
-        return;
-    }
-    if (!canDrawMessage(message)) {
-        flashMessageAction(message, 'draw', false);
-        return;
-    }
-    enqueueDrawMessageJob(message);
 }
 
 function startEditMessage(message: TavernMessageRecord) {
@@ -3948,63 +2990,48 @@ function handleComposeInput(event: Event) {
         : { minHeight: 36, maxHeight: 76 });
 }
 
-async function restoreAcceptedStateBeforeMessage(sessionId = '', changedOrder = 0) {
-    const id = String(sessionId || '').trim();
-    const order = Number(changedOrder);
-    if (!id || !Number.isFinite(order)) {return;}
-    await restoreTavernMemoryToFloor(id, order - 1);
-    await restoreTavernTasksToFloor(id, order - 1);
-    await trimTavernMemorySnapshotsFromFloor(id, order);
-    await trimTavernTaskSnapshotsFromFloor(id, order);
-    await rebuildTavernMemoryDerivedIndex(id);
-}
-
-function acceptedStateRollbackNoticeForFloor(floor: number): string {
-    const previousFloor = Math.max(0, floor - 1);
-    const target = previousFloor > 0 ? `第 ${previousFloor} 楼后的状态` : '开局前状态';
-    return `会话记忆、人物记忆和事件线索会回滚到${target}。`;
-}
-
-async function saveEditMessage(message: TavernMessageRecord, options: { rerun?: boolean; rollbackState?: boolean; content?: string } = {}) {
+async function saveEditMessage(message: TavernMessageRecord, options: { rollbackState?: boolean; content?: string } = {}) {
     if (!canEditMessage(message)) {return;}
     const draft = 'content' in options
         ? String(options.content || '')
         : String(message.content || '');
     const content = draft.trim();
-    const shouldRollbackState = options.rerun === true || options.rollbackState === true;
-    const shouldClearRuntimeEvents = options.rerun === true && message.role === 'user';
+    const shouldRollbackState = options.rollbackState === true;
     if (!content) {
         flashMessageAction(message, 'edit', false);
         return;
     }
-    if (!options.rerun && content === String(message.content || '').trim()) {
+    if (content === String(message.content || '').trim()) {
         cancelEditMessage();
         return;
     }
-    if (options.rerun && message.role !== 'user') {
-        cancelEditMessage();
-        await rerunFromMessage(message);
-        return;
+    if (shouldRollbackState) {
+        const impact = await describeAcceptedStateRollbackImpact(message.sessionId, message.order);
+        if (impact.willRollbackState || impact.willCancelWork) {
+            const ok = await confirmTavernDialog({
+                title: '保存楼层编辑',
+                message: [
+                    '保存后将按这楼重新整理后续状态。',
+                    ...rollbackImpactLines(impact),
+                ].join('\n\n'),
+                confirmText: '回滚保存',
+                tone: 'warning',
+            });
+            if (!ok) {return;}
+        }
     }
-    const floor = Math.max(1, Number(message.order) + 1);
-    if (options.rollbackState === true && !options.rerun && !await confirmTavernDialog({
-        title: '保存楼层编辑',
-        message: `回滚这一楼之后的记忆和事件状态？\n\n${acceptedStateRollbackNoticeForFloor(floor)}`,
-        confirmText: '回滚保存',
-        tone: 'warning',
-    })) {return;}
     const substitutedContent = await substituteEditedMessageContent(message, content);
     const regexedContent = await applyEditRegexToMessageContent(message, substitutedContent);
-    cancelDrawJob(messageKey(message));
+    drawContext.cancelJob(messageKey(message));
     const updated = await updateTavernMessage(message.sessionId, message.order, {
         content: regexedContent,
-        ...(shouldClearRuntimeEvents ? { runtimeEvents: [] } : {}),
     });
     if (updated && shouldRollbackState) {
-        await cancelAndRollbackXbTavernManagersForMessageRange(message.sessionId, message.order);
-        await restoreAcceptedStateBeforeMessage(message.sessionId, message.order);
+        await cancelAcceptedRollbackManagersBeforeMessage(message.sessionId, message.order);
+        await restoreAcceptedMemoryAndTaskStateBeforeMessage(message.sessionId, message.order);
     }
     if (updated && selectedSessionId.value) {
+        chatRunController.resolveDeferredAssistantCommit({ sessionId: message.sessionId });
         await loadSelectedSessionMessageWindow({ sessionId: selectedSessionId.value });
         if (shouldRollbackState) {
             await refreshManagerRecords(selectedSessionId.value);
@@ -4012,17 +3039,7 @@ async function saveEditMessage(message: TavernMessageRecord, options: { rerun?: 
     }
     cancelEditMessage();
     flashMessageAction(updated || message, 'edit', !!updated);
-    if (updated && options.rerun) {
-        if (updated.role === 'user') {
-            await runOnce({
-                messageText: updated.content,
-                reuseUserMessageOrder: updated.order,
-                rerollRuntimeEvents: true,
-            });
-        } else {
-            await rerunFromMessage(updated);
-        }
-    } else if (updated && shouldRollbackState) {
+    if (updated && shouldRollbackState) {
         await rebuildSelectedSessionRuntimeState();
     }
 }
@@ -4066,23 +3083,31 @@ async function deleteMessageTurn(message: TavernMessageRecord) {
     if (isRunning.value) {return;}
     const ordersToDelete = await findDeleteOrders(message);
     const floor = Math.max(1, Number(message.order) + 1);
-    const confirmText = ordersToDelete.length > 1
-        ? `从第 ${floor} 楼开始删除后续剧情？将移除 ${ordersToDelete.length} 楼。\n\n${acceptedStateRollbackNoticeForFloor(floor)}`
-        : `删除第 ${floor} 楼？\n\n${acceptedStateRollbackNoticeForFloor(floor)}`;
+    const fromOrder = Math.min(...ordersToDelete);
+    const impact = await describeAcceptedStateRollbackImpact(message.sessionId, fromOrder);
+    const confirmLines = [
+        ordersToDelete.length > 1
+            ? `从第 ${floor} 楼开始删除后续剧情？将移除 ${ordersToDelete.length} 楼。`
+            : `删除第 ${floor} 楼？`,
+        ...rollbackImpactLines(impact),
+    ];
     if (!await confirmTavernDialog({
         title: '删除剧情楼层',
-        message: confirmText,
+        message: confirmLines.filter(Boolean).join('\n\n'),
         confirmText: '删除',
         tone: 'danger',
     })) {return;}
-    const fromOrder = Math.min(...ordersToDelete);
-    cancelDrawJobsForMessageRange(message.sessionId, fromOrder);
-    await cancelAndRollbackXbTavernManagersForMessageRange(message.sessionId, fromOrder);
+    drawContext.cancelJobsForMessageRange(message.sessionId, fromOrder);
+    await cancelAcceptedRollbackManagersBeforeMessage(message.sessionId, fromOrder);
     const deleted = await deleteTavernMessages(message.sessionId, ordersToDelete);
     if (deleted > 0) {
-        await restoreAcceptedStateBeforeMessage(message.sessionId, fromOrder);
+        await restoreAcceptedMemoryAndTaskStateBeforeMessage(message.sessionId, fromOrder);
     }
     if (selectedSessionId.value) {
+        chatRunController.resolveDeferredAssistantCommit({
+            sessionId: message.sessionId,
+            discardOrders: deleted > 0 ? ordersToDelete : [],
+        });
         await loadSelectedSessionMessageWindow({ sessionId: selectedSessionId.value });
         await refreshManagerRecords(selectedSessionId.value);
     }
@@ -4107,7 +3132,7 @@ async function rerunFromMessage(message: TavernMessageRecord) {
         flashMessageAction(message, 'rerun', false);
         return;
     }
-    cancelDrawJobsForMessageRange(message.sessionId, userMessage.order + 1);
+    drawContext.cancelJobsForMessageRange(message.sessionId, userMessage.order + 1);
     flashMessageAction(message, 'rerun', true);
     await runOnce({
         messageText: userMessage.content,
@@ -4386,6 +3411,76 @@ async function applyEditRegexToMessageContent(message: TavernMessageRecord, cont
     return result.items[0]?.text ?? content;
 }
 
+const chatRunController = useTavernChatRunController({
+    state: chatRunState,
+    activeAssistantPreset,
+    activeSession: selectedSession,
+    agentConfig,
+    chatAutoScroll,
+    chatComposeTextareaRef,
+    chatMessageWindowLimit,
+    diagnostics,
+    hiddenOutsideCount,
+    historyMode,
+    selectedSessionCharacterError,
+    selectedSessionId,
+    applyRegex: applyTavernRegex,
+    applySubstituteParams: applyTavernSubstituteParams,
+    buildNativeChatPrompt,
+    clearRuntimeDisplayRegexRequests,
+    createSessionFromContext,
+    describeError,
+    enhanceChatMarkdown,
+    getNativeWorldInfoRuntime: getNativeWorldbookRuntime,
+    loadSelectedSessionMessageWindow,
+    normalizeHiddenOutsideCount,
+    persistSelectedSessionId: sessionController.persistSelectedSessionId,
+    pruneLoadedSessionMessagesFromOrder,
+    refreshManagerRecords,
+    refreshRuntimeChatPresetFromHost,
+    refreshSessions,
+    resetChatMessageWindowState,
+    resetTextareaHeight,
+    resolveRuntimeContextForSession,
+    resolveSlashCommandMessageText,
+    scrollChatToBottom,
+    setSelectedSessionId: sessionController.setSelectedSessionId,
+    setSuppressNextChatWindowLimitReload: sessionController.suppressNextChatWindowLimitReload,
+    showToast: showTavernToast,
+    thoughtBlocks,
+    touchSessionLocally,
+    updateChatScrollButtons,
+    upsertLoadedSessionMessage,
+    cancelDrawJobsForMessageRange: drawContext.cancelJobsForMessageRange,
+});
+
+flushDeferredChatDomCommits = () => {
+    const changed = chatRunController.flushDeferredAssistantCommit();
+    if (changed) {
+        void nextTick(() => {
+            enhanceChatMarkdown();
+            updateChatScrollButtons();
+        });
+    }
+    return changed;
+};
+
+function cancelActiveRun() {
+    chatRunController.cancelActiveRun();
+}
+
+function handleChatSubmit() {
+    chatRunController.handleChatSubmit();
+}
+
+async function runOnce(options: Parameters<typeof chatRunController.runOnce>[0] = {}) {
+    await chatRunController.runOnce(options);
+}
+
+function clearRuntimeAssistantLiveState() {
+    chatRunController.clearRuntimeAssistantLiveState();
+}
+
 function ensureManagerLiveProtocolState(sessionId: string) {
     const id = String(sessionId || '').trim();
     if (!id) {return null;}
@@ -4474,65 +3569,16 @@ function applyManagerProtocolEvent(sessionId: string, event: TavernManagerProtoc
     appendManagerLiveProtocolMessage(id, event.message);
 }
 
-function applyRuntimeStreamSnapshot(snapshot: TavernRunStreamSnapshot) {
-    if (typeof snapshot.text === 'string') {runtimeText.value = snapshot.text;}
-    if (Array.isArray(snapshot.thoughts)) {runtimeThoughts.value = thoughtBlocks(snapshot.thoughts);}
-    if (Array.isArray(snapshot.liveActionCheckEvents)) {
-        runtimeActionCheckEvents.value = snapshot.liveActionCheckEvents.map((event) => ({ ...event }));
-    }
-}
-
-function cancelPendingRuntimeStreamFrame() {
-    if (runtimeStreamFrame) {
-        window.cancelAnimationFrame(runtimeStreamFrame);
-        runtimeStreamFrame = 0;
-    }
-}
-
-function flushRuntimeStreamSnapshotNow() {
-    cancelPendingRuntimeStreamFrame();
-    const snapshot = pendingRuntimeStreamSnapshot;
-    pendingRuntimeStreamSnapshot = null;
-    if (snapshot) {
-        applyRuntimeStreamSnapshot(snapshot);
-    }
-}
-
-function scheduleRuntimeStreamSnapshot(snapshot: TavernRunStreamSnapshot) {
-    const next = pendingRuntimeStreamSnapshot ? { ...pendingRuntimeStreamSnapshot } : {};
-    if (typeof snapshot.text === 'string') {next.text = snapshot.text;}
-    if (Array.isArray(snapshot.thoughts)) {next.thoughts = snapshot.thoughts;}
-    if (Array.isArray(snapshot.liveActionCheckEvents)) {
-        next.liveActionCheckEvents = snapshot.liveActionCheckEvents;
-    }
-    pendingRuntimeStreamSnapshot = next;
-    if (runtimeStreamFrame) {return;}
-    runtimeStreamFrame = window.requestAnimationFrame(() => {
-        runtimeStreamFrame = 0;
-        flushRuntimeStreamSnapshotNow();
-    });
-}
-
-function clearRuntimeAssistantLiveState() {
-    cancelPendingRuntimeStreamFrame();
-    pendingRuntimeStreamSnapshot = null;
-    clearRuntimeDisplayRegexRequests();
-    runtimeText.value = '';
-    runtimeThoughts.value = [];
-    runtimeActionCheckEvents.value = [];
-    runtimeUserMessageVisible.value = false;
-    runtimePendingUserMessage.value = '';
-}
-
 async function appendManagerProtocolMessages(
     sessionId: string,
     messages: XbTavernMessage[],
     fallbackText: string,
     patch: Pick<TavernManagerMessageRecord, 'provider' | 'model' | 'finishReason' | 'error'>,
+    options: { skip?: number } = {},
 ) {
     const protocolMessages = (Array.isArray(messages) ? messages : []).filter((message) => (
         message && ['assistant', 'tool'].includes(message.role)
-    ));
+    )).slice(Math.max(0, Number(options.skip) || 0));
     const finalMessages: XbTavernMessage[] = protocolMessages.length
         ? protocolMessages
         : [{ role: 'assistant' as const, content: fallbackText }];
@@ -4558,27 +3604,45 @@ async function appendManagerProtocolMessages(
         const hasToolCalls = (Array.isArray(message.toolCalls) && message.toolCalls.length)
             || (Array.isArray(message.tool_calls) && message.tool_calls.length);
         const isFinalAssistant = message.role === 'assistant' && !hasToolCalls && index === finalMessages.length - 1;
-        const appendedMessage = await appendTavernManagerMessage(sessionId, {
-            role: message.role,
-            content: isFinalAssistant
-                ? (String(message.content || '').trim() || fallbackText)
-                : String(message.content || ''),
-            name: message.name,
-            thoughts: message.thoughts,
-            providerPayload: message.providerPayload,
-            toolCalls: message.toolCalls,
-            tool_calls: message.tool_calls,
-            toolCallId: message.toolCallId || message.tool_call_id,
-            toolName: message.toolName,
-            toolDisplay: message.toolDisplay,
-            provider: message.role === 'assistant' ? patch.provider : undefined,
-            model: message.role === 'assistant' ? patch.model : undefined,
-            finishReason: message.role === 'assistant' && !hasToolCalls ? patch.finishReason : undefined,
-            error: message.role === 'assistant' && !hasToolCalls ? patch.error : false,
+        const appendedMessage = await appendManagerProtocolMessage(sessionId, message, {
+            ...patch,
+            contentFallback: isFinalAssistant ? fallbackText : '',
+            finalAssistant: isFinalAssistant,
         });
         appended.push(appendedMessage);
     }
     return appended;
+}
+
+async function appendManagerProtocolMessage(
+    sessionId: string,
+    message: XbTavernMessage,
+    patch: Pick<TavernManagerMessageRecord, 'provider' | 'model' | 'finishReason' | 'error'> & {
+        contentFallback?: string;
+        finalAssistant?: boolean;
+    },
+) {
+    const hasToolCalls = (Array.isArray(message.toolCalls) && message.toolCalls.length)
+        || (Array.isArray(message.tool_calls) && message.tool_calls.length);
+    const isFinalAssistant = message.role === 'assistant' && !hasToolCalls && patch.finalAssistant === true;
+    return await appendTavernManagerMessage(sessionId, {
+        role: message.role,
+        content: isFinalAssistant
+            ? (String(message.content || '').trim() || String(patch.contentFallback || ''))
+            : String(message.content || ''),
+        name: message.name,
+        thoughts: message.thoughts,
+        providerPayload: message.providerPayload,
+        toolCalls: message.toolCalls,
+        tool_calls: message.tool_calls,
+        toolCallId: message.toolCallId || message.tool_call_id,
+        toolName: message.toolName,
+        toolDisplay: message.toolDisplay,
+        provider: message.role === 'assistant' ? patch.provider : undefined,
+        model: message.role === 'assistant' ? patch.model : undefined,
+        finishReason: isFinalAssistant ? patch.finishReason : undefined,
+        error: isFinalAssistant ? patch.error : false,
+    });
 }
 
 async function sendManagerQuestion(
@@ -4671,6 +3735,27 @@ async function sendManagerQuestion(
                 managerChatMessages.value = await listTavernManagerMessages(managerSessionId);
             }
         }
+        let persistedProtocolMessages = 0;
+        let protocolPersistFailed = false;
+        let protocolPersistQueue = Promise.resolve();
+        const queueProtocolMessagePersist = (event: TavernManagerProtocolEvent) => {
+            if (event.type !== 'assistant_tool_round' && event.type !== 'tool_result') {return;}
+            protocolPersistQueue = protocolPersistQueue.then(async () => {
+                if (protocolPersistFailed) {return;}
+                try {
+                    await appendManagerProtocolMessage(managerSessionId, event.message, {
+                        provider: '',
+                        model: '',
+                        finishReason: '',
+                        error: false,
+                    });
+                    persistedProtocolMessages += 1;
+                } catch (error) {
+                    protocolPersistFailed = true;
+                    console.warn('[小白酒馆] 管理员工具轮次实时保存失败', error);
+                }
+            });
+        };
         const result = await runXbTavernManagerChat({
             sessionId: managerSessionId,
             agentConfig: agentConfig.value,
@@ -4682,6 +3767,7 @@ async function sendManagerQuestion(
             onProtocolEvent: (event) => {
                 managerStreamToolDraftState.reset();
                 applyManagerProtocolEvent(managerSessionId, event);
+                queueProtocolMessagePersist(event);
             },
             onStreamProgress: (snapshot) => {
                 const streamPatch = managerStreamToolDraftState.update(snapshot);
@@ -4692,13 +3778,14 @@ async function sendManagerQuestion(
                 });
             },
         });
-        const finalText = String(result.text || '').trim() || '没有返回内容。';
+        await protocolPersistQueue;
+        const finalText = String(result.text || '').trim() || (controller.signal.aborted ? '已停止。' : '没有返回内容。');
         await appendManagerProtocolMessages(managerSessionId, result.protocolMessages, finalText, {
             provider: result.provider,
             model: result.model,
-            finishReason: result.ok ? 'stop' : 'error',
+            finishReason: result.ok ? 'stop' : controller.signal.aborted ? 'aborted' : 'error',
             error: result.ok ? false : true,
-        });
+        }, { skip: persistedProtocolMessages });
         clearManagerLiveProtocolState(managerSessionId);
         if (selectedSessionId.value === managerSessionId) {
             managerChatMessages.value = await listTavernManagerMessages(managerSessionId);
@@ -4771,206 +3858,12 @@ async function handleManagerSubmit() {
     await sendManagerQuestion(managerSessionId, text);
 }
 
-function cancelActiveRun() {
-    if (!isRunning.value || !activeRunController.value) {return;}
-    if (!isCancellingRun.value) {
-        flushRuntimeStreamSnapshotNow();
-        isCancellingRun.value = true;
-        runtimeText.value = runtimeText.value || '正在停止...';
-    }
-    activeRunController.value.abort();
-}
-
-function handleChatSubmit() {
-    void runOnce();
-}
-
-async function runOnce(options: { messageText?: string; reuseUserMessageOrder?: number; rerollRuntimeEvents?: boolean } = {}) {
-    if (isRunning.value) {
-        cancelActiveRun();
-        return;
-    }
-    let messageText = String(options.messageText ?? currentUserMessage.value ?? '').trim();
-    if (!messageText) {
-        runtimeError.value = '先写一句话。';
-        showTavernToast('先写一句话。', { tone: 'info', durationMs: 1800 });
-        return;
-    }
-    if (selectedSessionCharacterError.value) {
-        runtimeError.value = selectedSessionCharacterError.value;
-        showTavernToast(selectedSessionCharacterError.value, { tone: 'warning', durationMs: 7000 });
-        return;
-    }
-    try {
-        messageText = await resolveSlashCommandMessageText(messageText, options);
-    } catch (error) {
-        const errorText = describeError(error);
-        runtimeError.value = errorText;
-        showTavernToast(`命令执行失败：${errorText}`, { tone: 'warning', durationMs: 5000 });
-        return;
-    }
-    if (!messageText) {
-        return;
-    }
-    const controller = new AbortController();
-    activeRunController.value = controller;
-    isRunning.value = true;
-    isCancellingRun.value = false;
-    runtimeError.value = '';
-    cancelPendingRuntimeStreamFrame();
-    pendingRuntimeStreamSnapshot = null;
-    runtimeText.value = '';
-    runtimeThoughts.value = [];
-    runtimeActionCheckEvents.value = [];
-    runtimeUserMessageVisible.value = false;
-    runtimePendingUserMessage.value = '';
-    runtimeProvider.value = '';
-    runtimeModel.value = '';
-    chatAutoScroll.value = true;
-    const reusedUserMessageOrder = Number(options.reuseUserMessageOrder);
-    const isReusedUserMessageRun = Number.isFinite(reusedUserMessageOrder);
-    const defaultChatMessageWindowLimit = normalizeHiddenOutsideCount(hiddenOutsideCount.value);
-    if (isReusedUserMessageRun && Number(chatMessageWindowLimit.value) !== defaultChatMessageWindowLimit) {
-        suppressNextChatWindowLimitReload = true;
-    }
-    resetChatMessageWindowState();
-    if (isReusedUserMessageRun && selectedSessionId.value) {
-        cancelDrawJobsForMessageRange(selectedSessionId.value, reusedUserMessageOrder + 1);
-        pruneLoadedSessionMessagesFromOrder(selectedSessionId.value, reusedUserMessageOrder + 1);
-    }
-    const shouldShowPendingUserMessage = !isReusedUserMessageRun;
-    if (shouldShowPendingUserMessage) {
-        runtimePendingUserMessage.value = messageText;
-        currentUserMessage.value = '';
-        void nextTick(() => resetTextareaHeight(chatComposeTextareaRef.value));
-        scrollChatToBottom(true);
-    } else {
-        runtimeUserMessageVisible.value = true;
-        scrollChatToBottom(true);
-    }
-    let assistantMessageSaved = false;
-    try {
-        if (controller.signal.aborted) {
-            const pendingUserMessage = runtimePendingUserMessage.value;
-            clearRuntimeAssistantLiveState();
-            if (isReusedUserMessageRun && selectedSessionId.value) {
-                await loadSelectedSessionMessageWindow({ sessionId: selectedSessionId.value });
-            }
-            if (pendingUserMessage && !currentUserMessage.value.trim()) {
-                currentUserMessage.value = pendingUserMessage;
-                void nextTick(() => resetTextareaHeight(chatComposeTextareaRef.value));
-            }
-            return;
-        }
-        if (!selectedSessionId.value) {
-            await refreshRuntimeChatPresetFromHost();
-            await createSessionFromContext();
-        }
-        const runtimeContext = await resolveRuntimeContextForSession(selectedSessionId.value);
-        if (controller.signal.aborted) {
-            clearRuntimeAssistantLiveState();
-            if (isReusedUserMessageRun && selectedSessionId.value) {
-                await loadSelectedSessionMessageWindow({ sessionId: selectedSessionId.value });
-            }
-            return;
-        }
-        const runtimePreset = await refreshRuntimeChatPresetFromHost();
-        if (controller.signal.aborted) {
-            clearRuntimeAssistantLiveState();
-            if (isReusedUserMessageRun && selectedSessionId.value) {
-                await loadSelectedSessionMessageWindow({ sessionId: selectedSessionId.value });
-            }
-            return;
-        }
-        const result = await runXbTavernTurn({
-            sessionId: selectedSessionId.value,
-            agentConfig: agentConfig.value,
-            contextSnapshot: runtimeContext,
-            chatPreset: runtimePreset,
-            assistantPreset: activeAssistantPreset.value,
-            currentUserMessage: messageText,
-            runtimeState: normalizeTavernSessionState(selectedSession.value?.state || {}),
-            diagnostics: diagnostics.value,
-            historyMode: historyMode.value,
-            signal: controller.signal,
-            reuseUserMessageOrder: options.reuseUserMessageOrder,
-            rerollRuntimeEvents: options.rerollRuntimeEvents,
-            runManager: true,
-            applyRegex: applyTavernRegex,
-            applySubstituteParams: applyTavernSubstituteParams,
-            getNativeWorldInfoRuntime: getNativeWorldbookRuntime,
-            buildNativeChatPrompt,
-            onStreamProgress: (snapshot) => {
-                scheduleRuntimeStreamSnapshot(snapshot);
-            },
-            onUserMessageSaved: async (sessionId, message) => {
-                selectedSessionId.value = sessionId;
-                upsertLoadedSessionMessage(message);
-                touchSessionLocally(sessionId, message.createdAt);
-                runtimeUserMessageVisible.value = true;
-                runtimePendingUserMessage.value = '';
-                currentUserMessage.value = '';
-                void nextTick(() => resetTextareaHeight(chatComposeTextareaRef.value));
-                scrollChatToBottom(true);
-                await setSelectedTavernSessionId(sessionId);
-                scrollChatToBottom(true);
-            },
-            onAssistantMessageSaved: async (sessionId, message) => {
-                assistantMessageSaved = true;
-                selectedSessionId.value = sessionId;
-                flushRuntimeStreamSnapshotNow();
-                upsertLoadedSessionMessage(message);
-                touchSessionLocally(sessionId, message.createdAt);
-                clearRuntimeAssistantLiveState();
-                scrollChatToBottom();
-            },
-            onManagerRunSaved: async (sessionId) => {
-                await refreshManagerRecords(sessionId);
-            },
-        });
-        selectedSessionId.value = result.sessionId;
-        flushRuntimeStreamSnapshotNow();
-        clearRuntimeAssistantLiveState();
-        runtimeError.value = result.error || '';
-        runtimeProvider.value = result.provider || '';
-        runtimeModel.value = result.model || '';
-        await refreshSessions();
-        scrollChatToBottom();
-    } catch (error) {
-        console.error('[小白酒馆] turn failed', error);
-        const pendingUserMessage = runtimePendingUserMessage.value;
-        clearRuntimeAssistantLiveState();
-        if (isReusedUserMessageRun && selectedSessionId.value) {
-            await loadSelectedSessionMessageWindow({ sessionId: selectedSessionId.value });
-        }
-        if (pendingUserMessage && !currentUserMessage.value.trim()) {
-            currentUserMessage.value = pendingUserMessage;
-            void nextTick(() => resetTextareaHeight(chatComposeTextareaRef.value));
-        }
-        const errorText = describeError(error || 'run_failed');
-        runtimeError.value = errorText;
-        if (!assistantMessageSaved) {
-            showTavernToast(errorText, { tone: 'warning', durationMs: 6000 });
-        }
-    } finally {
-        if (activeRunController.value === controller) {
-            activeRunController.value = null;
-        }
-        isCancellingRun.value = false;
-        isRunning.value = false;
-        scrollChatToBottom();
-        void nextTick(() => {
-            enhanceChatMarkdown();
-            updateChatScrollButtons();
-        });
-    }
-}
-
 watch([
     () => visibleChatMessages.value.length,
     () => chatMessageWindow.value.startIndex,
     () => visibleChatMarkdownSignature.value,
     () => runtimeText.value,
+    () => `${runtimeFinalizedAssistantMessage.value?.sessionId || ''}:${runtimeFinalizedAssistantMessage.value?.order ?? ''}:${String(runtimeFinalizedAssistantMessage.value?.content || '').length}`,
     () => runtimePendingUserMessage.value,
     () => runtimeThoughtsSignature.value,
     () => runtimeActionCheckSignature.value,
@@ -5019,13 +3912,7 @@ watch([() => activeView.value, () => chatFocus.value], () => {
 });
 
 watch(() => chatMessageWindowLimit.value, () => {
-    if (suppressNextChatWindowLimitReload) {
-        suppressNextChatWindowLimitReload = false;
-        return;
-    }
-    if (selectedSessionId.value) {
-        void loadSelectedSessionMessageWindow();
-    }
+    sessionController.handleChatMessageWindowLimitChanged();
 });
 
 watch(() => selectedSessionId.value, () => {
@@ -5081,266 +3968,267 @@ watch(homeThemeDark, (isDark) => {
     }
 });
 
-provide(TAVERN_APP_UI_CONTEXT, {
-    shell: {
-        activeView,
-        alertTavernDialog,
-        chatFocus,
-        confirmTavernDialog,
-        homeThemeDark,
-        openPromptInspector,
-        postToHost,
-        promptTavernDialog,
-        rememberBrokenAvatar,
-        shortText,
-    },
-    character: {
-        avatarAvailable,
-        batchSize: CHARACTER_ARCHIVE_BATCH_SIZE,
-        characterWorldbookBusy,
-        characterWorldbookState,
-        characters: characterCards,
-        enterSelected: enterSelectedCharacter,
-        filteredCount: computed(() => filteredCharacterCards.value.length),
-        hiddenCount: hiddenCharacterCount,
-        liveCharacterKey,
-        loadMore: loadMoreCharacters,
-        movePreview: moveCharacterPreview,
-        openCharacterWorldbook: openSelectedCharacterWorldbook,
-        openSession: selectSession,
-        removeSession,
-        pendingCharacterSessionKey,
-        pendingError: pendingCharacterError,
-        pendingPreviewCharacterKey: pendingCharacterPreviewKey,
-        refresh: refreshCharacterList,
-        rememberBrokenAvatar,
-        searchText: characterSearchText,
-        select: selectCharacterForPreview,
-        selectFirstVisible: selectFirstVisibleCharacter,
-        selectGreeting: selectCharacterGreeting,
-        selectLastVisible: selectLastVisibleCharacter,
-        selectedCharacter: selectedCharacterPreview,
-        selectedCharacterSessions,
-        selectedGreetingIndex: selectedCharacterGreetingIndex,
-        sessionFloorLabel,
-        shortText,
-        syncWorldbookState: syncCharacterWorldbookState,
-        visibleCharacters: visibleCharacterCards,
-    },
-    chat: {
-        actionFeedback,
-        cancelEditMessage,
-        canDrawMessage,
-        canEditMessage,
-        canRerunMessage,
-        canSendMessage,
-        createNewChatSession,
-        currentChatCharacterSessions,
-        currentAuthorNote,
-        chatAutoScroll,
-        chatFocus,
-        chatLayout,
-        chatMessages,
-        chatMessageWindow,
-        chatComposeTextareaRef,
-        chatScrollControlsActive,
-        chatScrollRef,
-        chatSubtitle,
-        copyMessage,
-        currentUserMessage,
-        deleteMessageTurn,
-        displayMessageContent,
-        displayMessageRenderProjection,
-        displayMessageThoughtBlocks,
-        displayRuntimeContent,
-        displayRuntimeRenderProjection,
-        displayRuntimeThoughtBlocks,
-        displayCharacterName,
-        drawMessage,
-        drawLatestAssistantMessage,
-        drawMessageStatusClass,
-        drawMessageStatusText,
-        drawMessageTitle,
-        formatMessageTime,
-        handleChatScroll,
-        handleChatSubmit,
-        handleChatTouchMove,
-        handleChatTouchStart,
-        handleChatWheel,
-        handleComposeInput,
-        handleComposeKeydown,
-        isDrawingMessage,
-        isEditingMessage,
-        isCancellingRun,
-        isRunning,
-        markdownSignature,
-        htmlRenderEnabled,
-        messageKey,
-        normalizeTavernSessionState,
-        openTavernDrawSettings,
-        refreshTavernDrawQuickSettings,
-        removeSession,
-        renderChatMarkdown,
-        rerunFromMessage,
-        revealOlderChatMessages,
-        roleLabel,
-        runtimeText,
-        runtimeThoughts,
-        runtimeActionCheckEvents,
-        runtimeUserMessageVisible,
-        runtimePendingUserMessage,
-        saveEditMessage,
-        scrollChatToBottom,
-        scrollChatToTop,
-        selectedSessionId,
-        selectSession,
-        saveCurrentAuthorNote,
-        sessionDisplayTitle,
-        sessionFloorLabel,
-        sessions,
-        showChatScrollBottom,
-        showChatScrollTop,
-        startEditMessage,
-        tavernDrawCapsuleIcon,
-        tavernDrawCapsuleMainDisabled,
-        tavernDrawCapsuleStatusClass,
-        tavernDrawCapsuleStatusText,
-        tavernDrawCapsuleTitle,
-        tavernDrawCapsuleVisible,
-        tavernDrawQuickSettings,
-        tavernDrawQuickSettingsLoading,
-        thoughtBlocks,
-        thoughtSummaryLabel,
-        updateChatScrollButtons,
-        updateTavernDrawQuickSettings,
-        visibleCharacterAvatar,
-        visibleChatMessages,
-        visibleUserAvatar,
-    },
-    manager: {
-        activeMemoryFiles,
-        archivedManagerRuns,
-        canEditManagerMessage,
-        canRerunManagerMessage,
-        canSendManagerMessage,
-        copyManagerMessage,
-        currentManagerWorkRun,
-        deleteManagerMessageTurn,
-        editingMessageDraft,
-        enhanceManagerMarkdown,
-        formatRunActivityLine,
-        formatRunIssueLine,
-        formatRunInputLine,
-        formatRunMapLine,
-        formatRunMemoryLine,
-        formatRunModelLine,
-        formatRunTaskLine,
-        handleEditInput,
-        handleManagerComposeKeydown,
-        handleManagerEditKeydown,
-        handleManagerScroll,
-        handleManagerSubmit,
-        handleManagerTouchMove,
-        handleManagerTouchStart,
-        handleManagerWheel,
-        hiddenManagerRunCount,
-        isEditingManagerMessage,
-        isEditingManagerMessageDirty,
-        isManagerRunRetrying,
-        isManagerAssistantCancelling,
-        isManagerAssistantRunning,
-        liveManagerChatDisplayItems,
-        managerActionFeedback,
-        managerAutoScroll,
-        managerBusy,
-        managerCompactionOverlay,
-        managerComposeTextareaRef,
-        managerInputDraft,
-        managerInputStatus,
-        managerMessageWindow,
-        managerRuns,
-        managerRunTone,
-        managerScrollControlsActive,
-        managerScrollRef,
-        managerWorkRef,
-        managerStatusLabel,
-        managerToolStatusLabel,
-        managerToolTone,
-        managerToolTraceItems,
-        managerToolTurnPreview,
-        managerToolTurnSummary,
-        memoryFileDisplayName,
-        memoryFiles,
-        memoryIndexStatusLine,
-        retryManagerRun,
-        revealOlderManagerMessages,
-        rerunFromManagerMessage,
-        saveEditManagerMessage,
-        scrollManagerToBottom,
-        scrollManagerToTop,
-        selectedMemoryFile,
-        showManagerScrollBottom,
-        showManagerScrollTop,
-        startEditManagerMessage,
-        toolTraceSummary,
-        updateManagerScrollButtons,
-        visibleManagerChatItems,
-    },
-    memory: {
-        activeMemoryFiles,
-        commitAcceptedState,
-        commitUserAcceptedState,
-        discardMemoryDraft,
-        enterMemoryEditMode,
-        expandMemoryFileGroup,
-        formatMemoryFileMeta,
-        markdownSignature,
-        MEMORY_FILE_BATCH_SIZE,
-        MEMORY_TURN_BATCH_SIZE,
-        memoryDirectoryGroups,
-        memoryEditorDirty,
-        memoryEditorDocumentAvailable,
-        memoryEditorDraft,
-        memoryEditorLoadedPath,
-        memoryEditorMode,
-        memoryEditorReadOnly,
-        memoryEditorStatus,
-        memoryFileDisplayName,
-        memoryFileKindLabel,
-        memoryFiles,
-        memoryFileSearchText,
-        memoryFileStatusLabel,
-        previewMemoryDraft,
-        renderChatMarkdown,
-        saveSelectedMemoryFile,
-        selectedMemoryFileEntry,
-        selectedMemoryFile,
-        selectedMemoryFilePath,
-        selectMemoryFile,
-        stateMemoryFile,
-    },
-    workspace: {
-        activeMemoryFiles,
-        activeMapDocId,
-        atlasActiveLocationKey,
-        atlasStateDocument,
-        atlasStatePatches,
-        chatWorkspacePanel,
-        currentAssistantFloor,
-        mapStateDocuments,
-        mapStateDocument,
-        mapStatePatches,
-        saveSessionContract,
-        selectedSessionId,
-        sessionContract,
-        stateMemoryFile,
-        tavernTasks,
-    },
+const shellContext = {
+    activeView,
+    alertTavernDialog,
+    chatFocus,
+    confirmTavernDialog,
+    homeThemeDark,
+    openPromptInspector,
+    postToHost,
+    promptTavernDialog,
+    rememberBrokenAvatar,
+    shortText,
+} satisfies TavernShellContext;
+
+const sessionContext = {
+    chatMessages,
+    chatMessageWindow,
+    createNewChatSession,
+    currentAssistantFloor,
+    currentChatCharacterSessions,
+    removeSession,
+    selectedCharacterSessions,
+    selectedSessionId,
+    selectSession,
+    sessionDisplayTitle,
+    sessionFloorLabel,
+    sessions,
+    visibleChatMessages,
+} satisfies TavernSessionContext;
+
+const characterContext = {
+    avatarAvailable,
+    batchSize: CHARACTER_ARCHIVE_BATCH_SIZE,
+    characterWorldbookBusy,
+    characterWorldbookState,
+    characters: characterCards,
+    enterSelected: enterSelectedCharacter,
+    filteredCount: computed(() => filteredCharacterCards.value.length),
+    hiddenCount: hiddenCharacterCount,
+    liveCharacterKey,
+    loadMore: loadMoreCharacters,
+    movePreview: moveCharacterPreview,
+    openCharacterWorldbook: openSelectedCharacterWorldbook,
+    pendingCharacterSessionKey,
+    pendingError: pendingCharacterError,
+    pendingPreviewCharacterKey: pendingCharacterPreviewKey,
+    refresh: refreshCharacterList,
+    rememberBrokenAvatar,
+    searchText: characterSearchText,
+    select: selectCharacterForPreview,
+    selectFirstVisible: selectFirstVisibleCharacter,
+    selectGreeting: selectCharacterGreeting,
+    selectLastVisible: selectLastVisibleCharacter,
+    selectedCharacter: selectedCharacterPreview,
+    selectedGreetingIndex: selectedCharacterGreetingIndex,
+    shortText,
+    syncWorldbookState: syncCharacterWorldbookState,
+    visibleCharacters: visibleCharacterCards,
+} satisfies TavernCharacterContext;
+
+const chatContext = {
+    actionFeedback,
+    cancelEditMessage,
+    canEditMessage,
+    canRerunMessage,
+    canSendMessage,
+    currentAuthorNote,
+    chatAutoScroll,
+    chatFocus,
+    chatLayout,
+    chatComposeTextareaRef,
+    chatScrollControlsActive,
+    chatScrollRef,
+    chatSubtitle,
+    copyMessage,
+    currentUserMessage,
+    deleteMessageTurn,
+    displayMessageContent,
+    displayMessageRenderProjection,
+    displayMessageThoughtBlocks,
+    displayRuntimeContent,
+    displayRuntimeRenderProjection,
+    displayRuntimeThoughtBlocks,
+    displayCharacterName,
+    displayUserName: userName,
+    formatMessageTime,
+    handleChatScroll,
+    handleChatSubmit,
+    handleChatTouchMove,
+    handleChatTouchStart,
+    handleChatWheel,
+    handleComposeInput,
+    handleComposeKeydown,
+    isEditingMessage,
+    isCancellingRun,
+    isRunning,
+    markdownSignature,
+    htmlRenderEnabled,
+    messageKey,
+    normalizeTavernSessionState,
+    renderChatMarkdown,
+    rerunFromMessage,
+    revealOlderChatMessages,
+    roleLabel,
+    runtimeText,
+    runtimeThoughts,
+    runtimeActionCheckEvents,
+    runtimeFinalizedAssistantMessage,
+    runtimeUserMessageVisible,
+    runtimePendingUserMessage,
+    saveEditMessage,
+    scrollChatToBottom,
+    scrollChatToTop,
+    saveCurrentAuthorNote,
+    showChatScrollBottom,
+    showChatScrollTop,
+    startEditMessage,
+    thoughtBlocks,
+    thoughtSummaryLabel,
+    updateChatScrollButtons,
+    visibleCharacterAvatar,
+    visibleUserAvatar,
+} satisfies TavernChatContext;
+
+const managerContext = {
+    activeMemoryFiles,
+    archivedManagerRuns,
+    canEditManagerMessage,
+    canRerunManagerMessage,
+    canSendManagerMessage,
+    copyManagerMessage,
+    currentManagerWorkRun,
+    deleteManagerMessageTurn,
+    editingMessageDraft,
+    enhanceManagerMarkdown,
+    formatRunActivityLine,
+    formatRunIssueLine,
+    formatRunInputLine,
+    formatRunMapLine,
+    formatRunMemoryLine,
+    formatRunModelLine,
+    formatRunTaskLine,
+    handleEditInput,
+    handleManagerComposeKeydown,
+    handleManagerEditKeydown,
+    handleManagerScroll,
+    handleManagerSubmit,
+    handleManagerTouchMove,
+    handleManagerTouchStart,
+    handleManagerWheel,
+    hiddenManagerRunCount,
+    isEditingManagerMessage,
+    isEditingManagerMessageDirty,
+    isManagerRunRetrying,
+    isManagerAssistantCancelling,
+    isManagerAssistantRunning,
+    liveManagerChatDisplayItems,
+    managerActionFeedback,
+    managerAutoScroll,
+    managerBusy,
+    managerCompactionOverlay,
+    managerComposeTextareaRef,
+    managerInputDraft,
+    managerInputStatus,
+    managerMessageWindow,
+    managerRuns,
+    managerRunTone,
+    managerScrollControlsActive,
+    managerScrollRef,
+    managerWorkRef,
+    managerStatusLabel,
+    managerToolStatusLabel,
+    managerToolTone,
+    managerToolTraceItems,
+    managerToolTurnPreview,
+    managerToolTurnSummary,
+    memoryFileDisplayName,
+    memoryFiles,
+    memoryIndexStatusLine,
+    retryManagerRun,
+    revealOlderManagerMessages,
+    rerunFromManagerMessage,
+    saveEditManagerMessage,
+    scrollManagerToBottom,
+    scrollManagerToTop,
+    selectedMemoryFile,
+    showManagerScrollBottom,
+    showManagerScrollTop,
+    startEditManagerMessage,
+    toolTraceSummary,
+    updateManagerScrollButtons,
+    visibleManagerChatItems,
+} satisfies TavernManagerContext;
+
+const memoryContext = {
+    activeMemoryFiles,
+    commitAcceptedState,
+    commitUserAcceptedState,
+    discardMemoryDraft,
+    enterMemoryEditMode,
+    expandMemoryFileGroup,
+    formatMemoryFileMeta,
+    markdownSignature,
+    MEMORY_FILE_BATCH_SIZE,
+    MEMORY_TURN_BATCH_SIZE,
+    memoryDirectoryGroups,
+    memoryEditorDirty,
+    memoryEditorDocumentAvailable,
+    memoryEditorDraft,
+    memoryEditorLoadedPath,
+    memoryEditorMode,
+    memoryEditorReadOnly,
+    memoryEditorStatus,
+    memoryFileDisplayName,
+    memoryFileKindLabel,
+    memoryFiles,
+    memoryFileSearchText,
+    memoryFileStatusLabel,
+    previewMemoryDraft,
+    renderChatMarkdown,
+    saveSelectedMemoryFile,
+    selectedMemoryFileEntry,
+    selectedMemoryFile,
+    selectedMemoryFilePath,
+    selectMemoryFile,
+    stateMemoryFile,
+} satisfies TavernMemoryContext;
+
+const workspaceContext = {
+    activeMemoryFiles,
+    activeMapDocId,
+    atlasActiveLocationKey,
+    atlasStateDocument,
+    atlasStatePatches,
+    chatWorkspacePanel,
+    displayUserName: userName,
+    mapStateDocuments,
+    mapStateDocument,
+    mapStatePatches,
+    saveSessionContract,
+    sessionContract,
+    stateMemoryFile,
+    tavernTasks,
+    visibleUserAvatar,
+} satisfies TavernWorkspaceContext;
+
+const appUiContext = {
+    shell: shellContext,
+    character: characterContext,
+    session: sessionContext,
+    draw: drawContext,
+    chat: chatContext,
+    manager: managerContext,
+    memory: memoryContext,
+    workspace: workspaceContext,
     settings: settingsContext,
-});
+} satisfies TavernAppUiContext;
+
+provide(TAVERN_APP_UI_CONTEXT, appUiContext);
 
 async function runPostReadyStartupTasks() {
-    reportStartupProgress(85, 'refreshPresets');
+    reportStartupProgress(92, 'refreshPresets');
     const startupResults = await Promise.allSettled([
         refreshPresets(),
         refreshSessions(),
@@ -5378,9 +4266,9 @@ async function runPostReadyStartupTasks() {
 }
 
 onMounted(async () => {
-    // onHostMessage validates origin and message source before accepting payloads.
-    // eslint-disable-next-line no-restricted-syntax
-    window.addEventListener('message', onHostMessage);
+    hostBridge.mount();
+    document.addEventListener('focusin', handleKeyboardViewportFocus, true);
+    document.addEventListener('focusout', handleKeyboardViewportFocus, true);
     managerRecordsPollTimer = window.setInterval(() => {
         void pollLiveManagerRecords();
     }, 2000);
@@ -5389,26 +4277,21 @@ onMounted(async () => {
     }
     syncApiSettingsConfigFromAgentConfig();
     await nextTick();
-    postToHost('xb-tavern:frame-ready');
-    void refreshTavernDrawStatus();
+    hostBridge.postToHost('xb-tavern:frame-ready');
+    void drawContext.refreshTavernDrawStatus();
 });
 
 onUnmounted(() => {
-    window.removeEventListener('message', onHostMessage);
+    document.removeEventListener('focusin', handleKeyboardViewportFocus, true);
+    document.removeEventListener('focusout', handleKeyboardViewportFocus, true);
+    hostBridge.dispose(new Error('tavern_unmounted'));
     disposeMarkdownTools();
     clearRuntimeAssistantLiveState();
-    clearDrawCooldownTimer();
+    drawContext.clearCooldownTimer();
     setHostChatCompletionsRequestHeadersProvider(null);
-    pendingHostRequests.forEach((request) => {
-        if (request.abort && request.signal) {
-            request.signal.removeEventListener('abort', request.abort);
-        }
-        request.reject(new Error('tavern_unmounted'));
-    });
-    pendingHostRequests.clear();
-    activeRunController.value?.abort();
+    chatRunController.abortActiveRun();
     managerAssistantController.value?.abort();
-    abortAllDrawJobs();
+    drawContext.abortAllJobs();
     chatScrollPane.cleanup();
     managerScrollPane.cleanup();
     if (tavernToastTimer) {

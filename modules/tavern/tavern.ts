@@ -95,6 +95,8 @@ let initialConfigPromise: Promise<Record<string, unknown>> | null = null;
 let messageHandlerInstalled = false;
 let overlayResizeHandler: EventListener | null = null;
 let overlayResizeFrame = 0;
+let overlayKeyboardSettleHandler: EventListener | null = null;
+let overlayKeyboardSettleTimers: number[] = [];
 let cachedTavernMobileTopOffset: number | null = null;
 const pendingDrawRequests = new Map<string, AbortController>();
 let latestStartupProgress: TavernStartupProgressPayload = { percent: 5, action: 'createOverlay' };
@@ -217,7 +219,19 @@ function getTavernMobileTopOffset(forceRefresh = false): number {
 }
 
 function getTavernMobileViewportHeight(topOffset = getTavernMobileTopOffset()): number {
-    return Math.max(240, window.innerHeight - topOffset);
+    const layoutHeight = Math.max(
+        0,
+        Number(window.innerHeight) || document.documentElement.clientHeight || 0,
+    );
+    const visualHeight = Number(window.visualViewport?.height);
+    const hasVisualHeight = Number.isFinite(visualHeight) && visualHeight > 0;
+    const keyboardLooksOpen = hasVisualHeight && visualHeight + 80 < layoutHeight;
+    const viewportHeight = hasVisualHeight
+        ? keyboardLooksOpen
+            ? visualHeight
+            : Math.max(layoutHeight, visualHeight)
+        : layoutHeight;
+    return Math.max(240, Math.round(viewportHeight - topOffset));
 }
 
 function applyTavernOverlayViewport(overlay = document.getElementById(OVERLAY_ID)): void {
@@ -251,13 +265,31 @@ function scheduleTavernOverlayViewport(overlay: HTMLElement, forceTopOffsetRefre
     });
 }
 
+function clearOverlayKeyboardSettleTimers(): void {
+    overlayKeyboardSettleTimers.forEach((timer) => window.clearTimeout(timer));
+    overlayKeyboardSettleTimers = [];
+}
+
+function scheduleTavernOverlayViewportSettle(overlay: HTMLElement, forceTopOffsetRefresh = false): void {
+    clearOverlayKeyboardSettleTimers();
+    scheduleTavernOverlayViewport(overlay, forceTopOffsetRefresh);
+    [40, 120, 260, 520, 900, 1400].forEach((delay) => {
+        overlayKeyboardSettleTimers.push(window.setTimeout(() => {
+            scheduleTavernOverlayViewport(overlay, true);
+        }, delay));
+    });
+}
+
 function installOverlayResizeHandler(overlay: HTMLElement): void {
     if (overlayResizeHandler) {return;}
     overlayResizeHandler = () => scheduleTavernOverlayViewport(overlay, true);
+    overlayKeyboardSettleHandler = () => scheduleTavernOverlayViewportSettle(overlay, true);
     window.addEventListener('resize', overlayResizeHandler);
     window.addEventListener('orientationchange', overlayResizeHandler);
     window.visualViewport?.addEventListener('resize', overlayResizeHandler);
     window.visualViewport?.addEventListener('scroll', overlayResizeHandler);
+    window.addEventListener('focusin', overlayKeyboardSettleHandler, true);
+    window.addEventListener('focusout', overlayKeyboardSettleHandler, true);
 }
 
 function removeOverlayResizeHandler(): void {
@@ -266,7 +298,13 @@ function removeOverlayResizeHandler(): void {
     window.removeEventListener('orientationchange', overlayResizeHandler);
     window.visualViewport?.removeEventListener('resize', overlayResizeHandler);
     window.visualViewport?.removeEventListener('scroll', overlayResizeHandler);
+    if (overlayKeyboardSettleHandler) {
+        window.removeEventListener('focusin', overlayKeyboardSettleHandler, true);
+        window.removeEventListener('focusout', overlayKeyboardSettleHandler, true);
+    }
     overlayResizeHandler = null;
+    overlayKeyboardSettleHandler = null;
+    clearOverlayKeyboardSettleTimers();
     if (overlayResizeFrame) {
         window.cancelAnimationFrame(overlayResizeFrame);
         overlayResizeFrame = 0;
@@ -316,8 +354,10 @@ async function buildFrameConfigPayload(options: Record<string, unknown> = {}): P
         ...options,
         onStartupProgress: postStartupProgress,
     });
-    postStartupProgress({ percent: 75, action: 'buildTavernFrameConfig' });
-    return await buildTavernFrameConfig(contextPayload as unknown as Record<string, unknown>);
+    postStartupProgress({ percent: 60, action: 'buildTavernFrameConfig' });
+    return await buildTavernFrameConfig(contextPayload as unknown as Record<string, unknown>, {
+        onStartupProgress: postStartupProgress,
+    });
 }
 
 function prepareInitialConfig(): void {
@@ -334,7 +374,7 @@ async function sendInitialConfigToFrame(): Promise<void> {
     const promise = initialConfigPromise || buildFrameConfigPayload();
     initialConfigPromise = null;
     const configPayload = await promise;
-    postStartupProgress({ percent: 78, action: 'sendInitialConfigToFrame' });
+    postStartupProgress({ percent: 84, action: 'sendInitialConfigToFrame' });
     postToFrame('xb-tavern:config', configPayload);
 }
 
@@ -1146,13 +1186,13 @@ async function handleRegexRequest(type: string, payload: Record<string, unknown>
     try {
         let result: unknown;
         if (type === 'xb-tavern:list-regex-scripts') {
-            result = listTavernRegexScripts(payload.payload);
+            result = await listTavernRegexScripts(payload.payload);
         } else if (type === 'xb-tavern:save-regex-script') {
             result = await saveTavernRegexScript(payload.payload);
         } else if (type === 'xb-tavern:delete-regex-script') {
             result = await deleteTavernRegexScript(payload.payload);
         } else if (type === 'xb-tavern:apply-regex') {
-            result = applyTavernRegex(payload.payload);
+            result = await applyTavernRegex(payload.payload);
         }
         replyHostResult(requestId, {
             ok: true,
@@ -1319,7 +1359,7 @@ function handleFrameMessage(event: MessageEvent): void {
             break;
         case 'xb-tavern:frame-ready':
             frameReady = true;
-            postStartupProgress({ percent: Math.max(latestStartupProgress.percent, 72), action: 'frameReady' });
+            postStartupProgress({ percent: Math.max(latestStartupProgress.percent, 20), action: 'frameReady' });
             void sendInitialConfigToFrame().catch((error) => {
                 console.warn('[LittleWhiteBox][Tavern] failed to send initial config', error);
             }).finally(flushPendingMessages);
@@ -1327,6 +1367,13 @@ function handleFrameMessage(event: MessageEvent): void {
         case 'xb-tavern:startup-progress':
             postStartupProgress(data.payload || {});
             break;
+        case 'xb-tavern:viewport-settle': {
+            const overlay = document.getElementById(OVERLAY_ID);
+            if (overlay instanceof HTMLElement) {
+                scheduleTavernOverlayViewportSettle(overlay, true);
+            }
+            break;
+        }
         case 'xb-tavern:close':
             closeTavern();
             break;

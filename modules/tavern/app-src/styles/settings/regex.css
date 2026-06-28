@@ -387,10 +387,9 @@
     flex: 1 1 auto;
     min-height: 0;
     overflow: auto;
-    display: grid;
-    grid-template-columns: minmax(0, 1.16fr) minmax(260px, 0.84fr);
-    align-content: start;
-    gap: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
     padding: clamp(18px, 2.8vw, 30px);
 }
 
@@ -403,7 +402,7 @@
 }
 
 .regex-pattern-section {
-    grid-row: span 3;
+    grid-row: auto;
 }
 
 .regex-section-title {
@@ -539,17 +538,6 @@
     .assistant-preset-studio,
     .regex-studio {
         grid-template-columns: minmax(250px, 38%) minmax(0, 1fr);
-    }
-}
-
-@media (max-width: 1160px) {
-
-    .regex-editor-grid {
-        grid-template-columns: minmax(0, 1fr);
-    }
-
-    .regex-pattern-section {
-        grid-row: auto;
     }
 }
 

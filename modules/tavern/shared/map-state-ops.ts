@@ -1,4 +1,4 @@
-import type { TavernMapDocument, TavernMapDocumentMeta, TavernMapElement, TavernMapStyle } from './structured-state';
+import type { TavernMapDocument, TavernMapDocumentMeta, TavernMapElement, TavernMapElementPatchSet, TavernMapStyle } from './structured-state';
 
 type MapShapeKey = 'rect' | 'circle' | 'path' | 'curve' | 'icon' | 'text';
 
@@ -28,7 +28,7 @@ export function mergeMapRecord(target: Record<string, unknown>, patch: Record<st
     return next;
 }
 
-function shapeKeysFromPartial(value: Partial<TavernMapElement>): MapShapeKey[] {
+function shapeKeysFromPartial(value: TavernMapElementPatchSet): MapShapeKey[] {
     return MAP_SHAPE_KEYS.filter((key) => {
         if (key === 'circle') {return typeof value.circle === 'number';}
         if (key === 'text') {return typeof value.text === 'string' && !!value.text.trim();}
@@ -36,12 +36,13 @@ function shapeKeysFromPartial(value: Partial<TavernMapElement>): MapShapeKey[] {
     });
 }
 
-function mergeStyle(base: TavernMapStyle | undefined, set: TavernMapStyle | undefined): TavernMapStyle | undefined {
+function mergeStyle(base: TavernMapStyle | undefined, set: TavernMapStyle | null | undefined): TavernMapStyle | undefined {
+    if (set === null) {return undefined;}
     if (set === undefined) {return base ? cloneJson(base) : undefined;}
     return Object.keys(set).length ? { ...(base || {}), ...set } : undefined;
 }
 
-export function mergeMapElementPatch(current: TavernMapElement, set: Partial<TavernMapElement>): TavernMapElement {
+export function mergeMapElementPatch(current: TavernMapElement, set: TavernMapElementPatchSet): TavernMapElement {
     const shapeReplacement = shapeKeysFromPartial(set).length > 0;
     const next: Partial<TavernMapElement> = cloneJson(current);
     if (shapeReplacement) {
@@ -52,14 +53,21 @@ export function mergeMapElementPatch(current: TavernMapElement, set: Partial<Tav
     }
     Object.entries(set).forEach(([key, value]) => {
         if (key === 'style') {return;}
-        if (value === undefined) {
+        if (value === null || value === undefined) {
             delete next[key as keyof TavernMapElement];
             return;
         }
         next[key as keyof TavernMapElement] = cloneJson(value) as never;
     });
     if ('style' in set) {
-        next.style = shapeReplacement ? cloneJson(set.style) : mergeStyle(current.style, set.style);
+        const nextStyle = shapeReplacement
+            ? (set.style === null || set.style === undefined ? undefined : cloneJson(set.style))
+            : mergeStyle(current.style, set.style);
+        if (nextStyle === undefined) {
+            delete next.style;
+        } else {
+            next.style = nextStyle;
+        }
     }
     return next as TavernMapElement;
 }
@@ -115,7 +123,7 @@ export function applyTrustedMapPatchOps(
                     : null;
             if (!id || !set) {return;}
             document.elements = document.elements.map((element) => element.id === id
-                ? mergeMapElementPatch(element, set as Partial<TavernMapElement>)
+                ? mergeMapElementPatch(element, set as TavernMapElementPatchSet)
                 : element);
             return;
         }

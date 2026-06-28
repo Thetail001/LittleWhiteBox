@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
-import { useTavernChatContext, useTavernShellContext } from '../tavern-app-context';
+import { useTavernDrawContext, useTavernShellContext } from '../tavern-app-context';
 
 const props = defineProps<{
     mobile?: boolean;
 }>();
 
-const chat = useTavernChatContext();
+const draw = useTavernDrawContext();
 const shell = useTavernShellContext();
 const { homeThemeDark } = shell;
 const {
@@ -22,7 +22,7 @@ const {
     tavernDrawQuickSettings,
     tavernDrawQuickSettingsLoading,
     updateTavernDrawQuickSettings,
-} = chat;
+} = draw;
 
 const menuOpen = ref(false);
 const detailPinned = ref(false);

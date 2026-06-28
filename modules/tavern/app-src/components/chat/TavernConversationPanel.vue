@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue';
 import TavernScrollControls from '../TavernScrollControls.vue';
 import TavernMessageEditPanel from './TavernMessageEditPanel.vue';
 import TavernDrawCapsule from './TavernDrawCapsule.vue';
-import { useTavernChatContext, useTavernShellContext } from '../tavern-app-context';
+import { useTavernChatContext, useTavernDrawContext, useTavernSessionContext, useTavernShellContext } from '../tavern-app-context';
 import { useTavernEphemeralDisclosureScope } from '../useTavernEphemeralDisclosureScope';
 import { useTavernMediaQuery } from '../useTavernMediaQuery';
 import {
@@ -23,6 +23,8 @@ const emit = defineEmits<{
 
 const shell = useTavernShellContext();
 const chat = useTavernChatContext();
+const session = useTavernSessionContext();
+const draw = useTavernDrawContext();
 const {
     activeView,
     homeThemeDark,
@@ -32,19 +34,15 @@ const {
 const {
     actionFeedback,
     cancelEditMessage,
-    canDrawMessage,
     canEditMessage,
     canRerunMessage,
     canSendMessage,
-    createNewChatSession,
-    currentChatCharacterSessions,
     chatComposeTextareaRef,
     chatFocus,
     chatLayout,
-    chatMessages,
-    chatMessageWindow,
     chatScrollControlsActive,
     chatScrollRef,
+    copyMessage,
     currentUserMessage,
     deleteMessageTurn,
     displayMessageContent,
@@ -52,10 +50,6 @@ const {
     displayMessageThoughtBlocks,
     displayRuntimeRenderProjection,
     displayRuntimeThoughtBlocks,
-    drawMessage,
-    drawMessageStatusClass,
-    drawMessageStatusText,
-    drawMessageTitle,
     formatMessageTime,
     handleChatScroll,
     handleChatSubmit,
@@ -64,7 +58,6 @@ const {
     handleChatWheel,
     handleComposeInput,
     handleComposeKeydown,
-    isDrawingMessage,
     isEditingMessage,
     isCancellingRun,
     isRunning,
@@ -75,8 +68,8 @@ const {
     rerunFromMessage,
     revealOlderChatMessages,
     roleLabel,
-    removeSession,
     runtimeActionCheckEvents,
+    runtimeFinalizedAssistantMessage,
     runtimePendingUserMessage,
     runtimeText,
     runtimeThoughts,
@@ -84,19 +77,34 @@ const {
     saveEditMessage,
     scrollChatToBottom,
     scrollChatToTop,
-    selectedSessionId,
-    selectSession,
-    sessionDisplayTitle,
-    sessionFloorLabel,
     showChatScrollBottom,
     showChatScrollTop,
     startEditMessage,
     thoughtBlocks,
     thoughtSummaryLabel,
     visibleCharacterAvatar,
-    visibleChatMessages,
     visibleUserAvatar,
 } = chat;
+const {
+    chatMessages,
+    chatMessageWindow,
+    createNewChatSession,
+    currentChatCharacterSessions,
+    removeSession,
+    selectedSessionId,
+    selectSession,
+    sessionDisplayTitle,
+    sessionFloorLabel,
+    visibleChatMessages,
+} = session;
+const {
+    canDrawMessage,
+    drawMessage,
+    drawMessageStatusClass,
+    drawMessageStatusText,
+    drawMessageTitle,
+    isDrawingMessage,
+} = draw;
 function setChatScrollRef(element: Element | null) {
     chatScrollRef.value = element instanceof HTMLElement ? element : null;
 }
@@ -161,6 +169,9 @@ function assistantMessageRenderState(message: TavernMessageRecord) {
 }
 
 const liveAssistantRenderState = computed(() => {
+    if (runtimeFinalizedAssistantMessage.value) {
+        return assistantMessageRenderState(runtimeFinalizedAssistantMessage.value);
+    }
     const projection = displayRuntimeRenderProjection(
         runtimeText.value,
         Array.isArray(runtimeActionCheckEvents.value) ? runtimeActionCheckEvents.value : [],
@@ -168,15 +179,27 @@ const liveAssistantRenderState = computed(() => {
     return buildAssistantRenderState(projection.text, projection.actionCheckEvents);
 });
 const liveAssistantVisible = computed(() => hasRenderableLiveAssistantContent({
-    text: runtimeText.value,
-    thoughts: runtimeThoughts.value,
-    actionCheckEvents: runtimeActionCheckEvents.value,
+    text: liveAssistantRenderState.value.text,
+    thoughts: runtimeFinalizedAssistantMessage.value
+        ? displayMessageThoughtBlocks(runtimeFinalizedAssistantMessage.value)
+        : runtimeThoughts.value,
+    actionCheckEvents: runtimeFinalizedAssistantMessage.value
+        ? []
+        : runtimeActionCheckEvents.value,
 }));
-const liveAssistantCanRender = computed(() => isRunning.value && runtimeUserMessageVisible.value);
+const liveAssistantCanRender = computed(() => (
+    (isRunning.value && runtimeUserMessageVisible.value)
+    || !!runtimeFinalizedAssistantMessage.value
+));
 const liveAssistantMarkdownVisible = computed(() => hasRenderableLiveAssistantMarkdown({
-    text: runtimeText.value,
-    actionCheckEvents: runtimeActionCheckEvents.value,
+    text: liveAssistantRenderState.value.text,
+    actionCheckEvents: runtimeFinalizedAssistantMessage.value
+        ? []
+        : runtimeActionCheckEvents.value,
 }));
+const liveAssistantThoughtBlocks = computed(() => runtimeFinalizedAssistantMessage.value
+    ? displayMessageThoughtBlocks(runtimeFinalizedAssistantMessage.value)
+    : displayRuntimeThoughtBlocks(thoughtBlocks(runtimeThoughts.value)));
 const pendingUserVisible = computed(() => isRunning.value && !runtimeUserMessageVisible.value && !!runtimePendingUserMessage.value.trim());
 const pendingUserRenderState = computed(() => {
     const text = runtimePendingUserMessage.value.trim();
@@ -457,6 +480,15 @@ watch(isMobileActionTrayViewport, (isMobile) => {
               </button>
               <button
                 type="button"
+                :class="actionFeedback(message, 'copy')"
+                title="复制"
+                aria-label="复制"
+                @click="copyMessage(message)"
+              >
+                {{ actionFeedback(message, 'copy') === 'success' ? '✓' : actionFeedback(message, 'copy') === 'error' ? '!' : '⧉' }}
+              </button>
+              <button
+                type="button"
                 :disabled="!canEditMessage(message)"
                 :class="actionFeedback(message, 'edit')"
                 title="编辑"
@@ -620,37 +652,32 @@ watch(isMobileActionTrayViewport, (isMobile) => {
               </span>
               <span class="bubble-role-name">{{ roleLabel('assistant') }}</span>
             </span>
-            <small>生成中</small>
+            <small>{{ runtimeFinalizedAssistantMessage ? '已完成' : '生成中' }}</small>
           </div>
           <template
-            v-for="rawRuntimeThoughts in [thoughtBlocks(runtimeThoughts)]"
-            :key="`${runtimeThoughtDisclosureId}:${rawRuntimeThoughts.length}`"
+            v-for="displayRuntimeThoughts in [liveAssistantThoughtBlocks]"
+            :key="`${runtimeThoughtDisclosureId}:${displayRuntimeThoughts.length}`"
           >
             <details
-              v-if="rawRuntimeThoughts.length"
+              v-if="displayRuntimeThoughts.length"
               class="tavern-thought-details"
               :open="thoughtDisclosure.isOpen(runtimeThoughtDisclosureId, true)"
               @toggle="thoughtDisclosure.setOpenFromEvent(runtimeThoughtDisclosureId, $event)"
             >
-              <summary>{{ thoughtSummaryLabel(rawRuntimeThoughts, true) }}</summary>
+              <summary>{{ thoughtSummaryLabel(displayRuntimeThoughts, true) }}</summary>
               <template
                 v-if="thoughtDisclosure.isOpen(runtimeThoughtDisclosureId, true)"
               >
-                <template
-                  v-for="displayRuntimeThoughts in [displayRuntimeThoughtBlocks(rawRuntimeThoughts)]"
-                  :key="`${runtimeThoughtDisclosureId}:display:${displayRuntimeThoughts.length}`"
+                <div
+                  v-for="(thought, thoughtIndex) in displayRuntimeThoughts"
+                  :key="`runtime-thought-${thoughtIndex}`"
+                  class="tavern-thought-block"
                 >
-                  <div
-                    v-for="(thought, thoughtIndex) in displayRuntimeThoughts"
-                    :key="`runtime-thought-${thoughtIndex}`"
-                    class="tavern-thought-block"
-                  >
-                    <div class="tavern-thought-label">
-                      {{ thought.label }}
-                    </div>
-                    <pre>{{ thought.text }}</pre>
+                  <div class="tavern-thought-label">
+                    {{ thought.label }}
                   </div>
-                </template>
+                  <pre>{{ thought.text }}</pre>
+                </div>
               </template>
             </details>
           </template>
@@ -680,7 +707,7 @@ watch(isMobileActionTrayViewport, (isMobile) => {
               </span>
               <span class="bubble-role-name">{{ roleLabel('assistant') }}</span>
             </span>
-            <small>生成中</small>
+            <small>{{ runtimeFinalizedAssistantMessage ? '已完成' : '生成中' }}</small>
           </div>
           <p>正在组织回复...</p>
         </div>
@@ -832,25 +859,25 @@ watch(isMobileActionTrayViewport, (isMobile) => {
           class="session-archive-list"
         >
           <div
-            v-for="session in currentChatCharacterSessions"
-            :key="session.id"
+            v-for="archivedSession in currentChatCharacterSessions"
+            :key="archivedSession.id"
             class="session-archive-item"
-            :class="{ active: session.id === selectedSessionId }"
+            :class="{ active: archivedSession.id === selectedSessionId }"
           >
             <button
               type="button"
               class="session-archive-open"
-              @click="openArchivedSession(session.id)"
+              @click="openArchivedSession(archivedSession.id)"
             >
-              <span class="session-archive-item-title">{{ sessionDisplayTitle(session) || '未命名会话' }}</span>
-              <span class="session-archive-item-meta">{{ sessionFloorLabel(session) }}</span>
+              <span class="session-archive-item-title">{{ sessionDisplayTitle(archivedSession) || '未命名会话' }}</span>
+              <span class="session-archive-item-meta">{{ sessionFloorLabel(archivedSession) }}</span>
             </button>
             <button
               type="button"
               class="session-archive-delete"
               title="删除会话"
               aria-label="删除会话"
-              @click="deleteArchivedSession(session.id, $event)"
+              @click="deleteArchivedSession(archivedSession.id, $event)"
             >
               <svg
                 aria-hidden="true"
@@ -873,5 +900,3 @@ watch(isMobileActionTrayViewport, (isMobile) => {
     </div>
   </section>
 </template>
-
-

@@ -307,6 +307,31 @@ export async function trimTavernTaskSnapshotsFromFloor(sessionId = '', fromFloor
     });
 }
 
+export async function describeTavernTaskRestoreImpact(sessionId = '', targetFloor = -1): Promise<{
+    changed: boolean;
+    currentTaskCount: number;
+    targetTaskCount: number;
+}> {
+    const id = String(sessionId || '').trim();
+    if (!id) {
+        return { changed: false, currentTaskCount: 0, targetTaskCount: 0 };
+    }
+    const snapshot = await getLatestTavernTaskSnapshot(id, targetFloor);
+    const [currentTasks, currentFingerprints] = await Promise.all([
+        listTavernTasks(id, { includeAbandoned: true, includeCompleted: true }),
+        getAbandonedTaskFingerprints(id),
+    ]);
+    const targetTasks = snapshot?.tasks || [];
+    const targetFingerprints = snapshot?.abandonedFingerprints || [];
+    const currentHash = hashText(taskHashPayload(currentTasks, currentFingerprints));
+    const targetHash = hashText(taskHashPayload(targetTasks, targetFingerprints));
+    return {
+        changed: currentHash !== targetHash,
+        currentTaskCount: currentTasks.length,
+        targetTaskCount: targetTasks.length,
+    };
+}
+
 export async function restoreTavernTasksToFloor(sessionId = '', targetFloor = -1): Promise<TavernTaskRecord[]> {
     const id = String(sessionId || '').trim();
     if (!id) {throw new Error('task_session_required');}

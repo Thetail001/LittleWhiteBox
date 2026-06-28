@@ -1,4 +1,5 @@
 import type { TavernMapDocument, TavernMapElement } from '../shared/structured-state';
+import { materialEntry } from '../shared/map-semantics';
 import { getTavernMapIconRenderSize } from './map-glyphs';
 
 export interface TavernMapBounds {
@@ -10,10 +11,20 @@ export interface TavernMapBounds {
     height: number;
 }
 
+export interface TavernMapPresentationTransform {
+    sourceViewBox: [number, number, number, number];
+    viewBox: [number, number, number, number];
+    centerX: number;
+    centerY: number;
+    scale: number;
+}
+
 export const DEFAULT_TAVERN_MAP_VIEWBOX: [number, number, number, number] = [0, 0, 800, 600];
 
 const DEFAULT_PADDING = 48;
 const MIN_VIEWBOX_SIZE = 160;
+const LIGHT_SOURCE_BOUNDS_PADDING = 4;
+const PRESENTATION_VIEWBOX_SCALE = 2;
 
 function createBounds(minX: number, minY: number, maxX: number, maxY: number): TavernMapBounds | null {
     if (![minX, minY, maxX, maxY].every((value) => Number.isFinite(value))) {return null;}
@@ -108,6 +119,16 @@ export function normalizeTavernMapViewBox(value: unknown): [number, number, numb
 }
 
 export function getTavernMapElementBounds(element: TavernMapElement): TavernMapBounds | null {
+    if (element.cat === 'light' || materialEntry(element.material)?.layer === 'light') {
+        return expandBounds(createBounds(element.at[0], element.at[1], element.at[0], element.at[1]) || {
+            minX: element.at[0],
+            minY: element.at[1],
+            maxX: element.at[0],
+            maxY: element.at[1],
+            width: 0,
+            height: 0,
+        }, LIGHT_SOURCE_BOUNDS_PADDING);
+    }
     let bounds: TavernMapBounds | null = null;
     if (element.rect) {
         bounds = rectBounds(element);
@@ -182,4 +203,38 @@ export function getTavernMapDisplayViewBox(document: TavernMapDocument | null | 
     }
     const fallback = DEFAULT_TAVERN_MAP_VIEWBOX[2] / DEFAULT_TAVERN_MAP_VIEWBOX[3];
     return fittedBounds(document, fallback);
+}
+
+export function getTavernMapPresentationTransform(document: TavernMapDocument | null | undefined): TavernMapPresentationTransform {
+    const [x, y, width, height] = getTavernMapDisplayViewBox(document);
+    const scale = PRESENTATION_VIEWBOX_SCALE;
+    const nextWidth = width * scale;
+    const nextHeight = height * scale;
+    const viewBox: [number, number, number, number] = [
+        Number((x - (nextWidth - width) / 2).toFixed(2)),
+        Number((y - (nextHeight - height) / 2).toFixed(2)),
+        Number(nextWidth.toFixed(2)),
+        Number(nextHeight.toFixed(2)),
+    ];
+    return {
+        sourceViewBox: [x, y, width, height],
+        viewBox,
+        centerX: x + width / 2,
+        centerY: y + height / 2,
+        scale,
+    };
+}
+
+export function getTavernMapPresentationViewBox(document: TavernMapDocument | null | undefined): [number, number, number, number] {
+    return getTavernMapPresentationTransform(document).viewBox;
+}
+
+export function projectTavernMapPresentationPoint(
+    point: [number, number],
+    transform: TavernMapPresentationTransform,
+): [number, number] {
+    return [
+        Number((transform.centerX + (point[0] - transform.centerX) * transform.scale).toFixed(2)),
+        Number((transform.centerY + (point[1] - transform.centerY) * transform.scale).toFixed(2)),
+    ];
 }

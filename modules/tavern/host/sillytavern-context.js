@@ -88,6 +88,17 @@ function pickUserAvatarFromDom() {
   }
   return "";
 }
+function normalizePersonaAvatar(personaId = "") {
+  const id = normalizeText(personaId);
+  if (!id) {
+    return "";
+  }
+  try {
+    return getThumbnailUrl("persona", id);
+  } catch {
+    return `/thumbnail?type=persona&file=${encodeURIComponent(id)}`;
+  }
+}
 function normalizeUserAvatar() {
   let avatar = pickUserAvatarFromDom() || readGlobalString("default_user_avatar");
   const personaMatch = String(avatar).match(/\/thumbnail\?type=persona&file=([^&]+)/i);
@@ -365,7 +376,7 @@ function normalizeUser(ctx = getContext?.() || {}) {
   return {
     id: personaId,
     name: readPersonaName(personaId) || normalizeText(ctx.name1) || "User",
-    avatar: normalizeUserAvatar(),
+    avatar: normalizePersonaAvatar(personaId) || normalizeUserAvatar(),
     persona: readPersonaDescription(personaId) || normalizeText(ctx.userPersona || ctx.persona)
   };
 }
@@ -514,17 +525,17 @@ async function fetchWorldbook(source) {
 }
 async function buildTavernContext(options = {}) {
   const ctx = getContext?.() || {};
-  options.onStartupProgress?.({ percent: 30, action: "hydrateSelectedCharacter" });
+  options.onStartupProgress?.({ percent: 25, action: "hydrateSelectedCharacter" });
   await hydrateSelectedCharacter(ctx, options);
   const includeWorldbooks = options.includeWorldbooks !== false;
-  options.onStartupProgress?.({ percent: 38, action: "collectWorldbookSources" });
+  options.onStartupProgress?.({ percent: 32, action: "collectWorldbookSources" });
   const worldbookSources = collectWorldbookSources(ctx, options);
   const worldbookNames = worldbookSources.map((source) => source.name);
   const fetchedWorldBooks = includeWorldbooks ? await Promise.all(worldbookSources.map(async (source, index) => {
     try {
-      const span = worldbookSources.length > 1 ? 15 / (worldbookSources.length - 1) : 0;
+      const span = worldbookSources.length > 1 ? 14 / (worldbookSources.length - 1) : 0;
       options.onStartupProgress?.({
-        percent: Math.round(worldbookSources.length > 1 ? 45 + index * span : 52),
+        percent: Math.round(worldbookSources.length > 1 ? 38 + index * span : 45),
         action: `fetchWorldbook:${source.name}`
       });
       return await fetchWorldbook(source);
@@ -538,7 +549,7 @@ async function buildTavernContext(options = {}) {
       };
     }
   })) : [];
-  options.onStartupProgress?.({ percent: 70, action: "assembleTavernContext" });
+  options.onStartupProgress?.({ percent: 58, action: "assembleTavernContext" });
   const worldBooks = dedupeWorldBooks([
     ...fetchedWorldBooks
   ]);

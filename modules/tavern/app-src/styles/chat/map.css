@@ -105,7 +105,7 @@
     top: 9px;
     left: 50%;
     z-index: 5;
-    max-width: calc(100% - 86px);
+    max-width: calc(100% - 74px);
     transform: translateX(-50%);
 }
 
@@ -117,32 +117,32 @@
 
 .tavern-chat.xb-page .tavern-map-zoom-controls {
     position: absolute;
-    right: 14px;
-    top: 14px;
+    right: 10px;
+    top: 10px;
     z-index: 5;
     display: grid;
-    grid-template-columns: 26px minmax(44px, auto) 26px;
+    grid-template-columns: 22px 34px 22px;
     align-items: center;
     overflow: hidden;
     border: 1px solid rgba(70, 52, 31, 0.18);
-    border-radius: 7px;
-    background: rgba(230, 216, 174, 0.52);
+    border-radius: 6px;
+    background: rgba(230, 216, 174, 0.44);
     box-shadow:
-        inset 0 0 0 1px rgba(255, 248, 220, 0.18),
-        0 8px 18px rgba(58, 43, 25, 0.08);
-    backdrop-filter: blur(4px);
+        inset 0 0 0 1px rgba(255, 248, 220, 0.14),
+        0 6px 14px rgba(58, 43, 25, 0.08);
+    backdrop-filter: blur(5px);
 }
 
 .tavern-chat.xb-page .tavern-map-zoom-controls button {
-    height: 26px;
+    height: 22px;
     min-width: 0;
     border: 0;
     border-right: 1px solid rgba(70, 52, 31, 0.14);
     border-radius: 0;
     background: transparent;
     color: rgba(74, 55, 34, 0.82);
-    font: 760 12px/1 var(--xb-font-ui);
-    padding: 0 7px;
+    font: 760 11px/1 var(--xb-font-ui);
+    padding: 0;
 }
 
 .tavern-chat.xb-page .tavern-map-zoom-controls button:last-child {
@@ -161,7 +161,7 @@
 
 .tavern-chat.xb-page .tavern-map-zoom-controls .tavern-map-zoom-value {
     color: rgba(77, 57, 34, 0.68);
-    font: 720 10px/1 var(--xb-font-mono);
+    font: 720 9px/1 var(--xb-font-mono);
 }
 
 .tavern-chat.xb-page .theme-dark .tavern-map-compact-controls,
@@ -172,10 +172,10 @@
 .tavern-chat.xb-page .theme-dark .tavern-map-zoom-controls,
 .tavern-chat.xb-page .theme-blueprint .tavern-map-zoom-controls {
     border-color: rgba(177, 205, 218, 0.18);
-    background: rgba(23, 35, 42, 0.42);
+    background: rgba(23, 35, 42, 0.36);
     box-shadow:
         inset 0 0 0 1px rgba(206, 230, 240, 0.06),
-        0 8px 18px rgba(0, 0, 0, 0.18);
+        0 6px 14px rgba(0, 0, 0, 0.16);
 }
 
 .tavern-chat.xb-page .theme-dark .tavern-map-zoom-controls button,
@@ -198,6 +198,83 @@
 .tavern-chat.xb-page .theme-dark .tavern-map-zoom-controls .tavern-map-zoom-value,
 .tavern-chat.xb-page .theme-blueprint .tavern-map-zoom-controls .tavern-map-zoom-value {
     color: rgba(214, 232, 238, 0.64);
+}
+
+.tavern-chat.xb-page .tavern-map-redraw-button {
+    position: absolute;
+    left: 16px;
+    bottom: 16px;
+    z-index: 8;
+    width: 28px;
+    height: 28px;
+    border: 1px solid rgba(70, 52, 31, 0.18);
+    border-radius: 999px;
+    background: rgba(248, 244, 231, 0.72);
+    box-shadow:
+        inset 0 0 0 1px rgba(255, 248, 220, 0.16),
+        0 10px 22px rgba(45, 33, 18, 0.12);
+    color: rgba(77, 58, 37, 0.82);
+    font: 780 15px/1 var(--xb-font-ui);
+    padding: 0;
+    backdrop-filter: blur(8px);
+}
+
+.tavern-chat.xb-page .tavern-map-redraw-button:hover {
+    background: rgba(255, 250, 232, 0.88);
+    box-shadow:
+        inset 0 0 0 1px rgba(255, 248, 220, 0.24),
+        0 12px 28px rgba(45, 33, 18, 0.16);
+    color: rgba(50, 37, 23, 0.95);
+}
+
+.tavern-chat.xb-page .theme-dark .tavern-map-redraw-button,
+.tavern-chat.xb-page .theme-blueprint .tavern-map-redraw-button {
+    border-color: rgba(184, 208, 230, 0.16);
+    background: rgba(13, 18, 27, 0.66);
+    box-shadow:
+        inset 0 0 0 1px rgba(206, 230, 240, 0.06),
+        0 12px 28px rgba(0, 0, 0, 0.30);
+    color: rgba(214, 232, 238, 0.8);
+}
+
+.tavern-chat.xb-page .theme-dark .tavern-map-redraw-button:hover,
+.tavern-chat.xb-page .theme-blueprint .tavern-map-redraw-button:hover {
+    background: rgba(26, 38, 50, 0.78);
+    color: #edf6ff;
+}
+
+@media (max-width: 640px) {
+    .tavern-chat.xb-page .tavern-map-compact-controls.is-floating {
+        top: 8px;
+        max-width: calc(100% - 68px);
+    }
+
+    .tavern-chat.xb-page .tavern-map-compact-controls .tavern-map-select {
+        max-width: min(46vw, 150px);
+    }
+
+    .tavern-chat.xb-page .tavern-map-zoom-controls {
+        right: 8px;
+        top: 8px;
+        grid-template-columns: 20px 30px 20px;
+    }
+
+    .tavern-chat.xb-page .tavern-map-zoom-controls button {
+        height: 20px;
+        font-size: 10px;
+    }
+
+    .tavern-chat.xb-page .tavern-map-zoom-controls .tavern-map-zoom-value {
+        font-size: 8px;
+    }
+
+    .tavern-chat.xb-page .tavern-map-redraw-button {
+        left: 12px;
+        bottom: 12px;
+        width: 26px;
+        height: 26px;
+        font-size: 14px;
+    }
 }
 
 .tavern-chat.xb-page .tavern-map-canvas svg {
@@ -259,6 +336,14 @@
     mask-image: radial-gradient(circle at center, #000 0, #000 68%, transparent 100%);
 }
 
+.tavern-chat.xb-page .tavern-map-canvas.has-scene-surface::before {
+    background:
+        linear-gradient(90deg, rgba(18, 24, 16, 0.035) 1px, transparent 1px),
+        linear-gradient(rgba(18, 24, 16, 0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    opacity: 0.72;
+}
+
 .tavern-chat.xb-page .tavern-map-canvas::after {
     content: "";
     position: absolute;
@@ -289,6 +374,17 @@
     opacity: 0.9;
 }
 
+.tavern-chat.xb-page .map-scene-surface,
+.tavern-chat.xb-page .map-light-layer,
+.tavern-chat.xb-page .map-mood-overlay,
+.tavern-chat.xb-page .map-vignette-overlay {
+    pointer-events: none;
+}
+
+.tavern-chat.xb-page .map-light-layer {
+    isolation: isolate;
+}
+
 .tavern-chat.xb-page .map-element {
     transform-box: fill-box;
     transform-origin: center;
@@ -297,6 +393,13 @@
 .tavern-chat.xb-page .map-line,
 .tavern-chat.xb-page .map-fill {
     vector-effect: non-scaling-stroke;
+}
+
+.tavern-chat.xb-page .map-avatar.is-animated {
+    opacity: 0;
+    animation:
+        tavern-map-fill-in 1s ease-out calc(var(--map-delay) + 120ms) forwards,
+        tavern-map-op-glow 1.2s ease-out calc(var(--map-delay) + 150ms) both;
 }
 
 .tavern-chat.xb-page .map-line.is-animated {
@@ -536,7 +639,7 @@
 
 .tavern-chat.xb-page .tavern-map-timeline-control {
     position: absolute;
-    left: 16px;
+    left: 54px;
     bottom: 16px;
     z-index: 7;
     display: flex;

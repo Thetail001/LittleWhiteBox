@@ -29,6 +29,7 @@ import type {
 } from '../../shared/session-db';
 import type { TavernDisplaySettings, TavernUserOption } from '../../shared/settings';
 import type { TavernMapStateDocumentItem } from '../../shared/structured-state';
+import type { TavernDrawContext } from '../features/draw/useTavernDrawController';
 export type { TavernDisplaySettings, TavernUserOption } from '../../shared/settings';
 
 export type TavernReadable<T> = Ref<T> | ComputedRef<T>;
@@ -197,8 +198,6 @@ export interface TavernCharacterContext {
     loadMore: TavernCommand;
     movePreview: TavernCommand<[delta: number]>;
     openCharacterWorldbook: TavernCommand<[], Promise<void>>;
-    openSession: TavernCommand<[sessionId: string], Promise<void>>;
-    removeSession: TavernCommand<[sessionId: string, event?: Event], Promise<void>>;
     pendingCharacterSessionKey: Ref<string>;
     pendingError: Ref<string>;
     pendingPreviewCharacterKey: Ref<string>;
@@ -210,12 +209,26 @@ export interface TavernCharacterContext {
     selectGreeting: TavernCommand<[index: number]>;
     selectLastVisible: TavernCommand;
     selectedCharacter: TavernReadable<TavernCharacterOption | null>;
-    selectedCharacterSessions: TavernReadable<TavernSessionRecord[]>;
     selectedGreetingIndex: Ref<number>;
-    sessionFloorLabel: TavernCommand<[session?: TavernSessionRecord | null], string>;
     shortText: TavernCommand<[value?: string, limit?: number], string>;
     syncWorldbookState: TavernCommand<[characterKey?: string], Promise<void>>;
     visibleCharacters: TavernReadable<TavernCharacterOption[]>;
+}
+
+export interface TavernSessionContext {
+    chatMessages: TavernReadable<TavernMessageRecord[]>;
+    chatMessageWindow: TavernReadable<TavernMessageWindowState>;
+    createNewChatSession: TavernCommand<[], Promise<void>>;
+    currentAssistantFloor: TavernReadable<number>;
+    currentChatCharacterSessions: TavernReadable<TavernSessionRecord[]>;
+    removeSession: TavernCommand<[sessionId: string, event?: Event], Promise<void>>;
+    selectedCharacterSessions: TavernReadable<TavernSessionRecord[]>;
+    selectedSessionId: Ref<string>;
+    selectSession: TavernCommand<[sessionId: string], Promise<void>>;
+    sessionDisplayTitle: TavernCommand<[session?: TavernSessionRecord | null], string>;
+    sessionFloorLabel: TavernCommand<[session?: TavernSessionRecord | null], string>;
+    sessions: Ref<TavernSessionRecord[]>;
+    visibleChatMessages: TavernReadable<TavernMessageRecord[]>;
 }
 
 export interface TavernRegexScriptDraft {
@@ -267,21 +280,7 @@ export interface TavernMessageWindowState {
     visibleCount: number;
 }
 
-export interface TavernDrawQuickOption {
-    value: string;
-    label: string;
-}
-
-export interface TavernDrawQuickSettings {
-    provider: string;
-    providerLabel: string;
-    available: boolean;
-    auto: boolean;
-    presets: TavernDrawQuickOption[];
-    selectedPresetId: string;
-    sizeOptions: TavernDrawQuickOption[];
-    selectedSize: string;
-}
+export type { TavernDrawQuickSettings } from '../features/draw/useTavernDrawController';
 
 export interface TavernManagerCompactionOverlay {
     active?: boolean;
@@ -323,18 +322,13 @@ export interface TavernShellContext {
 export interface TavernChatContext {
     actionFeedback: TavernCommand<[message: TavernMessageRecord, action: string], string>;
     cancelEditMessage: TavernCommand;
-    canDrawMessage: TavernCommand<[message: TavernMessageRecord], boolean>;
     canEditMessage: TavernCommand<[message: TavernMessageRecord], boolean>;
     canRerunMessage: TavernCommand<[message: TavernMessageRecord], boolean>;
     canSendMessage: TavernReadable<boolean>;
-    createNewChatSession: TavernCommand<[], Promise<void>>;
-    currentChatCharacterSessions: TavernReadable<TavernSessionRecord[]>;
     currentAuthorNote: TavernReadable<XbTavernAuthorNote>;
     chatAutoScroll: Ref<boolean>;
     chatFocus: Ref<string>;
     chatLayout: Ref<string>;
-    chatMessages: TavernReadable<TavernMessageRecord[]>;
-    chatMessageWindow: TavernReadable<TavernMessageWindowState>;
     chatComposeTextareaRef: Ref<HTMLTextAreaElement | null>;
     chatScrollControlsActive: Ref<boolean>;
     chatScrollRef: Ref<HTMLElement | null>;
@@ -349,11 +343,7 @@ export interface TavernChatContext {
     displayRuntimeRenderProjection: TavernCommand<[text?: string, events?: TavernActionCheckRuntimeEvent[]], { text: string; actionCheckEvents: TavernActionCheckRuntimeEvent[] }>;
     displayRuntimeThoughtBlocks: TavernCommand<[thoughts?: Array<{ label?: string; text?: string }>], Array<{ label?: string; text?: string }>>;
     displayCharacterName: TavernReadable<string>;
-    drawMessage: TavernCommand<[message: TavernMessageRecord], Promise<void>>;
-    drawLatestAssistantMessage: TavernCommand<[], Promise<void>>;
-    drawMessageStatusClass: TavernCommand<[message: TavernMessageRecord], string>;
-    drawMessageStatusText: TavernCommand<[message: TavernMessageRecord], string>;
-    drawMessageTitle: TavernCommand<[message: TavernMessageRecord], string>;
+    displayUserName: TavernReadable<string>;
     formatMessageTime: TavernCommand<[value: unknown], string>;
     handleChatScroll: TavernCommand;
     handleChatSubmit: TavernCommand;
@@ -362,7 +352,6 @@ export interface TavernChatContext {
     handleChatWheel: TavernCommand<[event: WheelEvent]>;
     handleComposeInput: TavernCommand<[event: Event]>;
     handleComposeKeydown: TavernCommand<[event: KeyboardEvent]>;
-    isDrawingMessage: TavernCommand<[message: TavernMessageRecord], boolean>;
     isEditingMessage: TavernCommand<[message: TavernMessageRecord], boolean>;
     isCancellingRun: Ref<boolean>;
     isRunning: Ref<boolean>;
@@ -370,44 +359,27 @@ export interface TavernChatContext {
     htmlRenderEnabled: Ref<boolean>;
     messageKey: TavernCommand<[message: TavernMessageRecord], string>;
     normalizeTavernSessionState: TavernCommand<[value?: unknown], { turn?: number }>;
-    openTavernDrawSettings: TavernCommand<[], Promise<void>>;
-    refreshTavernDrawQuickSettings: TavernCommand<[], Promise<TavernDrawQuickSettings>>;
-    removeSession: TavernCommand<[sessionId: string, event?: Event], Promise<void>>;
     renderChatMarkdown: TavernCommand<[text?: string, options?: { roleplay?: boolean; userName?: string; characterName?: string }], string>;
     rerunFromMessage: TavernCommand<[message: TavernMessageRecord], Promise<void>>;
     revealOlderChatMessages: TavernCommand<[force?: boolean], boolean>;
     roleLabel: TavernCommand<[role?: string], string>;
     runtimeActionCheckEvents: Ref<TavernActionCheckRuntimeEvent[]>;
+    runtimeFinalizedAssistantMessage: Ref<TavernMessageRecord | null>;
     runtimePendingUserMessage: Ref<string>;
     runtimeText: Ref<string>;
     runtimeThoughts: Ref<Array<{ label?: string; text?: string }>>;
     runtimeUserMessageVisible: Ref<boolean>;
-    saveEditMessage: TavernCommand<[message: TavernMessageRecord, options?: { rerun?: boolean; rollbackState?: boolean; content?: string }], Promise<void>>;
+    saveEditMessage: TavernCommand<[message: TavernMessageRecord, options?: { rollbackState?: boolean; content?: string }], Promise<void>>;
     scrollChatToBottom: TavernCommand<[force?: boolean, options?: { collapseWindow?: boolean; revealHelpers?: boolean }]>;
     scrollChatToTop: TavernCommand;
-    selectedSessionId: Ref<string>;
-    selectSession: TavernCommand<[sessionId: string], Promise<void>>;
     saveCurrentAuthorNote: TavernCommand<[note: XbTavernAuthorNote], Promise<void>>;
-    sessionDisplayTitle: TavernCommand<[session?: TavernSessionRecord | null], string>;
-    sessionFloorLabel: TavernCommand<[session?: TavernSessionRecord | null], string>;
-    sessions: Ref<TavernSessionRecord[]>;
     showChatScrollBottom: Ref<boolean>;
     showChatScrollTop: Ref<boolean>;
     startEditMessage: TavernCommand<[message: TavernMessageRecord]>;
-    tavernDrawCapsuleIcon: TavernReadable<string>;
-    tavernDrawCapsuleMainDisabled: TavernReadable<boolean>;
-    tavernDrawCapsuleStatusClass: TavernReadable<string>;
-    tavernDrawCapsuleStatusText: TavernReadable<string>;
-    tavernDrawCapsuleTitle: TavernReadable<string>;
-    tavernDrawCapsuleVisible: TavernReadable<boolean>;
-    tavernDrawQuickSettings: Ref<TavernDrawQuickSettings>;
-    tavernDrawQuickSettingsLoading: Ref<boolean>;
     thoughtBlocks: TavernCommand<[messageOrThoughts: unknown], Array<{ label?: string; text?: string }>>;
     thoughtSummaryLabel: TavernCommand<[messageOrThoughts: unknown, streaming?: boolean], string>;
     updateChatScrollButtons: TavernCommand;
-    updateTavernDrawQuickSettings: TavernCommand<[patch?: Record<string, unknown>], Promise<void>>;
     visibleCharacterAvatar: TavernReadable<string>;
-    visibleChatMessages: TavernReadable<TavernMessageRecord[]>;
     visibleUserAvatar: TavernReadable<string>;
 }
 
@@ -522,15 +494,15 @@ export interface TavernWorkspaceContext {
     atlasStateDocument: Ref<TavernStructuredStateDocumentRecord | null>;
     atlasStatePatches: Ref<TavernStructuredStatePatchRecord[]>;
     chatWorkspacePanel: Ref<string>;
-    currentAssistantFloor: TavernReadable<number>;
+    displayUserName: TavernReadable<string>;
     mapStateDocuments: Ref<TavernMapStateDocumentItem[]>;
     mapStateDocument: Ref<TavernStructuredStateDocumentRecord | null>;
     mapStatePatches: Ref<TavernStructuredStatePatchRecord[]>;
     saveSessionContract: TavernCommand<[nextContract?: Partial<TavernSessionContract>], Promise<TavernSessionRecord | null>>;
-    selectedSessionId: Ref<string>;
     sessionContract: TavernReadable<TavernSessionContract>;
     stateMemoryFile: Ref<TavernMemoryFileRecord | null>;
     tavernTasks: Ref<TavernTaskRecord[]>;
+    visibleUserAvatar: TavernReadable<string>;
 }
 
 export interface TavernSettingsContext {
@@ -673,6 +645,8 @@ export interface TavernSettingsContext {
 export interface TavernAppUiContext {
     shell: TavernShellContext;
     character: TavernCharacterContext;
+    session: TavernSessionContext;
+    draw: TavernDrawContext;
     chat: TavernChatContext;
     manager: TavernManagerContext;
     memory: TavernMemoryContext;
@@ -696,6 +670,14 @@ export function useTavernShellContext(): TavernShellContext {
 
 export function useTavernCharacterContext(): TavernCharacterContext {
     return useTavernAppUiContext().character;
+}
+
+export function useTavernSessionContext(): TavernSessionContext {
+    return useTavernAppUiContext().session;
+}
+
+export function useTavernDrawContext(): TavernDrawContext {
+    return useTavernAppUiContext().draw;
 }
 
 export function useTavernChatContext(): TavernChatContext {

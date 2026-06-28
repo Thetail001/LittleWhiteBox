@@ -9,6 +9,16 @@ function readRepoFile(path: string): string {
     return readFileSync(resolve(root, path), 'utf8');
 }
 
+function cssRuleBlock(source: string, selector: string): string {
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return [...source.matchAll(new RegExp(`${escaped}\\s*\\{[^}]*\\}`, 'g'))].at(-1)?.[0] || '';
+}
+
+function cssDeclarationValues(rule: string, property: string): string[] {
+    const escaped = property.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return [...rule.matchAll(new RegExp(`${escaped}:\\s*([^;]+);`, 'g'))].map((match) => String(match[1] || '').trim());
+}
+
 test('tavern host build script compiles every host module imported by tavern.ts', () => {
     const tavernSource = readRepoFile('modules/tavern/tavern.ts');
     const buildSource = readRepoFile('scripts/build-tavern-host.mjs');
@@ -77,14 +87,16 @@ test('tavern host can return a fresh live context on demand', () => {
 });
 
 test('tavern app requests sanitize payload before postMessage', () => {
-    const appSource = readRepoFile('modules/tavern/app-src/App.vue');
-    assert.match(appSource, /function clonePostMessagePayload/);
-    assert.match(appSource, /const safePayload = clonePostMessagePayload\(payload\);/);
+    const bridgeSource = readRepoFile('modules/tavern/app-src/features/host-bridge/useTavernHostBridge.ts');
+    assert.match(bridgeSource, /function clonePostMessagePayload/);
+    assert.match(bridgeSource, /const safePayload = clonePostMessagePayload\(payload\);/);
 });
 
 test('tavern chat typography follows host SillyTavern font metrics inside the iframe', () => {
     const hostSource = readRepoFile('modules/tavern/host/sillytavern-context.ts');
     const appSource = readRepoFile('modules/tavern/app-src/App.vue');
+    const conversationPanelSource = readRepoFile('modules/tavern/app-src/components/chat/TavernConversationPanel.vue');
+    const managerPanelSource = readRepoFile('modules/tavern/app-src/components/chat/TavernManagerPanel.vue');
     const markdownSource = readRepoFile('modules/agent-core/ui/message-markdown.js');
     const markdownToolsSource = readRepoFile('modules/tavern/app-src/components/chat/useTavernMarkdownTools.ts');
     const baseCss = readRepoFile('modules/tavern/app-src/styles/base.css');
@@ -93,6 +105,8 @@ test('tavern chat typography follows host SillyTavern font metrics inside the if
     const managerCss = readRepoFile('modules/tavern/app-src/styles/chat/manager.css');
     const messagesCss = readRepoFile('modules/tavern/app-src/styles/chat/messages.css');
     const memoryCss = readRepoFile('modules/tavern/app-src/styles/chat/memory-editor.css');
+    const tavernPreRule = cssRuleBlock(markdownCss, '.xb-tavern-markdown pre');
+    const tavernPreCodeRule = cssRuleBlock(markdownCss, '.xb-tavern-markdown pre code');
 
     assert.match(hostSource, /function getHostTypographyMetrics/);
     assert.match(hostSource, /hostMainFontSizePx/);
@@ -101,13 +115,30 @@ test('tavern chat typography follows host SillyTavern font metrics inside the if
     assert.match(appSource, /const hostProseLineHeightPx = ref\('23px'\);/);
     assert.match(appSource, /--xb-host-main-font-size/);
     assert.match(appSource, /--xb-host-prose-line-height/);
+    assert.match(conversationPanelSource, /copyMessage,/);
+    assert.match(conversationPanelSource, /@click="copyMessage\(message\)"[\s\S]*actionFeedback\(message, 'copy'\) === 'success' \? '✓' : actionFeedback\(message, 'copy'\) === 'error' \? '!' : '⧉'/);
+    assert.match(managerPanelSource, /@click="copyManagerMessage\(item\.message\)"[\s\S]*managerActionFeedback\(item\.message, 'copy'\) === 'success' \? '✓' : managerActionFeedback\(item\.message, 'copy'\) === 'error' \? '!' : '⧉'/);
     assert.match(markdownCss, /font-size: var\(--xb-tavern-reading-font-size, 15px\);/);
     assert.match(markdownCss, /\.xb-tavern-markdown pre \{[\s\S]*background: rgba\(26, 26, 26, 0\.035\);/);
-    assert.match(markdownCss, /\.xb-tavern-markdown pre \{[\s\S]*overflow: visible;[\s\S]*box-shadow: none;[\s\S]*padding: 8px 34px 8px 10px;[\s\S]*white-space: pre-wrap;[\s\S]*overflow-wrap: anywhere;/);
-    assert.match(markdownCss, /\.xb-tavern-markdown pre code \{[\s\S]*display: contents;[\s\S]*border: 0;[\s\S]*border-radius: 0;[\s\S]*padding: 0;[\s\S]*background: transparent;[\s\S]*font: inherit;/);
-    assert.doesNotMatch(markdownCss, /\.xb-tavern-markdown pre \{[^}]*overflow-x: auto;[^}]*white-space: pre;/);
-    assert.doesNotMatch(markdownCss, /\.xb-tavern-markdown pre code \{[^}]*overflow-x: auto;/);
+    assert.match(tavernPreRule, /display: block;/);
+    assert.match(tavernPreRule, /width: 100%;/);
+    assert.match(tavernPreRule, /height: auto;/);
+    assert.match(tavernPreRule, /max-height: none;/);
+    assert.match(tavernPreRule, /overflow: visible;/);
+    assert.match(tavernPreRule, /white-space: pre-wrap;/);
+    assert.match(tavernPreRule, /overflow-wrap: anywhere;/);
+    assert.match(tavernPreRule, /word-break: break-all;/);
+    assert.match(tavernPreCodeRule, /display: inline;/);
+    assert.match(tavernPreCodeRule, /max-height: none;/);
+    assert.match(tavernPreCodeRule, /overflow: visible;/);
+    assert.match(tavernPreCodeRule, /font: inherit;/);
+    assert.doesNotMatch(tavernPreRule, /overflow-x: auto;/);
+    assert.doesNotMatch(tavernPreRule, /white-space: pre;/);
+    assert.deepEqual(cssDeclarationValues(tavernPreRule, 'max-height'), ['none']);
+    assert.doesNotMatch(tavernPreCodeRule, /overflow-x: auto;/);
+    assert.doesNotMatch(tavernPreCodeRule, /display: contents;/);
     assert.doesNotMatch(markdownCss, /\.xb-tavern-markdown pre \{[\s\S]*background: rgba\(10, 12, 18, 0\.28\);/);
+    assert.match(baseCss, /\.xb-tavern-codeblock \{[\s\S]*max-height: none;[\s\S]*overflow: visible;/);
     assert.doesNotMatch(baseCss, /\.xb-tavern-codeblock pre \{[\s\S]*padding-top: 34px;/);
     assert.match(baseCss, /\.xb-tavern-code-copy \{[\s\S]*z-index: 2;[\s\S]*width: 24px;[\s\S]*height: 24px;[\s\S]*min-height: 24px;[\s\S]*border-radius: 7px;[\s\S]*touch-action: manipulation;/);
     assert.match(baseCss, /\.xb-tavern-code-copy\.is-copied \{[\s\S]*color: var\(--xb-ok\);/);
@@ -118,6 +149,11 @@ test('tavern chat typography follows host SillyTavern font metrics inside the if
     assert.match(markdownSource, /if \(flattenPreCode && codeNode\) \{[\s\S]*pre\.insertBefore\(codeNode\.firstChild, codeNode\);[\s\S]*codeNode\.remove\(\);/);
     assert.match(markdownToolsSource, /flattenPreCode: true,/);
     assert.match(markdownSource, /textarea\.style\.fontSize = '16px';[\s\S]*textarea\.focus\(\{ preventScroll: true \}\);[\s\S]*textarea\.focus\(\);/);
+    assert.ok(
+        markdownSource.indexOf("doc.execCommand?.('copy')") >= 0
+        && markdownSource.indexOf("doc.execCommand?.('copy')") < markdownSource.indexOf('win.navigator?.clipboard?.writeText'),
+        'markdown code copy should try the synchronous DOM clipboard path before async Clipboard API fallback',
+    );
     assert.match(markdownSource, /copyButton\.addEventListener\('pointerdown', \(event\) => \{[\s\S]*event\.stopPropagation\(\);[\s\S]*\}\);/);
     assert.match(markdownSource, /copyButton\.addEventListener\('pointerup', \(event\) => \{[\s\S]*event\.stopPropagation\(\);[\s\S]*\}\);/);
     assert.match(markdownSource, /copyButton\.addEventListener\('touchstart', \(event\) => \{[\s\S]*event\.stopPropagation\(\);[\s\S]*\}, \{ passive: true \}\);/);
@@ -133,6 +169,8 @@ test('tavern chat typography follows host SillyTavern font metrics inside the if
     assert.match(messagesCss, /@media \(max-width: 760px\) \{[\s\S]*\.chat-bubble>\.message-actions \{[\s\S]*opacity: 0;[\s\S]*pointer-events: none;[\s\S]*\.chat-bubble\.is-action-tray-open>\.message-actions[\s\S]*opacity: 1;[\s\S]*pointer-events: auto;/);
     assert.doesNotMatch(messagesCss, /\.message-actions \{[\s\S]*border-top: 1px solid rgba\(120, 112, 98, 0\.16\);/);
     assert.doesNotMatch(messagesCss, /\.message-actions \{[\s\S]*border-bottom: 1px solid rgba\(120, 112, 98, 0\.14\);/);
+    assert.match(messagesCss, /\.tavern-chat\.xb-page \.chat-scroll \{[\s\S]*background: var\(--xb-chat-scroll-bg\);/);
+    assert.doesNotMatch(messagesCss, /\.tavern-chat\.xb-page \.chat-scroll \{[\s\S]*repeating-linear-gradient/);
     assert.match(composeCss, /line-height: var\(--xb-tavern-reading-line-height, 23px\);/);
     assert.match(messagesCss, /font-size: var\(--xb-tavern-reading-font-size, 15px\);/);
     assert.match(memoryCss, /line-height: var\(--xb-host-prose-line-height, 23px\);/);
@@ -161,6 +199,7 @@ test('tavern chat font size preference scales reading typography relative to hos
     assert.match(markdownCss, /\.xb-tavern-markdown \{[\s\S]*font-size: var\(--xb-tavern-reading-font-size, 15px\);[\s\S]*line-height: var\(--xb-tavern-reading-line-height, 23px\);/);
     assert.match(markdownCss, /\.xb-tavern-markdown p \{[\s\S]*font-size: inherit;[\s\S]*line-height: inherit;[\s\S]*white-space: pre-wrap;/);
     assert.match(markdownCss, /\.xb-tavern-markdown li \{[\s\S]*font-size: inherit;[\s\S]*line-height: inherit;[\s\S]*white-space: normal;/);
+    assert.match(markdownCss, /\.xb-tavern-markdown strong,[\s\S]*\.xb-tavern-markdown b \{[\s\S]*font-size: inherit;[\s\S]*line-height: inherit;/);
     assert.match(composeCss, /\.chat-compose textarea \{[\s\S]*font-size: var\(--xb-tavern-reading-font-size, 15px\);[\s\S]*line-height: var\(--xb-tavern-reading-line-height, 23px\);/);
     assert.match(messagesCss, /\.action-check-card-copy \{[\s\S]*font-size: var\(--xb-tavern-reading-font-size, 15px\);[\s\S]*line-height: var\(--xb-tavern-reading-line-height, 23px\);/);
     assert.match(messagesCss, /\.action-check-card-stakes \{[\s\S]*font-size: calc\(var\(--xb-tavern-reading-font-size, 15px\) - 1px\);[\s\S]*line-height: var\(--xb-tavern-reading-line-height, 23px\);[\s\S]*overflow-wrap: anywhere;/);
@@ -212,7 +251,7 @@ test('tavern character workspace keeps a dense index and selected-card preview',
     assert.match(panelSource, /class="os-search-bar"/);
     assert.match(panelSource, /class="card-focus-indicator"/);
     assert.match(panelSource, /class="dossier-header"/);
-    assert.match(panelSource, /class="greeting-choice-list"/);
+    assert.match(panelSource, /class="character-greeting-list"/);
     assert.match(panelSource, /备用 \$\{index\}/);
     assert.match(cardsCss, /content-visibility: auto/);
     assert.match(layoutCss, /width: 360px/);
@@ -277,6 +316,7 @@ test('tavern worldbook sync uses native source overview with current context', (
     const contextSource = readRepoFile('modules/tavern/host/sillytavern-context.ts');
     const contextBuildSource = readRepoFile('modules/tavern/host/sillytavern-context.js');
     const appSource = readRepoFile('modules/tavern/app-src/App.vue');
+    const sessionSource = readRepoFile('modules/tavern/app-src/features/session/useTavernSessionController.ts');
     const worldbookSource = readRepoFile('modules/tavern/host/worldbooks.ts');
     assert.match(
         settingsControllerSource,
@@ -328,7 +368,9 @@ test('tavern worldbook sync uses native source overview with current context', (
     assert.doesNotMatch(worldbookSource, /extension_prompts\[key\] = cloneJson\(value\)/);
     assert.match(contextSource, /worldbookSources,/);
     assert.match(contextSource, /worldbookSourcesSynced: true/);
-    assert.match(appSource, /syncSessionCharacterContextSafely\(\{ sessionId: selectedSessionId\.value, force: true \}\)/);
+    assert.match(appSource, /syncSessionCharacterContextSafely,/);
+    assert.match(sessionSource, /options\.syncSessionCharacterContextSafely\(\{ sessionId: state\.selectedSessionId\.value \}\)/);
+    assert.match(sessionSource, /options\.syncSessionCharacterContextSafely\(\{ sessionId: id, force: true \}\)/);
 });
 
 test('tavern worldbook host bridge exposes named entry edit endpoints and native runtime result', () => {
@@ -471,6 +513,7 @@ test('tavern slash command bridge executes through native SillyTavern STscript',
     const tavernSource = readRepoFile('modules/tavern/tavern.ts');
     const slashSource = readRepoFile('modules/tavern/host/slash-commands.ts');
     const appSource = readRepoFile('modules/tavern/app-src/App.vue');
+    const chatRunSource = readRepoFile('modules/tavern/app-src/features/chat-run/useTavernChatRunController.ts');
 
     assert.match(tavernSource, /runTavernSlashCommand/);
     assert.match(slashSource, /executeSlashCommandsWithOptions/);
@@ -478,8 +521,9 @@ test('tavern slash command bridge executes through native SillyTavern STscript',
     assert.match(slashSource, /pipe/);
     assert.match(appSource, /function shouldRunTavernSlashCommand/);
     assert.match(appSource, /async function resolveSlashCommandMessageText/);
-    assert.match(appSource, /messageText = await resolveSlashCommandMessageText\(messageText, options\);/);
     assert.match(appSource, /reuseUserMessageOrder/);
+    assert.match(chatRunSource, /messageText = await options\.resolveSlashCommandMessageText\(messageText, runOptions\);/);
+    assert.match(chatRunSource, /reuseUserMessageOrder/);
 });
 
 test('tavern message assembler can render native worldbook prompt blocks directly', () => {

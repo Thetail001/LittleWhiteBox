@@ -42,3 +42,35 @@ test('trusted map patch replay reaches the same end state as canonical transacti
         ],
     });
 });
+
+test('trusted map patch replay applies explicit null field deletions', () => {
+    const seed: TavernMapDocument = {
+        meta: { name: 'Study', theme: 'parchment', viewBox: [0, 0, 400, 300], status: 'active' },
+        elements: [
+            {
+                id: 'desk',
+                at: [30, 40],
+                cat: 'furniture',
+                rect: [90, 40],
+                material: 'wood',
+                fill: '#ff0000',
+                certainty: 'inferred',
+                style: { color: '#fff', width: 2 },
+            },
+        ],
+    };
+
+    const replayed = applyTrustedMapPatchOps(seed, [
+        { op: 'modify', id: 'desk', set: { fill: null, certainty: null, style: null } },
+    ]);
+
+    assert.deepEqual(replayed.elements, [
+        {
+            id: 'desk',
+            at: [30, 40],
+            cat: 'furniture',
+            rect: [90, 40],
+            material: 'wood',
+        },
+    ]);
+});
