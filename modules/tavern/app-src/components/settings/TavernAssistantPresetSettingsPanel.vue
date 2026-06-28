@@ -3,6 +3,7 @@ import { computed, ref } from 'vue';
 import { useTavernSettingsContext, useTavernShellContext } from '../tavern-app-context';
 import { DEFAULT_TAVERN_ASSISTANT_PRESET_ID } from '../../../shared/assistant-presets';
 import type { TavernAssistantPresetRecord } from '../../../shared/session-db';
+import TavernSaveStatusIconButton from './TavernSaveStatusIconButton.vue';
 
 const settings = useTavernSettingsContext();
 const shell = useTavernShellContext();
@@ -30,18 +31,6 @@ const {
 const selectedAssistantPresetId = computed(() => String(activeAssistantPresetId.value || assistantPreset.value.id || '').trim());
 const currentAssistantPresetRecord = computed(() => assistantPresets.value.find((item: TavernAssistantPresetRecord) => item.id === selectedAssistantPresetId.value) || null);
 const importInputRef = ref<HTMLInputElement | null>(null);
-const assistantPresetSaveButtonTitle = computed(() => {
-    const status = assistantPresetSaveFeedback.value.status;
-    if (status === 'saving') {return '正在保存';}
-    if (status === 'success') {return '已保存';}
-    if (status === 'error') {return assistantPresetSaveFeedback.value.error || '保存失败';}
-    return '保存';
-});
-const assistantPresetSaveButtonClass = computed(() => ({
-    'is-saving': assistantPresetSaveFeedback.value.status === 'saving',
-    'is-success': assistantPresetSaveFeedback.value.status === 'success',
-    'is-error': assistantPresetSaveFeedback.value.status === 'error',
-}));
 const assistantPresetSaveButtonDisabled = computed(() => (
     !assistantPresetDirty.value
     || assistantPresetSaveFeedback.value.status === 'saving'
@@ -158,48 +147,14 @@ function exportCurrentPreset() {
             <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
           </svg>
         </button>
-        <button
+        <TavernSaveStatusIconButton
           type="button"
           class="assistant-preset-tool icon-button"
-          :class="assistantPresetSaveButtonClass"
-          :title="assistantPresetSaveButtonTitle"
-          :aria-label="assistantPresetSaveButtonTitle"
+          :status="assistantPresetSaveFeedback.status"
+          :error="assistantPresetSaveFeedback.error"
           :disabled="assistantPresetSaveButtonDisabled"
           @click="saveCurrentAssistantPreset"
-        >
-          <svg
-            v-if="assistantPresetSaveFeedback.status === 'saving'"
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-          >
-            <path d="M12 3a9 9 0 1 1-8.2 5.3" />
-          </svg>
-          <svg
-            v-else-if="assistantPresetSaveFeedback.status === 'success'"
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-          >
-            <path d="M20 6 9 17l-5-5" />
-          </svg>
-          <svg
-            v-else-if="assistantPresetSaveFeedback.status === 'error'"
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-          >
-            <path d="M12 9v4" />
-            <path d="M12 17h.01" />
-            <path d="M10.3 4.2 2.8 17a2 2 0 0 0 1.7 3h15a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0Z" />
-          </svg>
-          <svg
-            v-else
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-          >
-            <path d="M5 21h14a1 1 0 0 0 1-1V7.5L16.5 4H5a1 1 0 0 0-1 1v15a1 1 0 0 0 1 1Z" />
-            <path d="M8 21v-7h8v7" />
-            <path d="M8 4v5h7" />
-          </svg>
-        </button>
+        />
         <button
           type="button"
           class="assistant-preset-tool icon-button"

@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { useTavernSettingsContext, type TavernWorldbookEntryDraft } from '../tavern-app-context';
 import { useTavernEphemeralDisclosureScope } from '../useTavernEphemeralDisclosureScope';
+import TavernSaveStatusIconButton from './TavernSaveStatusIconButton.vue';
 
 const settings = useTavernSettingsContext();
 const {
@@ -23,6 +24,7 @@ const {
     WORLDBOOK_PREVIEW_BATCH_SIZE,
     worldbookEntryDirty,
     worldbookEntryDraft,
+    worldbookEntrySaveFeedback,
     worldbookEntrySaving,
     worldbookEntryStatus,
     worldbookOptions,
@@ -418,13 +420,13 @@ watch(
                             >
                               取消
                             </button>
-                            <button
+                            <TavernSaveStatusIconButton
                               type="submit"
                               class="primary-action"
+                              :status="worldbookEntrySaveFeedback.status"
+                              :error="worldbookEntrySaveFeedback.error"
                               :disabled="!worldbookEntryDirty || worldbookEntrySaving"
-                            >
-                              保存
-                            </button>
+                            />
                           </div>
                         </div>
                         <div class="worldbook-entry-core-grid">

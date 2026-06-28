@@ -264,7 +264,8 @@ test('tavern mobile worldbook entry rows stay compact', () => {
 
     assert.match(worldbookSource, /function worldbookEntryStateLabel[\s\S]*return '×';[\s\S]*return '🔵';[\s\S]*return '🔗';[\s\S]*return '🟢';/);
     assert.doesNotMatch(worldbookSource, /return '🔵 常驻'|return '🔗 向量'|return '🟢 普通'/);
-    assert.match(worldbookSource, /class="worldbook-entry-editor-actions"[\s\S]*class="worldbook-row-open"[\s\S]*取消[\s\S]*class="primary-action"[\s\S]*保存[\s\S]*<\/div>\s*<\/div>\s*<div class="worldbook-entry-core-grid">/);
+    assert.match(worldbookSource, /import TavernSaveStatusIconButton from '\.\/TavernSaveStatusIconButton\.vue';/);
+    assert.match(worldbookSource, /class="worldbook-entry-editor-actions"[\s\S]*class="worldbook-row-open"[\s\S]*取消[\s\S]*<TavernSaveStatusIconButton[\s\S]*type="submit"[\s\S]*class="primary-action"[\s\S]*:status="worldbookEntrySaveFeedback\.status"[\s\S]*<\/div>\s*<\/div>\s*<div class="worldbook-entry-core-grid">/);
     assert.match(worldbookSource, /class="worldbook-entry-title-row"[\s\S]*>条目名<[\s\S]*class="worldbook-entry-active-toggle"[\s\S]*>启用</);
     assert.doesNotMatch(worldbookCss, /\.worldbook-entry-position\s*\{[^}]*grid-row:\s*2;/);
     assert.doesNotMatch(mobileCss, /\.worldbook-entry-position\s*\{[^}]*grid-row:\s*2;/);
@@ -2264,6 +2265,7 @@ test('tavern settings and chat pages reset ephemeral expanded DOM on scope chang
     assert.match(regexSource, /const shouldMountRegexEditor = computed/);
     assert.match(regexSource, /v-if="shouldMountRegexEditor"/);
     assert.match(regexSource, /watch\(activeSettingsWorkspace[\s\S]*workspace !== 'regex'[\s\S]*mobileRegexEditorOpen\.value = false/);
+    assert.match(regexSource, /const selectedKeyAtRequest = selectedRegexKey\.value;[\s\S]*await saveCurrentRegexScript\(\);[\s\S]*selectedRegexKey\.value === selectedKeyAtRequest[\s\S]*closeRegexEditor\(\)/);
     assert.match(conversationSource, /watch\(\s*\[\s*activeView,\s*chatFocus,\s*selectedSessionId\s*\][\s\S]*thoughtDisclosure\.reset\(\)/);
     assert.match(managerSource, /watch\(\s*\[\s*activeView,\s*chatFocus\s*\][\s\S]*managerDisclosure\.reset\(\)/);
 });

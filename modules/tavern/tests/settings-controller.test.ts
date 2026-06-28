@@ -34,6 +34,45 @@ function regexListPayload(scriptName: string): Record<string, unknown> {
     };
 }
 
+function regexListPayloadMany(scriptNames: string[]): Record<string, unknown> {
+    return {
+        result: {
+            groups: [{
+                key: 'character',
+                label: '角色正则',
+                scriptType: 1,
+                allowed: true,
+                scripts: scriptNames.map((scriptName) => ({
+                    id: scriptName,
+                    scriptName,
+                    findRegex: scriptName,
+                    replaceString: '',
+                    placement: [] as number[],
+                })),
+            }],
+        },
+    };
+}
+
+function worldbookEntryPayload(comment: string, content: string, entryHash: string, keys: string[] = [], uid = '1'): Record<string, unknown> {
+    return {
+        result: {
+            worldbookName: 'Book',
+            uid,
+            comment,
+            content,
+            key: keys,
+            keysecondary: [],
+            secondary_keys: [],
+            order: 100,
+            position: 0,
+            role: 0,
+            entryHash,
+            revision: entryHash,
+        },
+    };
+}
+
 function chatPresetBundle(name: string, prompt: Record<string, unknown> = {}, activeCharacterId = 'char-1'): Record<string, unknown> {
     const promptRecord = {
         identifier: 'main',
@@ -672,4 +711,366 @@ test('stale regex save response does not restore the previous character list', a
     assert.equal(String(savePayloads[1]?.nativeCharacterId || ''), 'char-b');
     pendingSaves[1]?.(regexListPayload('SAVED SCRIPT char-b'));
     await saveB;
+});
+
+test('regex save keeps edits made while the save is pending', async () => {
+    const activeView = ref('settings');
+    const activeSettingsWorkspace = ref<TavernSettingsWorkspaceKey>('regex');
+    const agentConfig = ref<Record<string, unknown>>({});
+    const tavernDisplaySettings = ref(normalizeTavernDisplaySettings({}));
+    let resolveSave: (value: Record<string, unknown>) => void = () => {};
+    const savePayloads: Record<string, unknown>[] = [];
+
+    const controller = useTavernSettingsController({
+        activeView,
+        activeSettingsWorkspace,
+        agentConfig,
+        tavernDisplaySettings,
+        effectiveContext: computed(() => ({})),
+        currentNativeCharacterId: computed(() => ''),
+        regexNativeCharacterId: computed(() => 'char-a'),
+        homeThemeDark: ref(false),
+        isRunning: ref(false),
+        confirmDialog: async () => true,
+        describeError: (error) => error instanceof Error ? error.message : String(error || ''),
+        postToHost: () => {},
+        requestHost: (type, payload = {}) => {
+            const source = payload.payload as Record<string, unknown> | undefined;
+            if (type === 'xb-tavern:list-regex-scripts') {
+                return Promise.resolve(regexListPayload('ORIGINAL'));
+            }
+            if (type === 'xb-tavern:save-regex-script') {
+                savePayloads.push(source || {});
+                if (savePayloads.length > 1) {
+                    return Promise.resolve(regexListPayload('SERVER CANONICAL'));
+                }
+                return new Promise<Record<string, unknown>>((resolve) => {
+                    resolveSave = resolve;
+                });
+            }
+            return Promise.resolve({});
+        },
+        shortText: (value = '') => String(value || ''),
+    });
+
+    await controller.refreshRegexFromHost();
+    controller.settingsContext.updateRegexPatch({
+        scriptName: 'REQUEST NAME',
+        findRegex: 'request-find',
+        replaceString: 'request-replace',
+    });
+    const savePromise = controller.settingsContext.saveCurrentRegexScript();
+    assert.equal(controller.settingsContext.regexSaveFeedback.value.status, 'saving');
+
+    controller.settingsContext.updateRegexPatch({
+        scriptName: 'USER KEPT TYPING',
+        findRegex: 'user-find',
+        replaceString: 'user-replace',
+    });
+    resolveSave(regexListPayload('SERVER CANONICAL'));
+    await savePromise;
+    await flushAsyncState();
+
+    assert.equal(controller.settingsContext.regexDraft.value.scriptName, 'USER KEPT TYPING');
+    assert.equal(controller.settingsContext.regexDraft.value.findRegex, 'user-find');
+    assert.equal(controller.settingsContext.regexDraft.value.replaceString, 'user-replace');
+    assert.equal(controller.settingsContext.regexDraft.value.id, 'SERVER CANONICAL');
+    assert.equal(controller.settingsContext.regexDirty.value, true);
+    assert.equal(controller.settingsContext.regexSaveFeedback.value.status, 'success');
+
+    await controller.settingsContext.saveCurrentRegexScript();
+    assert.equal(String((savePayloads[1]?.script as Record<string, unknown> | undefined)?.id || ''), 'SERVER CANONICAL');
+
+    controller.settingsContext.updateRegexPatch({
+        id: 'SERVER CANONICAL',
+        scriptName: 'SERVER CANONICAL',
+        findRegex: 'SERVER CANONICAL',
+        replaceString: '',
+        placement: [],
+    });
+    assert.equal(controller.settingsContext.regexDirty.value, false);
+});
+
+test('pending regex save cannot merge its id into another selected script', async () => {
+    const activeView = ref('settings');
+    const activeSettingsWorkspace = ref<TavernSettingsWorkspaceKey>('regex');
+    const agentConfig = ref<Record<string, unknown>>({});
+    const tavernDisplaySettings = ref(normalizeTavernDisplaySettings({}));
+    let resolveSave: (value: Record<string, unknown>) => void = () => {};
+
+    const controller = useTavernSettingsController({
+        activeView,
+        activeSettingsWorkspace,
+        agentConfig,
+        tavernDisplaySettings,
+        effectiveContext: computed(() => ({})),
+        currentNativeCharacterId: computed(() => ''),
+        regexNativeCharacterId: computed(() => 'char-a'),
+        homeThemeDark: ref(false),
+        isRunning: ref(false),
+        confirmDialog: async () => true,
+        describeError: (error) => error instanceof Error ? error.message : String(error || ''),
+        postToHost: () => {},
+        requestHost: (type) => {
+            if (type === 'xb-tavern:list-regex-scripts') {
+                return Promise.resolve(regexListPayloadMany(['SCRIPT A', 'SCRIPT B']));
+            }
+            if (type === 'xb-tavern:save-regex-script') {
+                return new Promise<Record<string, unknown>>((resolve) => {
+                    resolveSave = resolve;
+                });
+            }
+            return Promise.resolve({});
+        },
+        shortText: (value = '') => String(value || ''),
+    });
+
+    await controller.refreshRegexFromHost();
+    controller.settingsContext.updateRegexPatch({ replaceString: 'saving A' });
+    const savePromise = controller.settingsContext.saveCurrentRegexScript();
+    assert.equal(controller.settingsContext.regexSaveFeedback.value.status, 'saving');
+
+    const scriptB = controller.settingsContext.regexScriptRows.value.find((row) => row.script.scriptName === 'SCRIPT B');
+    assert.ok(scriptB);
+    await controller.settingsContext.selectRegexScript(scriptB);
+    assert.equal(controller.settingsContext.regexDraft.value.id, 'SCRIPT B');
+    assert.equal(controller.settingsContext.regexSaveFeedback.value.status, 'idle');
+
+    resolveSave(regexListPayload('SCRIPT A SAVED'));
+    await savePromise;
+    await flushAsyncState();
+
+    assert.equal(controller.settingsContext.selectedRegexKey.value, scriptB.key);
+    assert.equal(controller.settingsContext.regexDraft.value.id, 'SCRIPT B');
+    assert.equal(controller.settingsContext.regexDraft.value.scriptName, 'SCRIPT B');
+});
+
+test('discarding regex changes while save is pending ignores the old save response', async () => {
+    const activeView = ref('settings');
+    const activeSettingsWorkspace = ref<TavernSettingsWorkspaceKey>('regex');
+    const agentConfig = ref<Record<string, unknown>>({});
+    const tavernDisplaySettings = ref(normalizeTavernDisplaySettings({}));
+    let resolveSave: (value: Record<string, unknown>) => void = () => {};
+
+    const controller = useTavernSettingsController({
+        activeView,
+        activeSettingsWorkspace,
+        agentConfig,
+        tavernDisplaySettings,
+        effectiveContext: computed(() => ({})),
+        currentNativeCharacterId: computed(() => ''),
+        regexNativeCharacterId: computed(() => 'char-a'),
+        homeThemeDark: ref(false),
+        isRunning: ref(false),
+        confirmDialog: async () => true,
+        describeError: (error) => error instanceof Error ? error.message : String(error || ''),
+        postToHost: () => {},
+        requestHost: (type) => {
+            if (type === 'xb-tavern:list-regex-scripts') {
+                return Promise.resolve(regexListPayload('ORIGINAL'));
+            }
+            if (type === 'xb-tavern:save-regex-script') {
+                return new Promise<Record<string, unknown>>((resolve) => {
+                    resolveSave = resolve;
+                });
+            }
+            return Promise.resolve({});
+        },
+        shortText: (value = '') => String(value || ''),
+    });
+
+    await controller.refreshRegexFromHost();
+    controller.settingsContext.updateRegexPatch({ replaceString: 'saving draft' });
+    const savePromise = controller.settingsContext.saveCurrentRegexScript();
+    assert.equal(controller.settingsContext.regexSaveFeedback.value.status, 'saving');
+
+    controller.settingsContext.discardRegexChanges();
+    assert.equal(controller.settingsContext.regexSaveFeedback.value.status, 'idle');
+    assert.equal(controller.settingsContext.regexDraft.value.scriptName, 'ORIGINAL');
+    assert.equal(controller.settingsContext.regexDirty.value, false);
+
+    resolveSave(regexListPayload('SERVER CANONICAL'));
+    await savePromise;
+    await flushAsyncState();
+
+    assert.equal(controller.settingsContext.regexDraft.value.scriptName, 'ORIGINAL');
+    assert.equal(controller.settingsContext.regexDraft.value.replaceString, '');
+    assert.equal(controller.settingsContext.regexDirty.value, false);
+    assert.equal(controller.settingsContext.regexSaveFeedback.value.status, 'idle');
+});
+
+test('worldbook entry save keeps edits made while the save is pending', async () => {
+    const activeView = ref('settings');
+    const activeSettingsWorkspace = ref<TavernSettingsWorkspaceKey>('worldbooks');
+    const agentConfig = ref<Record<string, unknown>>({});
+    const tavernDisplaySettings = ref(normalizeTavernDisplaySettings({}));
+    let resolveSave: (value: Record<string, unknown>) => void = () => {};
+    const savePayloads: Record<string, unknown>[] = [];
+
+    const controller = useTavernSettingsController({
+        activeView,
+        activeSettingsWorkspace,
+        agentConfig,
+        tavernDisplaySettings,
+        effectiveContext: computed(() => ({})),
+        currentNativeCharacterId: computed(() => ''),
+        regexNativeCharacterId: computed(() => ''),
+        homeThemeDark: ref(false),
+        isRunning: ref(false),
+        confirmDialog: async () => true,
+        describeError: (error) => error instanceof Error ? error.message : String(error || ''),
+        postToHost: () => {},
+        requestHost: (type, payload = {}) => {
+            const source = payload.payload as Record<string, unknown> | undefined;
+            if (type === 'xb-tavern:get-worldbook-entry') {
+                return Promise.resolve(worldbookEntryPayload('Original', 'Original content', 'h1', ['original']));
+            }
+            if (type === 'xb-tavern:save-worldbook-entry') {
+                savePayloads.push(source || {});
+                if (savePayloads.length > 1) {
+                    return Promise.resolve(worldbookEntryPayload('SERVER CANONICAL NEXT', 'server content next', 'h3', ['server-next']));
+                }
+                return new Promise<Record<string, unknown>>((resolve) => {
+                    resolveSave = resolve;
+                });
+            }
+            if (type === 'xb-tavern:get-worldbook-preview') {
+                return Promise.resolve({
+                    result: {
+                        name: 'Book',
+                        entryCount: 1,
+                        entries: [],
+                    },
+                });
+            }
+            return Promise.resolve({});
+        },
+        shortText: (value = '') => String(value || ''),
+    });
+
+    controller.settingsContext.selectedWorldbookName.value = 'Book';
+    await flushAsyncState();
+    await controller.settingsContext.startWorldbookEntryEdit({
+        uid: '1',
+        name: 'Original',
+        keys: [],
+        secondaryKeys: [],
+        contentPreview: '',
+        enabled: true,
+        constant: false,
+        order: 100,
+    });
+    controller.settingsContext.updateWorldbookEntryDraftPatch({
+        comment: 'REQUEST NAME',
+        content: 'request content',
+        key: ['request'],
+    });
+    assert.equal(controller.settingsContext.worldbookEntryDirty.value, true);
+    const savePromise = controller.settingsContext.saveWorldbookEntryDraft();
+    assert.equal(controller.settingsContext.worldbookEntrySaveFeedback.value.status, 'saving');
+
+    controller.settingsContext.updateWorldbookEntryDraftPatch({
+        comment: 'USER KEPT TYPING',
+        content: 'user content',
+        key: ['user'],
+    });
+    resolveSave(worldbookEntryPayload('SERVER CANONICAL', 'server content', 'h2', ['server']));
+    await savePromise;
+    await flushAsyncState();
+
+    assert.equal(controller.settingsContext.worldbookEntryDraft.value?.comment, 'USER KEPT TYPING');
+    assert.equal(controller.settingsContext.worldbookEntryDraft.value?.content, 'user content');
+    assert.deepEqual(controller.settingsContext.worldbookEntryDraft.value?.key, ['user']);
+    assert.equal(controller.settingsContext.worldbookEntryDraft.value?.entryHash, 'h2');
+    assert.equal(controller.settingsContext.worldbookEntryDraft.value?.revision, 'h2');
+    assert.equal(controller.settingsContext.worldbookEntryDirty.value, true);
+    assert.equal(controller.settingsContext.worldbookEntrySaveFeedback.value.status, 'success');
+
+    await controller.settingsContext.saveWorldbookEntryDraft();
+    assert.equal(String(savePayloads[1]?.entryHash || ''), 'h2');
+    assert.equal(String((savePayloads[1]?.draft as Record<string, unknown> | undefined)?.entryHash || ''), 'h2');
+    assert.equal(controller.settingsContext.worldbookEntryDraft.value?.comment, 'SERVER CANONICAL NEXT');
+    assert.equal(controller.settingsContext.worldbookEntryDraft.value?.entryHash, 'h3');
+    assert.equal(controller.settingsContext.worldbookEntryDirty.value, false);
+});
+
+test('pending worldbook save cannot merge its hash into another edited entry', async () => {
+    const activeView = ref('settings');
+    const activeSettingsWorkspace = ref<TavernSettingsWorkspaceKey>('worldbooks');
+    const agentConfig = ref<Record<string, unknown>>({});
+    const tavernDisplaySettings = ref(normalizeTavernDisplaySettings({}));
+    let resolveSave: (value: Record<string, unknown>) => void = () => {};
+
+    const controller = useTavernSettingsController({
+        activeView,
+        activeSettingsWorkspace,
+        agentConfig,
+        tavernDisplaySettings,
+        effectiveContext: computed(() => ({})),
+        currentNativeCharacterId: computed(() => ''),
+        regexNativeCharacterId: computed(() => ''),
+        homeThemeDark: ref(false),
+        isRunning: ref(false),
+        confirmDialog: async () => true,
+        describeError: (error) => error instanceof Error ? error.message : String(error || ''),
+        postToHost: () => {},
+        requestHost: (type, payload = {}) => {
+            const source = payload.payload as Record<string, unknown> | undefined;
+            const uid = String(source?.uid || '');
+            if (type === 'xb-tavern:get-worldbook-entry') {
+                if (uid === '2') {
+                    return Promise.resolve(worldbookEntryPayload('Entry B', 'B content', 'hB', ['b'], '2'));
+                }
+                return Promise.resolve(worldbookEntryPayload('Entry A', 'A content', 'hA', ['a']));
+            }
+            if (type === 'xb-tavern:save-worldbook-entry') {
+                return new Promise<Record<string, unknown>>((resolve) => {
+                    resolveSave = resolve;
+                });
+            }
+            if (type === 'xb-tavern:get-worldbook-preview') {
+                return Promise.resolve({ result: { name: 'Book', entryCount: 2, entries: [] } });
+            }
+            return Promise.resolve({});
+        },
+        shortText: (value = '') => String(value || ''),
+    });
+
+    controller.settingsContext.selectedWorldbookName.value = 'Book';
+    await flushAsyncState();
+    await controller.settingsContext.startWorldbookEntryEdit({
+        uid: '1',
+        name: 'Entry A',
+        keys: [],
+        secondaryKeys: [],
+        contentPreview: '',
+        enabled: true,
+        constant: false,
+        order: 100,
+    });
+    controller.settingsContext.updateWorldbookEntryDraftPatch({ content: 'saving A' });
+    const savePromise = controller.settingsContext.saveWorldbookEntryDraft();
+    assert.equal(controller.settingsContext.worldbookEntrySaveFeedback.value.status, 'saving');
+
+    await controller.settingsContext.startWorldbookEntryEdit({
+        uid: '2',
+        name: 'Entry B',
+        keys: [],
+        secondaryKeys: [],
+        contentPreview: '',
+        enabled: true,
+        constant: false,
+        order: 200,
+    });
+    assert.equal(controller.settingsContext.worldbookEntryDraft.value?.uid, '2');
+    assert.equal(controller.settingsContext.worldbookEntryDraft.value?.entryHash, 'hB');
+    assert.equal(controller.settingsContext.worldbookEntrySaveFeedback.value.status, 'idle');
+
+    resolveSave(worldbookEntryPayload('Entry A Saved', 'A saved content', 'hA2', ['a2']));
+    await savePromise;
+    await flushAsyncState();
+
+    assert.equal(controller.settingsContext.worldbookEntryDraft.value?.uid, '2');
+    assert.equal(controller.settingsContext.worldbookEntryDraft.value?.comment, 'Entry B');
+    assert.equal(controller.settingsContext.worldbookEntryDraft.value?.entryHash, 'hB');
 });

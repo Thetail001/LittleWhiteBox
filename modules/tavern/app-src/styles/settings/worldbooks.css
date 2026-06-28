@@ -29,6 +29,30 @@
     transform: none;
 }
 
+.settings-layout .primary-action.tavern-save-status-button {
+    display: inline-grid;
+    place-items: center;
+    min-width: 42px;
+}
+
+.settings-layout .primary-action.tavern-save-status-button svg {
+    width: 16px;
+    height: 16px;
+    stroke-width: 1.9;
+}
+
+.settings-layout .primary-action.tavern-save-status-button.is-success {
+    border-color: rgba(63, 143, 90, 0.34);
+    background: rgba(63, 143, 90, 0.12);
+    color: #5ca875;
+}
+
+.settings-layout .primary-action.tavern-save-status-button.is-error {
+    border-color: rgba(182, 90, 85, 0.34);
+    background: rgba(182, 90, 85, 0.12);
+    color: #c97670;
+}
+
 .preset-workspace,
 .native-workspace {
     overflow: hidden;

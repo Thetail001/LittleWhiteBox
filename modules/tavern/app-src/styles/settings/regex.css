@@ -371,6 +371,30 @@
     color: var(--xb-text-main);
 }
 
+.regex-editor-primary.tavern-save-status-button {
+    width: 38px;
+    min-width: 38px;
+    padding: 0;
+}
+
+.regex-editor-primary.tavern-save-status-button svg {
+    width: 16px;
+    height: 16px;
+    stroke-width: 1.9;
+}
+
+.regex-editor-primary.tavern-save-status-button.is-success {
+    border-color: rgba(63, 143, 90, 0.34);
+    background: rgba(63, 143, 90, 0.12);
+    color: #5ca875;
+}
+
+.regex-editor-primary.tavern-save-status-button.is-error {
+    border-color: rgba(182, 90, 85, 0.34);
+    background: rgba(182, 90, 85, 0.12);
+    color: #c97670;
+}
+
 .regex-editor-primary:hover:not(:disabled),
 .regex-editor-primary:focus-visible:not(:disabled) {
     outline: none;
@@ -381,6 +405,11 @@
 .regex-editor-primary:disabled {
     opacity: 0.45;
     cursor: not-allowed;
+}
+
+.regex-editor-primary.tavern-save-status-button.is-success:disabled,
+.regex-editor-primary.tavern-save-status-button.is-error:disabled {
+    opacity: 1;
 }
 
 .regex-editor-grid {
