@@ -26043,60 +26043,69 @@ function rj(e = {}, t = {}) {
   return An(e) ? An(t) ? na(Fn(e) || {}, t, "") : Fn(e) : Fn(t);
 }
 function hv(e, t = "") {
-  const n = Array.isArray(e.messages) ? e.messages : [], r = YH(n), i = n.map((u, d) => {
-    const f = ta(u?.tool_calls);
-    if (KH(u, d, r)) {
-      const O = Dm(u);
-      if (JH(O)) return VA({
-        ...O,
-        ...f.length ? { tool_calls: f } : {}
+  const n = Array.isArray(e.messages) ? e.messages : [], r = YH(n), i = n.map((d, f) => {
+    const m = ta(d?.tool_calls);
+    if (KH(d, f, r)) {
+      const y = Dm(d);
+      if (JH(y)) return VA({
+        ...y,
+        ...m.length ? { tool_calls: m } : {}
       }, t);
     }
-    const m = {
-      role: u.role,
-      content: u.content
+    const O = {
+      role: d.role,
+      content: d.content
     };
-    if (u.role === "tool") {
-      const O = u.tool_call_id || u.toolCallId;
-      O && (m.tool_call_id = O);
+    if (d.role === "tool") {
+      const y = d.tool_call_id || d.toolCallId;
+      y && (O.tool_call_id = y);
     }
-    return u.role === "assistant" && f.length && (m.tool_calls = f), VA(m, t);
+    return d.role === "assistant" && m.length && (O.tool_calls = m), VA(O, t);
   }), s = String(e.systemPrompt || "").trim();
   s && i[0]?.role !== "system" && i.unshift({
     role: "system",
     content: s
   });
-  const o = /* @__PURE__ */ new Set(), a = /* @__PURE__ */ new Set();
-  for (let u = 0; u < i.length; u++) {
-    const d = i[u];
+  const o = /* @__PURE__ */ new Set();
+  i.forEach((d) => {
+    d.role === "tool" && d.tool_call_id && o.add(d.tool_call_id);
+  }), i.forEach((d) => {
     if (d.role === "assistant" && Array.isArray(d.tool_calls)) {
-      const f = /* @__PURE__ */ new Map();
-      d.tool_calls.forEach((m) => {
-        const O = m?.id;
-        if (O)
-          if (o.has(O)) {
-            const y = `${O}-dedup-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-            f.set(O, y), m.id = y, o.add(y);
-          } else o.add(O);
+      const f = d.tool_calls.filter((m) => m?.id && o.has(m.id));
+      f.length !== d.tool_calls.length && (console.warn("[buildNativeMessages] Removed", d.tool_calls.length - f.length, "orphan tool_calls without matching tool messages"), f.length ? d.tool_calls = f : delete d.tool_calls);
+    }
+  });
+  const a = /* @__PURE__ */ new Set(), l = /* @__PURE__ */ new Set();
+  for (let d = 0; d < i.length; d++) {
+    const f = i[d];
+    if (f.role === "assistant" && Array.isArray(f.tool_calls)) {
+      const m = /* @__PURE__ */ new Map();
+      f.tool_calls.forEach((O) => {
+        const y = O?.id;
+        if (y)
+          if (a.has(y)) {
+            const S = `${y}-dedup-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+            m.set(y, S), O.id = S, a.add(S);
+          } else a.add(y);
       });
-      for (let m = u + 1; m < i.length; m++) {
-        const O = i[m];
-        if (O.role !== "tool") break;
-        a.add(m), f.has(O.tool_call_id) && (O.tool_call_id = f.get(O.tool_call_id)), o.add(O.tool_call_id);
+      for (let O = d + 1; O < i.length; O++) {
+        const y = i[O];
+        if (y.role !== "tool") break;
+        l.add(O), m.has(y.tool_call_id) && (y.tool_call_id = m.get(y.tool_call_id)), a.add(y.tool_call_id);
       }
     }
-    if (d.role === "tool" && d.tool_call_id && !a.has(u)) if (o.has(d.tool_call_id)) {
-      const f = `${d.tool_call_id}-histdup-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-      d.tool_call_id = f, o.add(f);
-    } else o.add(d.tool_call_id);
+    if (f.role === "tool" && f.tool_call_id && !l.has(d)) if (a.has(f.tool_call_id)) {
+      const m = `${f.tool_call_id}-histdup-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      f.tool_call_id = m, a.add(m);
+    } else a.add(f.tool_call_id);
   }
-  const l = i.filter((u) => u.role === "tool" && u.tool_call_id).map((u) => u.tool_call_id), c = new Set(l);
-  if (l.length !== c.size) {
-    const u = l.filter((d, f) => l.indexOf(d) !== f);
-    console.error("[buildNativeMessages] CRITICAL: duplicate tool_call_ids remain after dedup:", u), console.error("[buildNativeMessages] all tool messages:", i.filter((d) => d.role === "tool").map((d) => ({
-      tool_call_id: d.tool_call_id,
-      content_preview: String(d.content || "").slice(0, 40)
-    }))), console.error("[buildNativeMessages] all assistant tool_calls:", i.filter((d) => d.role === "assistant" && Array.isArray(d.tool_calls)).map((d) => d.tool_calls.map((f) => f.id)));
+  const c = i.filter((d) => d.role === "tool" && d.tool_call_id).map((d) => d.tool_call_id), u = new Set(c);
+  if (c.length !== u.size) {
+    const d = c.filter((f, m) => c.indexOf(f) !== m);
+    console.error("[buildNativeMessages] CRITICAL: duplicate tool_call_ids remain after dedup:", d), console.error("[buildNativeMessages] all tool messages:", i.filter((f) => f.role === "tool").map((f) => ({
+      tool_call_id: f.tool_call_id,
+      content_preview: String(f.content || "").slice(0, 40)
+    }))), console.error("[buildNativeMessages] all assistant tool_calls:", i.filter((f) => f.role === "assistant" && Array.isArray(f.tool_calls)).map((f) => f.tool_calls.map((m) => m.id)));
   }
   return HQ(i, t);
 }

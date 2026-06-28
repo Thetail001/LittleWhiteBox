@@ -501,6 +501,29 @@ export function buildNativeMessages(task, model = '') {
         });
     }
 
+    // Repair any incomplete assistant/tool pairs before deduplication.
+    // If an assistant has tool_calls that lack corresponding tool messages,
+    // remove those orphaned tool_calls to avoid "insufficient tool messages" errors.
+    const toolIdsInMessages = new Set();
+    normalizedMessages.forEach((message) => {
+        if (message.role === 'tool' && message.tool_call_id) {
+            toolIdsInMessages.add(message.tool_call_id);
+        }
+    });
+    normalizedMessages.forEach((message) => {
+        if (message.role === 'assistant' && Array.isArray(message.tool_calls)) {
+            const validToolCalls = message.tool_calls.filter((tc) => tc?.id && toolIdsInMessages.has(tc.id));
+            if (validToolCalls.length !== message.tool_calls.length) {
+                console.warn('[buildNativeMessages] Removed', message.tool_calls.length - validToolCalls.length, 'orphan tool_calls without matching tool messages');
+                if (validToolCalls.length) {
+                    message.tool_calls = validToolCalls;
+                } else {
+                    delete message.tool_calls;
+                }
+            }
+        }
+    });
+
     // Global deduplication of tool_call_id across all messages.
     // Process messages in order: when an assistant has tool_calls, ensure
     // each tool_call.id is unique (remap if already used). Then update

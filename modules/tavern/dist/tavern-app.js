@@ -373,9 +373,9 @@ function Uo(e, t, n, r, s, a) {
   else {
     const i = $t(e), u = i && H1(n);
     if (i && n === "length") {
-      const c = Number(r);
+      const d = Number(r);
       o.forEach((f, p) => {
-        (p === "length" || p === zf || !io(p) && p >= c) && l(f);
+        (p === "length" || p === zf || !io(p) && p >= d) && l(f);
       });
     } else
       switch ((n !== void 0 || o.has(void 0)) && l(o.get(n)), u && l(o.get(zf)), t) {
@@ -506,16 +506,16 @@ function Co(e, t, n, r, s, a) {
   } : n.length > 2 && (u = function(f, p) {
     return n.call(this, f, p, e);
   }));
-  const c = i.call(o, u, r);
-  return l && s ? s(c) : c;
+  const d = i.call(o, u, r);
+  return l && s ? s(d) : d;
 }
 function IA(e, t, n, r) {
   const s = vv(e), a = s !== e && !/* @__PURE__ */ ra(e);
   let o = n, l = !1;
-  s !== e && (a ? (l = r.length === 0, o = function(u, c, f) {
-    return l && (l = !1, u = Ya(e, u)), n.call(this, u, Ya(e, c), f, e);
-  }) : n.length > 3 && (o = function(u, c, f) {
-    return n.call(this, u, c, f, e);
+  s !== e && (a ? (l = r.length === 0, o = function(u, d, f) {
+    return l && (l = !1, u = Ya(e, u)), n.call(this, u, Ya(e, d), f, e);
+  }) : n.length > 3 && (o = function(u, d, f) {
+    return n.call(this, u, d, f, e);
   }));
   const i = s[t](o, ...r);
   return l ? Ya(e, i) : i;
@@ -601,14 +601,14 @@ var Bk = class {
 }, y9 = /* @__PURE__ */ new Uk(), _9 = /* @__PURE__ */ new v9(), b9 = /* @__PURE__ */ new Uk(!0), Cb = (e) => e, pp = (e) => Reflect.getPrototypeOf(e);
 function w9(e, t, n) {
   return function(...r) {
-    const s = this.__v_raw, a = /* @__PURE__ */ pn(s), o = nc(a), l = e === "entries" || e === Symbol.iterator && o, i = e === "keys" && o, u = s[e](...r), c = n ? Cb : t ? gc : Ca;
+    const s = this.__v_raw, a = /* @__PURE__ */ pn(s), o = nc(a), l = e === "entries" || e === Symbol.iterator && o, i = e === "keys" && o, u = s[e](...r), d = n ? Cb : t ? gc : Ca;
     return !t && Fr(a, "iterate", i ? Eb : Ul), cr(Object.create(u), { next() {
       const { value: f, done: p } = u.next();
       return p ? {
         value: f,
         done: p
       } : {
-        value: l ? [c(f[0]), c(f[1])] : c(f),
+        value: l ? [d(f[0]), d(f[1])] : d(f),
         done: p
       };
     } });
@@ -639,7 +639,7 @@ function S9(e, t) {
     },
     forEach(r, s) {
       const a = this, o = a.__v_raw, l = /* @__PURE__ */ pn(o), i = t ? Cb : e ? gc : Ca;
-      return !e && Fr(l, "iterate", Ul), o.forEach((u, c) => r.call(s, i(u), i(c), a));
+      return !e && Fr(l, "iterate", Ul), o.forEach((u, d) => r.call(s, i(u), i(d), a));
     }
   };
   return cr(n, e ? {
@@ -811,7 +811,7 @@ function L9(e, t = !1, n = bl) {
 }
 function D9(e, t, n = bn) {
   const { immediate: r, deep: s, once: a, scheduler: o, augmentJob: l, call: i } = n, u = (N) => s ? N : /* @__PURE__ */ ra(N) || s === !1 || s === 0 ? qo(N, 1) : qo(N);
-  let c, f, p, g, y = !1, _ = !1;
+  let d, f, p, g, y = !1, _ = !1;
   if (/* @__PURE__ */ Hn(e) ? (f = () => e.value, y = /* @__PURE__ */ ra(e)) : /* @__PURE__ */ ql(e) ? (f = () => u(e), y = !0) : $t(e) ? (_ = !0, y = e.some((N) => /* @__PURE__ */ ql(N) || /* @__PURE__ */ ra(N)), f = () => e.map((N) => {
     if (/* @__PURE__ */ Hn(N)) return N.value;
     if (/* @__PURE__ */ ql(N)) return u(N);
@@ -826,7 +826,7 @@ function D9(e, t, n = bn) {
       }
     }
     const N = bl;
-    bl = c;
+    bl = d;
     try {
       return i ? i(e, 3, [g]) : e(g);
     } finally {
@@ -837,7 +837,7 @@ function D9(e, t, n = bn) {
     f = () => qo(N(), m);
   }
   const x = c9(), C = () => {
-    c.stop(), x && x.active && q1(x.effects, c);
+    d.stop(), x && x.active && q1(x.effects, d);
   };
   if (a && t) {
     const N = t;
@@ -847,13 +847,13 @@ function D9(e, t, n = bn) {
   }
   let E = _ ? new Array(e.length).fill(gp) : gp;
   const R = (N) => {
-    if (!(!(c.flags & 1) || !c.dirty && !N))
+    if (!(!(d.flags & 1) || !d.dirty && !N))
       if (t) {
-        const m = c.run();
+        const m = d.run();
         if (s || y || (_ ? m.some((w, b) => Za(w, E[b])) : Za(m, E))) {
           p && p();
           const w = bl;
-          bl = c;
+          bl = d;
           try {
             const b = [
               m,
@@ -865,16 +865,16 @@ function D9(e, t, n = bn) {
             bl = w;
           }
         }
-      } else c.run();
+      } else d.run();
   };
-  return l && l(R), c = new Mk(f), c.scheduler = o ? () => o(R, !1) : R, g = (N) => L9(N, !1, c), p = c.onStop = () => {
-    const N = jm.get(c);
+  return l && l(R), d = new Mk(f), d.scheduler = o ? () => o(R, !1) : R, g = (N) => L9(N, !1, d), p = d.onStop = () => {
+    const N = jm.get(d);
     if (N) {
       if (i) i(N, 4);
       else for (const m of N) m();
-      jm.delete(c);
+      jm.delete(d);
     }
-  }, t ? r ? R(!0) : E = c.run() : o ? o(R.bind(null, !0), !0) : c.run(), C.pause = c.pause.bind(c), C.resume = c.resume.bind(c), C.stop = C, C;
+  }, t ? r ? R(!0) : E = d.run() : o ? o(R.bind(null, !0), !0) : d.run(), C.pause = d.pause.bind(d), C.resume = d.resume.bind(d), C.stop = C, C;
 }
 function qo(e, t = 1 / 0, n) {
   if (t <= 0 || !_n(e) || e.__v_skip || (n = n || /* @__PURE__ */ new Map(), (n.get(e) || 0) >= t)) return e;
@@ -915,9 +915,9 @@ function yv(e, t, n, r = !0) {
     let l = t.parent;
     const i = t.proxy, u = `https://vuejs.org/error-reference/#runtime-${n}`;
     for (; l; ) {
-      const c = l.ec;
-      if (c) {
-        for (let f = 0; f < c.length; f++) if (c[f](e, i, u) === !1) return;
+      const d = l.ec;
+      if (d) {
+        for (let f = 0; f < d.length; f++) if (d[f](e, i, u) === !1) return;
       }
       l = l.parent;
     }
@@ -1089,15 +1089,15 @@ function jk(e, t, n = bn) {
       return g.stop = no, g.resume = no, g.pause = no, g;
     }
   }
-  const c = ts;
-  l.call = (g, y, _) => Ia(g, c, y, _);
+  const d = ts;
+  l.call = (g, y, _) => Ia(g, d, y, _);
   let f = !1;
   a === "post" ? l.scheduler = (g) => {
-    Yr(g, c && c.suspense);
+    Yr(g, d && d.suspense);
   } : a !== "sync" && (f = !0, l.scheduler = (g, y) => {
     y ? g() : Q1(g);
   }), l.augmentJob = (g) => {
-    t && (g.flags |= 4), f && (g.flags |= 2, c && (g.id = c.uid, g.i = c));
+    t && (g.flags |= 4), f && (g.flags |= 2, d && (g.id = d.uid, g.i = d));
   };
   const p = D9(e, t, l);
   return Vf && (u ? u.push(p) : i && p()), p;
@@ -1124,10 +1124,10 @@ var Ei = /* @__PURE__ */ new WeakMap(), Zk = /* @__PURE__ */ Symbol("_vte"), K9 
   name: "Teleport",
   __isTeleport: !0,
   process(e, t, n, r, s, a, o, l, i, u) {
-    const { mc: c, pc: f, pbc: p, o: { insert: g, querySelector: y, createText: _, createComment: x, parentNode: C } } = u, E = Il(t.props);
+    const { mc: d, pc: f, pbc: p, o: { insert: g, querySelector: y, createText: _, createComment: x, parentNode: C } } = u, E = Il(t.props);
     let { dynamicChildren: R } = t;
     const N = (b, S, I) => {
-      b.shapeFlag & 16 && c(b.children, S, I, s, a, o, l, i);
+      b.shapeFlag & 16 && d(b.children, S, I, s, a, o, l, i);
     }, m = (b = t) => {
       const S = Il(b.props), I = b.target = xb(b.props, y), k = kb(I, b, _, g);
       I && (o !== "svg" && kA(I) ? o = "svg" : o !== "mathml" && MA(I) && (o = "mathml"), s && s.isCE && (s.ce._teleportTargets || (s.ce._teleportTargets = /* @__PURE__ */ new Set())).add(I), S || (N(b, I, k), Bd(b, !1)));
@@ -1163,8 +1163,8 @@ var Ei = /* @__PURE__ */ new WeakMap(), Zk = /* @__PURE__ */ Symbol("_vte"), K9 
     }
   },
   remove(e, t, n, { um: r, o: { remove: s } }, a) {
-    const { shapeFlag: o, children: l, anchor: i, targetStart: u, targetAnchor: c, target: f, props: p } = e, g = a || !Il(p), y = Ei.get(e);
-    if (y && (y.flags |= 8, Ei.delete(e)), f && (s(u), s(c)), a && s(i), !y && o & 16) for (let _ = 0; _ < l.length; _++) {
+    const { shapeFlag: o, children: l, anchor: i, targetStart: u, targetAnchor: d, target: f, props: p } = e, g = a || !Il(p), y = Ei.get(e);
+    if (y && (y.flags |= 8, Ei.delete(e)), f && (s(u), s(d)), a && s(i), !y && o & 16) for (let _ = 0; _ < l.length; _++) {
       const x = l[_];
       r(x, t, n, g, !!x.dynamicChildren);
     }
@@ -1174,12 +1174,12 @@ var Ei = /* @__PURE__ */ new WeakMap(), Zk = /* @__PURE__ */ Symbol("_vte"), K9 
 };
 function vp(e, t, n, { o: { insert: r }, m: s }, a = 2) {
   a === 0 && r(e.targetAnchor, t, n);
-  const { el: o, anchor: l, shapeFlag: i, children: u, props: c } = e, f = a === 2;
-  if (f && r(o, t, n), !Ei.has(e) && (!f || Il(c)) && i & 16)
+  const { el: o, anchor: l, shapeFlag: i, children: u, props: d } = e, f = a === 2;
+  if (f && r(o, t, n), !Ei.has(e) && (!f || Il(d)) && i & 16)
     for (let p = 0; p < u.length; p++) s(u[p], t, n, 2);
   f && r(l, t, n);
 }
-function G9(e, t, n, r, s, a, { o: { nextSibling: o, parentNode: l, querySelector: i, insert: u, createText: c } }, f) {
+function G9(e, t, n, r, s, a, { o: { nextSibling: o, parentNode: l, querySelector: i, insert: u, createText: d } }, f) {
   function p(x, C) {
     let E = C;
     for (; E; ) {
@@ -1199,7 +1199,7 @@ function G9(e, t, n, r, s, a, { o: { nextSibling: o, parentNode: l, querySelecto
   const y = t.target = xb(t.props, i), _ = Il(t.props);
   if (y) {
     const x = y._lpa || y.firstChild;
-    t.shapeFlag & 16 && (_ ? (g(e, t), p(y, x), t.targetAnchor || kb(y, t, c, u, l(e) === y ? e : null)) : (t.anchor = o(e), p(y, x), t.targetAnchor || kb(y, t, c, u), f(x && o(x), t, y, n, r, s, a))), Bd(t, _);
+    t.shapeFlag & 16 && (_ ? (g(e, t), p(y, x), t.targetAnchor || kb(y, t, d, u, l(e) === y ? e : null)) : (t.anchor = o(e), p(y, x), t.targetAnchor || kb(y, t, d, u), f(x && o(x), t, y, n, r, s, a))), Bd(t, _);
   } else _ && t.shapeFlag & 16 && (g(e, t), t.targetStart = e, t.targetAnchor = o(e));
   return t.anchor && o(t.anchor);
 }
@@ -1246,31 +1246,31 @@ function vf(e, t, n, r, s = !1) {
     r.shapeFlag & 512 && r.type.__asyncResolved && r.component.subTree.component && vf(e, t, n, r.component.subTree);
     return;
   }
-  const a = r.shapeFlag & 4 ? Av(r.component) : r.el, o = s ? null : a, { i: l, r: i } = e, u = t && t.r, c = l.refs === bn ? l.refs = {} : l.refs, f = l.setupState, p = /* @__PURE__ */ pn(f), g = f === bn ? bk : (_) => PA(c, _) ? !1 : mn(p, _), y = (_, x) => !(x && PA(c, x));
+  const a = r.shapeFlag & 4 ? Av(r.component) : r.el, o = s ? null : a, { i: l, r: i } = e, u = t && t.r, d = l.refs === bn ? l.refs = {} : l.refs, f = l.setupState, p = /* @__PURE__ */ pn(f), g = f === bn ? bk : (_) => PA(d, _) ? !1 : mn(p, _), y = (_, x) => !(x && PA(d, x));
   if (u != null && u !== i) {
     if (RA(t), qn(u))
-      c[u] = null, g(u) && (f[u] = null);
+      d[u] = null, g(u) && (f[u] = null);
     else if (/* @__PURE__ */ Hn(u)) {
       const _ = t;
-      y(u, _.k) && (u.value = null), _.k && (c[_.k] = null);
+      y(u, _.k) && (u.value = null), _.k && (d[_.k] = null);
     }
   }
-  if (Kt(i)) mh(i, l, 12, [o, c]);
+  if (Kt(i)) mh(i, l, 12, [o, d]);
   else {
     const _ = qn(i), x = /* @__PURE__ */ Hn(i);
     if (_ || x) {
       const C = () => {
         if (e.f) {
-          const E = _ ? g(i) ? f[i] : c[i] : y(i) || !e.k ? i.value : c[e.k];
+          const E = _ ? g(i) ? f[i] : d[i] : y(i) || !e.k ? i.value : d[e.k];
           if (s) $t(E) && q1(E, a);
           else if ($t(E)) E.includes(a) || E.push(a);
           else if (_)
-            c[i] = [a], g(i) && (f[i] = c[i]);
+            d[i] = [a], g(i) && (f[i] = d[i]);
           else {
             const R = [a];
-            y(i, e.k) && (i.value = R), e.k && (c[e.k] = R);
+            y(i, e.k) && (i.value = R), e.k && (d[e.k] = R);
           }
-        } else _ ? (c[i] = o, g(i) && (f[i] = o)) : x && (y(i, e.k) && (i.value = o), e.k && (c[e.k] = o));
+        } else _ ? (d[i] = o, g(i) && (f[i] = o)) : x && (y(i, e.k) && (i.value = o), e.k && (d[e.k] = o));
       };
       if (o) {
         const E = () => {
@@ -1338,7 +1338,7 @@ function ut(e, t, n, r) {
     const l = o && /* @__PURE__ */ ql(e);
     let i = !1, u = !1;
     l && (i = !/* @__PURE__ */ ra(e), u = /* @__PURE__ */ ni(e), e = vv(e)), s = new Array(e.length);
-    for (let c = 0, f = e.length; c < f; c++) s[c] = t(i ? u ? gc(Ca(e[c])) : Ca(e[c]) : e[c], c, void 0, a && a[c]);
+    for (let d = 0, f = e.length; d < f; d++) s[d] = t(i ? u ? gc(Ca(e[d])) : Ca(e[d]) : e[d], d, void 0, a && a[d]);
   } else if (typeof e == "number") {
     s = new Array(e);
     for (let l = 0; l < e; l++) s[l] = t(l + 1, l, void 0, a && a[l]);
@@ -1347,8 +1347,8 @@ function ut(e, t, n, r) {
     const l = Object.keys(e);
     s = new Array(l.length);
     for (let i = 0, u = l.length; i < u; i++) {
-      const c = l[i];
-      s[i] = t(e[c], c, i, a && a[i]);
+      const d = l[i];
+      s[i] = t(e[d], d, i, a && a[i]);
     }
   }
   else s = [];
@@ -1401,10 +1401,10 @@ var Mb = (e) => e ? TM(e) ? Av(e) : Mb(e.parent) : null, _f = /* @__PURE__ */ cr
       }
     }
     const u = _f[t];
-    let c, f;
+    let d, f;
     if (u)
       return t === "$attrs" && Fr(e.attrs, "get", ""), u(e);
-    if ((c = l.__cssModules) && (c = c[t])) return c;
+    if ((d = l.__cssModules) && (d = d[t])) return d;
     if (n !== bn && mn(n, t))
       return o[t] = 4, n[t];
     if (f = i.config.globalProperties, mn(f, t)) return f[t];
@@ -1428,7 +1428,7 @@ var Pb = !0;
 function sL(e) {
   const t = tw(e), n = e.proxy, r = e.ctx;
   Pb = !1, t.beforeCreate && $A(t.beforeCreate, e, "bc");
-  const { data: s, computed: a, methods: o, watch: l, provide: i, inject: u, created: c, beforeMount: f, mounted: p, beforeUpdate: g, updated: y, activated: _, deactivated: x, beforeDestroy: C, beforeUnmount: E, destroyed: R, unmounted: N, render: m, renderTracked: w, renderTriggered: b, errorCaptured: S, serverPrefetch: I, expose: k, inheritAttrs: P, components: U, directives: K, filters: j } = t;
+  const { data: s, computed: a, methods: o, watch: l, provide: i, inject: u, created: d, beforeMount: f, mounted: p, beforeUpdate: g, updated: y, activated: _, deactivated: x, beforeDestroy: C, beforeUnmount: E, destroyed: R, unmounted: N, render: m, renderTracked: w, renderTriggered: b, errorCaptured: S, serverPrefetch: I, expose: k, inheritAttrs: P, components: U, directives: K, filters: j } = t;
   if (u && aL(u, r, null), o) for (const $ in o) {
     const J = o[$];
     Kt(J) && (r[$] = J.bind(n));
@@ -1456,7 +1456,7 @@ function sL(e) {
       Xk(J, $[J]);
     });
   }
-  c && $A(c, e, "c");
+  d && $A(d, e, "c");
   function W($, J) {
     $t(J) ? J.forEach((ae) => $(ae.bind(n))) : J && $(J.bind(n));
   }
@@ -1611,40 +1611,40 @@ function cL(e, t) {
       get config() {
         return a.config;
       },
-      set config(c) {
+      set config(d) {
       },
-      use(c, ...f) {
-        return o.has(c) || (c && Kt(c.install) ? (o.add(c), c.install(u, ...f)) : Kt(c) && (o.add(c), c(u, ...f))), u;
+      use(d, ...f) {
+        return o.has(d) || (d && Kt(d.install) ? (o.add(d), d.install(u, ...f)) : Kt(d) && (o.add(d), d(u, ...f))), u;
       },
-      mixin(c) {
-        return a.mixins.includes(c) || a.mixins.push(c), u;
+      mixin(d) {
+        return a.mixins.includes(d) || a.mixins.push(d), u;
       },
-      component(c, f) {
-        return f ? (a.components[c] = f, u) : a.components[c];
+      component(d, f) {
+        return f ? (a.components[d] = f, u) : a.components[d];
       },
-      directive(c, f) {
-        return f ? (a.directives[c] = f, u) : a.directives[c];
+      directive(d, f) {
+        return f ? (a.directives[d] = f, u) : a.directives[d];
       },
-      mount(c, f, p) {
+      mount(d, f, p) {
         if (!i) {
           const g = u._ceVNode || nr(r, s);
-          return g.appContext = a, p === !0 ? p = "svg" : p === !1 && (p = void 0), f && t ? t(g, c) : e(g, c, p), i = !0, u._container = c, c.__vue_app__ = u, Av(g.component);
+          return g.appContext = a, p === !0 ? p = "svg" : p === !1 && (p = void 0), f && t ? t(g, d) : e(g, d, p), i = !0, u._container = d, d.__vue_app__ = u, Av(g.component);
         }
       },
-      onUnmount(c) {
-        l.push(c);
+      onUnmount(d) {
+        l.push(d);
       },
       unmount() {
         i && (Ia(l, u._instance, 16), e(null, u._container), delete u._container.__vue_app__);
       },
-      provide(c, f) {
-        return a.provides[c] = f, u;
+      provide(d, f) {
+        return a.provides[d] = f, u;
       },
-      runWithContext(c) {
+      runWithContext(d) {
         const f = sc;
         sc = u;
         try {
-          return c();
+          return d();
         } finally {
           sc = f;
         }
@@ -1659,7 +1659,7 @@ function fL(e, t, ...n) {
   const r = e.vnode.props || bn;
   let s = n;
   const a = t.startsWith("update:"), o = a && dL(r, t.slice(7));
-  o && (o.trim && (s = n.map((c) => qn(c) ? c.trim() : c)), o.number && (s = n.map(mv)));
+  o && (o.trim && (s = n.map((d) => qn(d) ? d.trim() : d)), o.number && (s = n.map(mv)));
   let l, i = r[l = s_(t)] || r[l = s_(wa(t))];
   !i && a && (i = r[l = s_(el(t))]), i && Ia(i, e, 6, s);
   const u = r[l + "Once"];
@@ -1677,8 +1677,8 @@ function lM(e, t, n = !1) {
   let o = {}, l = !1;
   if (!Kt(e)) {
     const i = (u) => {
-      const c = lM(u, t, !0);
-      c && (l = !0, cr(o, c));
+      const d = lM(u, t, !0);
+      d && (l = !0, cr(o, d));
     };
     !n && t.mixins.length && t.mixins.forEach(i), e.extends && i(e.extends), e.mixins && e.mixins.forEach(i);
   }
@@ -1688,12 +1688,12 @@ function wv(e, t) {
   return !e || !fv(t) ? !1 : (t = t.slice(2).replace(/Once$/, ""), mn(e, t[0].toLowerCase() + t.slice(1)) || mn(e, el(t)) || mn(e, t));
 }
 function d_(e) {
-  const { type: t, vnode: n, proxy: r, withProxy: s, propsOptions: [a], slots: o, attrs: l, emit: i, render: u, renderCache: c, props: f, data: p, setupState: g, ctx: y, inheritAttrs: _ } = e, x = Zm(e);
+  const { type: t, vnode: n, proxy: r, withProxy: s, propsOptions: [a], slots: o, attrs: l, emit: i, render: u, renderCache: d, props: f, data: p, setupState: g, ctx: y, inheritAttrs: _ } = e, x = Zm(e);
   let C, E;
   try {
     if (n.shapeFlag & 4) {
       const N = s || r, m = N;
-      C = Xa(u.call(m, N, c, f, g, p, y)), E = l;
+      C = Xa(u.call(m, N, d, f, g, p, y)), E = l;
     } else {
       const N = t;
       C = Xa(N.length > 1 ? N(f, {
@@ -1729,9 +1729,9 @@ function gL(e, t, n) {
     if (i & 16)
       return r ? OA(r, o, u) : !!o;
     if (i & 8) {
-      const c = t.dynamicProps;
-      for (let f = 0; f < c.length; f++) {
-        const p = c[f];
+      const d = t.dynamicProps;
+      for (let f = 0; f < d.length; f++) {
+        const p = d[f];
         if (uM(o, r, p) && !wv(u, p)) return !0;
       }
     }
@@ -1773,9 +1773,9 @@ function _L(e, t, n, r) {
   let u = !1;
   if ((r || o > 0) && !(o & 16)) {
     if (o & 8) {
-      const c = e.vnode.dynamicProps;
-      for (let f = 0; f < c.length; f++) {
-        let p = c[f];
+      const d = e.vnode.dynamicProps;
+      for (let f = 0; f < d.length; f++) {
+        let p = d[f];
         if (wv(e.emitsOptions, p)) continue;
         const g = t[p];
         if (i) if (mn(a, p))
@@ -1789,8 +1789,8 @@ function _L(e, t, n, r) {
     }
   } else {
     hM(e, t, s, a) && (u = !0);
-    let c;
-    for (const f in l) (!t || !mn(t, f) && ((c = el(f)) === f || !mn(t, c))) && (i ? n && (n[f] !== void 0 || n[c] !== void 0) && (s[f] = Nb(i, l, f, void 0, e, !0)) : delete s[f]);
+    let d;
+    for (const f in l) (!t || !mn(t, f) && ((d = el(f)) === f || !mn(t, d))) && (i ? n && (n[f] !== void 0 || n[d] !== void 0) && (s[f] = Nb(i, l, f, void 0, e, !0)) : delete s[f]);
     if (a !== l)
       for (const f in a) (!t || !mn(t, f)) && (delete a[f], u = !0);
   }
@@ -1802,13 +1802,13 @@ function hM(e, t, n, r) {
   if (t) for (let i in t) {
     if (hf(i)) continue;
     const u = t[i];
-    let c;
-    s && mn(s, c = wa(i)) ? !a || !a.includes(c) ? n[c] = u : (l || (l = {}))[c] = u : wv(e.emitsOptions, i) || (!(i in r) || u !== r[i]) && (r[i] = u, o = !0);
+    let d;
+    s && mn(s, d = wa(i)) ? !a || !a.includes(d) ? n[d] = u : (l || (l = {}))[d] = u : wv(e.emitsOptions, i) || (!(i in r) || u !== r[i]) && (r[i] = u, o = !0);
   }
   if (a) {
     const i = /* @__PURE__ */ pn(n), u = l || bn;
-    for (let c = 0; c < a.length; c++) {
-      const f = a[c];
+    for (let d = 0; d < a.length; d++) {
+      const f = a[d];
       n[f] = Nb(s, i, f, u[f], e, !mn(u, f));
     }
   }
@@ -1824,8 +1824,8 @@ function Nb(e, t, n, r, s, a) {
         const { propsDefaults: u } = s;
         if (n in u) r = u[n];
         else {
-          const c = gh(s);
-          r = u[n] = i.call(null, t), c();
+          const d = gh(s);
+          r = u[n] = i.call(null, t), d();
         }
       } else r = i;
       s.ce && s.ce._setProp(n, r);
@@ -1841,23 +1841,23 @@ function pM(e, t, n = !1) {
   const a = e.props, o = {}, l = [];
   let i = !1;
   if (!Kt(e)) {
-    const c = (f) => {
+    const d = (f) => {
       i = !0;
       const [p, g] = pM(f, t, !0);
       cr(o, p), g && l.push(...g);
     };
-    !n && t.mixins.length && t.mixins.forEach(c), e.extends && c(e.extends), e.mixins && e.mixins.forEach(c);
+    !n && t.mixins.length && t.mixins.forEach(d), e.extends && d(e.extends), e.mixins && e.mixins.forEach(d);
   }
   if (!a && !i)
     return _n(e) && r.set(e, tc), tc;
-  if ($t(a)) for (let c = 0; c < a.length; c++) {
-    const f = wa(a[c]);
+  if ($t(a)) for (let d = 0; d < a.length; d++) {
+    const f = wa(a[d]);
     FA(f) && (o[f] = bn);
   }
-  else if (a) for (const c in a) {
-    const f = wa(c);
+  else if (a) for (const d in a) {
+    const f = wa(d);
     if (FA(f)) {
-      const p = a[c], g = o[f] = $t(p) || Kt(p) ? { type: p } : cr({}, p), y = g.type;
+      const p = a[d], g = o[f] = $t(p) || Kt(p) ? { type: p } : cr({}, p), y = g.type;
       let _ = !1, x = !0;
       if ($t(y)) for (let C = 0; C < y.length; ++C) {
         const E = y[C], R = Kt(E) && E.name;
@@ -1918,7 +1918,7 @@ function TL(e) {
 function EL(e, t) {
   const n = gv();
   n.__VUE__ = !0;
-  const { insert: r, remove: s, patchProp: a, createElement: o, createText: l, createComment: i, setText: u, setElementText: c, parentNode: f, nextSibling: p, setScopeId: g = no, insertStaticContent: y } = e, _ = (D, L, X, le = null, ve = null, ce = null, xe = void 0, Me = null, pe = !!L.dynamicChildren) => {
+  const { insert: r, remove: s, patchProp: a, createElement: o, createText: l, createComment: i, setText: u, setElementText: d, parentNode: f, nextSibling: p, setScopeId: g = no, insertStaticContent: y } = e, _ = (D, L, X, le = null, ve = null, ce = null, xe = void 0, Me = null, pe = !!L.dynamicChildren) => {
     if (D === L) return;
     D && !dd(D, L) && (le = F(D), fe(D, ve, ce, !0), D = null), L.patchFlag === -2 && (pe = !1, L.dynamicChildren = null);
     const { type: G, ref: Re, shapeFlag: me } = L;
@@ -1972,7 +1972,7 @@ function EL(e, t) {
   }, w = (D, L, X, le, ve, ce, xe, Me) => {
     let pe, G;
     const { props: Re, shapeFlag: me, transition: qe, dirs: Ee } = D;
-    if (pe = D.el = o(D.type, ce, Re && Re.is, Re), me & 8 ? c(pe, D.children) : me & 16 && S(D.children, pe, null, le, ve, f_(D, ce), xe, Me), Ee && hl(D, null, le, "created"), b(pe, D, D.scopeId, xe, le), Re) {
+    if (pe = D.el = o(D.type, ce, Re && Re.is, Re), me & 8 ? d(pe, D.children) : me & 16 && S(D.children, pe, null, le, ve, f_(D, ce), xe, Me), Ee && hl(D, null, le, "created"), b(pe, D, D.scopeId, xe, le), Re) {
       for (const Ue in Re) Ue !== "value" && !hf(Ue) && a(pe, Ue, null, Re[Ue], ce, le);
       "value" in Re && a(pe, "value", null, Re.value, ce), (G = Re.onVnodeBeforeMount) && za(G, le, D);
     }
@@ -1998,7 +1998,7 @@ function EL(e, t) {
     pe |= D.patchFlag & 16;
     const me = D.props || bn, qe = L.props || bn;
     let Ee;
-    if (X && pl(X, !1), (Ee = qe.onVnodeBeforeUpdate) && za(Ee, X, L, D), Re && hl(L, D, X, "beforeUpdate"), X && pl(X, !0), (me.innerHTML && qe.innerHTML == null || me.textContent && qe.textContent == null) && c(Me, ""), G ? k(D.dynamicChildren, G, Me, X, le, f_(L, ve), ce) : xe || J(D, L, Me, null, X, le, f_(L, ve), ce, !1), pe > 0) {
+    if (X && pl(X, !1), (Ee = qe.onVnodeBeforeUpdate) && za(Ee, X, L, D), Re && hl(L, D, X, "beforeUpdate"), X && pl(X, !0), (me.innerHTML && qe.innerHTML == null || me.textContent && qe.textContent == null) && d(Me, ""), G ? k(D.dynamicChildren, G, Me, X, le, f_(L, ve), ce) : xe || J(D, L, Me, null, X, le, f_(L, ve), ce, !1), pe > 0) {
       if (pe & 16) P(Me, me, qe, X, ve);
       else if (pe & 2 && me.class !== qe.class && a(Me, "class", null, qe.class, ve), pe & 4 && a(Me, "style", me.style, qe.style, ve), pe & 8) {
         const De = L.dynamicProps;
@@ -2007,7 +2007,7 @@ function EL(e, t) {
           (kt !== St || ht === "value") && a(Me, ht, St, kt, ve, X);
         }
       }
-      pe & 1 && D.children !== L.children && c(Me, L.children);
+      pe & 1 && D.children !== L.children && d(Me, L.children);
     } else !xe && G == null && P(Me, me, qe, X, ve);
     ((Ee = qe.onVnodeUpdated) || Re) && Yr(() => {
       Ee && za(Ee, X, L, D), Re && hl(L, D, X, "updated");
@@ -2110,7 +2110,7 @@ function EL(e, t) {
         return;
       }
     }
-    Ee & 8 ? (Re & 16 && Be(G, ve, ce), me !== G && c(X, me)) : Re & 16 ? Ee & 16 ? be(G, me, X, le, ve, ce, xe, Me, pe) : Be(G, ve, ce, !0) : (Re & 8 && c(X, ""), Ee & 16 && S(me, X, le, ve, ce, xe, Me, pe));
+    Ee & 8 ? (Re & 16 && Be(G, ve, ce), me !== G && d(X, me)) : Re & 16 ? Ee & 16 ? be(G, me, X, le, ve, ce, xe, Me, pe) : Be(G, ve, ce, !0) : (Re & 8 && d(X, ""), Ee & 16 && S(me, X, le, ve, ce, xe, Me, pe));
   }, ae = (D, L, X, le, ve, ce, xe, Me, pe) => {
     D = D || tc, L = L || tc;
     const G = D.length, Re = L.length, me = Math.min(G, Re);
@@ -2425,7 +2425,7 @@ function PL(e) {
   return e ? /* @__PURE__ */ j1(e) || fM(e) ? cr({}, e) : e : null;
 }
 function vc(e, t, n = !1, r = !1) {
-  const { props: s, ref: a, patchFlag: o, children: l, transition: i } = e, u = t ? RL(s || {}, t) : s, c = {
+  const { props: s, ref: a, patchFlag: o, children: l, transition: i } = e, u = t ? RL(s || {}, t) : s, d = {
     __v_isVNode: !0,
     __v_skip: !0,
     type: e.type,
@@ -2456,7 +2456,7 @@ function vc(e, t, n = !1, r = !1) {
     ctx: e.ctx,
     ce: e.ce
   };
-  return i && r && Z1(c, i.clone(c)), c;
+  return i && r && Z1(d, i.clone(d)), d;
 }
 function wf(e = " ", t = 0) {
   return nr(Sv, null, e, t);
@@ -3406,7 +3406,7 @@ var CD = /* @__PURE__ */ hh(((e, t) => {
         return o[m];
       } else {
         typeof w == "function" && (w = w()), s.helper.isArray(w) || (w = [w]);
-        var b = c(w, m);
+        var b = d(w, m);
         if (b.valid) o[m] = w;
         else throw Error(b.error);
       }
@@ -3420,7 +3420,7 @@ var CD = /* @__PURE__ */ hh(((e, t) => {
       "use strict";
       o = {};
     };
-    function c(m, w) {
+    function d(m, w) {
       "use strict";
       var b = w ? "Error in " + w + " extension->" : "Error in unnamed extension", S = {
         valid: !0,
@@ -3461,7 +3461,7 @@ var CD = /* @__PURE__ */ hh(((e, t) => {
     }
     s.validateExtension = function(m) {
       "use strict";
-      var w = c(m, null);
+      var w = d(m, null);
       return w.valid ? !0 : (console.warn(w.error), !1);
     }, s.hasOwnProperty("helper") || (s.helper = {}), s.helper.isString = function(m) {
       "use strict";
@@ -4807,7 +4807,7 @@ var CD = /* @__PURE__ */ hh(((e, t) => {
           } else if (!s.helper.isUndefined(o[$])) $ = o[$];
           else throw Error('Extension "' + $ + '" could not be loaded. It was either not found or is not a valid extension.');
         typeof $ == "function" && ($ = $()), s.helper.isArray($) || ($ = [$]);
-        var ae = c($, J);
+        var ae = d($, J);
         if (!ae.valid) throw Error(ae.error);
         for (var be = 0; be < $.length; ++be) {
           switch ($[be].type) {
@@ -4824,7 +4824,7 @@ var CD = /* @__PURE__ */ hh(((e, t) => {
       }
       function j($, J) {
         typeof $ == "function" && ($ = $(new s.Converter())), s.helper.isArray($) || ($ = [$]);
-        var ae = c($, J);
+        var ae = d($, J);
         if (!ae.valid) throw Error(ae.error);
         for (var be = 0; be < $.length; ++be) switch ($[be].type) {
           case "lang":
@@ -5892,8 +5892,8 @@ function BD(e = "", t = {}) {
   const n = String(e || ""), r = t.htmlFenceMode === "code" ? "code" : "placeholder", s = t.protectRawHtmlBoundaries !== !1, a = /(^|\n)(`{3,}|~{3,})[ \t]*([^\n]*)\n([\s\S]*?)\n\2[ \t]*(?=\n|$)/g;
   let o = "", l = 0, i = null;
   for (; (i = a.exec(n)) !== null; ) {
-    const u = i[1] || "", c = i.index + u.length, f = a.lastIndex, p = String(i[3] || "").trim().split(/\s+/)[0] || "", g = String(i[4] || ""), y = $D(p) || !p && DD(g);
-    o += s ? uT(n.slice(l, c)) : n.slice(l, c), y && r !== "code" ? o += OD(g, p || "html") : o += n.slice(c, f), l = f;
+    const u = i[1] || "", d = i.index + u.length, f = a.lastIndex, p = String(i[3] || "").trim().split(/\s+/)[0] || "", g = String(i[4] || ""), y = $D(p) || !p && DD(g);
+    o += s ? uT(n.slice(l, d)) : n.slice(l, d), y && r !== "code" ? o += OD(g, p || "html") : o += n.slice(d, f), l = f;
   }
   return o += s ? uT(n.slice(l)) : n.slice(l), o;
 }
@@ -6056,16 +6056,16 @@ function eO(e, t = {}) {
     !i?.nodeValue || !String(i.nodeValue).includes("local/") || i.parentElement?.closest?.("button, a, textarea, input") || l.push(i);
   }
   l.forEach((i) => {
-    const u = String(i.nodeValue || ""), c = n.createDocumentFragment();
+    const u = String(i.nodeValue || ""), d = n.createDocumentFragment();
     let f = null, p = 0, g = !1;
     for (s.lastIndex = 0; (f = s.exec(u)) !== null; ) {
-      g = !0, f.index > p && c.appendChild(n.createTextNode(u.slice(p, f.index)));
+      g = !0, f.index > p && d.appendChild(n.createTextNode(u.slice(p, f.index)));
       const y = f[0], _ = n.createElement("button");
       _.type = "button", _.className = a, _.textContent = y, _.addEventListener("click", () => {
         t.onPathClick(y);
-      }), c.appendChild(_), p = f.index + y.length;
+      }), d.appendChild(_), p = f.index + y.length;
     }
-    g && (p < u.length && c.appendChild(n.createTextNode(u.slice(p))), i.parentNode?.replaceChild(c, i));
+    g && (p < u.length && d.appendChild(n.createTextNode(u.slice(p))), i.parentNode?.replaceChild(d, i));
   });
 }
 function tO(e, t = {}) {
@@ -6073,11 +6073,11 @@ function tO(e, t = {}) {
   const n = e.ownerDocument || globalThis.document;
   if (!n?.createElement) return;
   const r = String(t.codeBlockClassName || "xb-markdown-codeblock"), s = String(t.codeCopyClassName || "xb-markdown-code-copy"), a = String(t.copyButtonTitle || "复制代码"), o = String(t.copySuccessTitle || "已复制"), l = String(t.copyFailureTitle || "复制失败"), i = t.flattenPreCode === !0, u = String(t.skipPreSelector || "").trim();
-  Array.from(e.querySelectorAll("pre")).forEach((c) => {
-    if (u && c.matches?.(u) || c.closest(`.${r}`)) return;
-    const f = c.children.length === 1 && c.firstElementChild?.tagName === "CODE" ? c.firstElementChild : null;
+  Array.from(e.querySelectorAll("pre")).forEach((d) => {
+    if (u && d.matches?.(u) || d.closest(`.${r}`)) return;
+    const f = d.children.length === 1 && d.firstElementChild?.tagName === "CODE" ? d.firstElementChild : null;
     if (i && f) {
-      for (; f.firstChild; ) c.insertBefore(f.firstChild, f);
+      for (; f.firstChild; ) d.insertBefore(f.firstChild, f);
       f.remove();
     }
     const p = n.createElement("div");
@@ -6093,11 +6093,11 @@ function tO(e, t = {}) {
       y.stopPropagation();
     }, { passive: !0 }), g.addEventListener("click", async (y) => {
       y.preventDefault(), y.stopPropagation();
-      const _ = await ZD(c.querySelector("code")?.textContent || c.textContent || "", n);
+      const _ = await ZD(d.querySelector("code")?.textContent || d.textContent || "", n);
       g.textContent = _ ? "✓" : "!", g.title = _ ? o : l, g.setAttribute("aria-label", _ ? o : l), g.classList.toggle("is-copied", _), g.classList.toggle("is-failed", !_), setTimeout(() => {
         g.textContent = "⧉", g.title = a, g.setAttribute("aria-label", a), g.classList.remove("is-copied", "is-failed");
       }, 1200);
-    }), c.parentNode?.insertBefore(p, c), p.append(g, c);
+    }), d.parentNode?.insertBefore(p, d), p.append(g, d);
   });
 }
 function hT(e = [], t = null) {
@@ -6134,19 +6134,19 @@ function nO(e, t = {}, n = {}) {
   i.className = "xb-markdown-html-actions";
   const u = e.createElement("button");
   u.type = "button", u.textContent = "显示代码", u.setAttribute("aria-pressed", "false");
-  const c = e.createElement("button");
-  c.type = "button", c.textContent = "渲染预览", c.setAttribute("aria-pressed", "false"), i.append(u, c), a.append(o, i);
+  const d = e.createElement("button");
+  d.type = "button", d.textContent = "渲染预览", d.setAttribute("aria-pressed", "false"), i.append(u, d), a.append(o, i);
   const f = e.createElement("div");
   f.className = "xb-markdown-html-body", f.hidden = !0;
   let p = "";
-  const g = [u, c], y = (_) => {
+  const g = [u, d], y = (_) => {
     if (p === _) {
       p = "", f.hidden = !0, f.replaceChildren(), hT(g);
       return;
     }
-    p = _, f.hidden = !1, f.replaceChildren(_ === "preview" ? mT(e, r) : pT(e, r)), hT(g, _ === "preview" ? c : u);
+    p = _, f.hidden = !1, f.replaceChildren(_ === "preview" ? mT(e, r) : pT(e, r)), hT(g, _ === "preview" ? d : u);
   };
-  return u.addEventListener("click", () => y("code")), c.addEventListener("click", () => y("preview")), s.append(a, f), s;
+  return u.addEventListener("click", () => y("code")), d.addEventListener("click", () => y("preview")), s.append(a, f), s;
 }
 function rO(e, t = {}) {
   if (!e?.querySelectorAll) return;
@@ -6531,11 +6531,11 @@ function iO(e) {
       I.disabled = S || I.dataset.navDisabled === "true" || I.dataset.editDisabled === "true";
     });
   }
-  function c(b) {
+  function d(b) {
     return (b instanceof Error ? b.message : String(b || "unknown_error")).replace(/^xb-tavern:draw-image-refresh:\s*/, "").trim() || "unknown_error";
   }
   function f(b) {
-    e.showToast?.(`重绘失败：${c(b)}`, {
+    e.showToast?.(`重绘失败：${d(b)}`, {
       tone: "warning",
       durationMs: 4200
     });
@@ -7027,9 +7027,9 @@ function $M(e, t = [], n = []) {
   const a = new Map(n.map((i) => [i.marker, i.originalOffset])), o = /* @__PURE__ */ new Map();
   let l = "";
   for (let i = 0; i < r.length; i += 1) {
-    const u = r[i], c = a.get(u);
-    if (c !== void 0) {
-      o.has(c) || o.set(c, l.length);
+    const u = r[i], d = a.get(u);
+    if (d !== void 0) {
+      o.has(d) || o.set(d, l.length);
       continue;
     }
     l += u;
@@ -7173,7 +7173,7 @@ function PO(e) {
     showToast: e.showToast,
     isHiddenMarkdownNode: o
   });
-  function c(ne = "") {
+  function d(ne = "") {
     const de = String(ne || "");
     let Ae = 0;
     for (let Le = 0; Le < de.length; Le += 1) Ae = Ae * 31 + de.charCodeAt(Le) >>> 0;
@@ -7183,7 +7183,7 @@ function PO(e) {
     const Ae = de.roleplay ? bO(ne, de) : String(ne || ""), Le = de.roleplay ? {
       htmlFenceMode: "code",
       protectRawHtmlBoundaries: !1
-    } : {}, We = !/(^|\n)(`{3,}|~{3,})[ \t]*(html|htm|xhtml|xml|svg|vue|svelte)?\b/i.test(Ae) && !de.roleplay, nt = c(Ae);
+    } : {}, We = !/(^|\n)(`{3,}|~{3,})[ \t]*(html|htm|xhtml|xml|svg|vue|svelte)?\b/i.test(Ae) && !de.roleplay, nt = d(Ae);
     if (We && t.has(nt)) return t.get(nt) || "";
     const st = QD(Ae, Le);
     if (We && !st.includes("xb-markdown-html-placeholder") && (t.set(nt, st), t.size > 160)) {
@@ -7797,14 +7797,14 @@ function PO(e) {
     enhanceChatMarkdown: yt,
     enhanceLiveChatMarkdown: Zt,
     enhanceManagerMarkdown: Vt,
-    markdownSignature: c,
+    markdownSignature: d,
     renderChatMarkdown: f,
     stripTavernImageMarkers: p
   };
 }
 function AT(e) {
   const t = /* @__PURE__ */ ie(null), n = /* @__PURE__ */ ie(!0), r = /* @__PURE__ */ ie(!1), s = /* @__PURE__ */ ie(!1), a = /* @__PURE__ */ ie(!1), o = /* @__PURE__ */ ie(Ho(T(e.defaultLimit), 5));
-  let l = null, i = !1, u = null, c = 0;
+  let l = null, i = !1, u = null, d = 0;
   function f() {
     const W = { uiMessageWindowLimit: o.value };
     wD(W, { defaultLimit: Ho(T(e.defaultLimit), 5) }), o.value = Number(W.uiMessageWindowLimit || 5);
@@ -7869,7 +7869,7 @@ function AT(e) {
   }
   function R() {
     const W = t.value;
-    W && (n.value = !1, c = 0, W.scrollTo?.({
+    W && (n.value = !1, d = 0, W.scrollTo?.({
       top: 0,
       behavior: "smooth"
     }), W.scrollTop = 0, g(), y());
@@ -7877,8 +7877,8 @@ function AT(e) {
   function N() {
     const W = t.value;
     if (!W || p()) return;
-    const $ = c, J = Number(W.scrollTop || 0), ae = J > $;
-    c = J, _() ? (n.value !== !1 || ae) && (n.value = !0, C(!1, !1), x()) : J < $ && (n.value = !1), !i && (i = !0, requestAnimationFrame(() => {
+    const $ = d, J = Number(W.scrollTop || 0), ae = J > $;
+    d = J, _() ? (n.value !== !1 || ae) && (n.value = !0, C(!1, !1), x()) : J < $ && (n.value = !1), !i && (i = !0, requestAnimationFrame(() => {
       g(), y(), i = !1;
     }));
   }
@@ -7938,7 +7938,7 @@ function AT(e) {
     u !== null && ($ > u + 4 || !_()) && (n.value = !1);
   }
   function j() {
-    c = 0;
+    d = 0;
   }
   function V() {
     l && (window.clearTimeout(l), l = null), t.value?.classList.remove("is-scrolling");
@@ -8000,9 +8000,9 @@ function Hb(e, t, n, r = {}) {
       }] : [];
       if (s.length && n) {
         const a = typeof e.getBoundingClientRect == "function" ? e.getBoundingClientRect() : null, o = Array.from(e.querySelectorAll(n.itemSelector)), l = s.map((i) => {
-          const u = o.find((f) => f?.dataset?.[n.datasetKey] === i.key), c = typeof u?.getBoundingClientRect == "function" ? u.getBoundingClientRect() : null;
-          return c ? {
-            rect: c,
+          const u = o.find((f) => f?.dataset?.[n.datasetKey] === i.key), d = typeof u?.getBoundingClientRect == "function" ? u.getBoundingClientRect() : null;
+          return d ? {
+            rect: d,
             topOffset: i.topOffset
           } : null;
         }).find((i) => !!i);
@@ -8022,7 +8022,7 @@ async function RO(e, t) {
   const r = new TextDecoder();
   let s = "";
   const a = /\r?\n\r?\n/, o = (i) => {
-    const u = i.split(/\r?\n/).filter((c) => c.startsWith("data:")).map((c) => c.slice(5).trimStart()).join(`
+    const u = i.split(/\r?\n/).filter((d) => d.startsWith("data:")).map((d) => d.slice(5).trimStart()).join(`
 `).trim();
     !u || u === "[DONE]" || t(JSON.parse(u));
   };
@@ -8030,10 +8030,10 @@ async function RO(e, t) {
     const { done: i, value: u } = await n.read();
     if (i) break;
     for (s += r.decode(u, { stream: !0 }); ; ) {
-      const c = s.match(a);
-      if (!c || typeof c.index != "number") break;
-      const f = s.slice(0, c.index);
-      s = s.slice(c.index + c[0].length), o(f);
+      const d = s.match(a);
+      if (!d || typeof d.index != "number") break;
+      const f = s.slice(0, d.index);
+      s = s.slice(d.index + d[0].length), o(f);
     }
   }
   const l = s.trim();
@@ -8422,7 +8422,7 @@ function aF(e) {
   return Object.prototype.hasOwnProperty.call(ET, t) ? ET[t] : 1;
 }
 function gw(e = {}, t = 0) {
-  const n = e, r = e.extensions || {}, s = (c, f) => Object.prototype.hasOwnProperty.call(r, c) ? r[c] : n[f], a = sF(e.content || ""), o = e.uid ?? e.id ?? e.comment ?? e.name ?? t + 1, l = Xe(e.sourceWorldBook || e.worldName || e.world), i = a.content || Xe(e.content), u = n.order ?? n.insertion_order;
+  const n = e, r = e.extensions || {}, s = (d, f) => Object.prototype.hasOwnProperty.call(r, d) ? r[d] : n[f], a = sF(e.content || ""), o = e.uid ?? e.id ?? e.comment ?? e.name ?? t + 1, l = Xe(e.sourceWorldBook || e.worldName || e.world), i = a.content || Xe(e.content), u = n.order ?? n.insertion_order;
   return {
     ...e,
     uid: o,
@@ -8504,8 +8504,8 @@ function Ev(e = {}, t) {
     if (i) return i.test(s);
     const u = n ? l : l.toLowerCase();
     if (!r) return a.includes(u);
-    const c = u.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    return new RegExp(`(^|[^\\p{L}\\p{N}_])${c}($|[^\\p{L}\\p{N}_])`, n ? "u" : "iu").test(a);
+    const d = u.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`(^|[^\\p{L}\\p{N}_])${d}($|[^\\p{L}\\p{N}_])`, n ? "u" : "iu").test(a);
   };
 }
 function lF(e = "") {
@@ -8559,9 +8559,9 @@ function zM(e, t) {
 function KM(e, t) {
   const n = e.characterFilter;
   if (!n || typeof n != "object") return !0;
-  const r = Array.isArray(n.names) ? n.names.map((c) => Xe(c)).filter(Boolean) : [], s = Array.isArray(n.tags) ? n.tags.map((c) => Xe(c)).filter(Boolean) : [];
+  const r = Array.isArray(n.names) ? n.names.map((d) => Xe(d)).filter(Boolean) : [], s = Array.isArray(n.tags) ? n.tags.map((d) => Xe(d)).filter(Boolean) : [];
   if (!r.length && !s.length) return !0;
-  const a = new Set((t.characterFilterData?.names || []).map((c) => Xe(c)).filter(Boolean)), o = new Set((t.characterFilterData?.tags || []).map((c) => Xe(c)).filter(Boolean)), l = r.some((c) => a.has(c)), i = s.some((c) => o.has(c)), u = l || i;
+  const a = new Set((t.characterFilterData?.names || []).map((d) => Xe(d)).filter(Boolean)), o = new Set((t.characterFilterData?.tags || []).map((d) => Xe(d)).filter(Boolean)), l = r.some((d) => a.has(d)), i = s.some((d) => o.has(d)), u = l || i;
   return n.isExclude ? !u : u;
 }
 function cF(e, t) {
@@ -8658,23 +8658,23 @@ function fF(e) {
 function bm(e = [], t = {}) {
   const n = fF(t), r = n > 0, s = /* @__PURE__ */ new Set(), a = /* @__PURE__ */ new Map(), o = [];
   let l = 0, i = 0, u = !1;
-  return e.forEach((c) => {
-    const f = c.content.length;
+  return e.forEach((d) => {
+    const f = d.content.length;
     if (!f) return;
     const p = r ? Math.max(0, n - l) : Number.POSITIVE_INFINITY;
-    if (a.set(c.activationKey, {
+    if (a.set(d.activationKey, {
       budgetUsedBefore: l,
       budgetRemainingBefore: r ? p : void 0,
-      budgetShortfall: r && !c.ignoreBudget && (u || l + f >= n) ? Math.max(1, l + f - n) : void 0
-    }), c.ignoreBudget) {
-      o.push(c), s.add(c.activationKey);
+      budgetShortfall: r && !d.ignoreBudget && (u || l + f >= n) ? Math.max(1, l + f - n) : void 0
+    }), d.ignoreBudget) {
+      o.push(d), s.add(d.activationKey);
       return;
     }
     if (u || r && l + f >= n) {
       u = r, i += f;
       return;
     }
-    o.push(c), s.add(c.activationKey), l += f;
+    o.push(d), s.add(d.activationKey), l += f;
   }), {
     includedKeys: s,
     byKey: a,
@@ -8725,9 +8725,9 @@ function pF(e = [], t, n = {}) {
     }
     const u = i.filter((f) => r.has(f));
     if (u.length <= 1) return;
-    const c = u.filter((f) => f.groupOverride).sort((f, p) => Du(f, p, n))[0] || mF(u, n);
+    const d = u.filter((f) => f.groupOverride).sort((f, p) => Du(f, p, n))[0] || mF(u, n);
     u.forEach((f) => {
-      f !== c && r.delete(f);
+      f !== d && r.delete(f);
     });
   }), e.filter((o) => r.has(o));
 }
@@ -8747,7 +8747,7 @@ function gF(e = [], t = {}, n = {}) {
     ...t,
     ...n,
     scanText: n.scanText ?? t.scanText ?? ""
-  }, s = (Array.isArray(e) ? e : []).map((I, k) => gw(I, k)).sort((I, k) => Du(I, k, r)), a = Math.max(0, Number(r.recursionLimit) || 0), o = !!r.recursion, l = o ? a > 0 ? Math.max(0, a - 1) : Math.max(1, s.length) : 0, i = /* @__PURE__ */ new Map(), u = /* @__PURE__ */ new Map(), c = /* @__PURE__ */ new Set(), f = String(r.scanText || ""), p = Jf(r.scanDepth ?? 2, 2), g = Math.max(0, Number(r.minActivations) || 0), y = Math.max(0, Number(r.minActivationsDepthMax) || 0), _ = Array.isArray(r.scanMessages) ? r.scanMessages.length : 0, x = Math.max(p, y > 0 ? y : _);
+  }, s = (Array.isArray(e) ? e : []).map((I, k) => gw(I, k)).sort((I, k) => Du(I, k, r)), a = Math.max(0, Number(r.recursionLimit) || 0), o = !!r.recursion, l = o ? a > 0 ? Math.max(0, a - 1) : Math.max(1, s.length) : 0, i = /* @__PURE__ */ new Map(), u = /* @__PURE__ */ new Map(), d = /* @__PURE__ */ new Set(), f = String(r.scanText || ""), p = Jf(r.scanDepth ?? 2, 2), g = Math.max(0, Number(r.minActivations) || 0), y = Math.max(0, Number(r.minActivationsDepthMax) || 0), _ = Array.isArray(r.scanMessages) ? r.scanMessages.length : 0, x = Math.max(p, y > 0 ? y : _);
   let C = "", E = 0, R = 0, N = "initial", m = 0;
   const w = Math.max(1, s.length + l + x + 4);
   for (; m < w; ) {
@@ -8764,7 +8764,7 @@ function gF(e = [], t = {}, n = {}) {
     const j = [];
     s.forEach((J) => {
       const ae = J.activationKey;
-      if (u.has(ae) || c.has(ae)) return;
+      if (u.has(ae) || d.has(ae)) return;
       const be = cF(J, U);
       be && j.push({
         ...J,
@@ -8772,7 +8772,7 @@ function gF(e = [], t = {}, n = {}) {
       });
     }), pF(j, u, r).forEach((J) => {
       if (!uF(J, U)) {
-        c.add(J.activationKey);
+        d.add(J.activationKey);
         return;
       }
       u.set(J.activationKey, J);
@@ -8802,7 +8802,7 @@ function gF(e = [], t = {}, n = {}) {
 function vF(e = [], t = [], n = {}, r = bm(t, n)) {
   const s = new Map(t.map((o) => [o.activationKey, o])), a = r.includedKeys;
   return (Array.isArray(e) ? e : []).map((o, l) => {
-    const i = gw(o, l), u = s.get(i.activationKey), c = r.byKey.get(i.activationKey) || {}, f = u ? {
+    const i = gw(o, l), u = s.get(i.activationKey), d = r.byKey.get(i.activationKey) || {}, f = u ? {
       status: "activated",
       activationReason: u.activationReason
     } : dF(i, n), p = Ev(n, i), g = u ? r.enabled && !a.has(i.activationKey) ? "budget_skipped" : "activated" : f.status === "activated" ? "probability_failed" : f.status;
@@ -8828,7 +8828,7 @@ function vF(e = [], t = [], n = {}, r = bm(t, n)) {
       status: g,
       activationReason: u?.activationReason || f.activationReason,
       insertionTarget: Cv(i),
-      ...c
+      ...d
     };
   });
 }
@@ -9037,9 +9037,9 @@ function TF(e = {}) {
   o && a.push(`## 会话记忆
 ${o}`);
   const l = t.filter((u) => String(u.path || "").startsWith("memory/characters/")).map((u) => {
-    const c = Xe(u.content);
-    return c ? `### ${Xe(u.title || String(u.path || "").replace(/^memory\/characters\//, "").replace(/\.md$/i, "")) || "相关人物"}
-${c}` : "";
+    const d = Xe(u.content);
+    return d ? `### ${Xe(u.title || String(u.path || "").replace(/^memory\/characters\//, "").replace(/\.md$/i, "")) || "相关人物"}
+${d}` : "";
   }).filter(Boolean);
   l.length && a.push(`## 相关人物记忆
 ${l.join(`
@@ -9125,35 +9125,35 @@ function xF(e = {}) {
   return Xe(e.id).replace(/^prompt-manager:/, "");
 }
 function kF(e) {
-  const { presetSections: t, character: n, user: r, worldBuckets: s, conversationUnits: a, runtimeProtocolUnits: o } = e, l = n.data || {}, i = /* @__PURE__ */ new Set(), u = [], c = (f, p) => {
+  const { presetSections: t, character: n, user: r, worldBuckets: s, conversationUnits: a, runtimeProtocolUnits: o } = e, l = n.data || {}, i = /* @__PURE__ */ new Set(), u = [], d = (f, p) => {
     i.add(f), u.push(...p);
   };
   return t.forEach((f, p) => {
     const g = xF(f);
     if (f.marker) switch (g) {
       case "worldInfoBefore":
-        c(g, [Bn("system", Or("world_info_before_character", s.before), "world-before", f.label || "World Info (before)", {}, f.id)]);
+        d(g, [Bn("system", Or("world_info_before_character", s.before), "world-before", f.label || "World Info (before)", {}, f.id)]);
         return;
       case "worldInfoAfter":
-        c(g, [Bn("system", Or("world_info_after_character", s.after), "world-after", f.label || "World Info (after)", {}, f.id)]);
+        d(g, [Bn("system", Or("world_info_after_character", s.after), "world-after", f.label || "World Info (after)", {}, f.id)]);
         return;
       case "charDescription":
-        c(g, [Bn(f.role, hd("Description", n.description || er(l, ["description"])), "character-card", f.label || "Char Description", {}, f.id)]);
+        d(g, [Bn(f.role, hd("Description", n.description || er(l, ["description"])), "character-card", f.label || "Char Description", {}, f.id)]);
         return;
       case "charPersonality":
-        c(g, [Bn(f.role, hd("Personality", n.personality || er(l, ["personality"])), "character-card", f.label || "Char Personality", {}, f.id)]);
+        d(g, [Bn(f.role, hd("Personality", n.personality || er(l, ["personality"])), "character-card", f.label || "Char Personality", {}, f.id)]);
         return;
       case "scenario":
-        c(g, [Bn(f.role, hd("Scenario", n.scenario || er(l, ["scenario"])), "character-card", f.label || "Scenario", {}, f.id)]);
+        d(g, [Bn(f.role, hd("Scenario", n.scenario || er(l, ["scenario"])), "character-card", f.label || "Scenario", {}, f.id)]);
         return;
       case "personaDescription":
-        c(g, [Bn(f.role, hd("User Persona", r.persona || r.description), "character-card", f.label || "Persona Description", {}, f.id)]);
+        d(g, [Bn(f.role, hd("User Persona", r.persona || r.description), "character-card", f.label || "Persona Description", {}, f.id)]);
         return;
       case "dialogueExamples":
-        c(g, [Bn(f.role, hd("Message Examples", n.mesExample || n.mes_example || er(l, ["mes_example"])), "character-card", f.label || "Chat Examples", {}, f.id)]);
+        d(g, [Bn(f.role, hd("Message Examples", n.mesExample || n.mes_example || er(l, ["mes_example"])), "character-card", f.label || "Chat Examples", {}, f.id)]);
         return;
       case "chatHistory":
-        c(g, [
+        d(g, [
           Bn("system", Or("world_info_examples_top", s.examplesTop), "world-examples", "world info examples top"),
           Bn("system", Or("world_info_author_note_top", s.authorNoteTop), "world-author-note", "world info author note top"),
           ...a,
@@ -9307,7 +9307,7 @@ function qF(e = []) {
   }), n;
 }
 function JM(e = {}, t = {}, n = {}) {
-  const r = e.character || {}, s = e.user || {}, a = e.history || [], o = n.currentUserMessage || "", l = n.historyMode || "raw", i = n.memoryContext || {}, u = Array.isArray(n.runtimeDepthEntries) ? n.runtimeDepthEntries : [], c = Array.isArray(n.runtimeProtocolMessages) ? n.runtimeProtocolMessages : [], f = IF(t), p = n.worldSettings || {}, g = typeof n.worldScanText == "string", y = FF(e, o, p.includeNames === !0), _ = g ? String(n.worldScanText || "") : UM(y, Jf(p.scanDepth ?? 2, 2)), x = [Xe(p.injectScanText), QO(e, o)].filter(Boolean).join(`
+  const r = e.character || {}, s = e.user || {}, a = e.history || [], o = n.currentUserMessage || "", l = n.historyMode || "raw", i = n.memoryContext || {}, u = Array.isArray(n.runtimeDepthEntries) ? n.runtimeDepthEntries : [], d = Array.isArray(n.runtimeProtocolMessages) ? n.runtimeProtocolMessages : [], f = IF(t), p = n.worldSettings || {}, g = typeof n.worldScanText == "string", y = FF(e, o, p.includeNames === !0), _ = g ? String(n.worldScanText || "") : UM(y, Jf(p.scanDepth ?? 2, 2)), x = [Xe(p.injectScanText), QO(e, o)].filter(Boolean).join(`
 `), C = yF(e.nativeWorldInfo?.activatedEntries), E = bF(e.nativeWorldInfo), R = {
     ...p,
     scanText: _,
@@ -9329,7 +9329,7 @@ function JM(e = {}, t = {}, n = {}) {
       squashRole: n.squashRole,
       memoryContext: i,
       runtimeDepthEntries: u,
-      runtimeProtocolMessages: c,
+      runtimeProtocolMessages: d,
       presetSections: f,
       scanText: _,
       worldSettings: R,
@@ -9348,7 +9348,7 @@ function JM(e = {}, t = {}, n = {}) {
     squashRole: n.squashRole,
     memoryContext: i,
     runtimeDepthEntries: u,
-    runtimeProtocolMessages: c,
+    runtimeProtocolMessages: d,
     presetSections: f,
     scanText: _,
     worldSettings: R,
@@ -9369,10 +9369,10 @@ function YM(e, t = {}) {
   return mw([...n, r]);
 }
 function XM(e = {}, t, n) {
-  const { character: r, user: s, history: a, currentUserMessage: o, historyMode: l, squashRole: i, memoryContext: u, runtimeDepthEntries: c, runtimeProtocolMessages: f, presetSections: p, scanText: g, worldSettings: y, worldEntryCandidates: _, activatedWorldEntries: x, budgetDebug: C } = t, E = wF(x), R = NF([
+  const { character: r, user: s, history: a, currentUserMessage: o, historyMode: l, squashRole: i, memoryContext: u, runtimeDepthEntries: d, runtimeProtocolMessages: f, presetSections: p, scanText: g, worldSettings: y, worldEntryCandidates: _, activatedWorldEntries: x, budgetDebug: C } = t, E = wF(x), R = NF([
     ...EF(u),
     ...E.atDepth,
-    ...CF(c)
+    ...CF(d)
   ]), N = /* @__PURE__ */ new WeakMap();
   R.forEach(($) => N.set($.message, $.depth));
   const m = $F((t.promptConversationMessages || YM(t, e)).map(nF), R), w = Tu(Au(p, "top"), "top"), b = Tu(Au(p, "beforeCharacter"), "before character"), S = Tu(Au(p, "afterCharacter"), "after character"), I = Tu(Au(p, "beforeHistory"), "before history"), k = Tu(Au(p, "afterHistory"), "after history"), P = Tu(Au(p, "assistantPrefill"), "assistant prefill", "assistant-prefill"), U = p.some(($) => $.source === "promptManager"), K = m.map(($, J) => MF($, J, N));
@@ -9786,7 +9786,7 @@ function cB(e = "") {
   if (!n.length) return null;
   const r = n.filter((o) => o[1] !== "newString"), s = r[r.length - 1] || null, a = {};
   for (let o = 0; o < n.length; o += 1) {
-    const l = n[o], i = l[1], u = l.index + l[0].length, c = ig(a) || lg(a) || ug(a), f = i === "newString" ? !c && s && s.index > l.index ? lB(n, l.index) : null : n[o + 1];
+    const l = n[o], i = l[1], u = l.index + l[0].length, d = ig(a) || lg(a) || ug(a), f = i === "newString" ? !d && s && s.index > l.index ? lB(n, l.index) : null : n[o + 1];
     let p = f ? f.index : t.length;
     if (f) {
       const y = t.lastIndexOf(",", f.index);
@@ -9824,8 +9824,8 @@ function fB(e = "") {
   })), s = [];
   let a = 0;
   return r.forEach((o, l) => {
-    const i = r[l + 1], u = n.slice(a, o.splitEnd), c = n.slice(o.nextStart, i?.splitEnd ?? n.length);
-    !MT(u) || !MT(c) || (s.push(u), a = o.nextStart);
+    const i = r[l + 1], u = n.slice(a, o.splitEnd), d = n.slice(o.nextStart, i?.splitEnd ?? n.length);
+    !MT(u) || !MT(d) || (s.push(u), a = o.nextStart);
   }), s.push(n.slice(a)), s.map((o) => o.trim()).filter(Boolean);
 }
 function hB(e = "") {
@@ -9926,11 +9926,11 @@ function cg(e = "") {
   return n.length > 0 && n.every((r) => /^\s*\d+:\s?/.test(r)) ? t.map((r) => r.trim() ? r.replace(/^\s*\d+:\s?/, "") : r) : t;
 }
 function mB(e = "", t = []) {
-  const n = Iv(e), r = new Array(t.length), s = t.map((u = {}, c) => {
+  const n = Iv(e), r = new Array(t.length), s = t.map((u = {}, d) => {
     const f = jo(u.startLine), p = jo(u.endLine), g = typeof u.newString == "string" ? u.newString : String(u.newString ?? "");
     return {
       edit: u,
-      index: c,
+      index: d,
       startLine: f,
       endLine: p,
       newString: g,
@@ -9948,16 +9948,16 @@ function mB(e = "", t = []) {
     }
     u.endLine > n.length && (r[u.index] = Rn("line_range_out_of_bounds", `Line range ${u.startLine}-${u.endLine} is outside the file`, `Read the current file again. This file has ${n.length} lines.`));
   });
-  const a = s.slice().sort((u, c) => u.startLine - c.startLine || u.endLine - c.endLine);
-  a.forEach((u, c) => {
+  const a = s.slice().sort((u, d) => u.startLine - d.startLine || u.endLine - d.endLine);
+  a.forEach((u, d) => {
     if (r[u.index]) return;
-    const f = a[c - 1];
+    const f = a[d - 1];
     f && !r[f.index] && u.startLine <= f.endLine && (r[f.index] = Rn("overlapping_line_ranges", `Line range ${f.startLine}-${f.endLine} overlaps ${u.startLine}-${u.endLine}`, "Merge overlapping line edits into one larger startLine/endLine replacement."), r[u.index] = Rn("overlapping_line_ranges", `Line range ${u.startLine}-${u.endLine} overlaps ${f.startLine}-${f.endLine}`, "Merge overlapping line edits into one larger startLine/endLine replacement."));
   });
   const o = n.slice();
-  s.slice().sort((u, c) => c.startLine - u.startLine || c.endLine - u.endLine).forEach((u) => {
+  s.slice().sort((u, d) => d.startLine - u.startLine || d.endLine - u.endLine).forEach((u) => {
     if (r[u.index]) return;
-    const c = n.slice(u.startLine - 1, u.endLine);
+    const d = n.slice(u.startLine - 1, u.endLine);
     o.splice(u.startLine - 1, u.endLine - u.startLine + 1, ...u.replacementLines), r[u.index] = {
       ok: !0,
       index: u.index,
@@ -9965,7 +9965,7 @@ function mB(e = "", t = []) {
       endLine: u.endLine,
       replacements: 1,
       matchedBy: "line_range",
-      oldPreview: ac(c, u.startLine),
+      oldPreview: ac(d, u.startLine),
       newPreview: ac(u.replacementLines, u.startLine)
     };
   });
@@ -9982,11 +9982,11 @@ function e4(e = "") {
   return e === "" ? 0 : Iv(e).length;
 }
 function gB(e = "", t = []) {
-  const n = e === "" ? [] : Iv(e), r = e4(e), s = new Array(t.length), a = t.map((u = {}, c) => {
+  const n = e === "" ? [] : Iv(e), r = e4(e), s = new Array(t.length), a = t.map((u = {}, d) => {
     const f = jo(u.insertAtLine), p = typeof u.newString == "string" ? u.newString : String(u.newString ?? "");
     return {
       edit: u,
-      index: c,
+      index: d,
       insertAtLine: f,
       newString: p,
       insertionLines: cg(p)
@@ -10004,7 +10004,7 @@ function gB(e = "", t = []) {
     u.newString || (s[u.index] = Rn("no_changes", "No changes to make", "Provide non-empty newString text to insert."));
   });
   const o = n.slice();
-  a.slice().sort((u, c) => c.insertAtLine - u.insertAtLine || c.index - u.index).forEach((u) => {
+  a.slice().sort((u, d) => d.insertAtLine - u.insertAtLine || d.index - u.index).forEach((u) => {
     s[u.index] || (o.splice(u.insertAtLine - 1, 0, ...u.insertionLines), s[u.index] = {
       ok: !0,
       index: u.index,
@@ -10112,10 +10112,10 @@ function vB(e = "", t = [], n = []) {
       newPreview: ac(p.replacementLines, p.startLine)
     };
   });
-  const c = o.filter((p) => p && !p.ok).length, f = o.filter((p) => p && p.ok).length;
+  const d = o.filter((p) => p && !p.ok).length, f = o.filter((p) => p && p.ok).length;
   return {
-    ok: c === 0,
-    partial: f > 0 && c > 0 ? !0 : void 0,
+    ok: d === 0,
+    partial: f > 0 && d > 0 ? !0 : void 0,
     content: u.join(`
 `),
     results: Xf(o, t, n)
@@ -10190,25 +10190,25 @@ function _B(e = "", t) {
     content: n,
     results: [Rn("invalid_edits", "No edits provided", "Provide a non-empty edits array. For same-file multi-spot changes, put all replacements in this one Edit call.")]
   };
-  const c = s.map((C) => ZM(C)), f = c.filter((C) => C === "line_range").length, p = c.filter((C) => C === "line_insert").length, g = c.filter((C) => C === "old_string").length;
+  const d = s.map((C) => ZM(C)), f = d.filter((C) => C === "line_range").length, p = d.filter((C) => C === "line_insert").length, g = d.filter((C) => C === "old_string").length;
   if (f + p && g) return {
     ok: !1,
     content: n,
-    results: Xf(s.map(() => Rn("mixed_edit_modes", "Do not mix Edit modes in one Edit call", "Use separate Edit calls for oldString replacements, line-range replacements, and insertAtLine insertions.")), s, c)
+    results: Xf(s.map(() => Rn("mixed_edit_modes", "Do not mix Edit modes in one Edit call", "Use separate Edit calls for oldString replacements, line-range replacements, and insertAtLine insertions.")), s, d)
   };
   if (f && p) {
-    const C = vB(n, s.map((E, R) => wp(E, c[R])), c);
+    const C = vB(n, s.map((E, R) => wp(E, d[R])), d);
     return r.warning && (C.warning = r.warning), C;
   }
   if (f) {
-    const C = mB(n, s.map((E, R) => wp(E, c[R])));
+    const C = mB(n, s.map((E, R) => wp(E, d[R])));
     return r.warning && (C.warning = r.warning), C;
   }
   if (p) {
-    const C = gB(n, s.map((E, R) => wp(E, c[R])));
+    const C = gB(n, s.map((E, R) => wp(E, d[R])));
     return r.warning && (C.warning = r.warning), C;
   }
-  const y = s.map((C, E) => wp(C, c[E]));
+  const y = s.map((C, E) => wp(C, d[E]));
   y.forEach((C = {}, E) => {
     i[E] = l.slice();
     const R = typeof C.oldString == "string" ? C.oldString : String(C.oldString ?? ""), N = typeof C.newString == "string" ? C.newString : String(C.newString ?? ""), m = !!C.replaceAll;
@@ -10258,7 +10258,7 @@ function _B(e = "", t) {
     ok: _ === 0,
     partial: (u > 0 || x > 0) && _ > 0 ? !0 : void 0,
     content: n,
-    results: Xf(a, y, c),
+    results: Xf(a, y, d),
     warning: r.warning
   };
 }
@@ -10687,8 +10687,8 @@ var e0 = {
   get: function() {
     var e = bt, t = pg;
     function n(r, s) {
-      var a = this, o = !e.global && (e !== bt || t !== pg), l = o && !Yi(), i = new ct(function(u, c) {
-        kw(a, new h4($T(r, e, o, l), $T(s, e, o, l), u, c, e));
+      var a = this, o = !e.global && (e !== bt || t !== pg), l = o && !Yi(), i = new ct(function(u, d) {
+        kw(a, new h4($T(r, e, o, l), $T(s, e, o, l), u, d, e));
       });
       return this._consoleTask && (i._consoleTask = this._consoleTask), i;
     }
@@ -11157,7 +11157,7 @@ var _4 = (function() {
   }
   return e.prototype._trans = function(t, n, r) {
     var s = this._tx || bt.trans, a = this.name, o = lo && typeof console < "u" && console.createTask && console.createTask("Dexie: ".concat(t === "readonly" ? "read" : "write", " ").concat(this.name));
-    function l(c, f, p) {
+    function l(d, f, p) {
       if (!p.schema[a]) throw new It.NotFound("Table " + a + " not part of transaction");
       return n(p.idbtrans, p);
     }
@@ -11169,8 +11169,8 @@ var _4 = (function() {
         trans: s,
         transless: bt.transless || bt
       }) : n0(this.db, t, [this.name], l);
-      return o && (u._consoleTask = o, u = u.catch(function(c) {
-        return console.trace(c), jn(c);
+      return o && (u._consoleTask = o, u = u.catch(function(d) {
+        return console.trace(d), jn(d);
       })), u;
     } finally {
       i && Uc();
@@ -11190,30 +11190,30 @@ var _4 = (function() {
     if (Un(t)) return new this.db.WhereClause(this, "[".concat(t.join("+"), "]"));
     var n = Sr(t);
     if (n.length === 1) return this.where(n[0]).equals(t[n[0]]);
-    var r = this.schema.indexes.concat(this.schema.primKey).filter(function(c) {
-      if (c.compound && n.every(function(p) {
-        return c.keyPath.indexOf(p) >= 0;
+    var r = this.schema.indexes.concat(this.schema.primKey).filter(function(d) {
+      if (d.compound && n.every(function(p) {
+        return d.keyPath.indexOf(p) >= 0;
       })) {
-        for (var f = 0; f < n.length; ++f) if (n.indexOf(c.keyPath[f]) === -1) return !1;
+        for (var f = 0; f < n.length; ++f) if (n.indexOf(d.keyPath[f]) === -1) return !1;
         return !0;
       }
       return !1;
-    }).sort(function(c, f) {
-      return c.keyPath.length - f.keyPath.length;
+    }).sort(function(d, f) {
+      return d.keyPath.length - f.keyPath.length;
     })[0];
     if (r && this.db._maxKey !== Dl) {
       var s = r.keyPath.slice(0, n.length);
-      return this.where(s).equals(s.map(function(c) {
-        return t[c];
+      return this.where(s).equals(s.map(function(d) {
+        return t[d];
       }));
     }
     !r && lo && console.warn("The query ".concat(JSON.stringify(t), " on ").concat(this.name, " would benefit from a ") + "compound index [".concat(n.join("+"), "]"));
     var a = this.schema.idxByName;
-    function o(c, f) {
-      return sn(c, f) === 0;
+    function o(d, f) {
+      return sn(d, f) === 0;
     }
-    var l = n.reduce(function(c, f) {
-      var p = c[0], g = c[1], y = a[f], _ = t[f];
+    var l = n.reduce(function(d, f) {
+      var p = d[0], g = d[1], y = a[f], _ = t[f];
       return [p || y, p || !y ? Ql(g, y && y.multi ? function(x) {
         var C = Qo(x, f);
         return Un(C) && C.some(function(E) {
@@ -11265,8 +11265,8 @@ var _4 = (function() {
     var l = function(i) {
       if (!i) return i;
       var u = Object.create(t.prototype);
-      for (var c in i) if (!a.has(c)) try {
-        u[c] = i[c];
+      for (var d in i) if (!a.has(d)) try {
+        u[d] = i[d];
       } catch {
       }
       return u;
@@ -11357,10 +11357,10 @@ var _4 = (function() {
     r = r || (a ? void 0 : n);
     var o = r ? r.allKeys : void 0;
     return this._trans("readwrite", function(l) {
-      var i = s.schema.primKey, u = i.auto, c = i.keyPath;
-      if (c && a) throw new It.InvalidArgument("bulkAdd(): keys argument invalid on tables with inbound keys");
+      var i = s.schema.primKey, u = i.auto, d = i.keyPath;
+      if (d && a) throw new It.InvalidArgument("bulkAdd(): keys argument invalid on tables with inbound keys");
       if (a && a.length !== t.length) throw new It.InvalidArgument("Arguments objects and keys must have the same length");
-      var f = t.length, p = c && u ? t.map(Sp(c)) : t;
+      var f = t.length, p = d && u ? t.map(Sp(d)) : t;
       return s.core.mutate({
         trans: l,
         type: "add",
@@ -11378,10 +11378,10 @@ var _4 = (function() {
     r = r || (a ? void 0 : n);
     var o = r ? r.allKeys : void 0;
     return this._trans("readwrite", function(l) {
-      var i = s.schema.primKey, u = i.auto, c = i.keyPath;
-      if (c && a) throw new It.InvalidArgument("bulkPut(): keys argument invalid on tables with inbound keys");
+      var i = s.schema.primKey, u = i.auto, d = i.keyPath;
+      if (d && a) throw new It.InvalidArgument("bulkPut(): keys argument invalid on tables with inbound keys");
       if (a && a.length !== t.length) throw new It.InvalidArgument("Arguments objects and keys must have the same length");
-      var f = t.length, p = c && u ? t.map(Sp(c)) : t;
+      var f = t.length, p = d && u ? t.map(Sp(d)) : t;
       return s.core.mutate({
         trans: l,
         type: "put",
@@ -11406,7 +11406,7 @@ var _4 = (function() {
         keys: s,
         cache: "clone"
       }).then(function(i) {
-        var u = [], c = [];
+        var u = [], d = [];
         t.forEach(function(p, g) {
           var y = p.key, _ = p.changes, x = i[g];
           if (x) {
@@ -11416,7 +11416,7 @@ var _4 = (function() {
                 if (sn(N, y) !== 0) throw new It.Constraint("Cannot update primary key in bulkUpdate()");
               } else Ds(x, R, N);
             }
-            o.push(g), u.push(y), c.push(x);
+            o.push(g), u.push(y), d.push(x);
           }
         });
         var f = u.length;
@@ -11424,7 +11424,7 @@ var _4 = (function() {
           trans: l,
           type: "put",
           keys: u,
-          values: c,
+          values: d,
           updates: {
             keys: s,
             changeSpecs: a
@@ -11461,8 +11461,8 @@ var _4 = (function() {
 function _h(e) {
   var t = {}, n = function(l, i) {
     if (i) {
-      for (var u = arguments.length, c = new Array(u - 1); --u; ) c[u - 1] = arguments[u];
-      return t[l].subscribe.apply(null, c), e;
+      for (var u = arguments.length, d = new Array(u - 1); --u; ) d[u - 1] = arguments[u];
+      return t[l].subscribe.apply(null, d), e;
     } else if (typeof l == "string") return t[l];
   };
   n.addEventType = a;
@@ -11471,27 +11471,27 @@ function _h(e) {
   function a(l, i, u) {
     if (typeof l == "object") return o(l);
     i || (i = BB), u || (u = yn);
-    var c = {
+    var d = {
       subscribers: [],
       fire: u,
       subscribe: function(f) {
-        c.subscribers.indexOf(f) === -1 && (c.subscribers.push(f), c.fire = i(c.fire, f));
+        d.subscribers.indexOf(f) === -1 && (d.subscribers.push(f), d.fire = i(d.fire, f));
       },
       unsubscribe: function(f) {
-        c.subscribers = c.subscribers.filter(function(p) {
+        d.subscribers = d.subscribers.filter(function(p) {
           return p !== f;
-        }), c.fire = c.subscribers.reduce(i, u);
+        }), d.fire = d.subscribers.reduce(i, u);
       }
     };
-    return t[l] = n[l] = c, c;
+    return t[l] = n[l] = d, d;
   }
   function o(l) {
     Sr(l).forEach(function(i) {
       var u = l[i];
       if (Un(u)) a(i, l[i][0], l[i][1]);
-      else if (u === "asap") var c = a(i, yh, function() {
+      else if (u === "asap") var d = a(i, yh, function() {
         for (var p = arguments.length, g = new Array(p); p--; ) g[p] = arguments[p];
-        c.subscribers.forEach(function(y) {
+        d.subscribers.forEach(function(y) {
           s4(function() {
             y.apply(null, g);
           });
@@ -11557,8 +11557,8 @@ function Ap(e, t, n, r) {
       }, function(p) {
         return i.fail(p);
       })) {
-        var c = i.primaryKey, f = "" + c;
-        f === "[object ArrayBuffer]" && (f = "" + new Uint8Array(c)), vs(a, f) || (a[f] = !0, t(l, i, u));
+        var d = i.primaryKey, f = "" + d;
+        f === "[object ArrayBuffer]" && (f = "" + new Uint8Array(d)), vs(a, f) || (a[f] = !0, t(l, i, u));
       }
     };
     return Promise.all([e.or._iterate(o, n), BT(FT(e, r, n), e.algorithm, o, !e.keysOnly && e.valueMapper)]);
@@ -11665,12 +11665,12 @@ var rU = (function() {
     }).then(t);
   }, e.prototype.sortBy = function(t, n) {
     var r = t.split(".").reverse(), s = r[0], a = r.length - 1;
-    function o(u, c) {
-      return c ? o(u[r[c]], c - 1) : u[s];
+    function o(u, d) {
+      return d ? o(u[r[d]], d - 1) : u[s];
     }
     var l = this._ctx.dir === "next" ? 1 : -1;
-    function i(u, c) {
-      return sn(o(u, a), o(c, a)) * l;
+    function i(u, d) {
+      return sn(o(u, a), o(d, a)) * l;
     }
     return this.toArray(function(u) {
       return u.sort(i);
@@ -11821,7 +11821,7 @@ var rU = (function() {
           return R;
         };
       }
-      var i = r.table.core, u = i.schema.primaryKey, c = u.outbound, f = u.extractKey, p = 200, g = n.db._options.modifyChunkSize;
+      var i = r.table.core, u = i.schema.primaryKey, d = u.outbound, f = u.extractKey, p = 200, g = n.db._options.modifyChunkSize;
       g && (typeof g == "object" ? p = g[i.name] || g["*"] || 200 : p = g);
       var y = [], _ = 0, x = [], C = function(E, R) {
         var N = R.failures, m = R.numFailures;
@@ -11842,12 +11842,12 @@ var rU = (function() {
             keys: E.slice(m, m + w),
             cache: "immutable"
           }).then(function(b) {
-            for (var S = [], I = [], k = c ? [] : null, P = [], U = 0; U < w; ++U) {
+            for (var S = [], I = [], k = d ? [] : null, P = [], U = 0; U < w; ++U) {
               var K = b[U], j = {
                 value: Yl(K),
                 primKey: E[m + U]
               };
-              a.call(j, j.value, j) !== !1 && (j.value == null ? P.push(E[m + U]) : !c && sn(f(K), f(j.value)) !== 0 ? (P.push(E[m + U]), S.push(j.value)) : (I.push(j.value), c && k.push(E[m + U])));
+              a.call(j, j.value, j) !== !1 && (j.value == null ? P.push(E[m + U]) : !d && sn(f(K), f(j.value)) !== 0 ? (P.push(E[m + U]), S.push(j.value)) : (I.push(j.value), d && k.push(E[m + U])));
             }
             return Promise.resolve(S.length > 0 && i.mutate({
               trans: s,
@@ -11908,8 +11908,8 @@ var rU = (function() {
           var i = l.failures;
           l.lastResult, l.results;
           var u = l.numFailures;
-          if (u) throw new fg("Could not delete some values", Object.keys(i).map(function(c) {
-            return i[c];
+          if (u) throw new fg("Could not delete some values", Object.keys(i).map(function(d) {
+            return i[d];
           }), o - u);
           return o - u;
         });
@@ -11989,7 +11989,7 @@ function cU(e, t, n, r, s, a) {
   return o < r.length && a === "next" ? e + n.substr(e.length) : o < e.length && a === "prev" ? e.substr(0, n.length) : l < 0 ? null : e.substr(0, l) + r[l] + n.substr(l + 1);
 }
 function Tp(e, t, n, r) {
-  var s, a, o, l, i, u, c, f = n.length;
+  var s, a, o, l, i, u, d, f = n.length;
   if (!n.every(function(_) {
     return typeof _ == "string";
   })) return Ts(e, v4);
@@ -12007,7 +12007,7 @@ function Tp(e, t, n, r) {
       return C.upper;
     }), i = x.map(function(C) {
       return C.lower;
-    }), u = _, c = _ === "next" ? "" : r;
+    }), u = _, d = _ === "next" ? "" : r;
   }
   p("next");
   var g = new e.Collection(e, function() {
@@ -12027,7 +12027,7 @@ function Tp(e, t, n, r) {
       w === null && N === null ? y = m + 1 : (N === null || o(N, w) > 0) && (N = w);
     }
     return x(N !== null ? function() {
-      _.continue(N + c);
+      _.continue(N + d);
     } : C), !1;
   }), g;
 }
@@ -12156,7 +12156,7 @@ var w4 = (function() {
     if (!t.every(function(m) {
       return m[0] !== void 0 && m[1] !== void 0 && a(m[0], m[1]) <= 0;
     })) return Ts(this, "First argument to inAnyRange() must be an Array of two-value Arrays [lower,upper] where upper must not be lower than lower", It.InvalidArgument);
-    var u = !n || n.includeLowers !== !1, c = n && n.includeUppers === !0;
+    var u = !n || n.includeLowers !== !1, d = n && n.includeUppers === !0;
     function f(m, w) {
       for (var b = 0, S = m.length; b < S; ++b) {
         var I = m[b];
@@ -12177,7 +12177,7 @@ var w4 = (function() {
     } catch {
       return Ts(this, Io);
     }
-    var _ = 0, x = c ? function(m) {
+    var _ = 0, x = d ? function(m) {
       return a(m, y[_][1]) > 0;
     } : function(m) {
       return a(m, y[_][1]) >= 0;
@@ -12190,7 +12190,7 @@ var w4 = (function() {
       return !x(m) && !C(m);
     }
     var R = x, N = new this.Collection(this, function() {
-      return Ci(y[0][0], y[y.length - 1][1], !u, !c);
+      return Ci(y[0][0], y[y.length - 1][1], !u, !d);
     });
     return N._ondirectionchange = function(m) {
       m === "next" ? (R = x, p = a) : (R = C, p = o), y.sort(g);
@@ -12617,15 +12617,15 @@ function vU(e, t, n) {
   }
   var o = r(e, n), l = o.schema, i = o.hasGetAll, u = l.tables.map(function(f) {
     return a(f);
-  }), c = {};
+  }), d = {};
   return u.forEach(function(f) {
-    return c[f.name] = f;
+    return d[f.name] = f;
   }), {
     stack: "dbcore",
     transaction: e.transaction.bind(e),
     table: function(f) {
-      if (!c[f]) throw new Error("Table '".concat(f, "' not found"));
-      return c[f];
+      if (!d[f]) throw new Error("Table '".concat(f, "' not found"));
+      return d[f];
     },
     MIN_KEY: -1 / 0,
     MAX_KEY: eh(t),
@@ -12706,9 +12706,9 @@ function SU(e, t) {
   for (var r = Rw(n, e._dbSchema), s = function(u) {
     if (u.change.length || u.recreate)
       return console.warn("Unable to patch indexes of table ".concat(u.name, " because it has changes on the type of index or primary key.")), { value: void 0 };
-    var c = t.objectStore(u.name);
+    var d = t.objectStore(u.name);
     u.add.forEach(function(f) {
-      lo && console.debug("Dexie upgrade patch: Creating missing index ".concat(u.name, ".").concat(f.src)), yg(c, f);
+      lo && console.debug("Dexie upgrade patch: Creating missing index ".concat(u.name, ".").concat(f.src)), yg(d, f);
     });
   }, a = 0, o = r.change; a < o.length; a++) {
     var l = o[a], i = s(l);
@@ -12727,9 +12727,9 @@ function TU(e, t, n, r) {
   if (l.length === 0) return ct.resolve();
   l.forEach(function(u) {
     s.push(function() {
-      var c = o, f = u._cfg.dbschema;
-      _g(e, c, r), _g(e, f, r), o = e._dbSchema = f;
-      var p = Rw(c, f);
+      var d = o, f = u._cfg.dbschema;
+      _g(e, d, r), _g(e, f, r), o = e._dbSchema = f;
+      var p = Rw(d, f);
       p.add.forEach(function(E) {
         Nw(r, E[0], E[1].primKey, E[1].indexes);
       }), p.change.forEach(function(E) {
@@ -12748,7 +12748,7 @@ function TU(e, t, n, r) {
         gg(e, r), n._memoizedTables = {};
         var y = a4(f);
         p.del.forEach(function(E) {
-          y[E] = c[E];
+          y[E] = d[E];
         }), i0(e, [e.Transaction.prototype]), vg(e, [e.Transaction.prototype], Sr(y), y), n.schema = y;
         var _ = Aw(g);
         _ && qc();
@@ -12762,13 +12762,13 @@ function TU(e, t, n, r) {
           return x;
         });
       }
-    }), s.push(function(c) {
+    }), s.push(function(d) {
       var f = u._cfg.dbschema;
-      EU(f, c), i0(e, [e.Transaction.prototype]), vg(e, [e.Transaction.prototype], e._storeNames, e._dbSchema), n.schema = e._dbSchema;
-    }), s.push(function(c) {
+      EU(f, d), i0(e, [e.Transaction.prototype]), vg(e, [e.Transaction.prototype], e._storeNames, e._dbSchema), n.schema = e._dbSchema;
+    }), s.push(function(d) {
       e.idbdb.objectStoreNames.contains("$meta") && (Math.ceil(e.idbdb.version / 10) === u._cfg.version ? (e.idbdb.deleteObjectStore("$meta"), delete e._dbSchema.$meta, e._storeNames = e._storeNames.filter(function(f) {
         return f !== "$meta";
-      })) : c.objectStore("$meta").put(u._cfg.version, "version"));
+      })) : d.objectStore("$meta").put(u._cfg.version, "version"));
     });
   });
   function i() {
@@ -12803,8 +12803,8 @@ function Rw(e, t) {
         var l = s.idxByName, i = a.idxByName, u = void 0;
         for (u in l) i[u] || o.del.push(u);
         for (u in i) {
-          var c = l[u], f = i[u];
-          c ? c.src !== f.src && o.change.push(f) : o.add.push(f);
+          var d = l[u], f = i[u];
+          d ? d.src !== f.src && o.change.push(f) : o.add.push(f);
         }
         (o.del.length > 0 || o.add.length > 0 || o.change.length > 0) && n.change.push(o);
       }
@@ -12841,9 +12841,9 @@ function Pv(e, t, n) {
   var r = {};
   return xv(t.objectStoreNames, 0).forEach(function(s) {
     for (var a = n.objectStore(s), o = a.keyPath, l = a0(S4(o), o || "", !0, !1, !!a.autoIncrement, o && typeof o != "string", !0), i = [], u = 0; u < a.indexNames.length; ++u) {
-      var c = a.index(a.indexNames[u]);
-      o = c.keyPath;
-      var f = a0(c.name, o, !!c.unique, !!c.multiEntry, !1, o && typeof o != "string", !1);
+      var d = a.index(a.indexNames[u]);
+      o = d.keyPath;
+      var f = a0(d.name, o, !!d.unique, !!d.multiEntry, !1, o && typeof o != "string", !1);
       i.push(f);
     }
     r[s] = Pw(s, l, i);
@@ -12865,10 +12865,10 @@ function _g(e, t, n) {
     var a = r[s], o = n.objectStore(a);
     e._hasGetAll = "getAll" in o;
     for (var l = 0; l < o.indexNames.length; ++l) {
-      var i = o.indexNames[l], u = o.index(i).keyPath, c = typeof u == "string" ? u : "[" + xv(u).join("+") + "]";
+      var i = o.indexNames[l], u = o.index(i).keyPath, d = typeof u == "string" ? u : "[" + xv(u).join("+") + "]";
       if (t[a]) {
-        var f = t[a].idxByName[c];
-        f && (f.name = i, delete t[a].idxByName[c], t[a].idxByName[i] = f);
+        var f = t[a].idxByName[d];
+        f && (f.name = i, delete t[a].idxByName[d], t[a].idxByName[i] = f);
       }
     }
   }
@@ -13136,23 +13136,23 @@ function Fw(e, t) {
       a && zT(a, e, n, t);
     }
   }
-  n.forEach(function(c) {
-    return c();
+  n.forEach(function(d) {
+    return d();
   });
 }
 function zT(e, t, n, r) {
   for (var s = [], a = 0, o = Object.entries(e.queries.query); a < o.length; a++) {
-    for (var l = o[a], i = l[0], u = l[1], c = [], f = 0, p = u; f < p.length; f++) {
+    for (var l = o[a], i = l[0], u = l[1], d = [], f = 0, p = u; f < p.length; f++) {
       var g = p[f];
       Ow(t, g.obsSet) ? g.subscribers.forEach(function(C) {
         return n.add(C);
-      }) : r && c.push(g);
+      }) : r && d.push(g);
     }
-    r && s.push([i, c]);
+    r && s.push([i, d]);
   }
   if (r) for (var y = 0, _ = s; y < _.length; y++) {
-    var x = _[y], i = x[0], c = x[1];
-    e.queries.query[i] = c;
+    var x = _[y], i = x[0], d = x[1];
+    e.queries.query[i] = d;
   }
 }
 function LU(e) {
@@ -13165,7 +13165,7 @@ function LU(e) {
   function o() {
     if (t.openCanceller !== r) throw new It.DatabaseClosed("db.open() was cancelled");
   }
-  var l = t.dbReadyResolve, i = null, u = !1, c = function() {
+  var l = t.dbReadyResolve, i = null, u = !1, d = function() {
     return new ct(function(f, p) {
       if (o(), !n) throw new It.MissingAPI();
       var g = e.name, y = t.autoSchema || !s ? n.open(g) : n.open(g, s);
@@ -13189,7 +13189,7 @@ function LU(e) {
           var C = _.transaction(pU(x), "readonly");
           if (t.autoSchema) CU(e, _, C);
           else if (_g(e, e._dbSchema, C), !IU(e, C) && !a)
-            return console.warn("Dexie SchemaDiff: Schema was extended without increasing the number passed to db.version(). Dexie will add missing parts and increment native version number to workaround this."), _.close(), s = _.version + 1, a = !0, f(c());
+            return console.warn("Dexie SchemaDiff: Schema was extended without increasing the number passed to db.version(). Dexie will add missing parts and increment native version number to workaround this."), _.close(), s = _.version + 1, a = !0, f(d());
           gg(e, C);
         } catch {
         }
@@ -13203,17 +13203,17 @@ function LU(e) {
       switch (f?.name) {
         case "UnknownError":
           if (t.PR1398_maxLoop > 0)
-            return t.PR1398_maxLoop--, console.warn("Dexie: Workaround for Chrome UnknownError on open()"), c();
+            return t.PR1398_maxLoop--, console.warn("Dexie: Workaround for Chrome UnknownError on open()"), d();
           break;
         case "VersionError":
           if (s > 0)
-            return s = 0, c();
+            return s = 0, d();
           break;
       }
       return ct.reject(f);
     });
   };
-  return ct.race([r, (typeof navigator > "u" ? ct.resolve() : NU()).then(c)]).then(function() {
+  return ct.race([r, (typeof navigator > "u" ? ct.resolve() : NU()).then(d)]).then(function() {
     return o(), t.onReadyBeingFired = [], ct.resolve(l0(function() {
       return e.on.ready.fire(e.vip);
     })).then(function f() {
@@ -13289,7 +13289,7 @@ function E4(e, t, n, r, s) {
     }
     var i = Aw(s);
     i && qc();
-    var u, c = ct.follow(function() {
+    var u, d = ct.follow(function() {
       if (u = s.call(o, o), u)
         if (i) {
           var f = Yi.bind(null, null);
@@ -13298,7 +13298,7 @@ function E4(e, t, n, r, s) {
     }, l);
     return (u && typeof u.then == "function" ? ct.resolve(u).then(function(f) {
       return o.active ? f : jn(new It.PrematureCommit("Transaction committed too early. See http://bit.ly/2kdckMn"));
-    }) : c.then(function() {
+    }) : d.then(function() {
       return u;
     })).then(function(f) {
       return r && o._resolve(), o._completion.then(function() {
@@ -13333,8 +13333,8 @@ function OU(e) {
     var l = o(r.primaryKey.keyPath, 0, r.primaryKey);
     s[":id"] = [l];
     for (var i = 0, u = r.indexes; i < u.length; i++) {
-      var c = u[i];
-      o(c.keyPath, 0, c);
+      var d = u[i];
+      o(d.keyPath, 0, d);
     }
     function f(y) {
       var _ = s[Af(y)];
@@ -13435,17 +13435,17 @@ var BU = {
           case "add":
             if (i.fire === yn) break;
             return a._promise("readwrite", function() {
-              return c(s);
+              return d(s);
             }, !0);
           case "put":
             if (i.fire === yn && u.fire === yn) break;
             return a._promise("readwrite", function() {
-              return c(s);
+              return d(s);
             }, !0);
           case "delete":
             if (l.fire === yn) break;
             return a._promise("readwrite", function() {
-              return c(s);
+              return d(s);
             }, !0);
           case "deleteRange":
             if (l.fire === yn) break;
@@ -13454,7 +13454,7 @@ var BU = {
             }, !0);
         }
         return n.mutate(s);
-        function c(g) {
+        function d(g) {
           var y = bt.trans, _ = g.keys || Uw(r, g);
           if (!_) throw new Error("Keys missing");
           return g = g.type === "add" || g.type === "put" ? Ht(Ht({}, g), { keys: _ }) : Ht({}, g), g.type !== "delete" && (g.values = dg([], g.values, !0)), g.keys && (g.keys = dg([], g.keys, !0)), UU(n, g, _).then(function(x) {
@@ -13510,7 +13510,7 @@ var BU = {
             limit: _
           }).then(function(x) {
             var C = x.result;
-            return c({
+            return d({
               type: "delete",
               keys: C,
               trans: g
@@ -13600,7 +13600,7 @@ var HU = {
         return e.transaction(r, s, a);
       },
       table: function(r) {
-        var s = e.table(r), a = s.schema, o = a.primaryKey, l = a.indexes, i = o.extractKey, u = o.outbound, c = o.autoIncrement && l.filter(function(y) {
+        var s = e.table(r), a = s.schema, o = a.primaryKey, l = a.indexes, i = o.extractKey, u = o.outbound, d = o.autoIncrement && l.filter(function(y) {
           return y.compound && y.keyPath.includes(o.keyPath);
         }), f = Ht(Ht({}, s), { mutate: function(y) {
           var _, x, C = y.trans, E = y.mutatedParts || (y.mutatedParts = {}), R = function(K) {
@@ -13624,7 +13624,7 @@ var HU = {
               return R(K.name).add(n);
             });
           return s.mutate(y).then(function(K) {
-            return S && (y.type === "add" || y.type === "put") && (N.addKeys(K.results), c && c.forEach(function(j) {
+            return S && (y.type === "add" || y.type === "put") && (N.addKeys(K.results), d && d.forEach(function(j) {
               for (var V = y.values.map(function(ae) {
                 return j.extractKey(ae);
               }), W = j.keyPath.findIndex(function(ae) {
@@ -13699,12 +13699,12 @@ function zU(e, t, n, r) {
       return u != null ? a.extractKey(u) : null;
     }
     var i = function(u) {
-      return a.multiEntry && Un(u) ? u.forEach(function(c) {
-        return o.addKey(c);
+      return a.multiEntry && Un(u) ? u.forEach(function(d) {
+        return o.addKey(d);
       }) : o.addKey(u);
     };
-    (n || r).forEach(function(u, c) {
-      var f = n && l(n[c]), p = r && l(r[c]);
+    (n || r).forEach(function(u, d) {
+      var f = n && l(n[d]), p = r && l(r[d]);
       sn(f, p) !== 0 && (f != null && i(f), p != null && i(p));
     });
   }
@@ -13733,13 +13733,13 @@ function P_(e, t) {
 }
 function WT(e, t, n, r, s, a) {
   if (!n || n.length === 0) return e;
-  var o = t.query.index, l = o.multiEntry, i = t.query.range, u = r.schema.primaryKey.extractKey, c = o.extractKey, f = (o.lowLevelIndex || o).extractKey, p = n.reduce(function(g, y) {
+  var o = t.query.index, l = o.multiEntry, i = t.query.range, u = r.schema.primaryKey.extractKey, d = o.extractKey, f = (o.lowLevelIndex || o).extractKey, p = n.reduce(function(g, y) {
     var _ = g, x = [];
     if (y.type === "add" || y.type === "put")
       for (var C = new Zr(), E = y.values.length - 1; E >= 0; --E) {
         var R = y.values[E], N = u(R);
         if (!C.hasKey(N)) {
-          var m = c(R);
+          var m = d(R);
           (l && Un(m) ? m.some(function(k) {
             return P_(k, i);
           }) : P_(m, i)) && (C.addKey(N), x.push(R));
@@ -13886,7 +13886,7 @@ var QU = {
           var o = new AbortController(), l = o.signal, i = function(u) {
             return function() {
               if (o.abort(), r === "readwrite") {
-                for (var c = /* @__PURE__ */ new Set(), f = 0, p = n; f < p.length; f++) {
+                for (var d = /* @__PURE__ */ new Set(), f = 0, p = n; f < p.length; f++) {
                   var g = p[f], y = Kl["idb://".concat(t, "/").concat(g)];
                   if (y) {
                     var _ = e.table(g), x = y.optimisticOps.filter(function(K) {
@@ -13896,7 +13896,7 @@ var QU = {
                       for (var R = E[C], N = 0, m = R.slice(); N < m.length; N++) {
                         var w = m[N];
                         Ow(w.obsSet, a.mutatedParts) && (wl(R, w), w.subscribers.forEach(function(K) {
-                          return c.add(K);
+                          return d.add(K);
                         }));
                       }
                     else if (x.length > 0) {
@@ -13909,17 +13909,17 @@ var QU = {
                           if (w.res != null && a.mutatedParts) if (u && !w.dirty) {
                             var P = Object.isFrozen(w.res), U = WT(w.res, w.req, x, _, w, P);
                             w.dirty ? (wl(R, w), w.subscribers.forEach(function(V) {
-                              return c.add(V);
+                              return d.add(V);
                             })) : U !== w.res && (w.res = U, w.promise = ct.resolve({ result: U }));
                           } else
                             w.dirty && wl(R, w), w.subscribers.forEach(function(V) {
-                              return c.add(V);
+                              return d.add(V);
                             });
                         }
                     }
                   }
                 }
-                c.forEach(function(K) {
+                d.forEach(function(K) {
                   return K();
                 });
               }
@@ -13941,20 +13941,20 @@ var QU = {
             return (a.type === "add" || a.type === "put") && (a.values.length >= 50 || Uw(s, a).some(function(u) {
               return u == null;
             })) ? i.then(function(u) {
-              var c = KT(l, Ht(Ht({}, a), { values: a.values.map(function(f, p) {
+              var d = KT(l, Ht(Ht({}, a), { values: a.values.map(function(f, p) {
                 var g;
                 if (u.failures[p]) return f;
                 var y = !((g = s.keyPath) === null || g === void 0) && g.includes(".") ? Yl(f) : Ht({}, f);
                 return Ds(y, s.keyPath, u.results[p]), y;
               }) }), u);
-              l.optimisticOps.push(c), queueMicrotask(function() {
+              l.optimisticOps.push(d), queueMicrotask(function() {
                 return a.mutatedParts && Ep(a.mutatedParts);
               });
             }) : (l.optimisticOps.push(a), a.mutatedParts && Ep(a.mutatedParts), i.then(function(u) {
               if (u.numFailures > 0) {
                 wl(l.optimisticOps, a);
-                var c = KT(l, a, u);
-                c && l.optimisticOps.push(c), a.mutatedParts && Ep(a.mutatedParts);
+                var d = KT(l, a, u);
+                d && l.optimisticOps.push(d), a.mutatedParts && Ep(a.mutatedParts);
               }
             }), i.catch(function() {
               wl(l.optimisticOps, a), a.mutatedParts && Ep(a.mutatedParts);
@@ -13963,7 +13963,7 @@ var QU = {
           query: function(a) {
             var o;
             if (!I4(bt, r) || !x4("query", a)) return r.query(a);
-            var l = ((o = bt.trans) === null || o === void 0 ? void 0 : o.db._options.cache) === "immutable", i = bt, u = i.requery, c = i.signal, f = YU(t, n, "query", a), p = f[0], g = f[1], y = f[2], _ = f[3];
+            var l = ((o = bt.trans) === null || o === void 0 ? void 0 : o.db._options.cache) === "immutable", i = bt, u = i.requery, d = i.signal, f = YU(t, n, "query", a), p = f[0], g = f[1], y = f[2], _ = f[3];
             if (p && g) p.obsSet = a.obsSet;
             else {
               var x = r.query(a).then(function(C) {
@@ -13993,7 +13993,7 @@ var QU = {
                 unsignaledParts: {}
               }), y.queries.query[a.query.index.name || ""] = _);
             }
-            return XU(p, _, u, c), p.promise.then(function(C) {
+            return XU(p, _, u, d), p.promise.then(function(C) {
               return { result: WT(C.result, a, y?.optimisticOps, r, p, l) };
             });
           }
@@ -14042,17 +14042,17 @@ var Sc = (function() {
     }), o.openCanceller = new ct(function(i, u) {
       o.cancelOpen = u;
     }), this._state = o, this.name = t, this.on = _h(this, "populate", "blocked", "versionchange", "close", { ready: [Cw, yn] }), this.on.ready.subscribe = r4(this.on.ready.subscribe, function(i) {
-      return function(u, c) {
+      return function(u, d) {
         e.vip(function() {
           var f = r._state;
           if (f.openComplete)
-            f.dbOpenError || ct.resolve().then(u), c && i(u);
+            f.dbOpenError || ct.resolve().then(u), d && i(u);
           else if (f.onReadyBeingFired)
-            f.onReadyBeingFired.push(u), c && i(u);
+            f.onReadyBeingFired.push(u), d && i(u);
           else {
             i(u);
             var p = r;
-            c || i(function g() {
+            d || i(function g() {
               p.on.ready.unsubscribe(u), p.on.ready.unsubscribe(g);
             });
           }
@@ -14062,8 +14062,8 @@ var Sc = (function() {
       i.newVersion > 0 ? console.warn("Another connection wants to upgrade database '".concat(r.name, "'. Closing db now to resume the upgrade.")) : console.warn("Another connection wants to delete database '".concat(r.name, "'. Closing db now to resume the delete request.")), r.close({ disableAutoOpen: !1 });
     }), this.on("blocked", function(i) {
       !i.newVersion || i.newVersion < i.oldVersion ? console.warn("Dexie.delete('".concat(r.name, "') was blocked")) : console.warn("Upgrade '".concat(r.name, "' blocked by other connection holding version ").concat(i.oldVersion / 10));
-    }), this._maxKey = eh(n.IDBKeyRange), this._createTransaction = function(i, u, c, f) {
-      return new r.Transaction(i, u, c, r._options.chromeTransactionDurability, f);
+    }), this._maxKey = eh(n.IDBKeyRange), this._createTransaction = function(i, u, d, f) {
+      return new r.Transaction(i, u, d, r._options.chromeTransactionDurability, f);
     }, this._fireOnBlocked = function(i) {
       r.on("blocked").fire(i), oc.filter(function(u) {
         return u.name === r.name && u !== r && !u._state.vcFired;
@@ -14071,12 +14071,12 @@ var Sc = (function() {
         return u.on("versionchange").fire(i);
       });
     }, this.use(qU), this.use(QU), this.use(HU), this.use(FU), this.use(BU);
-    var l = new Proxy(this, { get: function(i, u, c) {
+    var l = new Proxy(this, { get: function(i, u, d) {
       if (u === "_vip") return !0;
       if (u === "table") return function(p) {
         return Ip(r.table(p), l);
       };
-      var f = Reflect.get(i, u, c);
+      var f = Reflect.get(i, u, d);
       return f instanceof _4 ? Ip(f, l) : u === "tables" ? f.map(function(p) {
         return Ip(p, l);
       }) : u === "_createTransaction" ? function() {
@@ -14195,8 +14195,8 @@ var Sc = (function() {
     t = t.replace("!", "").replace("?", "");
     var l, i;
     try {
-      if (i = n.map(function(c) {
-        var f = c instanceof s.Table ? c.name : c;
+      if (i = n.map(function(d) {
+        var f = d instanceof s.Table ? d.name : d;
         if (typeof f != "string") throw new TypeError("Invalid table argument to Dexie.transaction(). Only Table or String are allowed");
         return f;
       }), t == "r" || t === A_) l = A_;
@@ -14205,15 +14205,15 @@ var Sc = (function() {
       if (a) {
         if (a.mode === A_ && l === T_) if (o) a = null;
         else throw new It.SubTransaction("Cannot enter a sub-transaction with READWRITE mode when parent transaction is READONLY");
-        a && i.forEach(function(c) {
-          if (a && a.storeNames.indexOf(c) === -1) if (o) a = null;
-          else throw new It.SubTransaction("Table " + c + " not included in parent transaction.");
+        a && i.forEach(function(d) {
+          if (a && a.storeNames.indexOf(d) === -1) if (o) a = null;
+          else throw new It.SubTransaction("Table " + d + " not included in parent transaction.");
         }), o && a && !a.active && (a = null);
       }
-    } catch (c) {
+    } catch (d) {
       return a ? a._promise(null, function(f, p) {
-        p(c);
-      }) : jn(c);
+        p(d);
+      }) : jn(d);
     }
     var u = E4.bind(null, this, l, i, a, r);
     return a ? a._promise(l, u, "lock") : bt.trans ? jl(bt.transless, function() {
@@ -14261,7 +14261,7 @@ function tq(e) {
         E && Uc();
       }
     }
-    var l = !1, i, u = {}, c = {}, f = {
+    var l = !1, i, u = {}, d = {}, f = {
       get closed() {
         return l;
       },
@@ -14274,7 +14274,7 @@ function tq(e) {
       return S_(x);
     };
     function y() {
-      return Ow(c, u);
+      return Ow(d, u);
     }
     var _ = function(C) {
       Rv(u, C), y() && g();
@@ -14291,7 +14291,7 @@ function tq(e) {
           trans: null
         }, R = o(E);
         Promise.resolve(R).then(function(N) {
-          t = !0, n = N, !(l || E.signal.aborted) && (u = {}, c = C, !xB(c) && !p && (ji(wh, _), p = !0), S_(function() {
+          t = !0, n = N, !(l || E.signal.aborted) && (u = {}, d = C, !xB(d) && !p && (ji(wh, _), p = !0), S_(function() {
             return !l && s.next && s.next(N);
           }));
         }, function(N) {
@@ -14509,7 +14509,7 @@ function rq(e = {}) {
     n ? "Spatial records are map files: `world` is the atlas, and each detailed scene map is edited by explicit scene name with MapSceneEdit." : "",
     "In manual manager chat, answer the user question first. Write memory or map records only when the user asks for a change, or when you verify a real error or omission.",
     "When a tool fails, adjust the path, arguments, or strategy based on the error. Do not repeat the same failing call unchanged."
-  ], c = [
+  ], d = [
     "LS/Grep/Read inspect Tavern text sources: read-only `chat/`, read-only `worldbooks/`, and current-session `memory/` files. Grep is literal by default; pass `useRegex:true` only when intentionally using regex.",
     t ? "Edit and Write save memory changes only under `memory/state.md` and `memory/characters/<角色名>.md`. `chat/` and `worldbooks/` are evidence sources and are read-only." : "",
     n ? "MapAtlasRead reads `world`; MapSceneRead reads one scene; MapSceneEdit saves tolerant scene-map intent." : "",
@@ -14576,7 +14576,7 @@ function rq(e = {}) {
     "",
     Ss("Tool Use Guide", ["You may call multiple tools in one assistant turn. Independent reads may run in parallel; edits to the same file should be combined into one edit/patch call.", "If a tool returns an error, adjust the arguments, path, or strategy based on that error."]),
     "",
-    Ss("Tool Layers", c),
+    Ss("Tool Layers", d),
     "",
     Ss("Work Loop", u),
     "",
@@ -15242,7 +15242,7 @@ async function uo(e = "") {
 async function Cq(e = "") {
   const t = String(e || "").trim();
   return !t || !await uo(t) ? 0 : (await Wt.transaction("rw", Lt, un, Os, br, rs, ic, Br, On, ro, Fs, Rr, Wi, Xn, so, ao, Zo, async () => {
-    const [n, r, s, a, o, l, i, u, c, f, p, g, y, _] = await Promise.all([
+    const [n, r, s, a, o, l, i, u, d, f, p, g, y, _] = await Promise.all([
       un.where("sessionId").equals(t).toArray(),
       Os.where("sessionId").equals(t).toArray(),
       br.where("sessionId").equals(t).toArray(),
@@ -15271,7 +15271,7 @@ async function Cq(e = "") {
       l.length ? Br.bulkDelete(l.map((C) => C.managerRunId)) : 0,
       i.length ? On.bulkDelete(i.map((C) => [C.sessionId, C.path])) : 0,
       u.length ? ro.bulkDelete(u.map((C) => [C.sessionId, C.floor])) : 0,
-      c.length ? Fs.bulkDelete(c.map((C) => [C.sessionId, C.kind])) : 0,
+      d.length ? Fs.bulkDelete(d.map((C) => [C.sessionId, C.kind])) : 0,
       f.length ? Rr.bulkDelete(f.map((C) => [
         C.sessionId,
         C.docType,
@@ -15449,8 +15449,8 @@ async function Iq(e = "", t = 12, n = 0) {
 async function xq(e = "", t = 0, n = Number.POSITIVE_INFINITY, r = 1e3, s = 0) {
   const a = String(e || "").trim();
   if (!a) return [];
-  const o = Math.max(0, Math.floor(Number(t) || 0)), l = Number.isFinite(Number(n)), i = l ? Math.max(o, Math.floor(Number(n) || o)) : Number.POSITIVE_INFINITY, u = l ? i : ss.maxKey, c = Math.max(1, Math.min(1e3, Math.floor(Number(r) || 1e3))), f = Math.max(0, Math.floor(Number(s) || 0));
-  return (await un.where("[sessionId+order]").between([a, o], [a, u], !0, !0).offset(f).limit(c).toArray()).map(fo);
+  const o = Math.max(0, Math.floor(Number(t) || 0)), l = Number.isFinite(Number(n)), i = l ? Math.max(o, Math.floor(Number(n) || o)) : Number.POSITIVE_INFINITY, u = l ? i : ss.maxKey, d = Math.max(1, Math.min(1e3, Math.floor(Number(r) || 1e3))), f = Math.max(0, Math.floor(Number(s) || 0));
+  return (await un.where("[sessionId+order]").between([a, o], [a, u], !0, !0).offset(f).limit(d).toArray()).map(fo);
 }
 async function lc(e = "", t = 0, n = Number.POSITIVE_INFINITY, r = 1e3, s = 0) {
   const a = String(e || "").trim();
@@ -15458,9 +15458,9 @@ async function lc(e = "", t = 0, n = Number.POSITIVE_INFINITY, r = 1e3, s = 0) {
     messages: [],
     total: 0
   };
-  const o = Math.max(0, Math.floor(Number(t) || 0)), l = Number.isFinite(Number(n)), i = l ? Math.max(o, Math.floor(Number(n) || o)) : Number.POSITIVE_INFINITY, u = l ? i : ss.maxKey, c = Math.max(1, Math.min(1e3, Math.floor(Number(r) || 1e3))), f = Math.max(0, Math.floor(Number(s) || 0));
+  const o = Math.max(0, Math.floor(Number(t) || 0)), l = Number.isFinite(Number(n)), i = l ? Math.max(o, Math.floor(Number(n) || o)) : Number.POSITIVE_INFINITY, u = l ? i : ss.maxKey, d = Math.max(1, Math.min(1e3, Math.floor(Number(r) || 1e3))), f = Math.max(0, Math.floor(Number(s) || 0));
   return await Wt.transaction("r", un, async () => {
-    const p = () => un.where("[sessionId+order]").between([a, o], [a, u], !0, !0), [g, y] = await Promise.all([p().offset(f).limit(c).toArray(), p().count()]);
+    const p = () => un.where("[sessionId+order]").between([a, o], [a, u], !0, !0), [g, y] = await Promise.all([p().offset(f).limit(d).toArray(), p().count()]);
     return {
       messages: g.map(fo),
       total: y
@@ -16623,8 +16623,8 @@ function p3(e, t) {
   if (!Number.isFinite(s) || !Number.isFinite(a)) throw new Error(`map_element_arc_angles_required:${t}`);
   const o = a - s, l = Math.max(4, Math.min(24, Math.ceil(Math.abs(o) / 30)));
   return Array.from({ length: l + 1 }, (i, u) => {
-    const c = (s + o * u / l) * Math.PI / 180;
-    return [Number((n[0] + r * Math.cos(c)).toFixed(2)), Number((n[1] + r * Math.sin(c)).toFixed(2))];
+    const d = (s + o * u / l) * Math.PI / 180;
+    return [Number((n[0] + r * Math.cos(d)).toFixed(2)), Number((n[1] + r * Math.sin(d)).toFixed(2))];
   });
 }
 function ja(e, t, n) {
@@ -16740,7 +16740,7 @@ function Pg(e, t = {}) {
     "path",
     "points",
     "line"
-  ]), c = xf(e, ["curve"]), f = w0(e), p = Object.prototype.hasOwnProperty.call(e, "curve") && !Hv(e.curve) ? e.curve : null, g = pt(e.text ?? e.content ?? e.label ?? e.value, 240);
+  ]), d = xf(e, ["curve"]), f = w0(e), p = Object.prototype.hasOwnProperty.call(e, "curve") && !Hv(e.curve) ? e.curve : null, g = pt(e.text ?? e.content ?? e.label ?? e.value, 240);
   g && (a.text = g);
   const y = xh(e.icon);
   if (y && (n === "model-input" && eS(y, r), a.icon = y), o === "line" && f) {
@@ -16766,8 +16766,8 @@ function Pg(e, t = {}) {
     }
   }
   const _ = jw.filter((w) => w === "circle" ? typeof a.circle == "number" : w === "text" ? typeof a.text == "string" && !!a.text.trim() : w in a);
-  if (!_.length && (u.length || c.length)) throw new Error(`map_element_points_required:${r}`);
-  _.length && Jd(r, [...u, ...c], t.warnings), uH(r, _);
+  if (!_.length && (u.length || d.length)) throw new Error(`map_element_points_required:${r}`);
+  _.length && Jd(r, [...u, ...d], t.warnings), uH(r, _);
   const x = Ec(e.cat, Mg(_.find((w) => w !== "text") || _[0] || null)), C = Uv(e.material, {
     elementId: r,
     warnings: t.warnings,
@@ -16907,7 +16907,7 @@ function eo(e, t = 0) {
     if (!ns(g.id)) return y;
     const _ = g.id.slice(sa("").length);
     return o.get(_)?.cat === "actor" && Ml(y) ? "" : y;
-  }), 8), i = (g) => Mp(a.filter((y) => g.includes(y.cat)).map((y) => tE(y, r)), 8), u = Mp(a.filter((g) => g.cat === "actor").map((g) => dH(g, r)), 8), c = Mp(a.filter((g) => g.cat === "door" || [
+  }), 8), i = (g) => Mp(a.filter((y) => g.includes(y.cat)).map((y) => tE(y, r)), 8), u = Mp(a.filter((g) => g.cat === "actor").map((g) => dH(g, r)), 8), d = Mp(a.filter((g) => g.cat === "door" || [
     "stairs",
     "portal",
     "arrow-n",
@@ -16928,7 +16928,7 @@ function eo(e, t = 0) {
   return [
     `地图：${n}`,
     u.length ? `场景人物：${u.join("、")}` : "",
-    c.length ? `出入口：${c.join("、")}` : "",
+    d.length ? `出入口：${d.join("、")}` : "",
     f.length ? `可互动：${f.join("、")}` : "",
     p.length ? `主表面/地形：${p.join("、")}` : "",
     l.length ? `标注：${l.join(", ")}` : ""
@@ -17021,10 +17021,10 @@ function nS(e) {
   });
   const u = /* @__PURE__ */ new Map();
   s.forEach((f) => u.set(f.actorKey, f));
-  const c = as(t.activeLocationKey);
+  const d = as(t.activeLocationKey);
   return {
     version: 1,
-    ...c ? { activeLocationKey: c } : {},
+    ...d ? { activeLocationKey: d } : {},
     locations: o,
     links: i,
     actors: [...u.values()]
@@ -17085,13 +17085,13 @@ async function rE(e) {
   };
   const n = (o, l) => {
     let i = !1;
-    const u = /* @__PURE__ */ new Set(), c = [], f = o.elements.filter((_) => {
+    const u = /* @__PURE__ */ new Set(), d = [], f = o.elements.filter((_) => {
       if (_.cat !== "actor") return !0;
       const x = Cc(_.actorKey || _.id);
       if (!t.has(x)) return !0;
       const C = l && t.get(x) === _.id;
-      return C || (c.push(Yt(_)), u.add(_.id), i = !0), C;
-    }), p = new Set([...u].map((_) => sa(_))), g = p.size ? f.filter((_) => p.has(_.id) ? (c.push(Yt(_)), i = !0, !1) : !0) : f, y = c.map((_) => ({
+      return C || (d.push(Yt(_)), u.add(_.id), i = !0), C;
+    }), p = new Set([...u].map((_) => sa(_))), g = p.size ? f.filter((_) => p.has(_.id) ? (d.push(Yt(_)), i = !0, !1) : !0) : f, y = d.map((_) => ({
       op: "remove",
       id: _.id
     }));
@@ -17100,7 +17100,7 @@ async function rE(e) {
         ...o,
         elements: g
       } : o,
-      removedElements: c,
+      removedElements: d,
       removeOps: y
     };
   }, r = n(e.document, !0), s = [], a = await Rr.where("sessionId").equals(e.sessionId).toArray();
@@ -17128,7 +17128,7 @@ async function rE(e) {
       source: "system",
       summary: pt(`Actor dedupe ${i}`, 400),
       ops: l.removeOps,
-      changedIds: l.removedElements.map((c) => c.id),
+      changedIds: l.removedElements.map((d) => d.id),
       removedElements: l.removedElements
     }), s.push({
       docId: o.docId,
@@ -17251,16 +17251,16 @@ function bH(e, t = []) {
   };
 }
 function aE(e, t = {}) {
-  const n = pt(t.query, 120).toLowerCase(), r = String(t.elementType || t.type || "").trim(), s = String(t.category || t.cat || "").trim(), a = Math.max(0, Number(t.offset) || 0), o = Math.max(1, Math.min(kr, Number(t.limit) || 30)), l = e.elements.filter((c) => {
-    const f = h3(c) || "";
-    return r && f !== r || s && c.cat !== s ? !1 : n ? [
-      c.id,
-      c.cat,
+  const n = pt(t.query, 120).toLowerCase(), r = String(t.elementType || t.type || "").trim(), s = String(t.category || t.cat || "").trim(), a = Math.max(0, Number(t.offset) || 0), o = Math.max(1, Math.min(kr, Number(t.limit) || 30)), l = e.elements.filter((d) => {
+    const f = h3(d) || "";
+    return r && f !== r || s && d.cat !== s ? !1 : n ? [
+      d.id,
+      d.cat,
       f,
-      c.text,
-      c.icon,
-      c.material,
-      c.certainty
+      d.text,
+      d.icon,
+      d.material,
+      d.certainty
     ].map((p) => String(p || "").toLowerCase()).join(`
 `).includes(n) : !0;
   }), i = l.slice(a, a + o).map(T0), u = a + i.length < l.length ? a + i.length : 0;
@@ -17272,15 +17272,15 @@ function aE(e, t = {}) {
   };
 }
 function oE(e, t = {}) {
-  const n = pt(t.query, 120).toLowerCase(), r = as(t.parent), s = String(t.status || "").trim(), a = Math.max(0, Number(t.offset) || 0), o = Math.max(1, Math.min(kr, Number(t.limit) || 30)), l = e.locations.filter((c) => r && c.parent !== r || s && c.status !== s ? !1 : n ? [
-    c.key,
-    c.name,
-    c.scale,
-    c.status,
-    c.brief,
-    ...c.aliases || []
+  const n = pt(t.query, 120).toLowerCase(), r = as(t.parent), s = String(t.status || "").trim(), a = Math.max(0, Number(t.offset) || 0), o = Math.max(1, Math.min(kr, Number(t.limit) || 30)), l = e.locations.filter((d) => r && d.parent !== r || s && d.status !== s ? !1 : n ? [
+    d.key,
+    d.name,
+    d.scale,
+    d.status,
+    d.brief,
+    ...d.aliases || []
   ].join(`
-`).toLowerCase().includes(n) : !0), i = l.slice(a, a + o).map((c) => Yt(c)), u = a + i.length < l.length ? a + i.length : 0;
+`).toLowerCase().includes(n) : !0), i = l.slice(a, a + o).map((d) => Yt(d)), u = a + i.length < l.length ? a + i.length : 0;
   return {
     locations: i,
     count: l.length,
@@ -17296,12 +17296,12 @@ function iE(e, t = {}) {
     f.kind,
     f.label
   ].join(`
-`).toLowerCase().includes(n) : !0), u = i.slice(o, o + l).map((f) => Yt(f)), c = o + u.length < i.length ? o + u.length : 0;
+`).toLowerCase().includes(n) : !0), u = i.slice(o, o + l).map((f) => Yt(f)), d = o + u.length < i.length ? o + u.length : 0;
   return {
     links: u,
     count: i.length,
-    truncated: c > 0,
-    nextOffset: c
+    truncated: d > 0,
+    nextOffset: d
   };
 }
 function wH(e = {}) {
@@ -17332,7 +17332,7 @@ function lE(e, t) {
   if (t.length > a3) throw new Error("state_patch_ops_limit_exceeded");
   let n = nS(e);
   const r = [], s = [], a = [], o = /* @__PURE__ */ new Set();
-  let l = 0, i = 0, u = !1, c;
+  let l = 0, i = 0, u = !1, d;
   const f = () => new Map(n.locations.map((C) => [C.key, C])), p = (C) => n.links.findIndex((E) => E.id === C), g = (C) => n.actors.findIndex((E) => E.actorKey === C), y = () => {
     const C = f();
     n.locations.forEach((E) => {
@@ -17469,7 +17469,7 @@ function lE(e, t) {
           I >= 0 && n.locations[I].status !== "visited" && (n.locations[I] = {
             ...n.locations[I],
             status: "visited"
-          }), c = n.locations[I]?.mapDocId;
+          }), d = n.locations[I]?.mapDocId;
         }
         x({
           op: "move-actor",
@@ -17494,7 +17494,7 @@ function lE(e, t) {
     warnings: a,
     changedIds: [...o],
     changed: u,
-    syncedActiveMapDocId: c
+    syncedActiveMapDocId: d
   };
 }
 function SH(e, t, n = []) {
@@ -17749,7 +17749,7 @@ function PH(e, t, n = []) {
     "text",
     "content",
     "value"
-  ].some((x) => Object.prototype.hasOwnProperty.call(e, x)), c = pt(e.label ?? e.text ?? e.content ?? e.value, 240), f = o === "label" ? "label" : Mg(o), p = {
+  ].some((x) => Object.prototype.hasOwnProperty.call(e, x)), d = pt(e.label ?? e.text ?? e.content ?? e.value, 240), f = o === "label" ? "label" : Mg(o), p = {
     id: s,
     cat: Ec(e.cat, f)
   };
@@ -17789,10 +17789,10 @@ function PH(e, t, n = []) {
     if (!x) throw new Error(`map_element_icon_invalid:${s}`);
     eS(x, s), p.icon = x;
   } else if (o === "label") {
-    if (!c) throw new Error(`map_element_text_required:${s}`);
-    p.text = c;
+    if (!d) throw new Error(`map_element_text_required:${s}`);
+    p.text = d;
   }
-  return o !== "label" && c ? p.text = c : o !== "label" && u && (p.text = null), {
+  return o !== "label" && d ? p.text = d : o !== "label" && u && (p.text = null), {
     id: s,
     element: p,
     shape: o
@@ -17802,7 +17802,7 @@ function RH(e, t = {}) {
   const n = Array.isArray(t.elements) ? t.elements : [], r = [];
   let s = Yt(e);
   const a = [], o = [], l = [], i = /* @__PURE__ */ new Set(), u = [];
-  let c = 0, f = 0, p = !1;
+  let d = 0, f = 0, p = !1;
   const g = {}, y = pt(t.title ?? t.name ?? t.scene, 120);
   if (y && (g.name = y), "viewBox" in t && (g.viewBox = kg(t.viewBox)), "theme" in t && (g.theme = Zw(t.theme)), "mood" in t) {
     const _ = String(t.mood || "").trim();
@@ -17813,7 +17813,7 @@ function RH(e, t = {}) {
       op: "meta",
       set: g
     }]);
-    _.failed.length || (s = _.document, a.push(..._.effectiveOps), c += _.appliedCount, f += _.satisfiedCount, _.changedIds.forEach((x) => i.add(x)), r.push(..._.warnings), p = p || _.changed);
+    _.failed.length || (s = _.document, a.push(..._.effectiveOps), d += _.appliedCount, f += _.satisfiedCount, _.changedIds.forEach((x) => i.add(x)), r.push(..._.warnings), p = p || _.changed);
   }
   return n.forEach((_, x) => {
     try {
@@ -17836,7 +17836,7 @@ function RH(e, t = {}) {
         }), r.push(...N.warnings);
         return;
       }
-      s = N.document, a.push(...N.effectiveOps), c += N.appliedCount, f += N.satisfiedCount, u.push(...N.removedElements), N.changedIds.forEach((m) => i.add(m)), r.push(...N.warnings), p = p || N.changed, o.push({
+      s = N.document, a.push(...N.effectiveOps), d += N.appliedCount, f += N.satisfiedCount, u.push(...N.removedElements), N.changedIds.forEach((m) => i.add(m)), r.push(...N.warnings), p = p || N.changed, o.push({
         index: x,
         id: C.id,
         op: E ? "modify" : "add",
@@ -17855,7 +17855,7 @@ function RH(e, t = {}) {
   }), {
     document: s,
     effectiveOps: a,
-    appliedCount: c,
+    appliedCount: d,
     satisfiedCount: f,
     applied: o,
     skipped: l,
@@ -17937,11 +17937,11 @@ function C0(e, t) {
   const n = Rg(e, e.meta, "stored-document");
   let r = Yt(n);
   const s = [], a = [], o = /* @__PURE__ */ new Set(), l = [], i = [];
-  let u = 0, c = 0, f = !1;
+  let u = 0, d = 0, f = !1;
   const p = (C) => r.elements.findIndex((E) => E.id === C), g = (C) => {
     const E = b0(r.meta, C);
     if (ga(E, r.meta)) {
-      c += 1;
+      d += 1;
       return;
     }
     r.meta = E, s.push({
@@ -17952,7 +17952,7 @@ function C0(e, t) {
     const E = p(C.id);
     if (E >= 0) {
       if (ga(r.elements[E], C)) {
-        c += 1;
+        d += 1;
         return;
       }
       throw new Error(`map_element_already_exists:${C.id}`);
@@ -17965,7 +17965,7 @@ function C0(e, t) {
     const R = p(C);
     if (R < 0) {
       if (E.soft) {
-        c += 1;
+        d += 1;
         return;
       }
       throw new Error(`map_element_not_found:${C}`);
@@ -17989,7 +17989,7 @@ function C0(e, t) {
     if (ns(C)) {
       const $ = NH(C, N, E);
       if (ga(N, $)) {
-        c += 1;
+        d += 1;
         return;
       }
       r.elements[R] = $, O_(N) && ga(N.style, $.style) ? s.push({
@@ -18071,7 +18071,7 @@ function C0(e, t) {
       });
       return;
     }
-    W || (c += 1);
+    W || (d += 1);
   };
   for (let C = 0; C < t.length; C += 1) {
     const E = t[C];
@@ -18156,11 +18156,11 @@ function C0(e, t) {
     index: -1,
     error: "map_elements_limit_exceeded",
     hint: `Map has more than ${v0} elements. Split or reduce the element count.`
-  }), !i.length && f && ga(QT(n), QT(r)) && (c += u, u = 0, f = !1, o.clear(), s.splice(0, s.length), l.splice(0, l.length)), {
+  }), !i.length && f && ga(QT(n), QT(r)) && (d += u, u = 0, f = !1, o.clear(), s.splice(0, s.length), l.splice(0, l.length)), {
     document: r,
     effectiveOps: s,
     appliedCount: u,
-    satisfiedCount: c,
+    satisfiedCount: d,
     failed: i,
     warnings: a,
     changedIds: [...o],
@@ -18935,7 +18935,7 @@ async function UH(e = "", t = "", n = {}, r = {}) {
   };
   try {
     if (a === wn.READ_ATLAS) {
-      const c = String(n.mode || "summary").trim() || "summary", f = await qu(s), p = Di(f), g = {
+      const d = String(n.mode || "summary").trim() || "summary", f = await qu(s), p = Di(f), g = {
         ok: !0,
         file: "world",
         docType: Zn,
@@ -18945,12 +18945,12 @@ async function UH(e = "", t = "", n = {}, r = {}) {
         digest: Sl(p),
         activeLocationKey: p.activeLocationKey
       };
-      if (c === "document") return {
+      if (d === "document") return {
         ...g,
         summary: `Read world atlas, revision ${g.revision}.`,
         document: p
       };
-      if (c === "locations") {
+      if (d === "locations") {
         const y = oE(p, n);
         return {
           ...g,
@@ -18961,7 +18961,7 @@ async function UH(e = "", t = "", n = {}, r = {}) {
           locations: y.locations
         };
       }
-      if (c === "links") {
+      if (d === "links") {
         const y = iE(p, n);
         return {
           ...g,
@@ -18972,7 +18972,7 @@ async function UH(e = "", t = "", n = {}, r = {}) {
           links: y.links
         };
       }
-      if (c === "actors") {
+      if (d === "actors") {
         const y = Cc(n.actorKey), _ = y ? p.actors.filter((x) => x.actorKey === y) : p.actors;
         return {
           ...g,
@@ -18995,24 +18995,24 @@ async function UH(e = "", t = "", n = {}, r = {}) {
       };
     }
     if (a === wn.READ_SCENE) {
-      const c = nE(Di(await qu(s)), n), f = String(n.mode || "summary").trim() || "summary", p = await oo(s, en, c.docId);
+      const d = nE(Di(await qu(s)), n), f = String(n.mode || "summary").trim() || "summary", p = await oo(s, en, d.docId);
       if (!p) return {
         ok: !1,
-        file: c.sceneName,
-        scene: c.sceneName,
+        file: d.sceneName,
+        scene: d.sceneName,
         docType: en,
-        docId: c.docId,
-        summary: `Scene map ${c.sceneName} does not exist yet. MapSceneEdit will create it when needed.`,
+        docId: d.docId,
+        summary: `Scene map ${d.sceneName} does not exist yet. MapSceneEdit will create it when needed.`,
         error: "map_scene_not_found"
       };
       const g = Go(p);
       if (f === "document") return {
         ok: !0,
-        file: c.sceneName,
-        scene: c.sceneName,
-        summary: `Read scene ${c.sceneName}, revision ${p.revision}.`,
+        file: d.sceneName,
+        scene: d.sceneName,
+        summary: `Read scene ${d.sceneName}, revision ${p.revision}.`,
         docType: en,
-        docId: c.docId,
+        docId: d.docId,
         title: p.title,
         revision: p.revision,
         digest: p.digest,
@@ -19024,30 +19024,30 @@ async function UH(e = "", t = "", n = {}, r = {}) {
         const y = pt(n.elementId, 120);
         if (!y) return {
           ok: !1,
-          file: c.sceneName,
-          scene: c.sceneName,
+          file: d.sceneName,
+          scene: d.sceneName,
           summary: "Missing elementId.",
           docType: en,
-          docId: c.docId,
+          docId: d.docId,
           error: "state_element_id_required"
         };
         const _ = g.elements.find((x) => x.id === y);
         return _ ? {
           ok: !0,
-          file: c.sceneName,
-          scene: c.sceneName,
-          summary: `Read ${c.sceneName}/${y}.`,
+          file: d.sceneName,
+          scene: d.sceneName,
+          summary: `Read ${d.sceneName}/${y}.`,
           docType: en,
-          docId: c.docId,
+          docId: d.docId,
           revision: p.revision,
           element: T0(_)
         } : {
           ok: !1,
-          file: c.sceneName,
-          scene: c.sceneName,
+          file: d.sceneName,
+          scene: d.sceneName,
           summary: `${y} does not exist.`,
           docType: en,
-          docId: c.docId,
+          docId: d.docId,
           revision: p.revision,
           error: "state_element_not_found"
         };
@@ -19056,11 +19056,11 @@ async function UH(e = "", t = "", n = {}, r = {}) {
         const y = aE(g, n);
         return {
           ok: !0,
-          file: c.sceneName,
-          scene: c.sceneName,
+          file: d.sceneName,
+          scene: d.sceneName,
           summary: `Matched ${y.count} scene element(s); returned ${y.elements.length}.`,
           docType: en,
-          docId: c.docId,
+          docId: d.docId,
           revision: p.revision,
           count: y.count,
           truncated: y.truncated,
@@ -19072,15 +19072,15 @@ async function UH(e = "", t = "", n = {}, r = {}) {
         const y = await Cf({
           sessionId: s,
           docType: en,
-          docId: c.docId
+          docId: d.docId
         }), _ = Math.max(0, Number(n.tail) || 0), x = Math.max(1, Math.min(kr, Number(n.limit) || 20)), C = Math.max(0, Number(n.offset) || 0), E = _ > 0 ? Math.max(0, y.length - Math.min(kr, _)) : C, R = y.slice(E, E + (_ > 0 ? Math.min(kr, _) : x)), N = E + R.length < y.length ? E + R.length : 0;
         return {
           ok: !0,
-          file: c.sceneName,
-          scene: c.sceneName,
+          file: d.sceneName,
+          scene: d.sceneName,
           summary: `Found ${y.length} saved scene patch transaction(s); returned ${R.length}.`,
           docType: en,
-          docId: c.docId,
+          docId: d.docId,
           revision: p.revision,
           count: y.length,
           truncated: N > 0,
@@ -19090,11 +19090,11 @@ async function UH(e = "", t = "", n = {}, r = {}) {
       }
       return {
         ok: !0,
-        file: c.sceneName,
-        scene: c.sceneName,
-        summary: `Read scene ${c.sceneName} summary, revision ${p.revision}, status ${g.meta.status}.`,
+        file: d.sceneName,
+        scene: d.sceneName,
+        summary: `Read scene ${d.sceneName} summary, revision ${p.revision}, status ${g.meta.status}.`,
         docType: en,
-        docId: c.docId,
+        docId: d.docId,
         title: p.title,
         revision: p.revision,
         digest: p.digest,
@@ -19103,7 +19103,7 @@ async function UH(e = "", t = "", n = {}, r = {}) {
       };
     }
     if (a === wn.EDIT_SCENE) {
-      const c = await qu(s), f = Di(c), p = nE(f, n), g = await oo(s, en, p.docId), y = g ? Go(g) : S0(), _ = RH(y, {
+      const d = await qu(s), f = Di(d), p = nE(f, n), g = await oo(s, en, p.docId), y = g ? Go(g) : S0(), _ = RH(y, {
         ...n,
         title: n.title ?? p.title
       }), x = String(n.status || "").trim(), C = Ch.has(x) ? x : n.playerHere === !0 ? "visited" : p.existingLocation?.status || "mentioned", E = String(n.scale || "").trim(), R = Eh.has(E) ? E : p.existingLocation?.scale || "room", N = [{
@@ -19188,7 +19188,7 @@ async function UH(e = "", t = "", n = {}, r = {}) {
       const S = xm();
       if (_.effectiveOps.length || m.changed) {
         await r.beforeWriteGuard?.();
-        const I = (Number(g?.revision) || 0) + 1, k = Number(c?.revision) || 0, P = k + 1;
+        const I = (Number(g?.revision) || 0) + 1, k = Number(d?.revision) || 0, P = k + 1;
         let U = null, K = _.document, j = [..._.effectiveOps], V = [..._.removedElements], W = [..._.changedIds];
         await Wt.transaction("rw", Rr, Wi, Lt, async () => {
           if (_.effectiveOps.length) {
@@ -19245,7 +19245,7 @@ async function UH(e = "", t = "", n = {}, r = {}) {
             digest: Sl(m.document),
             status: "active",
             source: r.caller || "auto",
-            createdAt: Number(c?.createdAt) || S,
+            createdAt: Number(d?.createdAt) || S,
             updatedAt: S
           }), await Vd({
             sessionId: s,
@@ -19311,7 +19311,7 @@ async function UH(e = "", t = "", n = {}, r = {}) {
           summary: `World atlas already links scene ${p.sceneName}.`,
           docType: Zn,
           docId: es,
-          revision: Number(c?.revision) || 0,
+          revision: Number(d?.revision) || 0,
           changed: !1,
           appliedCount: 0,
           satisfiedCount: m.satisfiedCount,
@@ -19342,7 +19342,7 @@ async function UH(e = "", t = "", n = {}, r = {}) {
     }
     const o = pt(n.docType, 40), l = !!o, i = sH(o || en), u = oH(i, pt(n.docId, 80) || (i === en && (a === wn.READ || a === wn.PATCH) ? (await xg(s)).activeDocId : i === Zn ? es : qr));
     if (a === wn.LIST) {
-      const c = !l, f = c || i === en ? await xg(s, { includeStale: !0 }) : null, p = c ? await m0(s, { includeStale: !0 }) : f?.documents || await m0(s, {
+      const d = !l, f = d || i === en ? await xg(s, { includeStale: !0 }) : null, p = d ? await m0(s, { includeStale: !0 }) : f?.documents || await m0(s, {
         docType: i,
         includeStale: !0
       }), g = f?.activeDocId || qr, y = [...p].sort((_, x) => {
@@ -19367,7 +19367,7 @@ async function UH(e = "", t = "", n = {}, r = {}) {
       };
     }
     if (a === wn.READ) {
-      const c = String(n.mode || "summary").trim() || "summary";
+      const d = String(n.mode || "summary").trim() || "summary";
       if (i === Zn) {
         const g = await qu(s);
         if (!g) return {
@@ -19378,7 +19378,7 @@ async function UH(e = "", t = "", n = {}, r = {}) {
           error: "state_document_not_found"
         };
         const y = Di(g);
-        if (c === "summary") return {
+        if (d === "summary") return {
           ok: !0,
           summary: `Read atlas summary, revision ${g.revision}.`,
           docType: i,
@@ -19394,7 +19394,7 @@ async function UH(e = "", t = "", n = {}, r = {}) {
             actorCount: y.actors.length
           }
         };
-        if (c === "document") return {
+        if (d === "document") return {
           ok: !0,
           summary: `Read full atlas, revision ${g.revision}.`,
           docType: i,
@@ -19405,7 +19405,7 @@ async function UH(e = "", t = "", n = {}, r = {}) {
           activeLocationKey: y.activeLocationKey,
           document: y
         };
-        if (c === "locations") {
+        if (d === "locations") {
           const _ = oE(y, n);
           return {
             ok: !0,
@@ -19419,7 +19419,7 @@ async function UH(e = "", t = "", n = {}, r = {}) {
             locations: _.locations
           };
         }
-        if (c === "location") {
+        if (d === "location") {
           const _ = as(n.locationKey ?? n.key);
           if (!_) return {
             ok: !1,
@@ -19449,7 +19449,7 @@ async function UH(e = "", t = "", n = {}, r = {}) {
             error: "atlas_location_not_found"
           };
         }
-        if (c === "links") {
+        if (d === "links") {
           const _ = iE(y, n);
           return {
             ok: !0,
@@ -19463,7 +19463,7 @@ async function UH(e = "", t = "", n = {}, r = {}) {
             links: _.links
           };
         }
-        if (c === "actors") {
+        if (d === "actors") {
           const _ = Cc(n.actorKey), x = _ ? y.actors.filter((C) => C.actorKey === _) : y.actors;
           return {
             ok: !0,
@@ -19475,7 +19475,7 @@ async function UH(e = "", t = "", n = {}, r = {}) {
             actors: x.map((C) => Yt(C))
           };
         }
-        if (c === "history") {
+        if (d === "history") {
           const _ = await Cf({
             sessionId: s,
             docType: i,
@@ -19495,7 +19495,7 @@ async function UH(e = "", t = "", n = {}, r = {}) {
         }
         return {
           ok: !1,
-          summary: `Unsupported atlas MapInspect mode: ${c}`,
+          summary: `Unsupported atlas MapInspect mode: ${d}`,
           docType: i,
           docId: u,
           error: "state_read_mode_invalid"
@@ -19510,7 +19510,7 @@ async function UH(e = "", t = "", n = {}, r = {}) {
         error: "state_document_not_found"
       };
       const p = Go(f);
-      if (c === "summary") return {
+      if (d === "summary") return {
         ok: !0,
         summary: `Read summary for ${f.title || u}, revision ${f.revision}, status ${p.meta.status}.`,
         docType: i,
@@ -19521,7 +19521,7 @@ async function UH(e = "", t = "", n = {}, r = {}) {
         meta: Yt(p.meta),
         elementCount: p.elements.length
       };
-      if (c === "document") return {
+      if (d === "document") return {
         ok: !0,
         summary: `Read full state for ${f.title || u}, revision ${f.revision}.`,
         docType: i,
@@ -19533,7 +19533,7 @@ async function UH(e = "", t = "", n = {}, r = {}) {
         elementCount: p.elements.length,
         document: p
       };
-      if (c === "element") {
+      if (d === "element") {
         const g = pt(n.elementId, 120);
         if (!g) return {
           ok: !1,
@@ -19559,7 +19559,7 @@ async function UH(e = "", t = "", n = {}, r = {}) {
           error: "state_element_not_found"
         };
       }
-      if (c === "elements") {
+      if (d === "elements") {
         const g = aE(p, n);
         return {
           ok: !0,
@@ -19573,7 +19573,7 @@ async function UH(e = "", t = "", n = {}, r = {}) {
           elements: g.elements
         };
       }
-      if (c === "history") {
+      if (d === "history") {
         const g = await Cf({
           sessionId: s,
           docType: i,
@@ -19593,7 +19593,7 @@ async function UH(e = "", t = "", n = {}, r = {}) {
       }
       return {
         ok: !1,
-        summary: `Unsupported MapInspect mode: ${c}`,
+        summary: `Unsupported MapInspect mode: ${d}`,
         docType: i,
         docId: u,
         error: "state_read_mode_invalid"
@@ -19607,8 +19607,8 @@ async function UH(e = "", t = "", n = {}, r = {}) {
         docId: u,
         error: "state_patch_ops_must_be_array"
       };
-      const c = Array.isArray(n.ops) ? n.ops : [], f = n.activate === !0;
-      return !c.length && !f ? {
+      const d = Array.isArray(n.ops) ? n.ops : [], f = n.activate === !0;
+      return !d.length && !f ? {
         ok: !1,
         summary: "MapPatch ops are required unless activate:true is used to switch active map.",
         docType: i,
@@ -19631,7 +19631,7 @@ async function UH(e = "", t = "", n = {}, r = {}) {
           revision: g,
           error: "state_revision_conflict"
         };
-        const y = lE(Di(p), c);
+        const y = lE(Di(p), d);
         if (y.failed.length) {
           const R = sE(y.failed);
           return {
@@ -19735,7 +19735,7 @@ async function UH(e = "", t = "", n = {}, r = {}) {
           revision: g,
           error: "state_revision_conflict"
         };
-        if (!c.length && f) {
+        if (!d.length && f) {
           if (!p) return {
             ok: !1,
             summary: `${i}/${u} does not exist.`,
@@ -19759,7 +19759,7 @@ async function UH(e = "", t = "", n = {}, r = {}) {
             warnings: P
           };
         }
-        const y = C0(p ? Go(p) : S0(), c);
+        const y = C0(p ? Go(p) : S0(), d);
         if (y.failed.length) {
           const I = sE(y.failed);
           return {
@@ -19984,7 +19984,7 @@ async function WH(e = "") {
     if (Ml(g.actorKey)) return "";
     const y = n.get(g.locationKey);
     return y ? `${g.actorKey}=${y.name}` : "";
-  }).filter(Boolean), u = r.mapDocId ? await oo(e, en, r.mapDocId) : null, c = u ? eo(Go(u), u.revision) : "", f = zH(c), p = KH(c);
+  }).filter(Boolean), u = r.mapDocId ? await oo(e, en, r.mapDocId) : null, d = u ? eo(Go(u), u.revision) : "", f = zH(d), p = KH(d);
   return [
     `当前地点：${cE(r)}`,
     s ? `上级地点：${s.name}` : "",
@@ -20342,7 +20342,7 @@ async function iz(e = "", t = "", n = {}, r = {}) {
   };
   const a = JH(t);
   if (a === eu.INSPECT) {
-    const c = String(n.status || "").trim(), f = c === "completed" || c === "all" || c === "", p = I0(n), g = (await oa(s, { includeCompleted: f })).filter((C) => C.status === "active" || C.status === "completed").filter((C) => !p || C.id === p).filter((C) => !c || c === "all" || C.status === c).sort((C, E) => C.status !== E.status ? C.status === "active" ? -1 : 1 : Number(E.updatedOrder) - Number(C.updatedOrder) || Number(E.updatedAt) - Number(C.updatedAt)), y = Math.max(1, Math.min(50, Math.floor(Number(n.limit) || 20))), _ = Math.max(0, Math.floor(Number(n.offset) || 0)), x = g.slice(_, _ + y);
+    const d = String(n.status || "").trim(), f = d === "completed" || d === "all" || d === "", p = I0(n), g = (await oa(s, { includeCompleted: f })).filter((C) => C.status === "active" || C.status === "completed").filter((C) => !p || C.id === p).filter((C) => !d || d === "all" || C.status === d).sort((C, E) => C.status !== E.status ? C.status === "active" ? -1 : 1 : Number(E.updatedOrder) - Number(C.updatedOrder) || Number(E.updatedAt) - Number(C.updatedAt)), y = Math.max(1, Math.min(50, Math.floor(Number(n.limit) || 20))), _ = Math.max(0, Math.floor(Number(n.offset) || 0)), x = g.slice(_, _ + y);
     return {
       ok: !0,
       summary: `找到 ${g.length} 条事件线索，返回 ${x.length} 条。`,
@@ -20370,7 +20370,7 @@ async function iz(e = "", t = "", n = {}, r = {}) {
     error: "task_op_invalid"
   };
   if (o === "upsert-event") {
-    const c = await fE(s, n), f = Ns(n.horizon ?? c?.horizon, 500), p = Ns(n.current ?? c?.current, 500), g = Ns(n.doneWhen ?? c?.doneWhen, 500), y = n.title !== void 0 ? kf(n.title) : c ? Qa(c) : r.caller ? "" : kf(p).slice(0, 8), _ = Ns(n.hookForModel ?? c?.hookForModel, 500);
+    const d = await fE(s, n), f = Ns(n.horizon ?? d?.horizon, 500), p = Ns(n.current ?? d?.current, 500), g = Ns(n.doneWhen ?? d?.doneWhen, 500), y = n.title !== void 0 ? kf(n.title) : d ? Qa(d) : r.caller ? "" : kf(p).slice(0, 8), _ = Ns(n.hookForModel ?? d?.hookForModel, 500);
     if (!y || !f || !p || !g || !_) return {
       ok: !1,
       summary: "upsert-event 需要 title、horizon、current、doneWhen、hookForModel。",
@@ -20397,7 +20397,7 @@ async function iz(e = "", t = "", n = {}, r = {}) {
       changed: !1,
       error: "task_fingerprint_abandoned"
     };
-    const E = c || await oz(s, C);
+    const E = d || await oz(s, C);
     if (E?.status === "abandoned") return {
       ok: !1,
       summary: "这个方向已经被放弃过，本轮不再重建。",
@@ -20470,8 +20470,8 @@ async function iz(e = "", t = "", n = {}, r = {}) {
     error: "task_not_found"
   };
   if (o === "advance-event") {
-    const c = Ns(n.current ?? i.current, 500), f = Ns(n.horizon ?? i.horizon, 500), p = Ns(n.doneWhen ?? i.doneWhen, 500), g = n.title !== void 0 ? kf(n.title) : Qa(i), y = Ns(n.hookForModel ?? i.hookForModel, 500);
-    if (!g || !f || !c || !p || !y) return {
+    const d = Ns(n.current ?? i.current, 500), f = Ns(n.horizon ?? i.horizon, 500), p = Ns(n.doneWhen ?? i.doneWhen, 500), g = n.title !== void 0 ? kf(n.title) : Qa(i), y = Ns(n.hookForModel ?? i.hookForModel, 500);
+    if (!g || !f || !d || !p || !y) return {
       ok: !1,
       summary: "advance-event 需要保留 title、horizon、current、doneWhen、hookForModel。",
       changed: !1,
@@ -20496,7 +20496,7 @@ async function iz(e = "", t = "", n = {}, r = {}) {
         status: "active",
         title: g,
         horizon: f,
-        current: c,
+        current: d,
         doneWhen: p,
         hookForModel: y,
         fingerprint: i.fingerprint,
@@ -20518,7 +20518,7 @@ async function iz(e = "", t = "", n = {}, r = {}) {
     };
   }
   if (o === "complete-event") {
-    const c = await Yd(s, r, async () => {
+    const d = await Yd(s, r, async () => {
       const f = {
         ...i,
         status: "completed",
@@ -20530,22 +20530,22 @@ async function iz(e = "", t = "", n = {}, r = {}) {
     });
     return {
       ok: !0,
-      summary: `已完成事件方向：${Qa(c)}`,
+      summary: `已完成事件方向：${Qa(d)}`,
       changed: !0,
-      eventId: c.id,
+      eventId: d.id,
       op: o,
-      events: [gd(c)]
+      events: [gd(d)]
     };
   }
   const u = await Yd(s, r, async () => {
-    const c = {
+    const d = {
       ...i,
       status: "abandoned",
       updatedOrder: l,
       abandonedOrder: l,
       updatedAt: Ur()
     };
-    return await Xn.put(c), await x3(s, c.fingerprint), c;
+    return await Xn.put(d), await x3(s, d.fingerprint), d;
   });
   return {
     ok: !0,
@@ -21022,12 +21022,12 @@ async function Sz(e = "", t = -1) {
     createdAt: 0,
     updatedAt: 0
   }];
-  const o = Bg(s), l = Bg(a), i = new Map(s.map((f) => [qs(f.path), M0(f)])), u = new Map(a.map((f) => [qs(f.path), M0(f)])), c = [.../* @__PURE__ */ new Set([...i.keys(), ...u.keys()])].filter((f) => i.get(f) !== u.get(f));
+  const o = Bg(s), l = Bg(a), i = new Map(s.map((f) => [qs(f.path), M0(f)])), u = new Map(a.map((f) => [qs(f.path), M0(f)])), d = [.../* @__PURE__ */ new Set([...i.keys(), ...u.keys()])].filter((f) => i.get(f) !== u.get(f));
   return {
     changed: o !== l,
     currentFileCount: s.length,
     targetFileCount: a.length,
-    changedPaths: c
+    changedPaths: d
   };
 }
 async function U3(e = "", t = -1) {
@@ -21036,7 +21036,7 @@ async function U3(e = "", t = -1) {
   return await Wt.transaction("rw", On, ro, Fs, Lt, async () => {
     const r = await lS(n, t);
     if (r?.files) {
-      const u = Qi(), c = await xa(n, { includeStale: !0 }), f = r.files, p = new Set(f.map((_) => qs(_.path))), g = c.filter((_) => !p.has(_.path)).map((_) => [_.sessionId, _.path]), y = f.map((_) => ({
+      const u = Qi(), d = await xa(n, { includeStale: !0 }), f = r.files, p = new Set(f.map((_) => qs(_.path))), g = d.filter((_) => !p.has(_.path)).map((_) => [_.sessionId, _.path]), y = f.map((_) => ({
         ...oS(_.file),
         sessionId: n,
         path: qs(_.path),
@@ -21228,9 +21228,9 @@ function uS(e = {}) {
     const a = Pp(r.name, `book-${s + 1}`), o = String(r.worldSourceType || "entries").trim(), l = o === "character" || o === "global" || o === "chat" ? o : "entries";
     (Array.isArray(r.entries) ? r.entries : []).forEach((i, u) => {
       if (!Bs(i.content || "")) return;
-      const c = Pp(i.uid ?? i.id ?? i.comment ?? u, `entry-${u + 1}`);
+      const d = Pp(i.uid ?? i.id ?? i.comment ?? u, `entry-${u + 1}`);
       n.push({
-        path: `worldbooks/${l}/${a}/${c}.md`,
+        path: `worldbooks/${l}/${a}/${d}.md`,
         content: gE(r, i, u),
         readonly: !0
       });
@@ -21284,12 +21284,12 @@ function B_(e, t, n, r, s = 0) {
   let o = 0;
   a.forEach((l, i) => {
     if (n.lastIndex = 0, !!n.test(l) && (o += 1, r === "content")) {
-      const u = Math.max(0, i - s), c = Math.min(a.length, i + s + 1);
+      const u = Math.max(0, i - s), d = Math.min(a.length, i + s + 1);
       e.push({
         path: t.path,
         lineNumber: i + 1,
         line: l,
-        context: Yo(a.slice(u, c), u + 1)
+        context: Yo(a.slice(u, d), u + 1)
       });
     }
   }), r === "files_with_matches" && o > 0 ? e.push({ path: t.path }) : r === "count" && o > 0 && e.push({
@@ -21530,16 +21530,16 @@ async function Mz(e = "", t = {}) {
   const n = Math.floor(Number(t.tail) || 0), r = Wv(t.offset, 1), s = Og(t.limit, aS, Gl), a = [];
   let o = 0;
   if (n > 0) {
-    let c = 0;
+    let d = 0;
     for (; a.length < Math.min(Gl, n); ) {
-      const g = await Lv(e, 100, c);
+      const g = await Lv(e, 100, d);
       if (o = g.total, !g.messages.length) break;
       const y = g.messages.flatMap((_) => [
         `## order ${_.order} ${_.role}`,
         Bs(_.content || ""),
         ""
       ]);
-      if (a.unshift(...y), c += g.messages.length, c >= g.total) break;
+      if (a.unshift(...y), d += g.messages.length, d >= g.total) break;
     }
     const f = a.slice(Math.max(0, a.length - Math.min(Gl, n))), p = Math.max(1, a.length - f.length + 1);
     return {
@@ -21557,9 +21557,9 @@ async function Mz(e = "", t = {}) {
   }
   let l = 0, i = 0;
   for (; a.length < s; ) {
-    const c = await lc(e, 0, Number.POSITIVE_INFINITY, 200, l);
-    if (o = c.total, !c.messages.length) break;
-    for (const f of c.messages) {
+    const d = await lc(e, 0, Number.POSITIVE_INFINITY, 200, l);
+    if (o = d.total, !d.messages.length) break;
+    for (const f of d.messages) {
       const p = [
         `## order ${f.order} ${f.role}`,
         Bs(f.content || ""),
@@ -21572,7 +21572,7 @@ async function Mz(e = "", t = {}) {
       const g = Math.max(0, r - i - 1);
       if (a.push(...p.slice(g)), i += p.length, a.length >= s) break;
     }
-    if (l += c.messages.length, l >= c.total) break;
+    if (l += d.messages.length, l >= d.total) break;
   }
   const u = a.slice(0, s);
   return {
@@ -21662,15 +21662,15 @@ async function z3(e = "", t = "", n = {}, r = {}) {
   const a = r.contextSnapshot || {};
   try {
     if (t === Pr.LS) {
-      const o = H3(n.path || "memory/"), l = Ez(await Cz(s, a), o), i = Wv(n.offset, 1), u = Math.min(300, Math.max(1, Math.floor(Number(n.limit) || 100))), c = l.slice(i - 1, i - 1 + u);
+      const o = H3(n.path || "memory/"), l = Ez(await Cz(s, a), o), i = Wv(n.offset, 1), u = Math.min(300, Math.max(1, Math.floor(Number(n.limit) || 100))), d = l.slice(i - 1, i - 1 + u);
       return {
         ok: !0,
         path: o,
-        entries: c,
+        entries: d,
         count: l.length,
         truncated: i - 1 + u < l.length,
         nextOffset: i - 1 + u < l.length ? i + u : 0,
-        summary: `${o} 下有 ${l.length} 项，返回 ${c.length} 项。`
+        summary: `${o} 下有 ${l.length} 项，返回 ${d.length} 项。`
       };
     }
     if (t === Pr.READ) {
@@ -21689,7 +21689,7 @@ async function z3(e = "", t = "", n = {}, r = {}) {
         summary: "缺少搜索词。",
         error: "grep_pattern_required"
       };
-      const l = xz(o, n.useRegex === !0), i = Iz(n.outputMode), u = Math.min(k0, Math.max(1, Math.floor(Number(n.limit) || k0))), c = Dg(n.offset, 0), f = Math.min(5, Dg(n.contextLines, 0)), p = ah(n.path || n.scope || ""), g = String(n.include || "").trim(), y = [];
+      const l = xz(o, n.useRegex === !0), i = Iz(n.outputMode), u = Math.min(k0, Math.max(1, Math.floor(Number(n.limit) || k0))), d = Dg(n.offset, 0), f = Math.min(5, Dg(n.contextLines, 0)), p = ah(n.path || n.scope || ""), g = String(n.include || "").trim(), y = [];
       let _ = 0;
       for (const C of uS(a))
         vd(C.path, p, g) && (_ += 1, B_(y, C, l, i, f));
@@ -21711,7 +21711,7 @@ async function z3(e = "", t = "", n = {}, r = {}) {
           }), E += R.messages.length, E >= R.total)) break;
         }
       }
-      const x = y.slice(c, c + u);
+      const x = y.slice(d, d + u);
       return {
         ok: !0,
         pattern: o,
@@ -21727,8 +21727,8 @@ async function z3(e = "", t = "", n = {}, r = {}) {
           context: C.context,
           count: C.count
         })),
-        truncated: c + u < y.length,
-        nextOffset: c + u < y.length ? c + u : 0,
+        truncated: d + u < y.length,
+        nextOffset: d + u < y.length ? d + u : 0,
         summary: `搜索到 ${y.length} 项，返回 ${x.length} 项。`
       };
     }
@@ -21833,9 +21833,9 @@ async function vE(e = "", t = "", n = {}, r = {}) {
         error: "memory_file_not_found"
       };
       const l = Lg(o.content), i = Math.floor(Number(n.tail) || 0);
-      let u = Wv(n.offset, 1), c = Og(n.limit, aS, Gl);
-      i > 0 && (c = Math.min(Gl, i), u = Math.max(1, l.length - c + 1));
-      const f = Math.max(0, u - 1), p = l.slice(f, f + c), g = f + c < l.length ? f + c + 1 : 0;
+      let u = Wv(n.offset, 1), d = Og(n.limit, aS, Gl);
+      i > 0 && (d = Math.min(Gl, i), u = Math.max(1, l.length - d + 1));
+      const f = Math.max(0, u - 1), p = l.slice(f, f + d), g = f + d < l.length ? f + d + 1 : 0;
       return {
         ok: !0,
         summary: `读取 ${a} 第 ${f + 1}-${f + p.length} 行，共 ${l.length} 行。`,
@@ -21885,7 +21885,7 @@ async function vE(e = "", t = "", n = {}, r = {}) {
         path: a,
         error: "memory_file_not_found"
       };
-      const l = _B(o.content, n.edits), i = Array.isArray(l.results) ? l.results : [], u = i.filter((y) => y.ok && !y.satisfied).length, c = i.filter((y) => y.ok && y.satisfied).length, f = u + c, p = Math.max(0, i.length - f), g = l.content !== o.content;
+      const l = _B(o.content, n.edits), i = Array.isArray(l.results) ? l.results : [], u = i.filter((y) => y.ok && !y.satisfied).length, d = i.filter((y) => y.ok && y.satisfied).length, f = u + d, p = Math.max(0, i.length - f), g = l.content !== o.content;
       if (g) {
         await Wt.transaction("rw", On, Fs, rs, un, Lt, async () => {
           await r.beforeWriteGuard?.(), r.managerRunId && await g0({
@@ -21906,7 +21906,7 @@ async function vE(e = "", t = "", n = {}, r = {}) {
           path: a,
           changed: !1,
           appliedCount: u,
-          satisfiedCount: c || void 0,
+          satisfiedCount: d || void 0,
           successCount: f,
           failedCount: p,
           warning: l.warning,
@@ -21917,11 +21917,11 @@ async function vE(e = "", t = "", n = {}, r = {}) {
       return {
         ok: !!l.ok,
         partial: !!l.partial,
-        summary: l.ok ? g ? c > 0 ? `已修改 ${a}，应用 ${u} 项，另有 ${c} 项已是目标状态。` : `已修改 ${a}，应用 ${u} 项。` : `已确认 ${a} 的 ${c || u} 项修改已是目标状态，无需重复写入。` : g ? `已部分修改 ${a}：成功 ${f} 项，失败 ${p} 项。` : `未修改 ${a}：${i.find((y) => !y.ok)?.message || i.find((y) => !y.ok)?.error || "Edit failed"}。`,
+        summary: l.ok ? g ? d > 0 ? `已修改 ${a}，应用 ${u} 项，另有 ${d} 项已是目标状态。` : `已修改 ${a}，应用 ${u} 项。` : `已确认 ${a} 的 ${d || u} 项修改已是目标状态，无需重复写入。` : g ? `已部分修改 ${a}：成功 ${f} 项，失败 ${p} 项。` : `未修改 ${a}：${i.find((y) => !y.ok)?.message || i.find((y) => !y.ok)?.error || "Edit failed"}。`,
         path: a,
         changed: g,
         appliedCount: u,
-        satisfiedCount: c || void 0,
+        satisfiedCount: d || void 0,
         successCount: f,
         failedCount: p,
         warning: l.warning,
@@ -21936,7 +21936,7 @@ async function vE(e = "", t = "", n = {}, r = {}) {
         summary: "缺少搜索词。",
         error: "memory_grep_pattern_required"
       };
-      const o = n.regex === !0 || n.useRegex === !0 ? new RegExp(a, "iu") : null, l = a.toLowerCase(), i = fz(n.outputMode), u = Og(n.limit, dz, k0), c = Dg(n.offset, 0), f = Math.min(5, Dg(n.contextLines, 0)), p = String(n.filePath || n.path || "").trim(), g = p && p.endsWith(".md") ? qs(p) : "", y = p && !g ? String(p || "").replace(/\\/g, "/").trim() : "";
+      const o = n.regex === !0 || n.useRegex === !0 ? new RegExp(a, "iu") : null, l = a.toLowerCase(), i = fz(n.outputMode), u = Og(n.limit, dz, k0), d = Dg(n.offset, 0), f = Math.min(5, Dg(n.contextLines, 0)), p = String(n.filePath || n.path || "").trim(), g = p && p.endsWith(".md") ? qs(p) : "", y = p && !g ? String(p || "").replace(/\\/g, "/").trim() : "";
       if (y && (!y.startsWith("memory/") || y.includes(".."))) throw new Error("memory_path_scope_required");
       const _ = [];
       (await xa(s, { includeStale: !0 })).filter((C) => g ? C.path === g : y ? C.path.startsWith(y.endsWith("/") ? y : `${y}/`) : !0).forEach((C) => {
@@ -21957,31 +21957,31 @@ async function vE(e = "", t = "", n = {}, r = {}) {
           count: R
         });
       });
-      const x = _.slice(c, c + u);
+      const x = _.slice(d, d + u);
       return {
         ok: !0,
         summary: `搜索到 ${_.length} 项，返回 ${x.length} 项。`,
         count: _.length,
-        truncated: c + u < _.length,
-        nextOffset: c + u < _.length ? c + u : 0,
+        truncated: d + u < _.length,
+        nextOffset: d + u < _.length ? d + u : 0,
         matches: x
       };
     }
     if (t === Mi.CHAT_HISTORY) {
       const a = String(n.mode || "").trim(), o = Math.max(1, Math.min(100, Number(n.limit) || 12)), l = Math.max(0, Number(n.offset) || 0), i = n.full === !0;
       if (a === "recent") {
-        const { messages: u, total: c } = await Lv(s, o, l), f = u.map((g) => q_(g, { full: i })), p = l + o < c;
+        const { messages: u, total: d } = await Lv(s, o, l), f = u.map((g) => q_(g, { full: i })), p = l + o < d;
         return {
           ok: !0,
-          summary: `共有 ${c} 条原文，读取最近窗口 ${f.length} 条。`,
-          count: c,
+          summary: `共有 ${d} 条原文，读取最近窗口 ${f.length} 条。`,
+          count: d,
           truncated: p,
           nextOffset: p ? l + o : 0,
           messages: f
         };
       }
       if (a === "range") {
-        const u = Math.max(0, Number(n.startOrder) || 0), c = Object.prototype.hasOwnProperty.call(n, "endOrder") && Number.isFinite(Number(n.endOrder)), f = c ? null : await J4(s), p = c ? Math.max(u, Number(n.endOrder) || u) : Math.max(u, Number(f?.order) || u), { messages: g, total: y } = await lc(s, u, p, o, l), _ = g.map((C) => q_(C, { full: i })), x = l + o < y;
+        const u = Math.max(0, Number(n.startOrder) || 0), d = Object.prototype.hasOwnProperty.call(n, "endOrder") && Number.isFinite(Number(n.endOrder)), f = d ? null : await J4(s), p = d ? Math.max(u, Number(n.endOrder) || u) : Math.max(u, Number(f?.order) || u), { messages: g, total: y } = await lc(s, u, p, o, l), _ = g.map((C) => q_(C, { full: i })), x = l + o < y;
         return {
           ok: !0,
           summary: `order ${u}-${p} 共 ${y} 条原文，返回 ${_.length} 条。`,
@@ -21992,13 +21992,13 @@ async function vE(e = "", t = "", n = {}, r = {}) {
         };
       }
       if (a === "grep") {
-        const u = await G4(s), c = String(n.pattern || "").trim();
-        if (!c) return {
+        const u = await G4(s), d = String(n.pattern || "").trim();
+        if (!d) return {
           ok: !1,
           summary: "缺少搜索词。",
           error: "chat_history_pattern_required"
         };
-        const f = n.regex === !0 || n.useRegex === !0 ? new RegExp(c, "iu") : null, p = c.toLowerCase(), g = u.filter((x) => (f && (f.lastIndex = 0), f ? f.test(x.content) : x.content.toLowerCase().includes(p))), y = g.slice(l, l + o).map((x) => q_(x, { full: i })), _ = l + o < g.length;
+        const f = n.regex === !0 || n.useRegex === !0 ? new RegExp(d, "iu") : null, p = d.toLowerCase(), g = u.filter((x) => (f && (f.lastIndex = 0), f ? f.test(x.content) : x.content.toLowerCase().includes(p))), y = g.slice(l, l + o).map((x) => q_(x, { full: i })), _ = l + o < g.length;
         return {
           ok: !0,
           summary: `搜索到 ${g.length} 条原文，返回 ${y.length} 条。`,
@@ -22423,8 +22423,8 @@ var Al = (e) => (e.options && (e.options = { ...e.options }, delete e.options.he
             throw a.error("Could not parse message into JSON:", i.data), a.error("From chunk:", i.raw), u;
           }
           if (i.event !== "ping" && i.event === "error") {
-            const u = tP(i.data) ?? i.data, c = u?.error?.type;
-            throw new Hs(void 0, u, void 0, t.headers, c);
+            const u = tP(i.data) ?? i.data, d = u?.error?.type;
+            throw new Hs(void 0, u, void 0, t.headers, d);
           }
         }
         l = !0;
@@ -22441,7 +22441,7 @@ var Al = (e) => (e.options && (e.options = { ...e.options }, delete e.options.he
     let s = !1;
     async function* a() {
       const l = new Mh(), i = cS(t);
-      for await (const u of i) for (const c of l.decode(u)) yield c;
+      for await (const u of i) for (const d of l.decode(u)) yield d;
       for (const u of l.flush()) yield u;
     }
     async function* o() {
@@ -22817,15 +22817,15 @@ function hP(e) {
 var kE = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.create(null)), uK = (e = hP) => function(n, ...r) {
   if (n.length === 1) return n[0];
   let s = !1;
-  const a = [], o = n.reduce((c, f, p) => {
+  const a = [], o = n.reduce((d, f, p) => {
     /[?#]/.test(f) && (s = !0);
     const g = r[p];
     let y = (s ? encodeURIComponent : e)("" + g);
     return p !== r.length && (g == null || typeof g == "object" && g.toString === Object.getPrototypeOf(Object.getPrototypeOf(g.hasOwnProperty ?? kE) ?? kE)?.toString) && (y = g + "", a.push({
-      start: c.length + f.length,
+      start: d.length + f.length,
       length: y.length,
       error: `Value of type ${Object.prototype.toString.call(g).slice(8, -1)} is not a valid path parameter`
-    })), c + f + (p === r.length ? "" : y);
+    })), d + f + (p === r.length ? "" : y);
   }, ""), l = o.split(/[?#]/, 1)[0], i = /(?<=^|\/)(?:\.|%2e){1,2}(?=\/|$)/gi;
   let u;
   for (; (u = i.exec(l)) !== null; ) a.push({
@@ -22833,11 +22833,11 @@ var kE = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.create(null)), uK 
     length: u[0].length,
     error: `Value "${u[0]}" can't be safely passed as a path parameter`
   });
-  if (a.sort((c, f) => c.start - f.start), a.length > 0) {
-    let c = 0;
+  if (a.sort((d, f) => d.start - f.start), a.length > 0) {
+    let d = 0;
     const f = a.reduce((p, g) => {
-      const y = " ".repeat(g.start - c), _ = "^".repeat(g.length);
-      return c = g.start + g.length, p + y + _;
+      const y = " ".repeat(g.start - d), _ = "^".repeat(g.length);
+      return d = g.start + g.length, p + y + _;
     }, "");
     throw new Bt(`Path parameters result in path with invalid segments:
 ${a.map((p) => p.error).join(`
@@ -23817,7 +23817,7 @@ var xP = class {
     if (o[o.length - 1].role === "assistant") {
       const i = o[o.length - 1];
       if (Array.isArray(i.content)) {
-        const u = i.content.filter((c) => c.type !== "tool_use");
+        const u = i.content.filter((d) => d.type !== "tool_use");
         u.length === 0 ? o.pop() : i.content = u;
       }
     }
@@ -24997,7 +24997,7 @@ new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
       url: o,
       options: r
     });
-    const i = "log_" + (Math.random() * (1 << 24) | 0).toString(16).padStart(6, "0"), u = n === void 0 ? "" : `, retryOf: ${n}`, c = Date.now();
+    const i = "log_" + (Math.random() * (1 << 24) | 0).toString(16).padStart(6, "0"), u = n === void 0 ? "" : `, retryOf: ${n}`, d = Date.now();
     if (Xr(this).debug(`[${i}] sending request`, Al({
       retryOfRequestLogID: n,
       method: r.method,
@@ -25014,17 +25014,17 @@ new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
         return Xr(this).info(`[${i}] connection ${x ? "timed out" : "failed"} - ${_}`), Xr(this).debug(`[${i}] connection ${x ? "timed out" : "failed"} (${_})`, Al({
           retryOfRequestLogID: n,
           url: o,
-          durationMs: g - c,
+          durationMs: g - d,
           message: p.message
         })), this.retryRequest(r, t, n ?? i);
       throw Xr(this).info(`[${i}] connection ${x ? "timed out" : "failed"} - error; no more retries left`), Xr(this).debug(`[${i}] connection ${x ? "timed out" : "failed"} (error; no more retries left)`, Al({
         retryOfRequestLogID: n,
         url: o,
-        durationMs: g - c,
+        durationMs: g - d,
         message: p.message
       })), x ? new V3() : new Gv({ cause: p });
     }
-    const y = `[${i}${u}${[...p.headers.entries()].filter(([_]) => _ === "request-id").map(([_, x]) => ", " + _ + ": " + JSON.stringify(x)).join("")}] ${a.method} ${o} ${p.ok ? "succeeded" : "failed"} with status ${p.status} in ${g - c}ms`;
+    const y = `[${i}${u}${[...p.headers.entries()].filter(([_]) => _ === "request-id").map(([_, x]) => ", " + _ + ": " + JSON.stringify(x)).join("")}] ${a.method} ${o} ${p.ok ? "succeeded" : "failed"} with status ${p.status} in ${g - d}ms`;
     if (!p.ok) {
       const _ = await this.shouldRetry(p);
       if (t && _) {
@@ -25034,7 +25034,7 @@ new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
           url: p.url,
           status: p.status,
           headers: p.headers,
-          durationMs: g - c
+          durationMs: g - d
         })), this.retryRequest(r, t, n ?? i, p.headers);
       }
       const x = _ ? "error; no more retries left" : "error; not retryable";
@@ -25046,7 +25046,7 @@ new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
         status: p.status,
         headers: p.headers,
         message: R,
-        durationMs: Date.now() - c
+        durationMs: Date.now() - d
       })), this.makeStatusError(p.status, E, R, p.headers);
     }
     return Xr(this).info(y), Xr(this).debug(`[${i}] response start`, Al({
@@ -25054,14 +25054,14 @@ new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
       url: p.url,
       status: p.status,
       headers: p.headers,
-      durationMs: g - c
+      durationMs: g - d
     })), {
       response: p,
       options: r,
       controller: f,
       requestLogID: i,
       retryOfRequestLogID: n,
-      startTime: c
+      startTime: d
     };
   }
   getAPIList(e, t, n) {
@@ -25082,15 +25082,15 @@ new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
   async fetchWithTimeout(e, t, n, r) {
     const { signal: s, method: a, ...o } = t || {}, l = this._makeAbort(r);
     s && s.addEventListener("abort", l, { once: !0 });
-    const i = setTimeout(l, n), u = globalThis.ReadableStream && o.body instanceof globalThis.ReadableStream || typeof o.body == "object" && o.body !== null && Symbol.asyncIterator in o.body, c = {
+    const i = setTimeout(l, n), u = globalThis.ReadableStream && o.body instanceof globalThis.ReadableStream || typeof o.body == "object" && o.body !== null && Symbol.asyncIterator in o.body, d = {
       signal: r.signal,
       ...u ? { duplex: "half" } : {},
       method: "GET",
       ...o
     };
-    a && (c.method = a.toUpperCase());
+    a && (d.method = a.toUpperCase());
     try {
-      return await this.fetch.call(void 0, e, c);
+      return await this.fetch.call(void 0, e, d);
     } finally {
       clearTimeout(i);
     }
@@ -25446,13 +25446,13 @@ var PK = class {
       const u = () => Array.from(o.entries()).sort(([p], [g]) => p.localeCompare(g)).map(([p, g]) => ({
         label: p.startsWith("redacted:") ? "已脱敏思考块" : "思考块",
         text: g
-      })).filter((p) => p.text), c = () => Array.from(l.entries()).sort(([p], [g]) => Number(p) - Number(g)).map(([, p]) => ({
+      })).filter((p) => p.text), d = () => Array.from(l.entries()).sort(([p], [g]) => Number(p) - Number(g)).map(([, p]) => ({
         id: p.id || "anthropic-tool-draft",
         name: p.name || "工具调用",
         arguments: p.inputJson || "{}",
         draft: !0
       })).filter((p) => p.name), f = () => {
-        const p = c();
+        const p = d();
         p.length && Jp(e, {
           text: i,
           thoughts: u(),
@@ -25464,17 +25464,17 @@ var PK = class {
         i = g || "", Jp(e, {
           text: i,
           thoughts: u(),
-          ...c().length ? {
-            toolCalls: c(),
+          ...d().length ? {
+            toolCalls: d(),
             toolCallDraft: !0
           } : {}
         });
       }), a.on("thinking", (p, g) => {
         o.set("thinking:0", g || ""), Jp(e, {
           thoughts: u(),
-          ...c().length ? {
+          ...d().length ? {
             text: i,
-            toolCalls: c(),
+            toolCalls: d(),
             toolCallDraft: !0
           } : {}
         });
@@ -25502,9 +25502,9 @@ var PK = class {
       }), a.on("contentBlock", (p) => {
         p?.type === "redacted_thinking" && (o.set("redacted:0", p.data || ""), Jp(e, {
           thoughts: u(),
-          ...c().length ? {
+          ...d().length ? {
             text: i,
-            toolCalls: c(),
+            toolCalls: d(),
             toolCallDraft: !0
           } : {}
         }));
@@ -25609,12 +25609,12 @@ var PK = class {
     }
     for (var o = 0; o < s.length; o++) {
       var l = s[o], i = n[l];
-      n[l] = function(c) {
+      n[l] = function(d) {
         var f = e.operation(r), p = Array.prototype.slice.call(arguments, 1), g = p.pop();
         p.push(function(y) {
           f.retry(y) || (y && (arguments[0] = f.mainError()), g.apply(this, arguments));
         }), f.attempt(function() {
-          c.apply(n, p);
+          d.apply(n, p);
         });
       }.bind(n, i), n[l].options = r;
     }
@@ -25631,10 +25631,10 @@ var PK = class {
     constructor(i) {
       super(), i instanceof Error ? (this.originalError = i, { message: i } = i) : (this.originalError = new Error(i), this.originalError.stack = this.stack), this.name = "AbortError", this.message = i;
     }
-  }, a = (i, u, c) => {
-    const f = c.retries - (u - 1);
+  }, a = (i, u, d) => {
+    const f = d.retries - (u - 1);
     return i.attemptNumber = u, i.retriesLeft = f, i;
-  }, o = (i) => r.includes(i), l = (i, u) => new Promise((c, f) => {
+  }, o = (i) => r.includes(i), l = (i, u) => new Promise((d, f) => {
     u = {
       onFailedAttempt: () => {
       },
@@ -25644,7 +25644,7 @@ var PK = class {
     const p = n.operation(u);
     p.attempt(async (g) => {
       try {
-        c(await i(g));
+        d(await i(g));
       } catch (y) {
         if (!(y instanceof Error)) {
           f(/* @__PURE__ */ new TypeError(`Non-error was thrown: "${y}". You should only throw errors.`));
@@ -25703,8 +25703,8 @@ function h(e, t, n) {
       if (Array.isArray(e[l])) {
         const i = e[l];
         if (Array.isArray(n)) for (let u = 0; u < i.length; u++) {
-          const c = i[u];
-          h(c, t.slice(a + 1), n[u]);
+          const d = i[u];
+          h(d, t.slice(a + 1), n[u]);
         }
         else for (const u of i) h(u, t.slice(a + 1), n);
       }
@@ -25725,7 +25725,7 @@ function h(e, t, n) {
     else throw new Error(`Cannot set value for an existing key. Key: ${r}`);
   } else r === "_self" && typeof n == "object" && n !== null && !Array.isArray(n) ? Object.assign(e, n) : e[r] = n;
 }
-function d(e, t, n = void 0) {
+function c(e, t, n = void 0) {
   try {
     if (t.length === 1 && t[0] === "_self") return e;
     for (let r = 0; r < t.length; r++) {
@@ -25735,7 +25735,7 @@ function d(e, t, n = void 0) {
         const a = s.slice(0, -2);
         if (a in e) {
           const o = e[a];
-          return Array.isArray(o) ? o.map((l) => d(l, t.slice(r + 1), n)) : n;
+          return Array.isArray(o) ? o.map((l) => c(l, t.slice(r + 1), n)) : n;
         } else return n;
       } else e = e[s];
     }
@@ -25770,10 +25770,10 @@ function K0(e, t, n, r, s) {
     if (typeof e == "object" && e !== null && !Array.isArray(e)) {
       const o = e, l = Object.keys(o).filter((u) => !u.startsWith("_") && !s.has(u)), i = {};
       for (const u of l) i[u] = o[u];
-      for (const [u, c] of Object.entries(i)) {
+      for (const [u, d] of Object.entries(i)) {
         const f = [];
         for (const p of n.slice(r)) p === "*" ? f.push(u) : f.push(p);
-        h(o, f, c);
+        h(o, f, d);
       }
       for (const u of l) delete o[u];
     }
@@ -25787,127 +25787,127 @@ function yS(e) {
   return e;
 }
 function qK(e) {
-  const t = {}, n = d(e, ["operationName"]);
+  const t = {}, n = c(e, ["operationName"]);
   n != null && h(t, ["operationName"], n);
-  const r = d(e, ["resourceName"]);
+  const r = c(e, ["resourceName"]);
   return r != null && h(t, ["_url", "resourceName"], r), t;
 }
 function HK(e) {
-  const t = {}, n = d(e, ["name"]);
+  const t = {}, n = c(e, ["name"]);
   n != null && h(t, ["name"], n);
-  const r = d(e, ["metadata"]);
+  const r = c(e, ["metadata"]);
   r != null && h(t, ["metadata"], r);
-  const s = d(e, ["done"]);
+  const s = c(e, ["done"]);
   s != null && h(t, ["done"], s);
-  const a = d(e, ["error"]);
+  const a = c(e, ["error"]);
   a != null && h(t, ["error"], a);
-  const o = d(e, ["response", "generateVideoResponse"]);
+  const o = c(e, ["response", "generateVideoResponse"]);
   return o != null && h(t, ["response"], KK(o)), t;
 }
 function zK(e) {
-  const t = {}, n = d(e, ["name"]);
+  const t = {}, n = c(e, ["name"]);
   n != null && h(t, ["name"], n);
-  const r = d(e, ["metadata"]);
+  const r = c(e, ["metadata"]);
   r != null && h(t, ["metadata"], r);
-  const s = d(e, ["done"]);
+  const s = c(e, ["done"]);
   s != null && h(t, ["done"], s);
-  const a = d(e, ["error"]);
+  const a = c(e, ["error"]);
   a != null && h(t, ["error"], a);
-  const o = d(e, ["response"]);
+  const o = c(e, ["response"]);
   return o != null && h(t, ["response"], WK(o)), t;
 }
 function KK(e) {
-  const t = {}, n = d(e, ["generatedSamples"]);
+  const t = {}, n = c(e, ["generatedSamples"]);
   if (n != null) {
     let a = n;
     Array.isArray(a) && (a = a.map((o) => VK(o))), h(t, ["generatedVideos"], a);
   }
-  const r = d(e, ["raiMediaFilteredCount"]);
+  const r = c(e, ["raiMediaFilteredCount"]);
   r != null && h(t, ["raiMediaFilteredCount"], r);
-  const s = d(e, ["raiMediaFilteredReasons"]);
+  const s = c(e, ["raiMediaFilteredReasons"]);
   return s != null && h(t, ["raiMediaFilteredReasons"], s), t;
 }
 function WK(e) {
-  const t = {}, n = d(e, ["videos"]);
+  const t = {}, n = c(e, ["videos"]);
   if (n != null) {
     let a = n;
     Array.isArray(a) && (a = a.map((o) => GK(o))), h(t, ["generatedVideos"], a);
   }
-  const r = d(e, ["raiMediaFilteredCount"]);
+  const r = c(e, ["raiMediaFilteredCount"]);
   r != null && h(t, ["raiMediaFilteredCount"], r);
-  const s = d(e, ["raiMediaFilteredReasons"]);
+  const s = c(e, ["raiMediaFilteredReasons"]);
   return s != null && h(t, ["raiMediaFilteredReasons"], s), t;
 }
 function VK(e) {
-  const t = {}, n = d(e, ["video"]);
+  const t = {}, n = c(e, ["video"]);
   return n != null && h(t, ["video"], ZK(n)), t;
 }
 function GK(e) {
-  const t = {}, n = d(e, ["_self"]);
+  const t = {}, n = c(e, ["_self"]);
   return n != null && h(t, ["video"], eW(n)), t;
 }
 function JK(e) {
-  const t = {}, n = d(e, ["operationName"]);
+  const t = {}, n = c(e, ["operationName"]);
   return n != null && h(t, ["_url", "operationName"], n), t;
 }
 function YK(e) {
-  const t = {}, n = d(e, ["operationName"]);
+  const t = {}, n = c(e, ["operationName"]);
   return n != null && h(t, ["_url", "operationName"], n), t;
 }
 function XK(e) {
-  const t = {}, n = d(e, ["name"]);
+  const t = {}, n = c(e, ["name"]);
   n != null && h(t, ["name"], n);
-  const r = d(e, ["metadata"]);
+  const r = c(e, ["metadata"]);
   r != null && h(t, ["metadata"], r);
-  const s = d(e, ["done"]);
+  const s = c(e, ["done"]);
   s != null && h(t, ["done"], s);
-  const a = d(e, ["error"]);
+  const a = c(e, ["error"]);
   a != null && h(t, ["error"], a);
-  const o = d(e, ["response"]);
+  const o = c(e, ["response"]);
   return o != null && h(t, ["response"], jK(o)), t;
 }
 function jK(e) {
-  const t = {}, n = d(e, ["sdkHttpResponse"]);
+  const t = {}, n = c(e, ["sdkHttpResponse"]);
   n != null && h(t, ["sdkHttpResponse"], n);
-  const r = d(e, ["parent"]);
+  const r = c(e, ["parent"]);
   r != null && h(t, ["parent"], r);
-  const s = d(e, ["documentName"]);
+  const s = c(e, ["documentName"]);
   return s != null && h(t, ["documentName"], s), t;
 }
 function zP(e) {
-  const t = {}, n = d(e, ["name"]);
+  const t = {}, n = c(e, ["name"]);
   n != null && h(t, ["name"], n);
-  const r = d(e, ["metadata"]);
+  const r = c(e, ["metadata"]);
   r != null && h(t, ["metadata"], r);
-  const s = d(e, ["done"]);
+  const s = c(e, ["done"]);
   s != null && h(t, ["done"], s);
-  const a = d(e, ["error"]);
+  const a = c(e, ["error"]);
   a != null && h(t, ["error"], a);
-  const o = d(e, ["response"]);
+  const o = c(e, ["response"]);
   return o != null && h(t, ["response"], QK(o)), t;
 }
 function QK(e) {
-  const t = {}, n = d(e, ["sdkHttpResponse"]);
+  const t = {}, n = c(e, ["sdkHttpResponse"]);
   n != null && h(t, ["sdkHttpResponse"], n);
-  const r = d(e, ["parent"]);
+  const r = c(e, ["parent"]);
   r != null && h(t, ["parent"], r);
-  const s = d(e, ["documentName"]);
+  const s = c(e, ["documentName"]);
   return s != null && h(t, ["documentName"], s), t;
 }
 function ZK(e) {
-  const t = {}, n = d(e, ["uri"]);
+  const t = {}, n = c(e, ["uri"]);
   n != null && h(t, ["uri"], n);
-  const r = d(e, ["encodedVideo"]);
+  const r = c(e, ["encodedVideo"]);
   r != null && h(t, ["videoBytes"], yS(r));
-  const s = d(e, ["encoding"]);
+  const s = c(e, ["encoding"]);
   return s != null && h(t, ["mimeType"], s), t;
 }
 function eW(e) {
-  const t = {}, n = d(e, ["gcsUri"]);
+  const t = {}, n = c(e, ["gcsUri"]);
   n != null && h(t, ["uri"], n);
-  const r = d(e, ["bytesBase64Encoded"]);
+  const r = c(e, ["bytesBase64Encoded"]);
   r != null && h(t, ["videoBytes"], yS(r));
-  const s = d(e, ["mimeType"]);
+  const s = c(e, ["mimeType"]);
   return s != null && h(t, ["mimeType"], s), t;
 }
 var YE;
@@ -26185,15 +26185,15 @@ var J0 = class {
     if (((r = (n = (t = (e = this.candidates) === null || e === void 0 ? void 0 : e[0]) === null || t === void 0 ? void 0 : t.content) === null || n === void 0 ? void 0 : n.parts) === null || r === void 0 ? void 0 : r.length) === 0) return;
     this.candidates && this.candidates.length > 1 && console.warn("there are multiple candidates in the response, returning text from the first one.");
     let i = "", u = !1;
-    const c = [];
+    const d = [];
     for (const f of (l = (o = (a = (s = this.candidates) === null || s === void 0 ? void 0 : s[0]) === null || a === void 0 ? void 0 : a.content) === null || o === void 0 ? void 0 : o.parts) !== null && l !== void 0 ? l : []) {
-      for (const [p, g] of Object.entries(f)) p !== "text" && p !== "thought" && p !== "thoughtSignature" && (g !== null || g !== void 0) && c.push(p);
+      for (const [p, g] of Object.entries(f)) p !== "text" && p !== "thought" && p !== "thoughtSignature" && (g !== null || g !== void 0) && d.push(p);
       if (typeof f.text == "string") {
         if (typeof f.thought == "boolean" && f.thought) continue;
         u = !0, i += f.text;
       }
     }
-    return c.length > 0 && console.warn(`there are non-text parts ${c} in the response, returning concatenation of all text parts. Please refer to the non text parts for a full response from model.`), u ? i : void 0;
+    return d.length > 0 && console.warn(`there are non-text parts ${d} in the response, returning concatenation of all text parts. Please refer to the non text parts for a full response from model.`), u ? i : void 0;
   }
   get data() {
     var e, t, n, r, s, a, o, l;
@@ -26201,9 +26201,9 @@ var J0 = class {
     this.candidates && this.candidates.length > 1 && console.warn("there are multiple candidates in the response, returning data from the first one.");
     let i = "";
     const u = [];
-    for (const c of (l = (o = (a = (s = this.candidates) === null || s === void 0 ? void 0 : s[0]) === null || a === void 0 ? void 0 : a.content) === null || o === void 0 ? void 0 : o.parts) !== null && l !== void 0 ? l : []) {
-      for (const [f, p] of Object.entries(c)) f !== "inlineData" && (p !== null || p !== void 0) && u.push(f);
-      c.inlineData && typeof c.inlineData.data == "string" && (i += atob(c.inlineData.data));
+    for (const d of (l = (o = (a = (s = this.candidates) === null || s === void 0 ? void 0 : s[0]) === null || a === void 0 ? void 0 : a.content) === null || o === void 0 ? void 0 : o.parts) !== null && l !== void 0 ? l : []) {
+      for (const [f, p] of Object.entries(d)) f !== "inlineData" && (p !== null || p !== void 0) && u.push(f);
+      d.inlineData && typeof d.inlineData.data == "string" && (i += atob(d.inlineData.data));
     }
     return u.length > 0 && console.warn(`there are non-data parts ${u} in the response, returning concatenation of all data parts. Please refer to the non data parts for a full response from model.`), i.length > 0 ? btoa(i) : void 0;
   }
@@ -26219,7 +26219,7 @@ var J0 = class {
     var e, t, n, r, s, a, o, l, i;
     if (((r = (n = (t = (e = this.candidates) === null || e === void 0 ? void 0 : e[0]) === null || t === void 0 ? void 0 : t.content) === null || n === void 0 ? void 0 : n.parts) === null || r === void 0 ? void 0 : r.length) === 0) return;
     this.candidates && this.candidates.length > 1 && console.warn("there are multiple candidates in the response, returning executable code from the first one.");
-    const u = (l = (o = (a = (s = this.candidates) === null || s === void 0 ? void 0 : s[0]) === null || a === void 0 ? void 0 : a.content) === null || o === void 0 ? void 0 : o.parts) === null || l === void 0 ? void 0 : l.filter((c) => c.executableCode).map((c) => c.executableCode).filter((c) => c !== void 0);
+    const u = (l = (o = (a = (s = this.candidates) === null || s === void 0 ? void 0 : s[0]) === null || a === void 0 ? void 0 : a.content) === null || o === void 0 ? void 0 : o.parts) === null || l === void 0 ? void 0 : l.filter((d) => d.executableCode).map((d) => d.executableCode).filter((d) => d !== void 0);
     if (u?.length !== 0)
       return (i = u?.[0]) === null || i === void 0 ? void 0 : i.code;
   }
@@ -26227,7 +26227,7 @@ var J0 = class {
     var e, t, n, r, s, a, o, l, i;
     if (((r = (n = (t = (e = this.candidates) === null || e === void 0 ? void 0 : e[0]) === null || t === void 0 ? void 0 : t.content) === null || n === void 0 ? void 0 : n.parts) === null || r === void 0 ? void 0 : r.length) === 0) return;
     this.candidates && this.candidates.length > 1 && console.warn("there are multiple candidates in the response, returning code execution result from the first one.");
-    const u = (l = (o = (a = (s = this.candidates) === null || s === void 0 ? void 0 : s[0]) === null || a === void 0 ? void 0 : a.content) === null || o === void 0 ? void 0 : o.parts) === null || l === void 0 ? void 0 : l.filter((c) => c.codeExecutionResult).map((c) => c.codeExecutionResult).filter((c) => c !== void 0);
+    const u = (l = (o = (a = (s = this.candidates) === null || s === void 0 ? void 0 : s[0]) === null || a === void 0 ? void 0 : a.content) === null || o === void 0 ? void 0 : o.parts) === null || l === void 0 ? void 0 : l.filter((d) => d.codeExecutionResult).map((d) => d.codeExecutionResult).filter((d) => d !== void 0);
     if (u?.length !== 0)
       return (i = u?.[0]) === null || i === void 0 ? void 0 : i.output;
   }
@@ -26423,7 +26423,7 @@ function fc(e) {
         t[o] = i;
       } else if (s.includes(o)) {
         const i = {};
-        for (const [u, c] of Object.entries(l)) i[u] = fc(c);
+        for (const [u, d] of Object.entries(l)) i[u] = fc(d);
         t[o] = i;
       } else {
         if (o === "additionalProperties") continue;
@@ -26607,24 +26607,24 @@ function CW(e) {
   return e.includes("gemini") && e !== "gemini-embedding-001" || e.includes("maas");
 }
 function IW(e) {
-  const t = {}, n = d(e, ["apiKey"]);
-  if (n != null && h(t, ["apiKey"], n), d(e, ["apiKeyConfig"]) !== void 0) throw new Error("apiKeyConfig parameter is not supported in Gemini API.");
-  if (d(e, ["authType"]) !== void 0) throw new Error("authType parameter is not supported in Gemini API.");
-  if (d(e, ["googleServiceAccountConfig"]) !== void 0) throw new Error("googleServiceAccountConfig parameter is not supported in Gemini API.");
-  if (d(e, ["httpBasicAuthConfig"]) !== void 0) throw new Error("httpBasicAuthConfig parameter is not supported in Gemini API.");
-  if (d(e, ["oauthConfig"]) !== void 0) throw new Error("oauthConfig parameter is not supported in Gemini API.");
-  if (d(e, ["oidcConfig"]) !== void 0) throw new Error("oidcConfig parameter is not supported in Gemini API.");
+  const t = {}, n = c(e, ["apiKey"]);
+  if (n != null && h(t, ["apiKey"], n), c(e, ["apiKeyConfig"]) !== void 0) throw new Error("apiKeyConfig parameter is not supported in Gemini API.");
+  if (c(e, ["authType"]) !== void 0) throw new Error("authType parameter is not supported in Gemini API.");
+  if (c(e, ["googleServiceAccountConfig"]) !== void 0) throw new Error("googleServiceAccountConfig parameter is not supported in Gemini API.");
+  if (c(e, ["httpBasicAuthConfig"]) !== void 0) throw new Error("httpBasicAuthConfig parameter is not supported in Gemini API.");
+  if (c(e, ["oauthConfig"]) !== void 0) throw new Error("oauthConfig parameter is not supported in Gemini API.");
+  if (c(e, ["oidcConfig"]) !== void 0) throw new Error("oidcConfig parameter is not supported in Gemini API.");
   return t;
 }
 function xW(e) {
-  const t = {}, n = d(e, ["responsesFile"]);
+  const t = {}, n = c(e, ["responsesFile"]);
   n != null && h(t, ["fileName"], n);
-  const r = d(e, ["inlinedResponses", "inlinedResponses"]);
+  const r = c(e, ["inlinedResponses", "inlinedResponses"]);
   if (r != null) {
     let a = r;
     Array.isArray(a) && (a = a.map((o) => lV(o))), h(t, ["inlinedResponses"], a);
   }
-  const s = d(e, ["inlinedEmbedContentResponses", "inlinedResponses"]);
+  const s = c(e, ["inlinedEmbedContentResponses", "inlinedResponses"]);
   if (s != null) {
     let a = s;
     Array.isArray(a) && (a = a.map((o) => o)), h(t, ["inlinedEmbedContentResponses"], a);
@@ -26632,84 +26632,84 @@ function xW(e) {
   return t;
 }
 function kW(e) {
-  const t = {}, n = d(e, ["predictionsFormat"]);
+  const t = {}, n = c(e, ["predictionsFormat"]);
   n != null && h(t, ["format"], n);
-  const r = d(e, ["gcsDestination", "outputUriPrefix"]);
+  const r = c(e, ["gcsDestination", "outputUriPrefix"]);
   r != null && h(t, ["gcsUri"], r);
-  const s = d(e, ["bigqueryDestination", "outputUri"]);
+  const s = c(e, ["bigqueryDestination", "outputUri"]);
   return s != null && h(t, ["bigqueryUri"], s), t;
 }
 function MW(e) {
-  const t = {}, n = d(e, ["format"]);
+  const t = {}, n = c(e, ["format"]);
   n != null && h(t, ["predictionsFormat"], n);
-  const r = d(e, ["gcsUri"]);
+  const r = c(e, ["gcsUri"]);
   r != null && h(t, ["gcsDestination", "outputUriPrefix"], r);
-  const s = d(e, ["bigqueryUri"]);
-  if (s != null && h(t, ["bigqueryDestination", "outputUri"], s), d(e, ["fileName"]) !== void 0) throw new Error("fileName parameter is not supported in Vertex AI.");
-  if (d(e, ["inlinedResponses"]) !== void 0) throw new Error("inlinedResponses parameter is not supported in Vertex AI.");
-  if (d(e, ["inlinedEmbedContentResponses"]) !== void 0) throw new Error("inlinedEmbedContentResponses parameter is not supported in Vertex AI.");
+  const s = c(e, ["bigqueryUri"]);
+  if (s != null && h(t, ["bigqueryDestination", "outputUri"], s), c(e, ["fileName"]) !== void 0) throw new Error("fileName parameter is not supported in Vertex AI.");
+  if (c(e, ["inlinedResponses"]) !== void 0) throw new Error("inlinedResponses parameter is not supported in Vertex AI.");
+  if (c(e, ["inlinedEmbedContentResponses"]) !== void 0) throw new Error("inlinedEmbedContentResponses parameter is not supported in Vertex AI.");
   return t;
 }
 function Rm(e) {
-  const t = {}, n = d(e, ["name"]);
+  const t = {}, n = c(e, ["name"]);
   n != null && h(t, ["name"], n);
-  const r = d(e, ["metadata", "displayName"]);
+  const r = c(e, ["metadata", "displayName"]);
   r != null && h(t, ["displayName"], r);
-  const s = d(e, ["metadata", "state"]);
+  const s = c(e, ["metadata", "state"]);
   s != null && h(t, ["state"], sR(s));
-  const a = d(e, ["metadata", "createTime"]);
+  const a = c(e, ["metadata", "createTime"]);
   a != null && h(t, ["createTime"], a);
-  const o = d(e, ["metadata", "endTime"]);
+  const o = c(e, ["metadata", "endTime"]);
   o != null && h(t, ["endTime"], o);
-  const l = d(e, ["metadata", "updateTime"]);
+  const l = c(e, ["metadata", "updateTime"]);
   l != null && h(t, ["updateTime"], l);
-  const i = d(e, ["metadata", "model"]);
+  const i = c(e, ["metadata", "model"]);
   i != null && h(t, ["model"], i);
-  const u = d(e, ["metadata", "output"]);
+  const u = c(e, ["metadata", "output"]);
   return u != null && h(t, ["dest"], xW(rR(u))), t;
 }
 function X0(e) {
-  const t = {}, n = d(e, ["name"]);
+  const t = {}, n = c(e, ["name"]);
   n != null && h(t, ["name"], n);
-  const r = d(e, ["displayName"]);
+  const r = c(e, ["displayName"]);
   r != null && h(t, ["displayName"], r);
-  const s = d(e, ["state"]);
+  const s = c(e, ["state"]);
   s != null && h(t, ["state"], sR(s));
-  const a = d(e, ["error"]);
+  const a = c(e, ["error"]);
   a != null && h(t, ["error"], a);
-  const o = d(e, ["createTime"]);
+  const o = c(e, ["createTime"]);
   o != null && h(t, ["createTime"], o);
-  const l = d(e, ["startTime"]);
+  const l = c(e, ["startTime"]);
   l != null && h(t, ["startTime"], l);
-  const i = d(e, ["endTime"]);
+  const i = c(e, ["endTime"]);
   i != null && h(t, ["endTime"], i);
-  const u = d(e, ["updateTime"]);
+  const u = c(e, ["updateTime"]);
   u != null && h(t, ["updateTime"], u);
-  const c = d(e, ["model"]);
-  c != null && h(t, ["model"], c);
-  const f = d(e, ["inputConfig"]);
+  const d = c(e, ["model"]);
+  d != null && h(t, ["model"], d);
+  const f = c(e, ["inputConfig"]);
   f != null && h(t, ["src"], PW(f));
-  const p = d(e, ["outputConfig"]);
+  const p = c(e, ["outputConfig"]);
   p != null && h(t, ["dest"], kW(rR(p)));
-  const g = d(e, ["completionStats"]);
+  const g = c(e, ["completionStats"]);
   return g != null && h(t, ["completionStats"], g), t;
 }
 function PW(e) {
-  const t = {}, n = d(e, ["instancesFormat"]);
+  const t = {}, n = c(e, ["instancesFormat"]);
   n != null && h(t, ["format"], n);
-  const r = d(e, ["gcsSource", "uris"]);
+  const r = c(e, ["gcsSource", "uris"]);
   r != null && h(t, ["gcsUri"], r);
-  const s = d(e, ["bigquerySource", "inputUri"]);
+  const s = c(e, ["bigquerySource", "inputUri"]);
   return s != null && h(t, ["bigqueryUri"], s), t;
 }
 function RW(e, t) {
   const n = {};
-  if (d(t, ["format"]) !== void 0) throw new Error("format parameter is not supported in Gemini API.");
-  if (d(t, ["gcsUri"]) !== void 0) throw new Error("gcsUri parameter is not supported in Gemini API.");
-  if (d(t, ["bigqueryUri"]) !== void 0) throw new Error("bigqueryUri parameter is not supported in Gemini API.");
-  const r = d(t, ["fileName"]);
+  if (c(t, ["format"]) !== void 0) throw new Error("format parameter is not supported in Gemini API.");
+  if (c(t, ["gcsUri"]) !== void 0) throw new Error("gcsUri parameter is not supported in Gemini API.");
+  if (c(t, ["bigqueryUri"]) !== void 0) throw new Error("bigqueryUri parameter is not supported in Gemini API.");
+  const r = c(t, ["fileName"]);
   r != null && h(n, ["fileName"], r);
-  const s = d(t, ["inlinedRequests"]);
+  const s = c(t, ["inlinedRequests"]);
   if (s != null) {
     let a = s;
     Array.isArray(a) && (a = a.map((o) => iV(e, o))), h(n, ["requests", "requests"], a);
@@ -26717,56 +26717,56 @@ function RW(e, t) {
   return n;
 }
 function NW(e) {
-  const t = {}, n = d(e, ["format"]);
+  const t = {}, n = c(e, ["format"]);
   n != null && h(t, ["instancesFormat"], n);
-  const r = d(e, ["gcsUri"]);
+  const r = c(e, ["gcsUri"]);
   r != null && h(t, ["gcsSource", "uris"], r);
-  const s = d(e, ["bigqueryUri"]);
-  if (s != null && h(t, ["bigquerySource", "inputUri"], s), d(e, ["fileName"]) !== void 0) throw new Error("fileName parameter is not supported in Vertex AI.");
-  if (d(e, ["inlinedRequests"]) !== void 0) throw new Error("inlinedRequests parameter is not supported in Vertex AI.");
+  const s = c(e, ["bigqueryUri"]);
+  if (s != null && h(t, ["bigquerySource", "inputUri"], s), c(e, ["fileName"]) !== void 0) throw new Error("fileName parameter is not supported in Vertex AI.");
+  if (c(e, ["inlinedRequests"]) !== void 0) throw new Error("inlinedRequests parameter is not supported in Vertex AI.");
   return t;
 }
 function $W(e) {
-  const t = {}, n = d(e, ["data"]);
-  if (n != null && h(t, ["data"], n), d(e, ["displayName"]) !== void 0) throw new Error("displayName parameter is not supported in Gemini API.");
-  const r = d(e, ["mimeType"]);
+  const t = {}, n = c(e, ["data"]);
+  if (n != null && h(t, ["data"], n), c(e, ["displayName"]) !== void 0) throw new Error("displayName parameter is not supported in Gemini API.");
+  const r = c(e, ["mimeType"]);
   return r != null && h(t, ["mimeType"], r), t;
 }
 function LW(e, t) {
-  const n = {}, r = d(t, ["name"]);
+  const n = {}, r = c(t, ["name"]);
   return r != null && h(n, ["_url", "name"], Wc(e, r)), n;
 }
 function DW(e, t) {
-  const n = {}, r = d(t, ["name"]);
+  const n = {}, r = c(t, ["name"]);
   return r != null && h(n, ["_url", "name"], Wc(e, r)), n;
 }
 function OW(e) {
-  const t = {}, n = d(e, ["content"]);
+  const t = {}, n = c(e, ["content"]);
   n != null && h(t, ["content"], n);
-  const r = d(e, ["citationMetadata"]);
+  const r = c(e, ["citationMetadata"]);
   r != null && h(t, ["citationMetadata"], FW(r));
-  const s = d(e, ["tokenCount"]);
+  const s = c(e, ["tokenCount"]);
   s != null && h(t, ["tokenCount"], s);
-  const a = d(e, ["finishReason"]);
+  const a = c(e, ["finishReason"]);
   a != null && h(t, ["finishReason"], a);
-  const o = d(e, ["groundingMetadata"]);
+  const o = c(e, ["groundingMetadata"]);
   o != null && h(t, ["groundingMetadata"], o);
-  const l = d(e, ["avgLogprobs"]);
+  const l = c(e, ["avgLogprobs"]);
   l != null && h(t, ["avgLogprobs"], l);
-  const i = d(e, ["index"]);
+  const i = c(e, ["index"]);
   i != null && h(t, ["index"], i);
-  const u = d(e, ["logprobsResult"]);
+  const u = c(e, ["logprobsResult"]);
   u != null && h(t, ["logprobsResult"], u);
-  const c = d(e, ["safetyRatings"]);
-  if (c != null) {
-    let p = c;
+  const d = c(e, ["safetyRatings"]);
+  if (d != null) {
+    let p = d;
     Array.isArray(p) && (p = p.map((g) => g)), h(t, ["safetyRatings"], p);
   }
-  const f = d(e, ["urlContextMetadata"]);
+  const f = c(e, ["urlContextMetadata"]);
   return f != null && h(t, ["urlContextMetadata"], f), t;
 }
 function FW(e) {
-  const t = {}, n = d(e, ["citationSources"]);
+  const t = {}, n = c(e, ["citationSources"]);
   if (n != null) {
     let r = n;
     Array.isArray(r) && (r = r.map((s) => s)), h(t, ["citations"], r);
@@ -26774,85 +26774,85 @@ function FW(e) {
   return t;
 }
 function aR(e) {
-  const t = {}, n = d(e, ["parts"]);
+  const t = {}, n = c(e, ["parts"]);
   if (n != null) {
     let s = n;
     Array.isArray(s) && (s = s.map((a) => mV(a))), h(t, ["parts"], s);
   }
-  const r = d(e, ["role"]);
+  const r = c(e, ["role"]);
   return r != null && h(t, ["role"], r), t;
 }
 function BW(e, t) {
-  const n = {}, r = d(e, ["displayName"]);
-  if (t !== void 0 && r != null && h(t, ["batch", "displayName"], r), d(e, ["dest"]) !== void 0) throw new Error("dest parameter is not supported in Gemini API.");
-  const s = d(e, ["webhookConfig"]);
+  const n = {}, r = c(e, ["displayName"]);
+  if (t !== void 0 && r != null && h(t, ["batch", "displayName"], r), c(e, ["dest"]) !== void 0) throw new Error("dest parameter is not supported in Gemini API.");
+  const s = c(e, ["webhookConfig"]);
   return t !== void 0 && s != null && h(t, ["batch", "webhookConfig"], s), n;
 }
 function UW(e, t) {
-  const n = {}, r = d(e, ["displayName"]);
+  const n = {}, r = c(e, ["displayName"]);
   t !== void 0 && r != null && h(t, ["displayName"], r);
-  const s = d(e, ["dest"]);
-  if (t !== void 0 && s != null && h(t, ["outputConfig"], MW(EW(s))), d(e, ["webhookConfig"]) !== void 0) throw new Error("webhookConfig parameter is not supported in Vertex AI.");
+  const s = c(e, ["dest"]);
+  if (t !== void 0 && s != null && h(t, ["outputConfig"], MW(EW(s))), c(e, ["webhookConfig"]) !== void 0) throw new Error("webhookConfig parameter is not supported in Vertex AI.");
   return n;
 }
 function fI(e, t) {
-  const n = {}, r = d(t, ["model"]);
+  const n = {}, r = c(t, ["model"]);
   r != null && h(n, ["_url", "model"], cn(e, r));
-  const s = d(t, ["src"]);
+  const s = c(t, ["src"]);
   s != null && h(n, ["batch", "inputConfig"], RW(e, nR(e, s)));
-  const a = d(t, ["config"]);
+  const a = c(t, ["config"]);
   return a != null && BW(a, n), n;
 }
 function qW(e, t) {
-  const n = {}, r = d(t, ["model"]);
+  const n = {}, r = c(t, ["model"]);
   r != null && h(n, ["model"], cn(e, r));
-  const s = d(t, ["src"]);
+  const s = c(t, ["src"]);
   s != null && h(n, ["inputConfig"], NW(nR(e, s)));
-  const a = d(t, ["config"]);
+  const a = c(t, ["config"]);
   return a != null && UW(a, n), n;
 }
 function HW(e, t) {
-  const n = {}, r = d(e, ["displayName"]);
+  const n = {}, r = c(e, ["displayName"]);
   return t !== void 0 && r != null && h(t, ["batch", "displayName"], r), n;
 }
 function zW(e, t) {
-  const n = {}, r = d(t, ["model"]);
+  const n = {}, r = c(t, ["model"]);
   r != null && h(n, ["_url", "model"], cn(e, r));
-  const s = d(t, ["src"]);
+  const s = c(t, ["src"]);
   s != null && h(n, ["batch", "inputConfig"], XW(e, s));
-  const a = d(t, ["config"]);
+  const a = c(t, ["config"]);
   return a != null && HW(a, n), n;
 }
 function KW(e, t) {
-  const n = {}, r = d(t, ["name"]);
+  const n = {}, r = c(t, ["name"]);
   return r != null && h(n, ["_url", "name"], Wc(e, r)), n;
 }
 function WW(e, t) {
-  const n = {}, r = d(t, ["name"]);
+  const n = {}, r = c(t, ["name"]);
   return r != null && h(n, ["_url", "name"], Wc(e, r)), n;
 }
 function VW(e) {
-  const t = {}, n = d(e, ["sdkHttpResponse"]);
+  const t = {}, n = c(e, ["sdkHttpResponse"]);
   n != null && h(t, ["sdkHttpResponse"], n);
-  const r = d(e, ["name"]);
+  const r = c(e, ["name"]);
   r != null && h(t, ["name"], r);
-  const s = d(e, ["done"]);
+  const s = c(e, ["done"]);
   s != null && h(t, ["done"], s);
-  const a = d(e, ["error"]);
+  const a = c(e, ["error"]);
   return a != null && h(t, ["error"], a), t;
 }
 function GW(e) {
-  const t = {}, n = d(e, ["sdkHttpResponse"]);
+  const t = {}, n = c(e, ["sdkHttpResponse"]);
   n != null && h(t, ["sdkHttpResponse"], n);
-  const r = d(e, ["name"]);
+  const r = c(e, ["name"]);
   r != null && h(t, ["name"], r);
-  const s = d(e, ["done"]);
+  const s = c(e, ["done"]);
   s != null && h(t, ["done"], s);
-  const a = d(e, ["error"]);
+  const a = c(e, ["error"]);
   return a != null && h(t, ["error"], a), t;
 }
 function JW(e, t) {
-  const n = {}, r = d(t, ["contents"]);
+  const n = {}, r = c(t, ["contents"]);
   if (r != null) {
     let a = _S(e, r);
     Array.isArray(a) && (a = a.map((o) => o)), h(n, [
@@ -26861,214 +26861,214 @@ function JW(e, t) {
       "content"
     ], a);
   }
-  const s = d(t, ["config"]);
+  const s = c(t, ["config"]);
   return s != null && (h(n, ["_self"], YW(s, n)), UK(n, { "requests[].*": "requests[].request.*" })), n;
 }
 function YW(e, t) {
-  const n = {}, r = d(e, ["taskType"]);
+  const n = {}, r = c(e, ["taskType"]);
   t !== void 0 && r != null && h(t, ["requests[]", "taskType"], r);
-  const s = d(e, ["title"]);
+  const s = c(e, ["title"]);
   t !== void 0 && s != null && h(t, ["requests[]", "title"], s);
-  const a = d(e, ["outputDimensionality"]);
-  if (t !== void 0 && a != null && h(t, ["requests[]", "outputDimensionality"], a), d(e, ["mimeType"]) !== void 0) throw new Error("mimeType parameter is not supported in Gemini API.");
-  if (d(e, ["autoTruncate"]) !== void 0) throw new Error("autoTruncate parameter is not supported in Gemini API.");
-  if (d(e, ["documentOcr"]) !== void 0) throw new Error("documentOcr parameter is not supported in Gemini API.");
-  if (d(e, ["audioTrackExtraction"]) !== void 0) throw new Error("audioTrackExtraction parameter is not supported in Gemini API.");
+  const a = c(e, ["outputDimensionality"]);
+  if (t !== void 0 && a != null && h(t, ["requests[]", "outputDimensionality"], a), c(e, ["mimeType"]) !== void 0) throw new Error("mimeType parameter is not supported in Gemini API.");
+  if (c(e, ["autoTruncate"]) !== void 0) throw new Error("autoTruncate parameter is not supported in Gemini API.");
+  if (c(e, ["documentOcr"]) !== void 0) throw new Error("documentOcr parameter is not supported in Gemini API.");
+  if (c(e, ["audioTrackExtraction"]) !== void 0) throw new Error("audioTrackExtraction parameter is not supported in Gemini API.");
   return n;
 }
 function XW(e, t) {
-  const n = {}, r = d(t, ["fileName"]);
+  const n = {}, r = c(t, ["fileName"]);
   r != null && h(n, ["file_name"], r);
-  const s = d(t, ["inlinedRequests"]);
+  const s = c(t, ["inlinedRequests"]);
   return s != null && h(n, ["requests"], JW(e, s)), n;
 }
 function jW(e) {
   const t = {};
-  if (d(e, ["displayName"]) !== void 0) throw new Error("displayName parameter is not supported in Gemini API.");
-  const n = d(e, ["fileUri"]);
+  if (c(e, ["displayName"]) !== void 0) throw new Error("displayName parameter is not supported in Gemini API.");
+  const n = c(e, ["fileUri"]);
   n != null && h(t, ["fileUri"], n);
-  const r = d(e, ["mimeType"]);
+  const r = c(e, ["mimeType"]);
   return r != null && h(t, ["mimeType"], r), t;
 }
 function QW(e) {
-  const t = {}, n = d(e, ["id"]);
+  const t = {}, n = c(e, ["id"]);
   n != null && h(t, ["id"], n);
-  const r = d(e, ["args"]);
+  const r = c(e, ["args"]);
   r != null && h(t, ["args"], r);
-  const s = d(e, ["name"]);
-  if (s != null && h(t, ["name"], s), d(e, ["partialArgs"]) !== void 0) throw new Error("partialArgs parameter is not supported in Gemini API.");
-  if (d(e, ["willContinue"]) !== void 0) throw new Error("willContinue parameter is not supported in Gemini API.");
+  const s = c(e, ["name"]);
+  if (s != null && h(t, ["name"], s), c(e, ["partialArgs"]) !== void 0) throw new Error("partialArgs parameter is not supported in Gemini API.");
+  if (c(e, ["willContinue"]) !== void 0) throw new Error("willContinue parameter is not supported in Gemini API.");
   return t;
 }
 function ZW(e) {
-  const t = {}, n = d(e, ["allowedFunctionNames"]);
+  const t = {}, n = c(e, ["allowedFunctionNames"]);
   n != null && h(t, ["allowedFunctionNames"], n);
-  const r = d(e, ["mode"]);
-  if (r != null && h(t, ["mode"], r), d(e, ["streamFunctionCallArguments"]) !== void 0) throw new Error("streamFunctionCallArguments parameter is not supported in Gemini API.");
+  const r = c(e, ["mode"]);
+  if (r != null && h(t, ["mode"], r), c(e, ["streamFunctionCallArguments"]) !== void 0) throw new Error("streamFunctionCallArguments parameter is not supported in Gemini API.");
   return t;
 }
 function eV(e, t, n) {
-  const r = {}, s = d(t, ["systemInstruction"]);
+  const r = {}, s = c(t, ["systemInstruction"]);
   n !== void 0 && s != null && h(n, ["systemInstruction"], aR(wr(s)));
-  const a = d(t, ["temperature"]);
+  const a = c(t, ["temperature"]);
   a != null && h(r, ["temperature"], a);
-  const o = d(t, ["topP"]);
+  const o = c(t, ["topP"]);
   o != null && h(r, ["topP"], o);
-  const l = d(t, ["topK"]);
+  const l = c(t, ["topK"]);
   l != null && h(r, ["topK"], l);
-  const i = d(t, ["candidateCount"]);
+  const i = c(t, ["candidateCount"]);
   i != null && h(r, ["candidateCount"], i);
-  const u = d(t, ["maxOutputTokens"]);
+  const u = c(t, ["maxOutputTokens"]);
   u != null && h(r, ["maxOutputTokens"], u);
-  const c = d(t, ["stopSequences"]);
-  c != null && h(r, ["stopSequences"], c);
-  const f = d(t, ["responseLogprobs"]);
+  const d = c(t, ["stopSequences"]);
+  d != null && h(r, ["stopSequences"], d);
+  const f = c(t, ["responseLogprobs"]);
   f != null && h(r, ["responseLogprobs"], f);
-  const p = d(t, ["logprobs"]);
+  const p = c(t, ["logprobs"]);
   p != null && h(r, ["logprobs"], p);
-  const g = d(t, ["presencePenalty"]);
+  const g = c(t, ["presencePenalty"]);
   g != null && h(r, ["presencePenalty"], g);
-  const y = d(t, ["frequencyPenalty"]);
+  const y = c(t, ["frequencyPenalty"]);
   y != null && h(r, ["frequencyPenalty"], y);
-  const _ = d(t, ["seed"]);
+  const _ = c(t, ["seed"]);
   _ != null && h(r, ["seed"], _);
-  const x = d(t, ["responseMimeType"]);
+  const x = c(t, ["responseMimeType"]);
   x != null && h(r, ["responseMimeType"], x);
-  const C = d(t, ["responseSchema"]);
+  const C = c(t, ["responseSchema"]);
   C != null && h(r, ["responseSchema"], bS(C));
-  const E = d(t, ["responseJsonSchema"]);
-  if (E != null && h(r, ["responseJsonSchema"], E), d(t, ["routingConfig"]) !== void 0) throw new Error("routingConfig parameter is not supported in Gemini API.");
-  if (d(t, ["modelSelectionConfig"]) !== void 0) throw new Error("modelSelectionConfig parameter is not supported in Gemini API.");
-  const R = d(t, ["safetySettings"]);
+  const E = c(t, ["responseJsonSchema"]);
+  if (E != null && h(r, ["responseJsonSchema"], E), c(t, ["routingConfig"]) !== void 0) throw new Error("routingConfig parameter is not supported in Gemini API.");
+  if (c(t, ["modelSelectionConfig"]) !== void 0) throw new Error("modelSelectionConfig parameter is not supported in Gemini API.");
+  const R = c(t, ["safetySettings"]);
   if (n !== void 0 && R != null) {
     let j = R;
     Array.isArray(j) && (j = j.map((V) => gV(V))), h(n, ["safetySettings"], j);
   }
-  const N = d(t, ["tools"]);
+  const N = c(t, ["tools"]);
   if (n !== void 0 && N != null) {
     let j = Kc(N);
     Array.isArray(j) && (j = j.map((V) => yV(zc(V)))), h(n, ["tools"], j);
   }
-  const m = d(t, ["toolConfig"]);
-  if (n !== void 0 && m != null && h(n, ["toolConfig"], vV(m)), d(t, ["labels"]) !== void 0) throw new Error("labels parameter is not supported in Gemini API.");
-  const w = d(t, ["cachedContent"]);
+  const m = c(t, ["toolConfig"]);
+  if (n !== void 0 && m != null && h(n, ["toolConfig"], vV(m)), c(t, ["labels"]) !== void 0) throw new Error("labels parameter is not supported in Gemini API.");
+  const w = c(t, ["cachedContent"]);
   n !== void 0 && w != null && h(n, ["cachedContent"], ii(e, w));
-  const b = d(t, ["responseModalities"]);
+  const b = c(t, ["responseModalities"]);
   b != null && h(r, ["responseModalities"], b);
-  const S = d(t, ["mediaResolution"]);
+  const S = c(t, ["mediaResolution"]);
   S != null && h(r, ["mediaResolution"], S);
-  const I = d(t, ["speechConfig"]);
-  if (I != null && h(r, ["speechConfig"], wS(I)), d(t, ["audioTimestamp"]) !== void 0) throw new Error("audioTimestamp parameter is not supported in Gemini API.");
-  const k = d(t, ["thinkingConfig"]);
+  const I = c(t, ["speechConfig"]);
+  if (I != null && h(r, ["speechConfig"], wS(I)), c(t, ["audioTimestamp"]) !== void 0) throw new Error("audioTimestamp parameter is not supported in Gemini API.");
+  const k = c(t, ["thinkingConfig"]);
   k != null && h(r, ["thinkingConfig"], k);
-  const P = d(t, ["imageConfig"]);
+  const P = c(t, ["imageConfig"]);
   P != null && h(r, ["imageConfig"], oV(P));
-  const U = d(t, ["enableEnhancedCivicAnswers"]);
-  if (U != null && h(r, ["enableEnhancedCivicAnswers"], U), d(t, ["modelArmorConfig"]) !== void 0) throw new Error("modelArmorConfig parameter is not supported in Gemini API.");
-  const K = d(t, ["serviceTier"]);
+  const U = c(t, ["enableEnhancedCivicAnswers"]);
+  if (U != null && h(r, ["enableEnhancedCivicAnswers"], U), c(t, ["modelArmorConfig"]) !== void 0) throw new Error("modelArmorConfig parameter is not supported in Gemini API.");
+  const K = c(t, ["serviceTier"]);
   return n !== void 0 && K != null && h(n, ["serviceTier"], K), r;
 }
 function tV(e) {
-  const t = {}, n = d(e, ["sdkHttpResponse"]);
+  const t = {}, n = c(e, ["sdkHttpResponse"]);
   n != null && h(t, ["sdkHttpResponse"], n);
-  const r = d(e, ["candidates"]);
+  const r = c(e, ["candidates"]);
   if (r != null) {
     let u = r;
-    Array.isArray(u) && (u = u.map((c) => OW(c))), h(t, ["candidates"], u);
+    Array.isArray(u) && (u = u.map((d) => OW(d))), h(t, ["candidates"], u);
   }
-  const s = d(e, ["modelVersion"]);
+  const s = c(e, ["modelVersion"]);
   s != null && h(t, ["modelVersion"], s);
-  const a = d(e, ["promptFeedback"]);
+  const a = c(e, ["promptFeedback"]);
   a != null && h(t, ["promptFeedback"], a);
-  const o = d(e, ["responseId"]);
+  const o = c(e, ["responseId"]);
   o != null && h(t, ["responseId"], o);
-  const l = d(e, ["usageMetadata"]);
+  const l = c(e, ["usageMetadata"]);
   l != null && h(t, ["usageMetadata"], l);
-  const i = d(e, ["modelStatus"]);
+  const i = c(e, ["modelStatus"]);
   return i != null && h(t, ["modelStatus"], i), t;
 }
 function nV(e, t) {
-  const n = {}, r = d(t, ["name"]);
+  const n = {}, r = c(t, ["name"]);
   return r != null && h(n, ["_url", "name"], Wc(e, r)), n;
 }
 function rV(e, t) {
-  const n = {}, r = d(t, ["name"]);
+  const n = {}, r = c(t, ["name"]);
   return r != null && h(n, ["_url", "name"], Wc(e, r)), n;
 }
 function sV(e) {
-  const t = {}, n = d(e, ["authConfig"]);
+  const t = {}, n = c(e, ["authConfig"]);
   n != null && h(t, ["authConfig"], IW(n));
-  const r = d(e, ["enableWidget"]);
+  const r = c(e, ["enableWidget"]);
   return r != null && h(t, ["enableWidget"], r), t;
 }
 function aV(e) {
-  const t = {}, n = d(e, ["searchTypes"]);
-  if (n != null && h(t, ["searchTypes"], n), d(e, ["blockingConfidence"]) !== void 0) throw new Error("blockingConfidence parameter is not supported in Gemini API.");
-  if (d(e, ["excludeDomains"]) !== void 0) throw new Error("excludeDomains parameter is not supported in Gemini API.");
-  const r = d(e, ["timeRangeFilter"]);
+  const t = {}, n = c(e, ["searchTypes"]);
+  if (n != null && h(t, ["searchTypes"], n), c(e, ["blockingConfidence"]) !== void 0) throw new Error("blockingConfidence parameter is not supported in Gemini API.");
+  if (c(e, ["excludeDomains"]) !== void 0) throw new Error("excludeDomains parameter is not supported in Gemini API.");
+  const r = c(e, ["timeRangeFilter"]);
   return r != null && h(t, ["timeRangeFilter"], r), t;
 }
 function oV(e) {
-  const t = {}, n = d(e, ["aspectRatio"]);
+  const t = {}, n = c(e, ["aspectRatio"]);
   n != null && h(t, ["aspectRatio"], n);
-  const r = d(e, ["imageSize"]);
-  if (r != null && h(t, ["imageSize"], r), d(e, ["personGeneration"]) !== void 0) throw new Error("personGeneration parameter is not supported in Gemini API.");
-  if (d(e, ["prominentPeople"]) !== void 0) throw new Error("prominentPeople parameter is not supported in Gemini API.");
-  if (d(e, ["outputMimeType"]) !== void 0) throw new Error("outputMimeType parameter is not supported in Gemini API.");
-  if (d(e, ["outputCompressionQuality"]) !== void 0) throw new Error("outputCompressionQuality parameter is not supported in Gemini API.");
-  if (d(e, ["imageOutputOptions"]) !== void 0) throw new Error("imageOutputOptions parameter is not supported in Gemini API.");
+  const r = c(e, ["imageSize"]);
+  if (r != null && h(t, ["imageSize"], r), c(e, ["personGeneration"]) !== void 0) throw new Error("personGeneration parameter is not supported in Gemini API.");
+  if (c(e, ["prominentPeople"]) !== void 0) throw new Error("prominentPeople parameter is not supported in Gemini API.");
+  if (c(e, ["outputMimeType"]) !== void 0) throw new Error("outputMimeType parameter is not supported in Gemini API.");
+  if (c(e, ["outputCompressionQuality"]) !== void 0) throw new Error("outputCompressionQuality parameter is not supported in Gemini API.");
+  if (c(e, ["imageOutputOptions"]) !== void 0) throw new Error("imageOutputOptions parameter is not supported in Gemini API.");
   return t;
 }
 function iV(e, t) {
-  const n = {}, r = d(t, ["model"]);
+  const n = {}, r = c(t, ["model"]);
   r != null && h(n, ["request", "model"], cn(e, r));
-  const s = d(t, ["contents"]);
+  const s = c(t, ["contents"]);
   if (s != null) {
     let l = hs(s);
     Array.isArray(l) && (l = l.map((i) => aR(i))), h(n, ["request", "contents"], l);
   }
-  const a = d(t, ["metadata"]);
+  const a = c(t, ["metadata"]);
   a != null && h(n, ["metadata"], a);
-  const o = d(t, ["config"]);
-  return o != null && h(n, ["request", "generationConfig"], eV(e, o, d(n, ["request"], {}))), n;
+  const o = c(t, ["config"]);
+  return o != null && h(n, ["request", "generationConfig"], eV(e, o, c(n, ["request"], {}))), n;
 }
 function lV(e) {
-  const t = {}, n = d(e, ["response"]);
+  const t = {}, n = c(e, ["response"]);
   n != null && h(t, ["response"], tV(n));
-  const r = d(e, ["metadata"]);
+  const r = c(e, ["metadata"]);
   r != null && h(t, ["metadata"], r);
-  const s = d(e, ["error"]);
+  const s = c(e, ["error"]);
   return s != null && h(t, ["error"], s), t;
 }
 function uV(e, t) {
-  const n = {}, r = d(e, ["pageSize"]);
+  const n = {}, r = c(e, ["pageSize"]);
   t !== void 0 && r != null && h(t, ["_query", "pageSize"], r);
-  const s = d(e, ["pageToken"]);
-  if (t !== void 0 && s != null && h(t, ["_query", "pageToken"], s), d(e, ["filter"]) !== void 0) throw new Error("filter parameter is not supported in Gemini API.");
+  const s = c(e, ["pageToken"]);
+  if (t !== void 0 && s != null && h(t, ["_query", "pageToken"], s), c(e, ["filter"]) !== void 0) throw new Error("filter parameter is not supported in Gemini API.");
   return n;
 }
 function cV(e, t) {
-  const n = {}, r = d(e, ["pageSize"]);
+  const n = {}, r = c(e, ["pageSize"]);
   t !== void 0 && r != null && h(t, ["_query", "pageSize"], r);
-  const s = d(e, ["pageToken"]);
+  const s = c(e, ["pageToken"]);
   t !== void 0 && s != null && h(t, ["_query", "pageToken"], s);
-  const a = d(e, ["filter"]);
+  const a = c(e, ["filter"]);
   return t !== void 0 && a != null && h(t, ["_query", "filter"], a), n;
 }
 function dV(e) {
-  const t = {}, n = d(e, ["config"]);
+  const t = {}, n = c(e, ["config"]);
   return n != null && uV(n, t), t;
 }
 function fV(e) {
-  const t = {}, n = d(e, ["config"]);
+  const t = {}, n = c(e, ["config"]);
   return n != null && cV(n, t), t;
 }
 function hV(e) {
-  const t = {}, n = d(e, ["sdkHttpResponse"]);
+  const t = {}, n = c(e, ["sdkHttpResponse"]);
   n != null && h(t, ["sdkHttpResponse"], n);
-  const r = d(e, ["nextPageToken"]);
+  const r = c(e, ["nextPageToken"]);
   r != null && h(t, ["nextPageToken"], r);
-  const s = d(e, ["operations"]);
+  const s = c(e, ["operations"]);
   if (s != null) {
     let a = s;
     Array.isArray(a) && (a = a.map((o) => Rm(o))), h(t, ["batchJobs"], a);
@@ -27076,11 +27076,11 @@ function hV(e) {
   return t;
 }
 function pV(e) {
-  const t = {}, n = d(e, ["sdkHttpResponse"]);
+  const t = {}, n = c(e, ["sdkHttpResponse"]);
   n != null && h(t, ["sdkHttpResponse"], n);
-  const r = d(e, ["nextPageToken"]);
+  const r = c(e, ["nextPageToken"]);
   r != null && h(t, ["nextPageToken"], r);
-  const s = d(e, ["batchPredictionJobs"]);
+  const s = c(e, ["batchPredictionJobs"]);
   if (s != null) {
     let a = s;
     Array.isArray(a) && (a = a.map((o) => X0(o))), h(t, ["batchJobs"], a);
@@ -27088,74 +27088,74 @@ function pV(e) {
   return t;
 }
 function mV(e) {
-  const t = {}, n = d(e, ["mediaResolution"]);
+  const t = {}, n = c(e, ["mediaResolution"]);
   n != null && h(t, ["mediaResolution"], n);
-  const r = d(e, ["codeExecutionResult"]);
+  const r = c(e, ["codeExecutionResult"]);
   r != null && h(t, ["codeExecutionResult"], r);
-  const s = d(e, ["executableCode"]);
+  const s = c(e, ["executableCode"]);
   s != null && h(t, ["executableCode"], s);
-  const a = d(e, ["fileData"]);
+  const a = c(e, ["fileData"]);
   a != null && h(t, ["fileData"], jW(a));
-  const o = d(e, ["functionCall"]);
+  const o = c(e, ["functionCall"]);
   o != null && h(t, ["functionCall"], QW(o));
-  const l = d(e, ["functionResponse"]);
+  const l = c(e, ["functionResponse"]);
   l != null && h(t, ["functionResponse"], l);
-  const i = d(e, ["inlineData"]);
+  const i = c(e, ["inlineData"]);
   i != null && h(t, ["inlineData"], $W(i));
-  const u = d(e, ["text"]);
+  const u = c(e, ["text"]);
   u != null && h(t, ["text"], u);
-  const c = d(e, ["thought"]);
-  c != null && h(t, ["thought"], c);
-  const f = d(e, ["thoughtSignature"]);
+  const d = c(e, ["thought"]);
+  d != null && h(t, ["thought"], d);
+  const f = c(e, ["thoughtSignature"]);
   f != null && h(t, ["thoughtSignature"], f);
-  const p = d(e, ["videoMetadata"]);
+  const p = c(e, ["videoMetadata"]);
   p != null && h(t, ["videoMetadata"], p);
-  const g = d(e, ["toolCall"]);
+  const g = c(e, ["toolCall"]);
   g != null && h(t, ["toolCall"], g);
-  const y = d(e, ["toolResponse"]);
+  const y = c(e, ["toolResponse"]);
   y != null && h(t, ["toolResponse"], y);
-  const _ = d(e, ["partMetadata"]);
+  const _ = c(e, ["partMetadata"]);
   return _ != null && h(t, ["partMetadata"], _), t;
 }
 function gV(e) {
-  const t = {}, n = d(e, ["category"]);
-  if (n != null && h(t, ["category"], n), d(e, ["method"]) !== void 0) throw new Error("method parameter is not supported in Gemini API.");
-  const r = d(e, ["threshold"]);
+  const t = {}, n = c(e, ["category"]);
+  if (n != null && h(t, ["category"], n), c(e, ["method"]) !== void 0) throw new Error("method parameter is not supported in Gemini API.");
+  const r = c(e, ["threshold"]);
   return r != null && h(t, ["threshold"], r), t;
 }
 function vV(e) {
-  const t = {}, n = d(e, ["retrievalConfig"]);
+  const t = {}, n = c(e, ["retrievalConfig"]);
   n != null && h(t, ["retrievalConfig"], n);
-  const r = d(e, ["functionCallingConfig"]);
+  const r = c(e, ["functionCallingConfig"]);
   r != null && h(t, ["functionCallingConfig"], ZW(r));
-  const s = d(e, ["includeServerSideToolInvocations"]);
+  const s = c(e, ["includeServerSideToolInvocations"]);
   return s != null && h(t, ["includeServerSideToolInvocations"], s), t;
 }
 function yV(e) {
   const t = {};
-  if (d(e, ["retrieval"]) !== void 0) throw new Error("retrieval parameter is not supported in Gemini API.");
-  const n = d(e, ["computerUse"]);
+  if (c(e, ["retrieval"]) !== void 0) throw new Error("retrieval parameter is not supported in Gemini API.");
+  const n = c(e, ["computerUse"]);
   n != null && h(t, ["computerUse"], n);
-  const r = d(e, ["fileSearch"]);
+  const r = c(e, ["fileSearch"]);
   r != null && h(t, ["fileSearch"], r);
-  const s = d(e, ["googleSearch"]);
+  const s = c(e, ["googleSearch"]);
   s != null && h(t, ["googleSearch"], aV(s));
-  const a = d(e, ["googleMaps"]);
+  const a = c(e, ["googleMaps"]);
   a != null && h(t, ["googleMaps"], sV(a));
-  const o = d(e, ["codeExecution"]);
-  if (o != null && h(t, ["codeExecution"], o), d(e, ["enterpriseWebSearch"]) !== void 0) throw new Error("enterpriseWebSearch parameter is not supported in Gemini API.");
-  const l = d(e, ["functionDeclarations"]);
+  const o = c(e, ["codeExecution"]);
+  if (o != null && h(t, ["codeExecution"], o), c(e, ["enterpriseWebSearch"]) !== void 0) throw new Error("enterpriseWebSearch parameter is not supported in Gemini API.");
+  const l = c(e, ["functionDeclarations"]);
   if (l != null) {
     let f = l;
     Array.isArray(f) && (f = f.map((p) => p)), h(t, ["functionDeclarations"], f);
   }
-  const i = d(e, ["googleSearchRetrieval"]);
-  if (i != null && h(t, ["googleSearchRetrieval"], i), d(e, ["parallelAiSearch"]) !== void 0) throw new Error("parallelAiSearch parameter is not supported in Gemini API.");
-  const u = d(e, ["urlContext"]);
+  const i = c(e, ["googleSearchRetrieval"]);
+  if (i != null && h(t, ["googleSearchRetrieval"], i), c(e, ["parallelAiSearch"]) !== void 0) throw new Error("parallelAiSearch parameter is not supported in Gemini API.");
+  const u = c(e, ["urlContext"]);
   u != null && h(t, ["urlContext"], u);
-  const c = d(e, ["mcpServers"]);
-  if (c != null) {
-    let f = c;
+  const d = c(e, ["mcpServers"]);
+  if (d != null) {
+    let f = d;
     Array.isArray(f) && (f = f.map((p) => p)), h(t, ["mcpServers"], f);
   }
   return t;
@@ -27241,8 +27241,8 @@ var iu = class {
       if (i.systemInstruction) {
         const u = i.systemInstruction;
         delete i.systemInstruction;
-        const c = i.request;
-        c.systemInstruction = u, i.request = c;
+        const d = i.request;
+        d.systemInstruction = u, i.request = d;
       }
       o.push(i);
     }
@@ -27372,12 +27372,12 @@ var iu = class {
         httpMethod: "GET",
         httpOptions: (t = e.config) === null || t === void 0 ? void 0 : t.httpOptions,
         abortSignal: (n = e.config) === null || n === void 0 ? void 0 : n.abortSignal
-      }).then((u) => u.json().then((c) => {
-        const f = c;
+      }).then((u) => u.json().then((d) => {
+        const f = d;
         return f.sdkHttpResponse = { headers: u.headers }, f;
       })), a.then((u) => {
-        const c = pV(u), f = new lI();
-        return Object.assign(f, c), f;
+        const d = pV(u), f = new lI();
+        return Object.assign(f, d), f;
       });
     } else {
       const i = dV(e);
@@ -27388,12 +27388,12 @@ var iu = class {
         httpMethod: "GET",
         httpOptions: (r = e.config) === null || r === void 0 ? void 0 : r.httpOptions,
         abortSignal: (s = e.config) === null || s === void 0 ? void 0 : s.abortSignal
-      }).then((u) => u.json().then((c) => {
-        const f = c;
+      }).then((u) => u.json().then((d) => {
+        const f = d;
         return f.sdkHttpResponse = { headers: u.headers }, f;
       })), a.then((u) => {
-        const c = hV(u), f = new lI();
-        return Object.assign(f, c), f;
+        const d = hV(u), f = new lI();
+        return Object.assign(f, d), f;
       });
     }
   }
@@ -27409,8 +27409,8 @@ var iu = class {
         httpMethod: "DELETE",
         httpOptions: (t = e.config) === null || t === void 0 ? void 0 : t.httpOptions,
         abortSignal: (n = e.config) === null || n === void 0 ? void 0 : n.abortSignal
-      }).then((u) => u.json().then((c) => {
-        const f = c;
+      }).then((u) => u.json().then((d) => {
+        const f = d;
         return f.sdkHttpResponse = { headers: u.headers }, f;
       })), a.then((u) => GW(u));
     } else {
@@ -27422,209 +27422,209 @@ var iu = class {
         httpMethod: "DELETE",
         httpOptions: (r = e.config) === null || r === void 0 ? void 0 : r.httpOptions,
         abortSignal: (s = e.config) === null || s === void 0 ? void 0 : s.abortSignal
-      }).then((u) => u.json().then((c) => {
-        const f = c;
+      }).then((u) => u.json().then((d) => {
+        const f = d;
         return f.sdkHttpResponse = { headers: u.headers }, f;
       })), a.then((u) => VW(u));
     }
   }
 };
 function bV(e) {
-  const t = {}, n = d(e, ["apiKey"]);
-  if (n != null && h(t, ["apiKey"], n), d(e, ["apiKeyConfig"]) !== void 0) throw new Error("apiKeyConfig parameter is not supported in Gemini API.");
-  if (d(e, ["authType"]) !== void 0) throw new Error("authType parameter is not supported in Gemini API.");
-  if (d(e, ["googleServiceAccountConfig"]) !== void 0) throw new Error("googleServiceAccountConfig parameter is not supported in Gemini API.");
-  if (d(e, ["httpBasicAuthConfig"]) !== void 0) throw new Error("httpBasicAuthConfig parameter is not supported in Gemini API.");
-  if (d(e, ["oauthConfig"]) !== void 0) throw new Error("oauthConfig parameter is not supported in Gemini API.");
-  if (d(e, ["oidcConfig"]) !== void 0) throw new Error("oidcConfig parameter is not supported in Gemini API.");
+  const t = {}, n = c(e, ["apiKey"]);
+  if (n != null && h(t, ["apiKey"], n), c(e, ["apiKeyConfig"]) !== void 0) throw new Error("apiKeyConfig parameter is not supported in Gemini API.");
+  if (c(e, ["authType"]) !== void 0) throw new Error("authType parameter is not supported in Gemini API.");
+  if (c(e, ["googleServiceAccountConfig"]) !== void 0) throw new Error("googleServiceAccountConfig parameter is not supported in Gemini API.");
+  if (c(e, ["httpBasicAuthConfig"]) !== void 0) throw new Error("httpBasicAuthConfig parameter is not supported in Gemini API.");
+  if (c(e, ["oauthConfig"]) !== void 0) throw new Error("oauthConfig parameter is not supported in Gemini API.");
+  if (c(e, ["oidcConfig"]) !== void 0) throw new Error("oidcConfig parameter is not supported in Gemini API.");
   return t;
 }
 function wV(e) {
-  const t = {}, n = d(e, ["data"]);
-  if (n != null && h(t, ["data"], n), d(e, ["displayName"]) !== void 0) throw new Error("displayName parameter is not supported in Gemini API.");
-  const r = d(e, ["mimeType"]);
+  const t = {}, n = c(e, ["data"]);
+  if (n != null && h(t, ["data"], n), c(e, ["displayName"]) !== void 0) throw new Error("displayName parameter is not supported in Gemini API.");
+  const r = c(e, ["mimeType"]);
   return r != null && h(t, ["mimeType"], r), t;
 }
 function hI(e) {
-  const t = {}, n = d(e, ["parts"]);
+  const t = {}, n = c(e, ["parts"]);
   if (n != null) {
     let s = n;
     Array.isArray(s) && (s = s.map((a) => KV(a))), h(t, ["parts"], s);
   }
-  const r = d(e, ["role"]);
+  const r = c(e, ["role"]);
   return r != null && h(t, ["role"], r), t;
 }
 function pI(e) {
-  const t = {}, n = d(e, ["parts"]);
+  const t = {}, n = c(e, ["parts"]);
   if (n != null) {
     let s = n;
     Array.isArray(s) && (s = s.map((a) => WV(a))), h(t, ["parts"], s);
   }
-  const r = d(e, ["role"]);
+  const r = c(e, ["role"]);
   return r != null && h(t, ["role"], r), t;
 }
 function SV(e, t) {
-  const n = {}, r = d(e, ["ttl"]);
+  const n = {}, r = c(e, ["ttl"]);
   t !== void 0 && r != null && h(t, ["ttl"], r);
-  const s = d(e, ["expireTime"]);
+  const s = c(e, ["expireTime"]);
   t !== void 0 && s != null && h(t, ["expireTime"], s);
-  const a = d(e, ["displayName"]);
+  const a = c(e, ["displayName"]);
   t !== void 0 && a != null && h(t, ["displayName"], a);
-  const o = d(e, ["contents"]);
+  const o = c(e, ["contents"]);
   if (t !== void 0 && o != null) {
-    let c = hs(o);
-    Array.isArray(c) && (c = c.map((f) => hI(f))), h(t, ["contents"], c);
+    let d = hs(o);
+    Array.isArray(d) && (d = d.map((f) => hI(f))), h(t, ["contents"], d);
   }
-  const l = d(e, ["systemInstruction"]);
+  const l = c(e, ["systemInstruction"]);
   t !== void 0 && l != null && h(t, ["systemInstruction"], hI(wr(l)));
-  const i = d(e, ["tools"]);
+  const i = c(e, ["tools"]);
   if (t !== void 0 && i != null) {
-    let c = i;
-    Array.isArray(c) && (c = c.map((f) => JV(f))), h(t, ["tools"], c);
+    let d = i;
+    Array.isArray(d) && (d = d.map((f) => JV(f))), h(t, ["tools"], d);
   }
-  const u = d(e, ["toolConfig"]);
-  if (t !== void 0 && u != null && h(t, ["toolConfig"], VV(u)), d(e, ["kmsKeyName"]) !== void 0) throw new Error("kmsKeyName parameter is not supported in Gemini API.");
+  const u = c(e, ["toolConfig"]);
+  if (t !== void 0 && u != null && h(t, ["toolConfig"], VV(u)), c(e, ["kmsKeyName"]) !== void 0) throw new Error("kmsKeyName parameter is not supported in Gemini API.");
   return n;
 }
 function AV(e, t) {
-  const n = {}, r = d(e, ["ttl"]);
+  const n = {}, r = c(e, ["ttl"]);
   t !== void 0 && r != null && h(t, ["ttl"], r);
-  const s = d(e, ["expireTime"]);
+  const s = c(e, ["expireTime"]);
   t !== void 0 && s != null && h(t, ["expireTime"], s);
-  const a = d(e, ["displayName"]);
+  const a = c(e, ["displayName"]);
   t !== void 0 && a != null && h(t, ["displayName"], a);
-  const o = d(e, ["contents"]);
+  const o = c(e, ["contents"]);
   if (t !== void 0 && o != null) {
     let f = hs(o);
     Array.isArray(f) && (f = f.map((p) => pI(p))), h(t, ["contents"], f);
   }
-  const l = d(e, ["systemInstruction"]);
+  const l = c(e, ["systemInstruction"]);
   t !== void 0 && l != null && h(t, ["systemInstruction"], pI(wr(l)));
-  const i = d(e, ["tools"]);
+  const i = c(e, ["tools"]);
   if (t !== void 0 && i != null) {
     let f = i;
     Array.isArray(f) && (f = f.map((p) => YV(p))), h(t, ["tools"], f);
   }
-  const u = d(e, ["toolConfig"]);
+  const u = c(e, ["toolConfig"]);
   t !== void 0 && u != null && h(t, ["toolConfig"], GV(u));
-  const c = d(e, ["kmsKeyName"]);
-  return t !== void 0 && c != null && h(t, ["encryption_spec", "kmsKeyName"], c), n;
+  const d = c(e, ["kmsKeyName"]);
+  return t !== void 0 && d != null && h(t, ["encryption_spec", "kmsKeyName"], d), n;
 }
 function TV(e, t) {
-  const n = {}, r = d(t, ["model"]);
+  const n = {}, r = c(t, ["model"]);
   r != null && h(n, ["model"], GP(e, r));
-  const s = d(t, ["config"]);
+  const s = c(t, ["config"]);
   return s != null && SV(s, n), n;
 }
 function EV(e, t) {
-  const n = {}, r = d(t, ["model"]);
+  const n = {}, r = c(t, ["model"]);
   r != null && h(n, ["model"], GP(e, r));
-  const s = d(t, ["config"]);
+  const s = c(t, ["config"]);
   return s != null && AV(s, n), n;
 }
 function CV(e, t) {
-  const n = {}, r = d(t, ["name"]);
+  const n = {}, r = c(t, ["name"]);
   return r != null && h(n, ["_url", "name"], ii(e, r)), n;
 }
 function IV(e, t) {
-  const n = {}, r = d(t, ["name"]);
+  const n = {}, r = c(t, ["name"]);
   return r != null && h(n, ["_url", "name"], ii(e, r)), n;
 }
 function xV(e) {
-  const t = {}, n = d(e, ["sdkHttpResponse"]);
+  const t = {}, n = c(e, ["sdkHttpResponse"]);
   return n != null && h(t, ["sdkHttpResponse"], n), t;
 }
 function kV(e) {
-  const t = {}, n = d(e, ["sdkHttpResponse"]);
+  const t = {}, n = c(e, ["sdkHttpResponse"]);
   return n != null && h(t, ["sdkHttpResponse"], n), t;
 }
 function MV(e) {
   const t = {};
-  if (d(e, ["displayName"]) !== void 0) throw new Error("displayName parameter is not supported in Gemini API.");
-  const n = d(e, ["fileUri"]);
+  if (c(e, ["displayName"]) !== void 0) throw new Error("displayName parameter is not supported in Gemini API.");
+  const n = c(e, ["fileUri"]);
   n != null && h(t, ["fileUri"], n);
-  const r = d(e, ["mimeType"]);
+  const r = c(e, ["mimeType"]);
   return r != null && h(t, ["mimeType"], r), t;
 }
 function PV(e) {
-  const t = {}, n = d(e, ["id"]);
+  const t = {}, n = c(e, ["id"]);
   n != null && h(t, ["id"], n);
-  const r = d(e, ["args"]);
+  const r = c(e, ["args"]);
   r != null && h(t, ["args"], r);
-  const s = d(e, ["name"]);
-  if (s != null && h(t, ["name"], s), d(e, ["partialArgs"]) !== void 0) throw new Error("partialArgs parameter is not supported in Gemini API.");
-  if (d(e, ["willContinue"]) !== void 0) throw new Error("willContinue parameter is not supported in Gemini API.");
+  const s = c(e, ["name"]);
+  if (s != null && h(t, ["name"], s), c(e, ["partialArgs"]) !== void 0) throw new Error("partialArgs parameter is not supported in Gemini API.");
+  if (c(e, ["willContinue"]) !== void 0) throw new Error("willContinue parameter is not supported in Gemini API.");
   return t;
 }
 function RV(e) {
-  const t = {}, n = d(e, ["allowedFunctionNames"]);
+  const t = {}, n = c(e, ["allowedFunctionNames"]);
   n != null && h(t, ["allowedFunctionNames"], n);
-  const r = d(e, ["mode"]);
-  if (r != null && h(t, ["mode"], r), d(e, ["streamFunctionCallArguments"]) !== void 0) throw new Error("streamFunctionCallArguments parameter is not supported in Gemini API.");
+  const r = c(e, ["mode"]);
+  if (r != null && h(t, ["mode"], r), c(e, ["streamFunctionCallArguments"]) !== void 0) throw new Error("streamFunctionCallArguments parameter is not supported in Gemini API.");
   return t;
 }
 function NV(e) {
-  const t = {}, n = d(e, ["description"]);
+  const t = {}, n = c(e, ["description"]);
   n != null && h(t, ["description"], n);
-  const r = d(e, ["name"]);
+  const r = c(e, ["name"]);
   r != null && h(t, ["name"], r);
-  const s = d(e, ["parameters"]);
+  const s = c(e, ["parameters"]);
   s != null && h(t, ["parameters"], s);
-  const a = d(e, ["parametersJsonSchema"]);
+  const a = c(e, ["parametersJsonSchema"]);
   a != null && h(t, ["parametersJsonSchema"], a);
-  const o = d(e, ["response"]);
+  const o = c(e, ["response"]);
   o != null && h(t, ["response"], o);
-  const l = d(e, ["responseJsonSchema"]);
-  if (l != null && h(t, ["responseJsonSchema"], l), d(e, ["behavior"]) !== void 0) throw new Error("behavior parameter is not supported in Vertex AI.");
+  const l = c(e, ["responseJsonSchema"]);
+  if (l != null && h(t, ["responseJsonSchema"], l), c(e, ["behavior"]) !== void 0) throw new Error("behavior parameter is not supported in Vertex AI.");
   return t;
 }
 function $V(e, t) {
-  const n = {}, r = d(t, ["name"]);
+  const n = {}, r = c(t, ["name"]);
   return r != null && h(n, ["_url", "name"], ii(e, r)), n;
 }
 function LV(e, t) {
-  const n = {}, r = d(t, ["name"]);
+  const n = {}, r = c(t, ["name"]);
   return r != null && h(n, ["_url", "name"], ii(e, r)), n;
 }
 function DV(e) {
-  const t = {}, n = d(e, ["authConfig"]);
+  const t = {}, n = c(e, ["authConfig"]);
   n != null && h(t, ["authConfig"], bV(n));
-  const r = d(e, ["enableWidget"]);
+  const r = c(e, ["enableWidget"]);
   return r != null && h(t, ["enableWidget"], r), t;
 }
 function OV(e) {
-  const t = {}, n = d(e, ["searchTypes"]);
-  if (n != null && h(t, ["searchTypes"], n), d(e, ["blockingConfidence"]) !== void 0) throw new Error("blockingConfidence parameter is not supported in Gemini API.");
-  if (d(e, ["excludeDomains"]) !== void 0) throw new Error("excludeDomains parameter is not supported in Gemini API.");
-  const r = d(e, ["timeRangeFilter"]);
+  const t = {}, n = c(e, ["searchTypes"]);
+  if (n != null && h(t, ["searchTypes"], n), c(e, ["blockingConfidence"]) !== void 0) throw new Error("blockingConfidence parameter is not supported in Gemini API.");
+  if (c(e, ["excludeDomains"]) !== void 0) throw new Error("excludeDomains parameter is not supported in Gemini API.");
+  const r = c(e, ["timeRangeFilter"]);
   return r != null && h(t, ["timeRangeFilter"], r), t;
 }
 function FV(e, t) {
-  const n = {}, r = d(e, ["pageSize"]);
+  const n = {}, r = c(e, ["pageSize"]);
   t !== void 0 && r != null && h(t, ["_query", "pageSize"], r);
-  const s = d(e, ["pageToken"]);
+  const s = c(e, ["pageToken"]);
   return t !== void 0 && s != null && h(t, ["_query", "pageToken"], s), n;
 }
 function BV(e, t) {
-  const n = {}, r = d(e, ["pageSize"]);
+  const n = {}, r = c(e, ["pageSize"]);
   t !== void 0 && r != null && h(t, ["_query", "pageSize"], r);
-  const s = d(e, ["pageToken"]);
+  const s = c(e, ["pageToken"]);
   return t !== void 0 && s != null && h(t, ["_query", "pageToken"], s), n;
 }
 function UV(e) {
-  const t = {}, n = d(e, ["config"]);
+  const t = {}, n = c(e, ["config"]);
   return n != null && FV(n, t), t;
 }
 function qV(e) {
-  const t = {}, n = d(e, ["config"]);
+  const t = {}, n = c(e, ["config"]);
   return n != null && BV(n, t), t;
 }
 function HV(e) {
-  const t = {}, n = d(e, ["sdkHttpResponse"]);
+  const t = {}, n = c(e, ["sdkHttpResponse"]);
   n != null && h(t, ["sdkHttpResponse"], n);
-  const r = d(e, ["nextPageToken"]);
+  const r = c(e, ["nextPageToken"]);
   r != null && h(t, ["nextPageToken"], r);
-  const s = d(e, ["cachedContents"]);
+  const s = c(e, ["cachedContents"]);
   if (s != null) {
     let a = s;
     Array.isArray(a) && (a = a.map((o) => o)), h(t, ["cachedContents"], a);
@@ -27632,11 +27632,11 @@ function HV(e) {
   return t;
 }
 function zV(e) {
-  const t = {}, n = d(e, ["sdkHttpResponse"]);
+  const t = {}, n = c(e, ["sdkHttpResponse"]);
   n != null && h(t, ["sdkHttpResponse"], n);
-  const r = d(e, ["nextPageToken"]);
+  const r = c(e, ["nextPageToken"]);
   r != null && h(t, ["nextPageToken"], r);
-  const s = d(e, ["cachedContents"]);
+  const s = c(e, ["cachedContents"]);
   if (s != null) {
     let a = s;
     Array.isArray(a) && (a = a.map((o) => o)), h(t, ["cachedContents"], a);
@@ -27644,154 +27644,154 @@ function zV(e) {
   return t;
 }
 function KV(e) {
-  const t = {}, n = d(e, ["mediaResolution"]);
+  const t = {}, n = c(e, ["mediaResolution"]);
   n != null && h(t, ["mediaResolution"], n);
-  const r = d(e, ["codeExecutionResult"]);
+  const r = c(e, ["codeExecutionResult"]);
   r != null && h(t, ["codeExecutionResult"], r);
-  const s = d(e, ["executableCode"]);
+  const s = c(e, ["executableCode"]);
   s != null && h(t, ["executableCode"], s);
-  const a = d(e, ["fileData"]);
+  const a = c(e, ["fileData"]);
   a != null && h(t, ["fileData"], MV(a));
-  const o = d(e, ["functionCall"]);
+  const o = c(e, ["functionCall"]);
   o != null && h(t, ["functionCall"], PV(o));
-  const l = d(e, ["functionResponse"]);
+  const l = c(e, ["functionResponse"]);
   l != null && h(t, ["functionResponse"], l);
-  const i = d(e, ["inlineData"]);
+  const i = c(e, ["inlineData"]);
   i != null && h(t, ["inlineData"], wV(i));
-  const u = d(e, ["text"]);
+  const u = c(e, ["text"]);
   u != null && h(t, ["text"], u);
-  const c = d(e, ["thought"]);
-  c != null && h(t, ["thought"], c);
-  const f = d(e, ["thoughtSignature"]);
+  const d = c(e, ["thought"]);
+  d != null && h(t, ["thought"], d);
+  const f = c(e, ["thoughtSignature"]);
   f != null && h(t, ["thoughtSignature"], f);
-  const p = d(e, ["videoMetadata"]);
+  const p = c(e, ["videoMetadata"]);
   p != null && h(t, ["videoMetadata"], p);
-  const g = d(e, ["toolCall"]);
+  const g = c(e, ["toolCall"]);
   g != null && h(t, ["toolCall"], g);
-  const y = d(e, ["toolResponse"]);
+  const y = c(e, ["toolResponse"]);
   y != null && h(t, ["toolResponse"], y);
-  const _ = d(e, ["partMetadata"]);
+  const _ = c(e, ["partMetadata"]);
   return _ != null && h(t, ["partMetadata"], _), t;
 }
 function WV(e) {
-  const t = {}, n = d(e, ["mediaResolution"]);
+  const t = {}, n = c(e, ["mediaResolution"]);
   n != null && h(t, ["mediaResolution"], n);
-  const r = d(e, ["codeExecutionResult"]);
+  const r = c(e, ["codeExecutionResult"]);
   r != null && h(t, ["codeExecutionResult"], r);
-  const s = d(e, ["executableCode"]);
+  const s = c(e, ["executableCode"]);
   s != null && h(t, ["executableCode"], s);
-  const a = d(e, ["fileData"]);
+  const a = c(e, ["fileData"]);
   a != null && h(t, ["fileData"], a);
-  const o = d(e, ["functionCall"]);
+  const o = c(e, ["functionCall"]);
   o != null && h(t, ["functionCall"], o);
-  const l = d(e, ["functionResponse"]);
+  const l = c(e, ["functionResponse"]);
   l != null && h(t, ["functionResponse"], l);
-  const i = d(e, ["inlineData"]);
+  const i = c(e, ["inlineData"]);
   i != null && h(t, ["inlineData"], i);
-  const u = d(e, ["text"]);
+  const u = c(e, ["text"]);
   u != null && h(t, ["text"], u);
-  const c = d(e, ["thought"]);
-  c != null && h(t, ["thought"], c);
-  const f = d(e, ["thoughtSignature"]);
+  const d = c(e, ["thought"]);
+  d != null && h(t, ["thought"], d);
+  const f = c(e, ["thoughtSignature"]);
   f != null && h(t, ["thoughtSignature"], f);
-  const p = d(e, ["videoMetadata"]);
-  if (p != null && h(t, ["videoMetadata"], p), d(e, ["toolCall"]) !== void 0) throw new Error("toolCall parameter is not supported in Vertex AI.");
-  if (d(e, ["toolResponse"]) !== void 0) throw new Error("toolResponse parameter is not supported in Vertex AI.");
-  if (d(e, ["partMetadata"]) !== void 0) throw new Error("partMetadata parameter is not supported in Vertex AI.");
+  const p = c(e, ["videoMetadata"]);
+  if (p != null && h(t, ["videoMetadata"], p), c(e, ["toolCall"]) !== void 0) throw new Error("toolCall parameter is not supported in Vertex AI.");
+  if (c(e, ["toolResponse"]) !== void 0) throw new Error("toolResponse parameter is not supported in Vertex AI.");
+  if (c(e, ["partMetadata"]) !== void 0) throw new Error("partMetadata parameter is not supported in Vertex AI.");
   return t;
 }
 function VV(e) {
-  const t = {}, n = d(e, ["retrievalConfig"]);
+  const t = {}, n = c(e, ["retrievalConfig"]);
   n != null && h(t, ["retrievalConfig"], n);
-  const r = d(e, ["functionCallingConfig"]);
+  const r = c(e, ["functionCallingConfig"]);
   r != null && h(t, ["functionCallingConfig"], RV(r));
-  const s = d(e, ["includeServerSideToolInvocations"]);
+  const s = c(e, ["includeServerSideToolInvocations"]);
   return s != null && h(t, ["includeServerSideToolInvocations"], s), t;
 }
 function GV(e) {
-  const t = {}, n = d(e, ["retrievalConfig"]);
+  const t = {}, n = c(e, ["retrievalConfig"]);
   n != null && h(t, ["retrievalConfig"], n);
-  const r = d(e, ["functionCallingConfig"]);
-  if (r != null && h(t, ["functionCallingConfig"], r), d(e, ["includeServerSideToolInvocations"]) !== void 0) throw new Error("includeServerSideToolInvocations parameter is not supported in Vertex AI.");
+  const r = c(e, ["functionCallingConfig"]);
+  if (r != null && h(t, ["functionCallingConfig"], r), c(e, ["includeServerSideToolInvocations"]) !== void 0) throw new Error("includeServerSideToolInvocations parameter is not supported in Vertex AI.");
   return t;
 }
 function JV(e) {
   const t = {};
-  if (d(e, ["retrieval"]) !== void 0) throw new Error("retrieval parameter is not supported in Gemini API.");
-  const n = d(e, ["computerUse"]);
+  if (c(e, ["retrieval"]) !== void 0) throw new Error("retrieval parameter is not supported in Gemini API.");
+  const n = c(e, ["computerUse"]);
   n != null && h(t, ["computerUse"], n);
-  const r = d(e, ["fileSearch"]);
+  const r = c(e, ["fileSearch"]);
   r != null && h(t, ["fileSearch"], r);
-  const s = d(e, ["googleSearch"]);
+  const s = c(e, ["googleSearch"]);
   s != null && h(t, ["googleSearch"], OV(s));
-  const a = d(e, ["googleMaps"]);
+  const a = c(e, ["googleMaps"]);
   a != null && h(t, ["googleMaps"], DV(a));
-  const o = d(e, ["codeExecution"]);
-  if (o != null && h(t, ["codeExecution"], o), d(e, ["enterpriseWebSearch"]) !== void 0) throw new Error("enterpriseWebSearch parameter is not supported in Gemini API.");
-  const l = d(e, ["functionDeclarations"]);
+  const o = c(e, ["codeExecution"]);
+  if (o != null && h(t, ["codeExecution"], o), c(e, ["enterpriseWebSearch"]) !== void 0) throw new Error("enterpriseWebSearch parameter is not supported in Gemini API.");
+  const l = c(e, ["functionDeclarations"]);
   if (l != null) {
     let f = l;
     Array.isArray(f) && (f = f.map((p) => p)), h(t, ["functionDeclarations"], f);
   }
-  const i = d(e, ["googleSearchRetrieval"]);
-  if (i != null && h(t, ["googleSearchRetrieval"], i), d(e, ["parallelAiSearch"]) !== void 0) throw new Error("parallelAiSearch parameter is not supported in Gemini API.");
-  const u = d(e, ["urlContext"]);
+  const i = c(e, ["googleSearchRetrieval"]);
+  if (i != null && h(t, ["googleSearchRetrieval"], i), c(e, ["parallelAiSearch"]) !== void 0) throw new Error("parallelAiSearch parameter is not supported in Gemini API.");
+  const u = c(e, ["urlContext"]);
   u != null && h(t, ["urlContext"], u);
-  const c = d(e, ["mcpServers"]);
-  if (c != null) {
-    let f = c;
+  const d = c(e, ["mcpServers"]);
+  if (d != null) {
+    let f = d;
     Array.isArray(f) && (f = f.map((p) => p)), h(t, ["mcpServers"], f);
   }
   return t;
 }
 function YV(e) {
-  const t = {}, n = d(e, ["retrieval"]);
+  const t = {}, n = c(e, ["retrieval"]);
   n != null && h(t, ["retrieval"], n);
-  const r = d(e, ["computerUse"]);
-  if (r != null && h(t, ["computerUse"], r), d(e, ["fileSearch"]) !== void 0) throw new Error("fileSearch parameter is not supported in Vertex AI.");
-  const s = d(e, ["googleSearch"]);
+  const r = c(e, ["computerUse"]);
+  if (r != null && h(t, ["computerUse"], r), c(e, ["fileSearch"]) !== void 0) throw new Error("fileSearch parameter is not supported in Vertex AI.");
+  const s = c(e, ["googleSearch"]);
   s != null && h(t, ["googleSearch"], s);
-  const a = d(e, ["googleMaps"]);
+  const a = c(e, ["googleMaps"]);
   a != null && h(t, ["googleMaps"], a);
-  const o = d(e, ["codeExecution"]);
+  const o = c(e, ["codeExecution"]);
   o != null && h(t, ["codeExecution"], o);
-  const l = d(e, ["enterpriseWebSearch"]);
+  const l = c(e, ["enterpriseWebSearch"]);
   l != null && h(t, ["enterpriseWebSearch"], l);
-  const i = d(e, ["functionDeclarations"]);
+  const i = c(e, ["functionDeclarations"]);
   if (i != null) {
     let p = i;
     Array.isArray(p) && (p = p.map((g) => NV(g))), h(t, ["functionDeclarations"], p);
   }
-  const u = d(e, ["googleSearchRetrieval"]);
+  const u = c(e, ["googleSearchRetrieval"]);
   u != null && h(t, ["googleSearchRetrieval"], u);
-  const c = d(e, ["parallelAiSearch"]);
-  c != null && h(t, ["parallelAiSearch"], c);
-  const f = d(e, ["urlContext"]);
-  if (f != null && h(t, ["urlContext"], f), d(e, ["mcpServers"]) !== void 0) throw new Error("mcpServers parameter is not supported in Vertex AI.");
+  const d = c(e, ["parallelAiSearch"]);
+  d != null && h(t, ["parallelAiSearch"], d);
+  const f = c(e, ["urlContext"]);
+  if (f != null && h(t, ["urlContext"], f), c(e, ["mcpServers"]) !== void 0) throw new Error("mcpServers parameter is not supported in Vertex AI.");
   return t;
 }
 function XV(e, t) {
-  const n = {}, r = d(e, ["ttl"]);
+  const n = {}, r = c(e, ["ttl"]);
   t !== void 0 && r != null && h(t, ["ttl"], r);
-  const s = d(e, ["expireTime"]);
+  const s = c(e, ["expireTime"]);
   return t !== void 0 && s != null && h(t, ["expireTime"], s), n;
 }
 function jV(e, t) {
-  const n = {}, r = d(e, ["ttl"]);
+  const n = {}, r = c(e, ["ttl"]);
   t !== void 0 && r != null && h(t, ["ttl"], r);
-  const s = d(e, ["expireTime"]);
+  const s = c(e, ["expireTime"]);
   return t !== void 0 && s != null && h(t, ["expireTime"], s), n;
 }
 function QV(e, t) {
-  const n = {}, r = d(t, ["name"]);
+  const n = {}, r = c(t, ["name"]);
   r != null && h(n, ["_url", "name"], ii(e, r));
-  const s = d(t, ["config"]);
+  const s = c(t, ["config"]);
   return s != null && XV(s, n), n;
 }
 function ZV(e, t) {
-  const n = {}, r = d(t, ["name"]);
+  const n = {}, r = c(t, ["name"]);
   r != null && h(n, ["_url", "name"], ii(e, r));
-  const s = d(t, ["config"]);
+  const s = c(t, ["config"]);
   return s != null && jV(s, n), n;
 }
 var eG = class extends oi {
@@ -27860,12 +27860,12 @@ var eG = class extends oi {
         httpMethod: "DELETE",
         httpOptions: (t = e.config) === null || t === void 0 ? void 0 : t.httpOptions,
         abortSignal: (n = e.config) === null || n === void 0 ? void 0 : n.abortSignal
-      }).then((u) => u.json().then((c) => {
-        const f = c;
+      }).then((u) => u.json().then((d) => {
+        const f = d;
         return f.sdkHttpResponse = { headers: u.headers }, f;
       })), a.then((u) => {
-        const c = kV(u), f = new oI();
-        return Object.assign(f, c), f;
+        const d = kV(u), f = new oI();
+        return Object.assign(f, d), f;
       });
     } else {
       const i = CV(this.apiClient, e);
@@ -27876,12 +27876,12 @@ var eG = class extends oi {
         httpMethod: "DELETE",
         httpOptions: (r = e.config) === null || r === void 0 ? void 0 : r.httpOptions,
         abortSignal: (s = e.config) === null || s === void 0 ? void 0 : s.abortSignal
-      }).then((u) => u.json().then((c) => {
-        const f = c;
+      }).then((u) => u.json().then((d) => {
+        const f = d;
         return f.sdkHttpResponse = { headers: u.headers }, f;
       })), a.then((u) => {
-        const c = xV(u), f = new oI();
-        return Object.assign(f, c), f;
+        const d = xV(u), f = new oI();
+        return Object.assign(f, d), f;
       });
     }
   }
@@ -27922,12 +27922,12 @@ var eG = class extends oi {
         httpMethod: "GET",
         httpOptions: (t = e.config) === null || t === void 0 ? void 0 : t.httpOptions,
         abortSignal: (n = e.config) === null || n === void 0 ? void 0 : n.abortSignal
-      }).then((u) => u.json().then((c) => {
-        const f = c;
+      }).then((u) => u.json().then((d) => {
+        const f = d;
         return f.sdkHttpResponse = { headers: u.headers }, f;
       })), a.then((u) => {
-        const c = zV(u), f = new iI();
-        return Object.assign(f, c), f;
+        const d = zV(u), f = new iI();
+        return Object.assign(f, d), f;
       });
     } else {
       const i = UV(e);
@@ -27938,12 +27938,12 @@ var eG = class extends oi {
         httpMethod: "GET",
         httpOptions: (r = e.config) === null || r === void 0 ? void 0 : r.httpOptions,
         abortSignal: (s = e.config) === null || s === void 0 ? void 0 : s.abortSignal
-      }).then((u) => u.json().then((c) => {
-        const f = c;
+      }).then((u) => u.json().then((d) => {
+        const f = d;
         return f.sdkHttpResponse = { headers: u.headers }, f;
       })), a.then((u) => {
-        const c = HV(u), f = new iI();
-        return Object.assign(f, c), f;
+        const d = HV(u), f = new iI();
+        return Object.assign(f, d), f;
       });
     }
   }
@@ -28000,9 +28000,9 @@ function Ta(e, t, n) {
     }
   }
   function u(g) {
-    g.value instanceof qt ? Promise.resolve(g.value.v).then(c, f) : p(a[0][2], g);
+    g.value instanceof qt ? Promise.resolve(g.value.v).then(d, f) : p(a[0][2], g);
   }
-  function c(g) {
+  function d(g) {
     i("next", g);
   }
   function f(g) {
@@ -28086,9 +28086,9 @@ var rG = class {
     });
     return this.sendPromise = (async () => {
       var s, a, o;
-      const l = await r, i = (a = (s = l.candidates) === null || s === void 0 ? void 0 : s[0]) === null || a === void 0 ? void 0 : a.content, u = l.automaticFunctionCallingHistory, c = this.getHistory(!0).length;
+      const l = await r, i = (a = (s = l.candidates) === null || s === void 0 ? void 0 : s[0]) === null || a === void 0 ? void 0 : a.content, u = l.automaticFunctionCallingHistory, d = this.getHistory(!0).length;
       let f = [];
-      u != null && (f = (o = u.slice(c)) !== null && o !== void 0 ? o : []);
+      u != null && (f = (o = u.slice(d)) !== null && o !== void 0 ? o : []);
       const p = i ? [i] : [];
       this.recordHistory(n, p, f);
     })(), await this.sendPromise.catch(() => {
@@ -28118,8 +28118,8 @@ var rG = class {
       var r, s, a, o, l, i;
       const u = [];
       try {
-        for (var c = !0, f = Ea(e), p; p = yield qt(f.next()), r = p.done, !r; c = !0) {
-          o = p.value, c = !1;
+        for (var d = !0, f = Ea(e), p; p = yield qt(f.next()), r = p.done, !r; d = !0) {
+          o = p.value, d = !1;
           const g = o;
           if (tG(g)) {
             const y = (i = (l = g.candidates) === null || l === void 0 ? void 0 : l[0]) === null || i === void 0 ? void 0 : i.content;
@@ -28131,7 +28131,7 @@ var rG = class {
         s = { error: g };
       } finally {
         try {
-          !c && !r && (a = f.return) && (yield qt(a.call(f)));
+          !d && !r && (a = f.return) && (yield qt(a.call(f)));
         } finally {
           if (s) throw s.error;
         }
@@ -28152,45 +28152,45 @@ var rG = class {
   }
 };
 function aG(e) {
-  const t = {}, n = d(e, ["file"]);
+  const t = {}, n = c(e, ["file"]);
   return n != null && h(t, ["file"], n), t;
 }
 function oG(e) {
-  const t = {}, n = d(e, ["sdkHttpResponse"]);
+  const t = {}, n = c(e, ["sdkHttpResponse"]);
   return n != null && h(t, ["sdkHttpResponse"], n), t;
 }
 function iG(e) {
-  const t = {}, n = d(e, ["name"]);
+  const t = {}, n = c(e, ["name"]);
   return n != null && h(t, ["_url", "file"], ZP(n)), t;
 }
 function lG(e) {
-  const t = {}, n = d(e, ["sdkHttpResponse"]);
+  const t = {}, n = c(e, ["sdkHttpResponse"]);
   return n != null && h(t, ["sdkHttpResponse"], n), t;
 }
 function uG(e) {
-  const t = {}, n = d(e, ["name"]);
+  const t = {}, n = c(e, ["name"]);
   return n != null && h(t, ["_url", "file"], ZP(n)), t;
 }
 function cG(e) {
-  const t = {}, n = d(e, ["uris"]);
+  const t = {}, n = c(e, ["uris"]);
   return n != null && h(t, ["uris"], n), t;
 }
 function dG(e, t) {
-  const n = {}, r = d(e, ["pageSize"]);
+  const n = {}, r = c(e, ["pageSize"]);
   t !== void 0 && r != null && h(t, ["_query", "pageSize"], r);
-  const s = d(e, ["pageToken"]);
+  const s = c(e, ["pageToken"]);
   return t !== void 0 && s != null && h(t, ["_query", "pageToken"], s), n;
 }
 function fG(e) {
-  const t = {}, n = d(e, ["config"]);
+  const t = {}, n = c(e, ["config"]);
   return n != null && dG(n, t), t;
 }
 function hG(e) {
-  const t = {}, n = d(e, ["sdkHttpResponse"]);
+  const t = {}, n = c(e, ["sdkHttpResponse"]);
   n != null && h(t, ["sdkHttpResponse"], n);
-  const r = d(e, ["nextPageToken"]);
+  const r = c(e, ["nextPageToken"]);
   r != null && h(t, ["nextPageToken"], r);
-  const s = d(e, ["files"]);
+  const s = c(e, ["files"]);
   if (s != null) {
     let a = s;
     Array.isArray(a) && (a = a.map((o) => o)), h(t, ["files"], a);
@@ -28198,9 +28198,9 @@ function hG(e) {
   return t;
 }
 function pG(e) {
-  const t = {}, n = d(e, ["sdkHttpResponse"]);
+  const t = {}, n = c(e, ["sdkHttpResponse"]);
   n != null && h(t, ["sdkHttpResponse"], n);
-  const r = d(e, ["files"]);
+  const r = c(e, ["files"]);
   if (r != null) {
     let s = r;
     Array.isArray(s) && (s = s.map((a) => a)), h(t, ["files"], s);
@@ -28325,221 +28325,221 @@ var mG = class extends oi {
 };
 function vI(e) {
   const t = {};
-  if (d(e, ["languageCodes"]) !== void 0) throw new Error("languageCodes parameter is not supported in Gemini API.");
+  if (c(e, ["languageCodes"]) !== void 0) throw new Error("languageCodes parameter is not supported in Gemini API.");
   return t;
 }
 function gG(e) {
-  const t = {}, n = d(e, ["apiKey"]);
-  if (n != null && h(t, ["apiKey"], n), d(e, ["apiKeyConfig"]) !== void 0) throw new Error("apiKeyConfig parameter is not supported in Gemini API.");
-  if (d(e, ["authType"]) !== void 0) throw new Error("authType parameter is not supported in Gemini API.");
-  if (d(e, ["googleServiceAccountConfig"]) !== void 0) throw new Error("googleServiceAccountConfig parameter is not supported in Gemini API.");
-  if (d(e, ["httpBasicAuthConfig"]) !== void 0) throw new Error("httpBasicAuthConfig parameter is not supported in Gemini API.");
-  if (d(e, ["oauthConfig"]) !== void 0) throw new Error("oauthConfig parameter is not supported in Gemini API.");
-  if (d(e, ["oidcConfig"]) !== void 0) throw new Error("oidcConfig parameter is not supported in Gemini API.");
+  const t = {}, n = c(e, ["apiKey"]);
+  if (n != null && h(t, ["apiKey"], n), c(e, ["apiKeyConfig"]) !== void 0) throw new Error("apiKeyConfig parameter is not supported in Gemini API.");
+  if (c(e, ["authType"]) !== void 0) throw new Error("authType parameter is not supported in Gemini API.");
+  if (c(e, ["googleServiceAccountConfig"]) !== void 0) throw new Error("googleServiceAccountConfig parameter is not supported in Gemini API.");
+  if (c(e, ["httpBasicAuthConfig"]) !== void 0) throw new Error("httpBasicAuthConfig parameter is not supported in Gemini API.");
+  if (c(e, ["oauthConfig"]) !== void 0) throw new Error("oauthConfig parameter is not supported in Gemini API.");
+  if (c(e, ["oidcConfig"]) !== void 0) throw new Error("oidcConfig parameter is not supported in Gemini API.");
   return t;
 }
 function Nm(e) {
-  const t = {}, n = d(e, ["data"]);
-  if (n != null && h(t, ["data"], n), d(e, ["displayName"]) !== void 0) throw new Error("displayName parameter is not supported in Gemini API.");
-  const r = d(e, ["mimeType"]);
+  const t = {}, n = c(e, ["data"]);
+  if (n != null && h(t, ["data"], n), c(e, ["displayName"]) !== void 0) throw new Error("displayName parameter is not supported in Gemini API.");
+  const r = c(e, ["mimeType"]);
   return r != null && h(t, ["mimeType"], r), t;
 }
 function vG(e) {
-  const t = {}, n = d(e, ["parts"]);
+  const t = {}, n = c(e, ["parts"]);
   if (n != null) {
     let s = n;
     Array.isArray(s) && (s = s.map((a) => $G(a))), h(t, ["parts"], s);
   }
-  const r = d(e, ["role"]);
+  const r = c(e, ["role"]);
   return r != null && h(t, ["role"], r), t;
 }
 function yG(e) {
-  const t = {}, n = d(e, ["parts"]);
+  const t = {}, n = c(e, ["parts"]);
   if (n != null) {
     let s = n;
     Array.isArray(s) && (s = s.map((a) => LG(a))), h(t, ["parts"], s);
   }
-  const r = d(e, ["role"]);
+  const r = c(e, ["role"]);
   return r != null && h(t, ["role"], r), t;
 }
 function _G(e) {
   const t = {};
-  if (d(e, ["displayName"]) !== void 0) throw new Error("displayName parameter is not supported in Gemini API.");
-  const n = d(e, ["fileUri"]);
+  if (c(e, ["displayName"]) !== void 0) throw new Error("displayName parameter is not supported in Gemini API.");
+  const n = c(e, ["fileUri"]);
   n != null && h(t, ["fileUri"], n);
-  const r = d(e, ["mimeType"]);
+  const r = c(e, ["mimeType"]);
   return r != null && h(t, ["mimeType"], r), t;
 }
 function bG(e) {
-  const t = {}, n = d(e, ["id"]);
+  const t = {}, n = c(e, ["id"]);
   n != null && h(t, ["id"], n);
-  const r = d(e, ["args"]);
+  const r = c(e, ["args"]);
   r != null && h(t, ["args"], r);
-  const s = d(e, ["name"]);
-  if (s != null && h(t, ["name"], s), d(e, ["partialArgs"]) !== void 0) throw new Error("partialArgs parameter is not supported in Gemini API.");
-  if (d(e, ["willContinue"]) !== void 0) throw new Error("willContinue parameter is not supported in Gemini API.");
+  const s = c(e, ["name"]);
+  if (s != null && h(t, ["name"], s), c(e, ["partialArgs"]) !== void 0) throw new Error("partialArgs parameter is not supported in Gemini API.");
+  if (c(e, ["willContinue"]) !== void 0) throw new Error("willContinue parameter is not supported in Gemini API.");
   return t;
 }
 function wG(e) {
-  const t = {}, n = d(e, ["description"]);
+  const t = {}, n = c(e, ["description"]);
   n != null && h(t, ["description"], n);
-  const r = d(e, ["name"]);
+  const r = c(e, ["name"]);
   r != null && h(t, ["name"], r);
-  const s = d(e, ["parameters"]);
+  const s = c(e, ["parameters"]);
   s != null && h(t, ["parameters"], s);
-  const a = d(e, ["parametersJsonSchema"]);
+  const a = c(e, ["parametersJsonSchema"]);
   a != null && h(t, ["parametersJsonSchema"], a);
-  const o = d(e, ["response"]);
+  const o = c(e, ["response"]);
   o != null && h(t, ["response"], o);
-  const l = d(e, ["responseJsonSchema"]);
-  if (l != null && h(t, ["responseJsonSchema"], l), d(e, ["behavior"]) !== void 0) throw new Error("behavior parameter is not supported in Vertex AI.");
+  const l = c(e, ["responseJsonSchema"]);
+  if (l != null && h(t, ["responseJsonSchema"], l), c(e, ["behavior"]) !== void 0) throw new Error("behavior parameter is not supported in Vertex AI.");
   return t;
 }
 function SG(e) {
-  const t = {}, n = d(e, ["modelSelectionConfig"]);
+  const t = {}, n = c(e, ["modelSelectionConfig"]);
   n != null && h(t, ["modelConfig"], n);
-  const r = d(e, ["responseJsonSchema"]);
+  const r = c(e, ["responseJsonSchema"]);
   r != null && h(t, ["responseJsonSchema"], r);
-  const s = d(e, ["audioTimestamp"]);
+  const s = c(e, ["audioTimestamp"]);
   s != null && h(t, ["audioTimestamp"], s);
-  const a = d(e, ["candidateCount"]);
+  const a = c(e, ["candidateCount"]);
   a != null && h(t, ["candidateCount"], a);
-  const o = d(e, ["enableAffectiveDialog"]);
+  const o = c(e, ["enableAffectiveDialog"]);
   o != null && h(t, ["enableAffectiveDialog"], o);
-  const l = d(e, ["frequencyPenalty"]);
+  const l = c(e, ["frequencyPenalty"]);
   l != null && h(t, ["frequencyPenalty"], l);
-  const i = d(e, ["logprobs"]);
+  const i = c(e, ["logprobs"]);
   i != null && h(t, ["logprobs"], i);
-  const u = d(e, ["maxOutputTokens"]);
+  const u = c(e, ["maxOutputTokens"]);
   u != null && h(t, ["maxOutputTokens"], u);
-  const c = d(e, ["mediaResolution"]);
-  c != null && h(t, ["mediaResolution"], c);
-  const f = d(e, ["presencePenalty"]);
+  const d = c(e, ["mediaResolution"]);
+  d != null && h(t, ["mediaResolution"], d);
+  const f = c(e, ["presencePenalty"]);
   f != null && h(t, ["presencePenalty"], f);
-  const p = d(e, ["responseLogprobs"]);
+  const p = c(e, ["responseLogprobs"]);
   p != null && h(t, ["responseLogprobs"], p);
-  const g = d(e, ["responseMimeType"]);
+  const g = c(e, ["responseMimeType"]);
   g != null && h(t, ["responseMimeType"], g);
-  const y = d(e, ["responseModalities"]);
+  const y = c(e, ["responseModalities"]);
   y != null && h(t, ["responseModalities"], y);
-  const _ = d(e, ["responseSchema"]);
+  const _ = c(e, ["responseSchema"]);
   _ != null && h(t, ["responseSchema"], _);
-  const x = d(e, ["routingConfig"]);
+  const x = c(e, ["routingConfig"]);
   x != null && h(t, ["routingConfig"], x);
-  const C = d(e, ["seed"]);
+  const C = c(e, ["seed"]);
   C != null && h(t, ["seed"], C);
-  const E = d(e, ["speechConfig"]);
+  const E = c(e, ["speechConfig"]);
   E != null && h(t, ["speechConfig"], E);
-  const R = d(e, ["stopSequences"]);
+  const R = c(e, ["stopSequences"]);
   R != null && h(t, ["stopSequences"], R);
-  const N = d(e, ["temperature"]);
+  const N = c(e, ["temperature"]);
   N != null && h(t, ["temperature"], N);
-  const m = d(e, ["thinkingConfig"]);
+  const m = c(e, ["thinkingConfig"]);
   m != null && h(t, ["thinkingConfig"], m);
-  const w = d(e, ["topK"]);
+  const w = c(e, ["topK"]);
   w != null && h(t, ["topK"], w);
-  const b = d(e, ["topP"]);
-  if (b != null && h(t, ["topP"], b), d(e, ["enableEnhancedCivicAnswers"]) !== void 0) throw new Error("enableEnhancedCivicAnswers parameter is not supported in Vertex AI.");
+  const b = c(e, ["topP"]);
+  if (b != null && h(t, ["topP"], b), c(e, ["enableEnhancedCivicAnswers"]) !== void 0) throw new Error("enableEnhancedCivicAnswers parameter is not supported in Vertex AI.");
   return t;
 }
 function AG(e) {
-  const t = {}, n = d(e, ["authConfig"]);
+  const t = {}, n = c(e, ["authConfig"]);
   n != null && h(t, ["authConfig"], gG(n));
-  const r = d(e, ["enableWidget"]);
+  const r = c(e, ["enableWidget"]);
   return r != null && h(t, ["enableWidget"], r), t;
 }
 function TG(e) {
-  const t = {}, n = d(e, ["searchTypes"]);
-  if (n != null && h(t, ["searchTypes"], n), d(e, ["blockingConfidence"]) !== void 0) throw new Error("blockingConfidence parameter is not supported in Gemini API.");
-  if (d(e, ["excludeDomains"]) !== void 0) throw new Error("excludeDomains parameter is not supported in Gemini API.");
-  const r = d(e, ["timeRangeFilter"]);
+  const t = {}, n = c(e, ["searchTypes"]);
+  if (n != null && h(t, ["searchTypes"], n), c(e, ["blockingConfidence"]) !== void 0) throw new Error("blockingConfidence parameter is not supported in Gemini API.");
+  if (c(e, ["excludeDomains"]) !== void 0) throw new Error("excludeDomains parameter is not supported in Gemini API.");
+  const r = c(e, ["timeRangeFilter"]);
   return r != null && h(t, ["timeRangeFilter"], r), t;
 }
 function EG(e, t) {
-  const n = {}, r = d(e, ["generationConfig"]);
+  const n = {}, r = c(e, ["generationConfig"]);
   t !== void 0 && r != null && h(t, ["setup", "generationConfig"], r);
-  const s = d(e, ["responseModalities"]);
+  const s = c(e, ["responseModalities"]);
   t !== void 0 && s != null && h(t, [
     "setup",
     "generationConfig",
     "responseModalities"
   ], s);
-  const a = d(e, ["temperature"]);
+  const a = c(e, ["temperature"]);
   t !== void 0 && a != null && h(t, [
     "setup",
     "generationConfig",
     "temperature"
   ], a);
-  const o = d(e, ["topP"]);
+  const o = c(e, ["topP"]);
   t !== void 0 && o != null && h(t, [
     "setup",
     "generationConfig",
     "topP"
   ], o);
-  const l = d(e, ["topK"]);
+  const l = c(e, ["topK"]);
   t !== void 0 && l != null && h(t, [
     "setup",
     "generationConfig",
     "topK"
   ], l);
-  const i = d(e, ["maxOutputTokens"]);
+  const i = c(e, ["maxOutputTokens"]);
   t !== void 0 && i != null && h(t, [
     "setup",
     "generationConfig",
     "maxOutputTokens"
   ], i);
-  const u = d(e, ["mediaResolution"]);
+  const u = c(e, ["mediaResolution"]);
   t !== void 0 && u != null && h(t, [
     "setup",
     "generationConfig",
     "mediaResolution"
   ], u);
-  const c = d(e, ["seed"]);
-  t !== void 0 && c != null && h(t, [
+  const d = c(e, ["seed"]);
+  t !== void 0 && d != null && h(t, [
     "setup",
     "generationConfig",
     "seed"
-  ], c);
-  const f = d(e, ["speechConfig"]);
+  ], d);
+  const f = c(e, ["speechConfig"]);
   t !== void 0 && f != null && h(t, [
     "setup",
     "generationConfig",
     "speechConfig"
   ], SS(f));
-  const p = d(e, ["thinkingConfig"]);
+  const p = c(e, ["thinkingConfig"]);
   t !== void 0 && p != null && h(t, [
     "setup",
     "generationConfig",
     "thinkingConfig"
   ], p);
-  const g = d(e, ["enableAffectiveDialog"]);
+  const g = c(e, ["enableAffectiveDialog"]);
   t !== void 0 && g != null && h(t, [
     "setup",
     "generationConfig",
     "enableAffectiveDialog"
   ], g);
-  const y = d(e, ["systemInstruction"]);
+  const y = c(e, ["systemInstruction"]);
   t !== void 0 && y != null && h(t, ["setup", "systemInstruction"], vG(wr(y)));
-  const _ = d(e, ["tools"]);
+  const _ = c(e, ["tools"]);
   if (t !== void 0 && _ != null) {
     let S = Kc(_);
     Array.isArray(S) && (S = S.map((I) => FG(zc(I)))), h(t, ["setup", "tools"], S);
   }
-  const x = d(e, ["sessionResumption"]);
+  const x = c(e, ["sessionResumption"]);
   t !== void 0 && x != null && h(t, ["setup", "sessionResumption"], OG(x));
-  const C = d(e, ["inputAudioTranscription"]);
+  const C = c(e, ["inputAudioTranscription"]);
   t !== void 0 && C != null && h(t, ["setup", "inputAudioTranscription"], vI(C));
-  const E = d(e, ["outputAudioTranscription"]);
+  const E = c(e, ["outputAudioTranscription"]);
   t !== void 0 && E != null && h(t, ["setup", "outputAudioTranscription"], vI(E));
-  const R = d(e, ["realtimeInputConfig"]);
+  const R = c(e, ["realtimeInputConfig"]);
   t !== void 0 && R != null && h(t, ["setup", "realtimeInputConfig"], R);
-  const N = d(e, ["contextWindowCompression"]);
+  const N = c(e, ["contextWindowCompression"]);
   t !== void 0 && N != null && h(t, ["setup", "contextWindowCompression"], N);
-  const m = d(e, ["proactivity"]);
-  if (t !== void 0 && m != null && h(t, ["setup", "proactivity"], m), d(e, ["explicitVadSignal"]) !== void 0) throw new Error("explicitVadSignal parameter is not supported in Gemini API.");
-  const w = d(e, ["avatarConfig"]);
+  const m = c(e, ["proactivity"]);
+  if (t !== void 0 && m != null && h(t, ["setup", "proactivity"], m), c(e, ["explicitVadSignal"]) !== void 0) throw new Error("explicitVadSignal parameter is not supported in Gemini API.");
+  const w = c(e, ["avatarConfig"]);
   t !== void 0 && w != null && h(t, ["setup", "avatarConfig"], w);
-  const b = d(e, ["safetySettings"]);
+  const b = c(e, ["safetySettings"]);
   if (t !== void 0 && b != null) {
     let S = b;
     Array.isArray(S) && (S = S.map((I) => DG(I))), h(t, ["setup", "safetySettings"], S);
@@ -28547,92 +28547,92 @@ function EG(e, t) {
   return n;
 }
 function CG(e, t) {
-  const n = {}, r = d(e, ["generationConfig"]);
+  const n = {}, r = c(e, ["generationConfig"]);
   t !== void 0 && r != null && h(t, ["setup", "generationConfig"], SG(r));
-  const s = d(e, ["responseModalities"]);
+  const s = c(e, ["responseModalities"]);
   t !== void 0 && s != null && h(t, [
     "setup",
     "generationConfig",
     "responseModalities"
   ], s);
-  const a = d(e, ["temperature"]);
+  const a = c(e, ["temperature"]);
   t !== void 0 && a != null && h(t, [
     "setup",
     "generationConfig",
     "temperature"
   ], a);
-  const o = d(e, ["topP"]);
+  const o = c(e, ["topP"]);
   t !== void 0 && o != null && h(t, [
     "setup",
     "generationConfig",
     "topP"
   ], o);
-  const l = d(e, ["topK"]);
+  const l = c(e, ["topK"]);
   t !== void 0 && l != null && h(t, [
     "setup",
     "generationConfig",
     "topK"
   ], l);
-  const i = d(e, ["maxOutputTokens"]);
+  const i = c(e, ["maxOutputTokens"]);
   t !== void 0 && i != null && h(t, [
     "setup",
     "generationConfig",
     "maxOutputTokens"
   ], i);
-  const u = d(e, ["mediaResolution"]);
+  const u = c(e, ["mediaResolution"]);
   t !== void 0 && u != null && h(t, [
     "setup",
     "generationConfig",
     "mediaResolution"
   ], u);
-  const c = d(e, ["seed"]);
-  t !== void 0 && c != null && h(t, [
+  const d = c(e, ["seed"]);
+  t !== void 0 && d != null && h(t, [
     "setup",
     "generationConfig",
     "seed"
-  ], c);
-  const f = d(e, ["speechConfig"]);
+  ], d);
+  const f = c(e, ["speechConfig"]);
   t !== void 0 && f != null && h(t, [
     "setup",
     "generationConfig",
     "speechConfig"
   ], SS(f));
-  const p = d(e, ["thinkingConfig"]);
+  const p = c(e, ["thinkingConfig"]);
   t !== void 0 && p != null && h(t, [
     "setup",
     "generationConfig",
     "thinkingConfig"
   ], p);
-  const g = d(e, ["enableAffectiveDialog"]);
+  const g = c(e, ["enableAffectiveDialog"]);
   t !== void 0 && g != null && h(t, [
     "setup",
     "generationConfig",
     "enableAffectiveDialog"
   ], g);
-  const y = d(e, ["systemInstruction"]);
+  const y = c(e, ["systemInstruction"]);
   t !== void 0 && y != null && h(t, ["setup", "systemInstruction"], yG(wr(y)));
-  const _ = d(e, ["tools"]);
+  const _ = c(e, ["tools"]);
   if (t !== void 0 && _ != null) {
     let I = Kc(_);
     Array.isArray(I) && (I = I.map((k) => BG(zc(k)))), h(t, ["setup", "tools"], I);
   }
-  const x = d(e, ["sessionResumption"]);
+  const x = c(e, ["sessionResumption"]);
   t !== void 0 && x != null && h(t, ["setup", "sessionResumption"], x);
-  const C = d(e, ["inputAudioTranscription"]);
+  const C = c(e, ["inputAudioTranscription"]);
   t !== void 0 && C != null && h(t, ["setup", "inputAudioTranscription"], C);
-  const E = d(e, ["outputAudioTranscription"]);
+  const E = c(e, ["outputAudioTranscription"]);
   t !== void 0 && E != null && h(t, ["setup", "outputAudioTranscription"], E);
-  const R = d(e, ["realtimeInputConfig"]);
+  const R = c(e, ["realtimeInputConfig"]);
   t !== void 0 && R != null && h(t, ["setup", "realtimeInputConfig"], R);
-  const N = d(e, ["contextWindowCompression"]);
+  const N = c(e, ["contextWindowCompression"]);
   t !== void 0 && N != null && h(t, ["setup", "contextWindowCompression"], N);
-  const m = d(e, ["proactivity"]);
+  const m = c(e, ["proactivity"]);
   t !== void 0 && m != null && h(t, ["setup", "proactivity"], m);
-  const w = d(e, ["explicitVadSignal"]);
+  const w = c(e, ["explicitVadSignal"]);
   t !== void 0 && w != null && h(t, ["setup", "explicitVadSignal"], w);
-  const b = d(e, ["avatarConfig"]);
+  const b = c(e, ["avatarConfig"]);
   t !== void 0 && b != null && h(t, ["setup", "avatarConfig"], b);
-  const S = d(e, ["safetySettings"]);
+  const S = c(e, ["safetySettings"]);
   if (t !== void 0 && S != null) {
     let I = S;
     Array.isArray(I) && (I = I.map((k) => k)), h(t, ["setup", "safetySettings"], I);
@@ -28640,23 +28640,23 @@ function CG(e, t) {
   return n;
 }
 function IG(e, t) {
-  const n = {}, r = d(t, ["model"]);
+  const n = {}, r = c(t, ["model"]);
   r != null && h(n, ["setup", "model"], cn(e, r));
-  const s = d(t, ["config"]);
+  const s = c(t, ["config"]);
   return s != null && h(n, ["config"], EG(s, n)), n;
 }
 function xG(e, t) {
-  const n = {}, r = d(t, ["model"]);
+  const n = {}, r = c(t, ["model"]);
   r != null && h(n, ["setup", "model"], cn(e, r));
-  const s = d(t, ["config"]);
+  const s = c(t, ["config"]);
   return s != null && h(n, ["config"], CG(s, n)), n;
 }
 function kG(e) {
-  const t = {}, n = d(e, ["musicGenerationConfig"]);
+  const t = {}, n = c(e, ["musicGenerationConfig"]);
   return n != null && h(t, ["musicGenerationConfig"], n), t;
 }
 function MG(e) {
-  const t = {}, n = d(e, ["weightedPrompts"]);
+  const t = {}, n = c(e, ["weightedPrompts"]);
   if (n != null) {
     let r = n;
     Array.isArray(r) && (r = r.map((s) => s)), h(t, ["weightedPrompts"], r);
@@ -28664,269 +28664,269 @@ function MG(e) {
   return t;
 }
 function PG(e) {
-  const t = {}, n = d(e, ["media"]);
+  const t = {}, n = c(e, ["media"]);
   if (n != null) {
     let u = JP(n);
-    Array.isArray(u) && (u = u.map((c) => Nm(c))), h(t, ["mediaChunks"], u);
+    Array.isArray(u) && (u = u.map((d) => Nm(d))), h(t, ["mediaChunks"], u);
   }
-  const r = d(e, ["audio"]);
+  const r = c(e, ["audio"]);
   r != null && h(t, ["audio"], Nm(XP(r)));
-  const s = d(e, ["audioStreamEnd"]);
+  const s = c(e, ["audioStreamEnd"]);
   s != null && h(t, ["audioStreamEnd"], s);
-  const a = d(e, ["video"]);
+  const a = c(e, ["video"]);
   a != null && h(t, ["video"], Nm(YP(a)));
-  const o = d(e, ["text"]);
+  const o = c(e, ["text"]);
   o != null && h(t, ["text"], o);
-  const l = d(e, ["activityStart"]);
+  const l = c(e, ["activityStart"]);
   l != null && h(t, ["activityStart"], l);
-  const i = d(e, ["activityEnd"]);
+  const i = c(e, ["activityEnd"]);
   return i != null && h(t, ["activityEnd"], i), t;
 }
 function RG(e) {
-  const t = {}, n = d(e, ["media"]);
+  const t = {}, n = c(e, ["media"]);
   if (n != null) {
     let u = JP(n);
-    Array.isArray(u) && (u = u.map((c) => c)), h(t, ["mediaChunks"], u);
+    Array.isArray(u) && (u = u.map((d) => d)), h(t, ["mediaChunks"], u);
   }
-  const r = d(e, ["audio"]);
+  const r = c(e, ["audio"]);
   r != null && h(t, ["audio"], XP(r));
-  const s = d(e, ["audioStreamEnd"]);
+  const s = c(e, ["audioStreamEnd"]);
   s != null && h(t, ["audioStreamEnd"], s);
-  const a = d(e, ["video"]);
+  const a = c(e, ["video"]);
   a != null && h(t, ["video"], YP(a));
-  const o = d(e, ["text"]);
+  const o = c(e, ["text"]);
   o != null && h(t, ["text"], o);
-  const l = d(e, ["activityStart"]);
+  const l = c(e, ["activityStart"]);
   l != null && h(t, ["activityStart"], l);
-  const i = d(e, ["activityEnd"]);
+  const i = c(e, ["activityEnd"]);
   return i != null && h(t, ["activityEnd"], i), t;
 }
 function NG(e) {
-  const t = {}, n = d(e, ["setupComplete"]);
+  const t = {}, n = c(e, ["setupComplete"]);
   n != null && h(t, ["setupComplete"], n);
-  const r = d(e, ["serverContent"]);
+  const r = c(e, ["serverContent"]);
   r != null && h(t, ["serverContent"], r);
-  const s = d(e, ["toolCall"]);
+  const s = c(e, ["toolCall"]);
   s != null && h(t, ["toolCall"], s);
-  const a = d(e, ["toolCallCancellation"]);
+  const a = c(e, ["toolCallCancellation"]);
   a != null && h(t, ["toolCallCancellation"], a);
-  const o = d(e, ["usageMetadata"]);
+  const o = c(e, ["usageMetadata"]);
   o != null && h(t, ["usageMetadata"], UG(o));
-  const l = d(e, ["goAway"]);
+  const l = c(e, ["goAway"]);
   l != null && h(t, ["goAway"], l);
-  const i = d(e, ["sessionResumptionUpdate"]);
+  const i = c(e, ["sessionResumptionUpdate"]);
   i != null && h(t, ["sessionResumptionUpdate"], i);
-  const u = d(e, ["voiceActivityDetectionSignal"]);
+  const u = c(e, ["voiceActivityDetectionSignal"]);
   u != null && h(t, ["voiceActivityDetectionSignal"], u);
-  const c = d(e, ["voiceActivity"]);
-  return c != null && h(t, ["voiceActivity"], qG(c)), t;
+  const d = c(e, ["voiceActivity"]);
+  return d != null && h(t, ["voiceActivity"], qG(d)), t;
 }
 function $G(e) {
-  const t = {}, n = d(e, ["mediaResolution"]);
+  const t = {}, n = c(e, ["mediaResolution"]);
   n != null && h(t, ["mediaResolution"], n);
-  const r = d(e, ["codeExecutionResult"]);
+  const r = c(e, ["codeExecutionResult"]);
   r != null && h(t, ["codeExecutionResult"], r);
-  const s = d(e, ["executableCode"]);
+  const s = c(e, ["executableCode"]);
   s != null && h(t, ["executableCode"], s);
-  const a = d(e, ["fileData"]);
+  const a = c(e, ["fileData"]);
   a != null && h(t, ["fileData"], _G(a));
-  const o = d(e, ["functionCall"]);
+  const o = c(e, ["functionCall"]);
   o != null && h(t, ["functionCall"], bG(o));
-  const l = d(e, ["functionResponse"]);
+  const l = c(e, ["functionResponse"]);
   l != null && h(t, ["functionResponse"], l);
-  const i = d(e, ["inlineData"]);
+  const i = c(e, ["inlineData"]);
   i != null && h(t, ["inlineData"], Nm(i));
-  const u = d(e, ["text"]);
+  const u = c(e, ["text"]);
   u != null && h(t, ["text"], u);
-  const c = d(e, ["thought"]);
-  c != null && h(t, ["thought"], c);
-  const f = d(e, ["thoughtSignature"]);
+  const d = c(e, ["thought"]);
+  d != null && h(t, ["thought"], d);
+  const f = c(e, ["thoughtSignature"]);
   f != null && h(t, ["thoughtSignature"], f);
-  const p = d(e, ["videoMetadata"]);
+  const p = c(e, ["videoMetadata"]);
   p != null && h(t, ["videoMetadata"], p);
-  const g = d(e, ["toolCall"]);
+  const g = c(e, ["toolCall"]);
   g != null && h(t, ["toolCall"], g);
-  const y = d(e, ["toolResponse"]);
+  const y = c(e, ["toolResponse"]);
   y != null && h(t, ["toolResponse"], y);
-  const _ = d(e, ["partMetadata"]);
+  const _ = c(e, ["partMetadata"]);
   return _ != null && h(t, ["partMetadata"], _), t;
 }
 function LG(e) {
-  const t = {}, n = d(e, ["mediaResolution"]);
+  const t = {}, n = c(e, ["mediaResolution"]);
   n != null && h(t, ["mediaResolution"], n);
-  const r = d(e, ["codeExecutionResult"]);
+  const r = c(e, ["codeExecutionResult"]);
   r != null && h(t, ["codeExecutionResult"], r);
-  const s = d(e, ["executableCode"]);
+  const s = c(e, ["executableCode"]);
   s != null && h(t, ["executableCode"], s);
-  const a = d(e, ["fileData"]);
+  const a = c(e, ["fileData"]);
   a != null && h(t, ["fileData"], a);
-  const o = d(e, ["functionCall"]);
+  const o = c(e, ["functionCall"]);
   o != null && h(t, ["functionCall"], o);
-  const l = d(e, ["functionResponse"]);
+  const l = c(e, ["functionResponse"]);
   l != null && h(t, ["functionResponse"], l);
-  const i = d(e, ["inlineData"]);
+  const i = c(e, ["inlineData"]);
   i != null && h(t, ["inlineData"], i);
-  const u = d(e, ["text"]);
+  const u = c(e, ["text"]);
   u != null && h(t, ["text"], u);
-  const c = d(e, ["thought"]);
-  c != null && h(t, ["thought"], c);
-  const f = d(e, ["thoughtSignature"]);
+  const d = c(e, ["thought"]);
+  d != null && h(t, ["thought"], d);
+  const f = c(e, ["thoughtSignature"]);
   f != null && h(t, ["thoughtSignature"], f);
-  const p = d(e, ["videoMetadata"]);
-  if (p != null && h(t, ["videoMetadata"], p), d(e, ["toolCall"]) !== void 0) throw new Error("toolCall parameter is not supported in Vertex AI.");
-  if (d(e, ["toolResponse"]) !== void 0) throw new Error("toolResponse parameter is not supported in Vertex AI.");
-  if (d(e, ["partMetadata"]) !== void 0) throw new Error("partMetadata parameter is not supported in Vertex AI.");
+  const p = c(e, ["videoMetadata"]);
+  if (p != null && h(t, ["videoMetadata"], p), c(e, ["toolCall"]) !== void 0) throw new Error("toolCall parameter is not supported in Vertex AI.");
+  if (c(e, ["toolResponse"]) !== void 0) throw new Error("toolResponse parameter is not supported in Vertex AI.");
+  if (c(e, ["partMetadata"]) !== void 0) throw new Error("partMetadata parameter is not supported in Vertex AI.");
   return t;
 }
 function DG(e) {
-  const t = {}, n = d(e, ["category"]);
-  if (n != null && h(t, ["category"], n), d(e, ["method"]) !== void 0) throw new Error("method parameter is not supported in Gemini API.");
-  const r = d(e, ["threshold"]);
+  const t = {}, n = c(e, ["category"]);
+  if (n != null && h(t, ["category"], n), c(e, ["method"]) !== void 0) throw new Error("method parameter is not supported in Gemini API.");
+  const r = c(e, ["threshold"]);
   return r != null && h(t, ["threshold"], r), t;
 }
 function OG(e) {
-  const t = {}, n = d(e, ["handle"]);
-  if (n != null && h(t, ["handle"], n), d(e, ["transparent"]) !== void 0) throw new Error("transparent parameter is not supported in Gemini API.");
+  const t = {}, n = c(e, ["handle"]);
+  if (n != null && h(t, ["handle"], n), c(e, ["transparent"]) !== void 0) throw new Error("transparent parameter is not supported in Gemini API.");
   return t;
 }
 function FG(e) {
   const t = {};
-  if (d(e, ["retrieval"]) !== void 0) throw new Error("retrieval parameter is not supported in Gemini API.");
-  const n = d(e, ["computerUse"]);
+  if (c(e, ["retrieval"]) !== void 0) throw new Error("retrieval parameter is not supported in Gemini API.");
+  const n = c(e, ["computerUse"]);
   n != null && h(t, ["computerUse"], n);
-  const r = d(e, ["fileSearch"]);
+  const r = c(e, ["fileSearch"]);
   r != null && h(t, ["fileSearch"], r);
-  const s = d(e, ["googleSearch"]);
+  const s = c(e, ["googleSearch"]);
   s != null && h(t, ["googleSearch"], TG(s));
-  const a = d(e, ["googleMaps"]);
+  const a = c(e, ["googleMaps"]);
   a != null && h(t, ["googleMaps"], AG(a));
-  const o = d(e, ["codeExecution"]);
-  if (o != null && h(t, ["codeExecution"], o), d(e, ["enterpriseWebSearch"]) !== void 0) throw new Error("enterpriseWebSearch parameter is not supported in Gemini API.");
-  const l = d(e, ["functionDeclarations"]);
+  const o = c(e, ["codeExecution"]);
+  if (o != null && h(t, ["codeExecution"], o), c(e, ["enterpriseWebSearch"]) !== void 0) throw new Error("enterpriseWebSearch parameter is not supported in Gemini API.");
+  const l = c(e, ["functionDeclarations"]);
   if (l != null) {
     let f = l;
     Array.isArray(f) && (f = f.map((p) => p)), h(t, ["functionDeclarations"], f);
   }
-  const i = d(e, ["googleSearchRetrieval"]);
-  if (i != null && h(t, ["googleSearchRetrieval"], i), d(e, ["parallelAiSearch"]) !== void 0) throw new Error("parallelAiSearch parameter is not supported in Gemini API.");
-  const u = d(e, ["urlContext"]);
+  const i = c(e, ["googleSearchRetrieval"]);
+  if (i != null && h(t, ["googleSearchRetrieval"], i), c(e, ["parallelAiSearch"]) !== void 0) throw new Error("parallelAiSearch parameter is not supported in Gemini API.");
+  const u = c(e, ["urlContext"]);
   u != null && h(t, ["urlContext"], u);
-  const c = d(e, ["mcpServers"]);
-  if (c != null) {
-    let f = c;
+  const d = c(e, ["mcpServers"]);
+  if (d != null) {
+    let f = d;
     Array.isArray(f) && (f = f.map((p) => p)), h(t, ["mcpServers"], f);
   }
   return t;
 }
 function BG(e) {
-  const t = {}, n = d(e, ["retrieval"]);
+  const t = {}, n = c(e, ["retrieval"]);
   n != null && h(t, ["retrieval"], n);
-  const r = d(e, ["computerUse"]);
-  if (r != null && h(t, ["computerUse"], r), d(e, ["fileSearch"]) !== void 0) throw new Error("fileSearch parameter is not supported in Vertex AI.");
-  const s = d(e, ["googleSearch"]);
+  const r = c(e, ["computerUse"]);
+  if (r != null && h(t, ["computerUse"], r), c(e, ["fileSearch"]) !== void 0) throw new Error("fileSearch parameter is not supported in Vertex AI.");
+  const s = c(e, ["googleSearch"]);
   s != null && h(t, ["googleSearch"], s);
-  const a = d(e, ["googleMaps"]);
+  const a = c(e, ["googleMaps"]);
   a != null && h(t, ["googleMaps"], a);
-  const o = d(e, ["codeExecution"]);
+  const o = c(e, ["codeExecution"]);
   o != null && h(t, ["codeExecution"], o);
-  const l = d(e, ["enterpriseWebSearch"]);
+  const l = c(e, ["enterpriseWebSearch"]);
   l != null && h(t, ["enterpriseWebSearch"], l);
-  const i = d(e, ["functionDeclarations"]);
+  const i = c(e, ["functionDeclarations"]);
   if (i != null) {
     let p = i;
     Array.isArray(p) && (p = p.map((g) => wG(g))), h(t, ["functionDeclarations"], p);
   }
-  const u = d(e, ["googleSearchRetrieval"]);
+  const u = c(e, ["googleSearchRetrieval"]);
   u != null && h(t, ["googleSearchRetrieval"], u);
-  const c = d(e, ["parallelAiSearch"]);
-  c != null && h(t, ["parallelAiSearch"], c);
-  const f = d(e, ["urlContext"]);
-  if (f != null && h(t, ["urlContext"], f), d(e, ["mcpServers"]) !== void 0) throw new Error("mcpServers parameter is not supported in Vertex AI.");
+  const d = c(e, ["parallelAiSearch"]);
+  d != null && h(t, ["parallelAiSearch"], d);
+  const f = c(e, ["urlContext"]);
+  if (f != null && h(t, ["urlContext"], f), c(e, ["mcpServers"]) !== void 0) throw new Error("mcpServers parameter is not supported in Vertex AI.");
   return t;
 }
 function UG(e) {
-  const t = {}, n = d(e, ["promptTokenCount"]);
+  const t = {}, n = c(e, ["promptTokenCount"]);
   n != null && h(t, ["promptTokenCount"], n);
-  const r = d(e, ["cachedContentTokenCount"]);
+  const r = c(e, ["cachedContentTokenCount"]);
   r != null && h(t, ["cachedContentTokenCount"], r);
-  const s = d(e, ["candidatesTokenCount"]);
+  const s = c(e, ["candidatesTokenCount"]);
   s != null && h(t, ["responseTokenCount"], s);
-  const a = d(e, ["toolUsePromptTokenCount"]);
+  const a = c(e, ["toolUsePromptTokenCount"]);
   a != null && h(t, ["toolUsePromptTokenCount"], a);
-  const o = d(e, ["thoughtsTokenCount"]);
+  const o = c(e, ["thoughtsTokenCount"]);
   o != null && h(t, ["thoughtsTokenCount"], o);
-  const l = d(e, ["totalTokenCount"]);
+  const l = c(e, ["totalTokenCount"]);
   l != null && h(t, ["totalTokenCount"], l);
-  const i = d(e, ["promptTokensDetails"]);
+  const i = c(e, ["promptTokensDetails"]);
   if (i != null) {
     let g = i;
     Array.isArray(g) && (g = g.map((y) => y)), h(t, ["promptTokensDetails"], g);
   }
-  const u = d(e, ["cacheTokensDetails"]);
+  const u = c(e, ["cacheTokensDetails"]);
   if (u != null) {
     let g = u;
     Array.isArray(g) && (g = g.map((y) => y)), h(t, ["cacheTokensDetails"], g);
   }
-  const c = d(e, ["candidatesTokensDetails"]);
-  if (c != null) {
-    let g = c;
+  const d = c(e, ["candidatesTokensDetails"]);
+  if (d != null) {
+    let g = d;
     Array.isArray(g) && (g = g.map((y) => y)), h(t, ["responseTokensDetails"], g);
   }
-  const f = d(e, ["toolUsePromptTokensDetails"]);
+  const f = c(e, ["toolUsePromptTokensDetails"]);
   if (f != null) {
     let g = f;
     Array.isArray(g) && (g = g.map((y) => y)), h(t, ["toolUsePromptTokensDetails"], g);
   }
-  const p = d(e, ["trafficType"]);
+  const p = c(e, ["trafficType"]);
   return p != null && h(t, ["trafficType"], p), t;
 }
 function qG(e) {
-  const t = {}, n = d(e, ["type"]);
+  const t = {}, n = c(e, ["type"]);
   return n != null && h(t, ["voiceActivityType"], n), t;
 }
 function HG(e, t) {
-  const n = {}, r = d(e, ["apiKey"]);
-  if (r != null && h(n, ["apiKey"], r), d(e, ["apiKeyConfig"]) !== void 0) throw new Error("apiKeyConfig parameter is not supported in Gemini API.");
-  if (d(e, ["authType"]) !== void 0) throw new Error("authType parameter is not supported in Gemini API.");
-  if (d(e, ["googleServiceAccountConfig"]) !== void 0) throw new Error("googleServiceAccountConfig parameter is not supported in Gemini API.");
-  if (d(e, ["httpBasicAuthConfig"]) !== void 0) throw new Error("httpBasicAuthConfig parameter is not supported in Gemini API.");
-  if (d(e, ["oauthConfig"]) !== void 0) throw new Error("oauthConfig parameter is not supported in Gemini API.");
-  if (d(e, ["oidcConfig"]) !== void 0) throw new Error("oidcConfig parameter is not supported in Gemini API.");
+  const n = {}, r = c(e, ["apiKey"]);
+  if (r != null && h(n, ["apiKey"], r), c(e, ["apiKeyConfig"]) !== void 0) throw new Error("apiKeyConfig parameter is not supported in Gemini API.");
+  if (c(e, ["authType"]) !== void 0) throw new Error("authType parameter is not supported in Gemini API.");
+  if (c(e, ["googleServiceAccountConfig"]) !== void 0) throw new Error("googleServiceAccountConfig parameter is not supported in Gemini API.");
+  if (c(e, ["httpBasicAuthConfig"]) !== void 0) throw new Error("httpBasicAuthConfig parameter is not supported in Gemini API.");
+  if (c(e, ["oauthConfig"]) !== void 0) throw new Error("oauthConfig parameter is not supported in Gemini API.");
+  if (c(e, ["oidcConfig"]) !== void 0) throw new Error("oidcConfig parameter is not supported in Gemini API.");
   return n;
 }
 function zG(e, t) {
-  const n = {}, r = d(e, ["data"]);
-  if (r != null && h(n, ["data"], r), d(e, ["displayName"]) !== void 0) throw new Error("displayName parameter is not supported in Gemini API.");
-  const s = d(e, ["mimeType"]);
+  const n = {}, r = c(e, ["data"]);
+  if (r != null && h(n, ["data"], r), c(e, ["displayName"]) !== void 0) throw new Error("displayName parameter is not supported in Gemini API.");
+  const s = c(e, ["mimeType"]);
   return s != null && h(n, ["mimeType"], s), n;
 }
 function KG(e, t) {
-  const n = {}, r = d(e, ["content"]);
+  const n = {}, r = c(e, ["content"]);
   r != null && h(n, ["content"], r);
-  const s = d(e, ["citationMetadata"]);
+  const s = c(e, ["citationMetadata"]);
   s != null && h(n, ["citationMetadata"], WG(s));
-  const a = d(e, ["tokenCount"]);
+  const a = c(e, ["tokenCount"]);
   a != null && h(n, ["tokenCount"], a);
-  const o = d(e, ["finishReason"]);
+  const o = c(e, ["finishReason"]);
   o != null && h(n, ["finishReason"], o);
-  const l = d(e, ["groundingMetadata"]);
+  const l = c(e, ["groundingMetadata"]);
   l != null && h(n, ["groundingMetadata"], l);
-  const i = d(e, ["avgLogprobs"]);
+  const i = c(e, ["avgLogprobs"]);
   i != null && h(n, ["avgLogprobs"], i);
-  const u = d(e, ["index"]);
+  const u = c(e, ["index"]);
   u != null && h(n, ["index"], u);
-  const c = d(e, ["logprobsResult"]);
-  c != null && h(n, ["logprobsResult"], c);
-  const f = d(e, ["safetyRatings"]);
+  const d = c(e, ["logprobsResult"]);
+  d != null && h(n, ["logprobsResult"], d);
+  const f = c(e, ["safetyRatings"]);
   if (f != null) {
     let g = f;
     Array.isArray(g) && (g = g.map((y) => y)), h(n, ["safetyRatings"], g);
   }
-  const p = d(e, ["urlContextMetadata"]);
+  const p = c(e, ["urlContextMetadata"]);
   return p != null && h(n, ["urlContextMetadata"], p), n;
 }
 function WG(e, t) {
-  const n = {}, r = d(e, ["citationSources"]);
+  const n = {}, r = c(e, ["citationSources"]);
   if (r != null) {
     let s = r;
     Array.isArray(s) && (s = s.map((a) => a)), h(n, ["citations"], s);
@@ -28934,9 +28934,9 @@ function WG(e, t) {
   return n;
 }
 function VG(e, t, n) {
-  const r = {}, s = d(t, ["model"]);
+  const r = {}, s = c(t, ["model"]);
   s != null && h(r, ["_url", "model"], cn(e, s));
-  const a = d(t, ["contents"]);
+  const a = c(t, ["contents"]);
   if (a != null) {
     let o = hs(a);
     Array.isArray(o) && (o = o.map((l) => Vc(l))), h(r, ["contents"], o);
@@ -28944,9 +28944,9 @@ function VG(e, t, n) {
   return r;
 }
 function GG(e, t) {
-  const n = {}, r = d(e, ["sdkHttpResponse"]);
+  const n = {}, r = c(e, ["sdkHttpResponse"]);
   r != null && h(n, ["sdkHttpResponse"], r);
-  const s = d(e, ["tokensInfo"]);
+  const s = c(e, ["tokensInfo"]);
   if (s != null) {
     let a = s;
     Array.isArray(a) && (a = a.map((o) => o)), h(n, ["tokensInfo"], a);
@@ -28954,153 +28954,153 @@ function GG(e, t) {
   return n;
 }
 function JG(e, t) {
-  const n = {}, r = d(e, ["values"]);
+  const n = {}, r = c(e, ["values"]);
   r != null && h(n, ["values"], r);
-  const s = d(e, ["statistics"]);
+  const s = c(e, ["statistics"]);
   return s != null && h(n, ["statistics"], YG(s)), n;
 }
 function YG(e, t) {
-  const n = {}, r = d(e, ["truncated"]);
+  const n = {}, r = c(e, ["truncated"]);
   r != null && h(n, ["truncated"], r);
-  const s = d(e, ["token_count"]);
+  const s = c(e, ["token_count"]);
   return s != null && h(n, ["tokenCount"], s), n;
 }
 function $h(e, t) {
-  const n = {}, r = d(e, ["parts"]);
+  const n = {}, r = c(e, ["parts"]);
   if (r != null) {
     let a = r;
     Array.isArray(a) && (a = a.map((o) => sY(o))), h(n, ["parts"], a);
   }
-  const s = d(e, ["role"]);
+  const s = c(e, ["role"]);
   return s != null && h(n, ["role"], s), n;
 }
 function Vc(e, t) {
-  const n = {}, r = d(e, ["parts"]);
+  const n = {}, r = c(e, ["parts"]);
   if (r != null) {
     let a = r;
     Array.isArray(a) && (a = a.map((o) => aY(o))), h(n, ["parts"], a);
   }
-  const s = d(e, ["role"]);
+  const s = c(e, ["role"]);
   return s != null && h(n, ["role"], s), n;
 }
 function XG(e, t) {
-  const n = {}, r = d(e, ["controlType"]);
+  const n = {}, r = c(e, ["controlType"]);
   r != null && h(n, ["controlType"], r);
-  const s = d(e, ["enableControlImageComputation"]);
+  const s = c(e, ["enableControlImageComputation"]);
   return s != null && h(n, ["computeControl"], s), n;
 }
 function jG(e, t) {
   const n = {};
-  if (d(e, ["systemInstruction"]) !== void 0) throw new Error("systemInstruction parameter is not supported in Gemini API.");
-  if (d(e, ["tools"]) !== void 0) throw new Error("tools parameter is not supported in Gemini API.");
-  if (d(e, ["generationConfig"]) !== void 0) throw new Error("generationConfig parameter is not supported in Gemini API.");
+  if (c(e, ["systemInstruction"]) !== void 0) throw new Error("systemInstruction parameter is not supported in Gemini API.");
+  if (c(e, ["tools"]) !== void 0) throw new Error("tools parameter is not supported in Gemini API.");
+  if (c(e, ["generationConfig"]) !== void 0) throw new Error("generationConfig parameter is not supported in Gemini API.");
   return n;
 }
 function QG(e, t, n) {
-  const r = {}, s = d(e, ["systemInstruction"]);
+  const r = {}, s = c(e, ["systemInstruction"]);
   t !== void 0 && s != null && h(t, ["systemInstruction"], Vc(wr(s)));
-  const a = d(e, ["tools"]);
+  const a = c(e, ["tools"]);
   if (t !== void 0 && a != null) {
     let l = a;
     Array.isArray(l) && (l = l.map((i) => fR(i))), h(t, ["tools"], l);
   }
-  const o = d(e, ["generationConfig"]);
+  const o = c(e, ["generationConfig"]);
   return t !== void 0 && o != null && h(t, ["generationConfig"], zJ(o)), r;
 }
 function ZG(e, t, n) {
-  const r = {}, s = d(t, ["model"]);
+  const r = {}, s = c(t, ["model"]);
   s != null && h(r, ["_url", "model"], cn(e, s));
-  const a = d(t, ["contents"]);
+  const a = c(t, ["contents"]);
   if (a != null) {
     let l = hs(a);
     Array.isArray(l) && (l = l.map((i) => $h(i))), h(r, ["contents"], l);
   }
-  const o = d(t, ["config"]);
+  const o = c(t, ["config"]);
   return o != null && jG(o), r;
 }
 function eJ(e, t, n) {
-  const r = {}, s = d(t, ["model"]);
+  const r = {}, s = c(t, ["model"]);
   s != null && h(r, ["_url", "model"], cn(e, s));
-  const a = d(t, ["contents"]);
+  const a = c(t, ["contents"]);
   if (a != null) {
     let l = hs(a);
     Array.isArray(l) && (l = l.map((i) => Vc(i))), h(r, ["contents"], l);
   }
-  const o = d(t, ["config"]);
+  const o = c(t, ["config"]);
   return o != null && QG(o, r), r;
 }
 function tJ(e, t) {
-  const n = {}, r = d(e, ["sdkHttpResponse"]);
+  const n = {}, r = c(e, ["sdkHttpResponse"]);
   r != null && h(n, ["sdkHttpResponse"], r);
-  const s = d(e, ["totalTokens"]);
+  const s = c(e, ["totalTokens"]);
   s != null && h(n, ["totalTokens"], s);
-  const a = d(e, ["cachedContentTokenCount"]);
+  const a = c(e, ["cachedContentTokenCount"]);
   return a != null && h(n, ["cachedContentTokenCount"], a), n;
 }
 function nJ(e, t) {
-  const n = {}, r = d(e, ["sdkHttpResponse"]);
+  const n = {}, r = c(e, ["sdkHttpResponse"]);
   r != null && h(n, ["sdkHttpResponse"], r);
-  const s = d(e, ["totalTokens"]);
+  const s = c(e, ["totalTokens"]);
   return s != null && h(n, ["totalTokens"], s), n;
 }
 function rJ(e, t, n) {
-  const r = {}, s = d(t, ["model"]);
+  const r = {}, s = c(t, ["model"]);
   return s != null && h(r, ["_url", "name"], cn(e, s)), r;
 }
 function sJ(e, t, n) {
-  const r = {}, s = d(t, ["model"]);
+  const r = {}, s = c(t, ["model"]);
   return s != null && h(r, ["_url", "name"], cn(e, s)), r;
 }
 function aJ(e, t) {
-  const n = {}, r = d(e, ["sdkHttpResponse"]);
+  const n = {}, r = c(e, ["sdkHttpResponse"]);
   return r != null && h(n, ["sdkHttpResponse"], r), n;
 }
 function oJ(e, t) {
-  const n = {}, r = d(e, ["sdkHttpResponse"]);
+  const n = {}, r = c(e, ["sdkHttpResponse"]);
   return r != null && h(n, ["sdkHttpResponse"], r), n;
 }
 function iJ(e, t, n) {
-  const r = {}, s = d(e, ["outputGcsUri"]);
+  const r = {}, s = c(e, ["outputGcsUri"]);
   t !== void 0 && s != null && h(t, ["parameters", "storageUri"], s);
-  const a = d(e, ["negativePrompt"]);
+  const a = c(e, ["negativePrompt"]);
   t !== void 0 && a != null && h(t, ["parameters", "negativePrompt"], a);
-  const o = d(e, ["numberOfImages"]);
+  const o = c(e, ["numberOfImages"]);
   t !== void 0 && o != null && h(t, ["parameters", "sampleCount"], o);
-  const l = d(e, ["aspectRatio"]);
+  const l = c(e, ["aspectRatio"]);
   t !== void 0 && l != null && h(t, ["parameters", "aspectRatio"], l);
-  const i = d(e, ["guidanceScale"]);
+  const i = c(e, ["guidanceScale"]);
   t !== void 0 && i != null && h(t, ["parameters", "guidanceScale"], i);
-  const u = d(e, ["seed"]);
+  const u = c(e, ["seed"]);
   t !== void 0 && u != null && h(t, ["parameters", "seed"], u);
-  const c = d(e, ["safetyFilterLevel"]);
-  t !== void 0 && c != null && h(t, ["parameters", "safetySetting"], c);
-  const f = d(e, ["personGeneration"]);
+  const d = c(e, ["safetyFilterLevel"]);
+  t !== void 0 && d != null && h(t, ["parameters", "safetySetting"], d);
+  const f = c(e, ["personGeneration"]);
   t !== void 0 && f != null && h(t, ["parameters", "personGeneration"], f);
-  const p = d(e, ["includeSafetyAttributes"]);
+  const p = c(e, ["includeSafetyAttributes"]);
   t !== void 0 && p != null && h(t, ["parameters", "includeSafetyAttributes"], p);
-  const g = d(e, ["includeRaiReason"]);
+  const g = c(e, ["includeRaiReason"]);
   t !== void 0 && g != null && h(t, ["parameters", "includeRaiReason"], g);
-  const y = d(e, ["language"]);
+  const y = c(e, ["language"]);
   t !== void 0 && y != null && h(t, ["parameters", "language"], y);
-  const _ = d(e, ["outputMimeType"]);
+  const _ = c(e, ["outputMimeType"]);
   t !== void 0 && _ != null && h(t, [
     "parameters",
     "outputOptions",
     "mimeType"
   ], _);
-  const x = d(e, ["outputCompressionQuality"]);
+  const x = c(e, ["outputCompressionQuality"]);
   t !== void 0 && x != null && h(t, [
     "parameters",
     "outputOptions",
     "compressionQuality"
   ], x);
-  const C = d(e, ["addWatermark"]);
+  const C = c(e, ["addWatermark"]);
   t !== void 0 && C != null && h(t, ["parameters", "addWatermark"], C);
-  const E = d(e, ["labels"]);
+  const E = c(e, ["labels"]);
   t !== void 0 && E != null && h(t, ["labels"], E);
-  const R = d(e, ["editMode"]);
+  const R = c(e, ["editMode"]);
   t !== void 0 && R != null && h(t, ["parameters", "editMode"], R);
-  const N = d(e, ["baseSteps"]);
+  const N = c(e, ["baseSteps"]);
   return t !== void 0 && N != null && h(t, [
     "parameters",
     "editConfig",
@@ -29108,22 +29108,22 @@ function iJ(e, t, n) {
   ], N), r;
 }
 function lJ(e, t, n) {
-  const r = {}, s = d(t, ["model"]);
+  const r = {}, s = c(t, ["model"]);
   s != null && h(r, ["_url", "model"], cn(e, s));
-  const a = d(t, ["prompt"]);
+  const a = c(t, ["prompt"]);
   a != null && h(r, ["instances[0]", "prompt"], a);
-  const o = d(t, ["referenceImages"]);
+  const o = c(t, ["referenceImages"]);
   if (o != null) {
     let i = o;
     Array.isArray(i) && (i = i.map((u) => dY(u))), h(r, ["instances[0]", "referenceImages"], i);
   }
-  const l = d(t, ["config"]);
+  const l = c(t, ["config"]);
   return l != null && iJ(l, r), r;
 }
 function uJ(e, t) {
-  const n = {}, r = d(e, ["sdkHttpResponse"]);
+  const n = {}, r = c(e, ["sdkHttpResponse"]);
   r != null && h(n, ["sdkHttpResponse"], r);
-  const s = d(e, ["predictions"]);
+  const s = c(e, ["predictions"]);
   if (s != null) {
     let a = s;
     Array.isArray(a) && (a = a.map((o) => Xv(o))), h(n, ["generatedImages"], a);
@@ -29131,124 +29131,124 @@ function uJ(e, t) {
   return n;
 }
 function cJ(e, t, n) {
-  const r = {}, s = d(e, ["taskType"]);
+  const r = {}, s = c(e, ["taskType"]);
   t !== void 0 && s != null && h(t, ["requests[]", "taskType"], s);
-  const a = d(e, ["title"]);
+  const a = c(e, ["title"]);
   t !== void 0 && a != null && h(t, ["requests[]", "title"], a);
-  const o = d(e, ["outputDimensionality"]);
-  if (t !== void 0 && o != null && h(t, ["requests[]", "outputDimensionality"], o), d(e, ["mimeType"]) !== void 0) throw new Error("mimeType parameter is not supported in Gemini API.");
-  if (d(e, ["autoTruncate"]) !== void 0) throw new Error("autoTruncate parameter is not supported in Gemini API.");
-  if (d(e, ["documentOcr"]) !== void 0) throw new Error("documentOcr parameter is not supported in Gemini API.");
-  if (d(e, ["audioTrackExtraction"]) !== void 0) throw new Error("audioTrackExtraction parameter is not supported in Gemini API.");
+  const o = c(e, ["outputDimensionality"]);
+  if (t !== void 0 && o != null && h(t, ["requests[]", "outputDimensionality"], o), c(e, ["mimeType"]) !== void 0) throw new Error("mimeType parameter is not supported in Gemini API.");
+  if (c(e, ["autoTruncate"]) !== void 0) throw new Error("autoTruncate parameter is not supported in Gemini API.");
+  if (c(e, ["documentOcr"]) !== void 0) throw new Error("documentOcr parameter is not supported in Gemini API.");
+  if (c(e, ["audioTrackExtraction"]) !== void 0) throw new Error("audioTrackExtraction parameter is not supported in Gemini API.");
   return r;
 }
 function dJ(e, t, n) {
   const r = {};
-  let s = d(n, ["embeddingApiType"]);
+  let s = c(n, ["embeddingApiType"]);
   if (s === void 0 && (s = "PREDICT"), s === "PREDICT") {
-    const f = d(e, ["taskType"]);
+    const f = c(e, ["taskType"]);
     t !== void 0 && f != null && h(t, ["instances[]", "task_type"], f);
   } else if (s === "EMBED_CONTENT") {
-    const f = d(e, ["taskType"]);
+    const f = c(e, ["taskType"]);
     t !== void 0 && f != null && h(t, ["embedContentConfig", "taskType"], f);
   }
-  let a = d(n, ["embeddingApiType"]);
+  let a = c(n, ["embeddingApiType"]);
   if (a === void 0 && (a = "PREDICT"), a === "PREDICT") {
-    const f = d(e, ["title"]);
+    const f = c(e, ["title"]);
     t !== void 0 && f != null && h(t, ["instances[]", "title"], f);
   } else if (a === "EMBED_CONTENT") {
-    const f = d(e, ["title"]);
+    const f = c(e, ["title"]);
     t !== void 0 && f != null && h(t, ["embedContentConfig", "title"], f);
   }
-  let o = d(n, ["embeddingApiType"]);
+  let o = c(n, ["embeddingApiType"]);
   if (o === void 0 && (o = "PREDICT"), o === "PREDICT") {
-    const f = d(e, ["outputDimensionality"]);
+    const f = c(e, ["outputDimensionality"]);
     t !== void 0 && f != null && h(t, ["parameters", "outputDimensionality"], f);
   } else if (o === "EMBED_CONTENT") {
-    const f = d(e, ["outputDimensionality"]);
+    const f = c(e, ["outputDimensionality"]);
     t !== void 0 && f != null && h(t, ["embedContentConfig", "outputDimensionality"], f);
   }
-  let l = d(n, ["embeddingApiType"]);
+  let l = c(n, ["embeddingApiType"]);
   if (l === void 0 && (l = "PREDICT"), l === "PREDICT") {
-    const f = d(e, ["mimeType"]);
+    const f = c(e, ["mimeType"]);
     t !== void 0 && f != null && h(t, ["instances[]", "mimeType"], f);
   }
-  let i = d(n, ["embeddingApiType"]);
+  let i = c(n, ["embeddingApiType"]);
   if (i === void 0 && (i = "PREDICT"), i === "PREDICT") {
-    const f = d(e, ["autoTruncate"]);
+    const f = c(e, ["autoTruncate"]);
     t !== void 0 && f != null && h(t, ["parameters", "autoTruncate"], f);
   } else if (i === "EMBED_CONTENT") {
-    const f = d(e, ["autoTruncate"]);
+    const f = c(e, ["autoTruncate"]);
     t !== void 0 && f != null && h(t, ["embedContentConfig", "autoTruncate"], f);
   }
-  let u = d(n, ["embeddingApiType"]);
+  let u = c(n, ["embeddingApiType"]);
   if (u === void 0 && (u = "PREDICT"), u === "EMBED_CONTENT") {
-    const f = d(e, ["documentOcr"]);
+    const f = c(e, ["documentOcr"]);
     t !== void 0 && f != null && h(t, ["embedContentConfig", "documentOcr"], f);
   }
-  let c = d(n, ["embeddingApiType"]);
-  if (c === void 0 && (c = "PREDICT"), c === "EMBED_CONTENT") {
-    const f = d(e, ["audioTrackExtraction"]);
+  let d = c(n, ["embeddingApiType"]);
+  if (d === void 0 && (d = "PREDICT"), d === "EMBED_CONTENT") {
+    const f = c(e, ["audioTrackExtraction"]);
     t !== void 0 && f != null && h(t, ["embedContentConfig", "audioTrackExtraction"], f);
   }
   return r;
 }
 function fJ(e, t, n) {
-  const r = {}, s = d(t, ["model"]);
+  const r = {}, s = c(t, ["model"]);
   s != null && h(r, ["_url", "model"], cn(e, s));
-  const a = d(t, ["contents"]);
+  const a = c(t, ["contents"]);
   if (a != null) {
     let u = _S(e, a);
-    Array.isArray(u) && (u = u.map((c) => c)), h(r, ["requests[]", "content"], u);
+    Array.isArray(u) && (u = u.map((d) => d)), h(r, ["requests[]", "content"], u);
   }
-  const o = d(t, ["content"]);
+  const o = c(t, ["content"]);
   o != null && $h(wr(o));
-  const l = d(t, ["config"]);
+  const l = c(t, ["config"]);
   l != null && cJ(l, r);
-  const i = d(t, ["model"]);
+  const i = c(t, ["model"]);
   return i !== void 0 && h(r, ["requests[]", "model"], cn(e, i)), r;
 }
 function hJ(e, t, n) {
-  const r = {}, s = d(t, ["model"]);
+  const r = {}, s = c(t, ["model"]);
   s != null && h(r, ["_url", "model"], cn(e, s));
-  let a = d(n, ["embeddingApiType"]);
+  let a = c(n, ["embeddingApiType"]);
   if (a === void 0 && (a = "PREDICT"), a === "PREDICT") {
-    const i = d(t, ["contents"]);
+    const i = c(t, ["contents"]);
     if (i != null) {
       let u = _S(e, i);
-      Array.isArray(u) && (u = u.map((c) => c)), h(r, ["instances[]", "content"], u);
+      Array.isArray(u) && (u = u.map((d) => d)), h(r, ["instances[]", "content"], u);
     }
   }
-  let o = d(n, ["embeddingApiType"]);
+  let o = c(n, ["embeddingApiType"]);
   if (o === void 0 && (o = "PREDICT"), o === "EMBED_CONTENT") {
-    const i = d(t, ["content"]);
+    const i = c(t, ["content"]);
     i != null && h(r, ["content"], Vc(wr(i)));
   }
-  const l = d(t, ["config"]);
+  const l = c(t, ["config"]);
   return l != null && dJ(l, r, n), r;
 }
 function pJ(e, t) {
-  const n = {}, r = d(e, ["sdkHttpResponse"]);
+  const n = {}, r = c(e, ["sdkHttpResponse"]);
   r != null && h(n, ["sdkHttpResponse"], r);
-  const s = d(e, ["embeddings"]);
+  const s = c(e, ["embeddings"]);
   if (s != null) {
     let o = s;
     Array.isArray(o) && (o = o.map((l) => l)), h(n, ["embeddings"], o);
   }
-  const a = d(e, ["metadata"]);
+  const a = c(e, ["metadata"]);
   return a != null && h(n, ["metadata"], a), n;
 }
 function mJ(e, t) {
-  const n = {}, r = d(e, ["sdkHttpResponse"]);
+  const n = {}, r = c(e, ["sdkHttpResponse"]);
   r != null && h(n, ["sdkHttpResponse"], r);
-  const s = d(e, ["predictions[]", "embeddings"]);
+  const s = c(e, ["predictions[]", "embeddings"]);
   if (s != null) {
     let o = s;
     Array.isArray(o) && (o = o.map((l) => JG(l))), h(n, ["embeddings"], o);
   }
-  const a = d(e, ["metadata"]);
-  if (a != null && h(n, ["metadata"], a), t && d(t, ["embeddingApiType"]) === "EMBED_CONTENT") {
-    const o = d(e, ["embedding"]), l = d(e, ["usageMetadata"]), i = d(e, ["truncated"]);
+  const a = c(e, ["metadata"]);
+  if (a != null && h(n, ["metadata"], a), t && c(t, ["embeddingApiType"]) === "EMBED_CONTENT") {
+    const o = c(e, ["embedding"]), l = c(e, ["usageMetadata"]), i = c(e, ["truncated"]);
     if (o) {
       const u = {};
       l && l.promptTokenCount && (u.tokenCount = l.promptTokenCount), i && (u.truncated = i), o.statistics = u, h(n, ["embeddings"], [o]);
@@ -29257,540 +29257,540 @@ function mJ(e, t) {
   return n;
 }
 function gJ(e, t) {
-  const n = {}, r = d(e, ["endpoint"]);
+  const n = {}, r = c(e, ["endpoint"]);
   r != null && h(n, ["name"], r);
-  const s = d(e, ["deployedModelId"]);
+  const s = c(e, ["deployedModelId"]);
   return s != null && h(n, ["deployedModelId"], s), n;
 }
 function vJ(e, t) {
   const n = {};
-  if (d(e, ["displayName"]) !== void 0) throw new Error("displayName parameter is not supported in Gemini API.");
-  const r = d(e, ["fileUri"]);
+  if (c(e, ["displayName"]) !== void 0) throw new Error("displayName parameter is not supported in Gemini API.");
+  const r = c(e, ["fileUri"]);
   r != null && h(n, ["fileUri"], r);
-  const s = d(e, ["mimeType"]);
+  const s = c(e, ["mimeType"]);
   return s != null && h(n, ["mimeType"], s), n;
 }
 function yJ(e, t) {
-  const n = {}, r = d(e, ["id"]);
+  const n = {}, r = c(e, ["id"]);
   r != null && h(n, ["id"], r);
-  const s = d(e, ["args"]);
+  const s = c(e, ["args"]);
   s != null && h(n, ["args"], s);
-  const a = d(e, ["name"]);
-  if (a != null && h(n, ["name"], a), d(e, ["partialArgs"]) !== void 0) throw new Error("partialArgs parameter is not supported in Gemini API.");
-  if (d(e, ["willContinue"]) !== void 0) throw new Error("willContinue parameter is not supported in Gemini API.");
+  const a = c(e, ["name"]);
+  if (a != null && h(n, ["name"], a), c(e, ["partialArgs"]) !== void 0) throw new Error("partialArgs parameter is not supported in Gemini API.");
+  if (c(e, ["willContinue"]) !== void 0) throw new Error("willContinue parameter is not supported in Gemini API.");
   return n;
 }
 function _J(e, t) {
-  const n = {}, r = d(e, ["allowedFunctionNames"]);
+  const n = {}, r = c(e, ["allowedFunctionNames"]);
   r != null && h(n, ["allowedFunctionNames"], r);
-  const s = d(e, ["mode"]);
-  if (s != null && h(n, ["mode"], s), d(e, ["streamFunctionCallArguments"]) !== void 0) throw new Error("streamFunctionCallArguments parameter is not supported in Gemini API.");
+  const s = c(e, ["mode"]);
+  if (s != null && h(n, ["mode"], s), c(e, ["streamFunctionCallArguments"]) !== void 0) throw new Error("streamFunctionCallArguments parameter is not supported in Gemini API.");
   return n;
 }
 function bJ(e, t) {
-  const n = {}, r = d(e, ["description"]);
+  const n = {}, r = c(e, ["description"]);
   r != null && h(n, ["description"], r);
-  const s = d(e, ["name"]);
+  const s = c(e, ["name"]);
   s != null && h(n, ["name"], s);
-  const a = d(e, ["parameters"]);
+  const a = c(e, ["parameters"]);
   a != null && h(n, ["parameters"], a);
-  const o = d(e, ["parametersJsonSchema"]);
+  const o = c(e, ["parametersJsonSchema"]);
   o != null && h(n, ["parametersJsonSchema"], o);
-  const l = d(e, ["response"]);
+  const l = c(e, ["response"]);
   l != null && h(n, ["response"], l);
-  const i = d(e, ["responseJsonSchema"]);
-  if (i != null && h(n, ["responseJsonSchema"], i), d(e, ["behavior"]) !== void 0) throw new Error("behavior parameter is not supported in Vertex AI.");
+  const i = c(e, ["responseJsonSchema"]);
+  if (i != null && h(n, ["responseJsonSchema"], i), c(e, ["behavior"]) !== void 0) throw new Error("behavior parameter is not supported in Vertex AI.");
   return n;
 }
 function wJ(e, t, n, r) {
-  const s = {}, a = d(t, ["systemInstruction"]);
+  const s = {}, a = c(t, ["systemInstruction"]);
   n !== void 0 && a != null && h(n, ["systemInstruction"], $h(wr(a)));
-  const o = d(t, ["temperature"]);
+  const o = c(t, ["temperature"]);
   o != null && h(s, ["temperature"], o);
-  const l = d(t, ["topP"]);
+  const l = c(t, ["topP"]);
   l != null && h(s, ["topP"], l);
-  const i = d(t, ["topK"]);
+  const i = c(t, ["topK"]);
   i != null && h(s, ["topK"], i);
-  const u = d(t, ["candidateCount"]);
+  const u = c(t, ["candidateCount"]);
   u != null && h(s, ["candidateCount"], u);
-  const c = d(t, ["maxOutputTokens"]);
-  c != null && h(s, ["maxOutputTokens"], c);
-  const f = d(t, ["stopSequences"]);
+  const d = c(t, ["maxOutputTokens"]);
+  d != null && h(s, ["maxOutputTokens"], d);
+  const f = c(t, ["stopSequences"]);
   f != null && h(s, ["stopSequences"], f);
-  const p = d(t, ["responseLogprobs"]);
+  const p = c(t, ["responseLogprobs"]);
   p != null && h(s, ["responseLogprobs"], p);
-  const g = d(t, ["logprobs"]);
+  const g = c(t, ["logprobs"]);
   g != null && h(s, ["logprobs"], g);
-  const y = d(t, ["presencePenalty"]);
+  const y = c(t, ["presencePenalty"]);
   y != null && h(s, ["presencePenalty"], y);
-  const _ = d(t, ["frequencyPenalty"]);
+  const _ = c(t, ["frequencyPenalty"]);
   _ != null && h(s, ["frequencyPenalty"], _);
-  const x = d(t, ["seed"]);
+  const x = c(t, ["seed"]);
   x != null && h(s, ["seed"], x);
-  const C = d(t, ["responseMimeType"]);
+  const C = c(t, ["responseMimeType"]);
   C != null && h(s, ["responseMimeType"], C);
-  const E = d(t, ["responseSchema"]);
+  const E = c(t, ["responseSchema"]);
   E != null && h(s, ["responseSchema"], bS(E));
-  const R = d(t, ["responseJsonSchema"]);
-  if (R != null && h(s, ["responseJsonSchema"], R), d(t, ["routingConfig"]) !== void 0) throw new Error("routingConfig parameter is not supported in Gemini API.");
-  if (d(t, ["modelSelectionConfig"]) !== void 0) throw new Error("modelSelectionConfig parameter is not supported in Gemini API.");
-  const N = d(t, ["safetySettings"]);
+  const R = c(t, ["responseJsonSchema"]);
+  if (R != null && h(s, ["responseJsonSchema"], R), c(t, ["routingConfig"]) !== void 0) throw new Error("routingConfig parameter is not supported in Gemini API.");
+  if (c(t, ["modelSelectionConfig"]) !== void 0) throw new Error("modelSelectionConfig parameter is not supported in Gemini API.");
+  const N = c(t, ["safetySettings"]);
   if (n !== void 0 && N != null) {
     let V = N;
     Array.isArray(V) && (V = V.map((W) => fY(W))), h(n, ["safetySettings"], V);
   }
-  const m = d(t, ["tools"]);
+  const m = c(t, ["tools"]);
   if (n !== void 0 && m != null) {
     let V = Kc(m);
     Array.isArray(V) && (V = V.map((W) => bY(zc(W)))), h(n, ["tools"], V);
   }
-  const w = d(t, ["toolConfig"]);
-  if (n !== void 0 && w != null && h(n, ["toolConfig"], yY(w)), d(t, ["labels"]) !== void 0) throw new Error("labels parameter is not supported in Gemini API.");
-  const b = d(t, ["cachedContent"]);
+  const w = c(t, ["toolConfig"]);
+  if (n !== void 0 && w != null && h(n, ["toolConfig"], yY(w)), c(t, ["labels"]) !== void 0) throw new Error("labels parameter is not supported in Gemini API.");
+  const b = c(t, ["cachedContent"]);
   n !== void 0 && b != null && h(n, ["cachedContent"], ii(e, b));
-  const S = d(t, ["responseModalities"]);
+  const S = c(t, ["responseModalities"]);
   S != null && h(s, ["responseModalities"], S);
-  const I = d(t, ["mediaResolution"]);
+  const I = c(t, ["mediaResolution"]);
   I != null && h(s, ["mediaResolution"], I);
-  const k = d(t, ["speechConfig"]);
-  if (k != null && h(s, ["speechConfig"], wS(k)), d(t, ["audioTimestamp"]) !== void 0) throw new Error("audioTimestamp parameter is not supported in Gemini API.");
-  const P = d(t, ["thinkingConfig"]);
+  const k = c(t, ["speechConfig"]);
+  if (k != null && h(s, ["speechConfig"], wS(k)), c(t, ["audioTimestamp"]) !== void 0) throw new Error("audioTimestamp parameter is not supported in Gemini API.");
+  const P = c(t, ["thinkingConfig"]);
   P != null && h(s, ["thinkingConfig"], P);
-  const U = d(t, ["imageConfig"]);
+  const U = c(t, ["imageConfig"]);
   U != null && h(s, ["imageConfig"], JJ(U));
-  const K = d(t, ["enableEnhancedCivicAnswers"]);
-  if (K != null && h(s, ["enableEnhancedCivicAnswers"], K), d(t, ["modelArmorConfig"]) !== void 0) throw new Error("modelArmorConfig parameter is not supported in Gemini API.");
-  const j = d(t, ["serviceTier"]);
+  const K = c(t, ["enableEnhancedCivicAnswers"]);
+  if (K != null && h(s, ["enableEnhancedCivicAnswers"], K), c(t, ["modelArmorConfig"]) !== void 0) throw new Error("modelArmorConfig parameter is not supported in Gemini API.");
+  const j = c(t, ["serviceTier"]);
   return n !== void 0 && j != null && h(n, ["serviceTier"], j), s;
 }
 function SJ(e, t, n, r) {
-  const s = {}, a = d(t, ["systemInstruction"]);
+  const s = {}, a = c(t, ["systemInstruction"]);
   n !== void 0 && a != null && h(n, ["systemInstruction"], Vc(wr(a)));
-  const o = d(t, ["temperature"]);
+  const o = c(t, ["temperature"]);
   o != null && h(s, ["temperature"], o);
-  const l = d(t, ["topP"]);
+  const l = c(t, ["topP"]);
   l != null && h(s, ["topP"], l);
-  const i = d(t, ["topK"]);
+  const i = c(t, ["topK"]);
   i != null && h(s, ["topK"], i);
-  const u = d(t, ["candidateCount"]);
+  const u = c(t, ["candidateCount"]);
   u != null && h(s, ["candidateCount"], u);
-  const c = d(t, ["maxOutputTokens"]);
-  c != null && h(s, ["maxOutputTokens"], c);
-  const f = d(t, ["stopSequences"]);
+  const d = c(t, ["maxOutputTokens"]);
+  d != null && h(s, ["maxOutputTokens"], d);
+  const f = c(t, ["stopSequences"]);
   f != null && h(s, ["stopSequences"], f);
-  const p = d(t, ["responseLogprobs"]);
+  const p = c(t, ["responseLogprobs"]);
   p != null && h(s, ["responseLogprobs"], p);
-  const g = d(t, ["logprobs"]);
+  const g = c(t, ["logprobs"]);
   g != null && h(s, ["logprobs"], g);
-  const y = d(t, ["presencePenalty"]);
+  const y = c(t, ["presencePenalty"]);
   y != null && h(s, ["presencePenalty"], y);
-  const _ = d(t, ["frequencyPenalty"]);
+  const _ = c(t, ["frequencyPenalty"]);
   _ != null && h(s, ["frequencyPenalty"], _);
-  const x = d(t, ["seed"]);
+  const x = c(t, ["seed"]);
   x != null && h(s, ["seed"], x);
-  const C = d(t, ["responseMimeType"]);
+  const C = c(t, ["responseMimeType"]);
   C != null && h(s, ["responseMimeType"], C);
-  const E = d(t, ["responseSchema"]);
+  const E = c(t, ["responseSchema"]);
   E != null && h(s, ["responseSchema"], bS(E));
-  const R = d(t, ["responseJsonSchema"]);
+  const R = c(t, ["responseJsonSchema"]);
   R != null && h(s, ["responseJsonSchema"], R);
-  const N = d(t, ["routingConfig"]);
+  const N = c(t, ["routingConfig"]);
   N != null && h(s, ["routingConfig"], N);
-  const m = d(t, ["modelSelectionConfig"]);
+  const m = c(t, ["modelSelectionConfig"]);
   m != null && h(s, ["modelConfig"], m);
-  const w = d(t, ["safetySettings"]);
+  const w = c(t, ["safetySettings"]);
   if (n !== void 0 && w != null) {
     let ae = w;
     Array.isArray(ae) && (ae = ae.map((be) => be)), h(n, ["safetySettings"], ae);
   }
-  const b = d(t, ["tools"]);
+  const b = c(t, ["tools"]);
   if (n !== void 0 && b != null) {
     let ae = Kc(b);
     Array.isArray(ae) && (ae = ae.map((be) => fR(zc(be)))), h(n, ["tools"], ae);
   }
-  const S = d(t, ["toolConfig"]);
+  const S = c(t, ["toolConfig"]);
   n !== void 0 && S != null && h(n, ["toolConfig"], _Y(S));
-  const I = d(t, ["labels"]);
+  const I = c(t, ["labels"]);
   n !== void 0 && I != null && h(n, ["labels"], I);
-  const k = d(t, ["cachedContent"]);
+  const k = c(t, ["cachedContent"]);
   n !== void 0 && k != null && h(n, ["cachedContent"], ii(e, k));
-  const P = d(t, ["responseModalities"]);
+  const P = c(t, ["responseModalities"]);
   P != null && h(s, ["responseModalities"], P);
-  const U = d(t, ["mediaResolution"]);
+  const U = c(t, ["mediaResolution"]);
   U != null && h(s, ["mediaResolution"], U);
-  const K = d(t, ["speechConfig"]);
+  const K = c(t, ["speechConfig"]);
   K != null && h(s, ["speechConfig"], wS(K));
-  const j = d(t, ["audioTimestamp"]);
+  const j = c(t, ["audioTimestamp"]);
   j != null && h(s, ["audioTimestamp"], j);
-  const V = d(t, ["thinkingConfig"]);
+  const V = c(t, ["thinkingConfig"]);
   V != null && h(s, ["thinkingConfig"], V);
-  const W = d(t, ["imageConfig"]);
-  if (W != null && h(s, ["imageConfig"], YJ(W)), d(t, ["enableEnhancedCivicAnswers"]) !== void 0) throw new Error("enableEnhancedCivicAnswers parameter is not supported in Vertex AI.");
-  const $ = d(t, ["modelArmorConfig"]);
+  const W = c(t, ["imageConfig"]);
+  if (W != null && h(s, ["imageConfig"], YJ(W)), c(t, ["enableEnhancedCivicAnswers"]) !== void 0) throw new Error("enableEnhancedCivicAnswers parameter is not supported in Vertex AI.");
+  const $ = c(t, ["modelArmorConfig"]);
   n !== void 0 && $ != null && h(n, ["modelArmorConfig"], $);
-  const J = d(t, ["serviceTier"]);
+  const J = c(t, ["serviceTier"]);
   return n !== void 0 && J != null && h(n, ["serviceTier"], J), s;
 }
 function yI(e, t, n) {
-  const r = {}, s = d(t, ["model"]);
+  const r = {}, s = c(t, ["model"]);
   s != null && h(r, ["_url", "model"], cn(e, s));
-  const a = d(t, ["contents"]);
+  const a = c(t, ["contents"]);
   if (a != null) {
     let l = hs(a);
     Array.isArray(l) && (l = l.map((i) => $h(i))), h(r, ["contents"], l);
   }
-  const o = d(t, ["config"]);
+  const o = c(t, ["config"]);
   return o != null && h(r, ["generationConfig"], wJ(e, o, r)), r;
 }
 function _I(e, t, n) {
-  const r = {}, s = d(t, ["model"]);
+  const r = {}, s = c(t, ["model"]);
   s != null && h(r, ["_url", "model"], cn(e, s));
-  const a = d(t, ["contents"]);
+  const a = c(t, ["contents"]);
   if (a != null) {
     let l = hs(a);
     Array.isArray(l) && (l = l.map((i) => Vc(i))), h(r, ["contents"], l);
   }
-  const o = d(t, ["config"]);
+  const o = c(t, ["config"]);
   return o != null && h(r, ["generationConfig"], SJ(e, o, r)), r;
 }
 function bI(e, t) {
-  const n = {}, r = d(e, ["sdkHttpResponse"]);
+  const n = {}, r = c(e, ["sdkHttpResponse"]);
   r != null && h(n, ["sdkHttpResponse"], r);
-  const s = d(e, ["candidates"]);
+  const s = c(e, ["candidates"]);
   if (s != null) {
-    let c = s;
-    Array.isArray(c) && (c = c.map((f) => KG(f))), h(n, ["candidates"], c);
+    let d = s;
+    Array.isArray(d) && (d = d.map((f) => KG(f))), h(n, ["candidates"], d);
   }
-  const a = d(e, ["modelVersion"]);
+  const a = c(e, ["modelVersion"]);
   a != null && h(n, ["modelVersion"], a);
-  const o = d(e, ["promptFeedback"]);
+  const o = c(e, ["promptFeedback"]);
   o != null && h(n, ["promptFeedback"], o);
-  const l = d(e, ["responseId"]);
+  const l = c(e, ["responseId"]);
   l != null && h(n, ["responseId"], l);
-  const i = d(e, ["usageMetadata"]);
+  const i = c(e, ["usageMetadata"]);
   i != null && h(n, ["usageMetadata"], i);
-  const u = d(e, ["modelStatus"]);
+  const u = c(e, ["modelStatus"]);
   return u != null && h(n, ["modelStatus"], u), n;
 }
 function wI(e, t) {
-  const n = {}, r = d(e, ["sdkHttpResponse"]);
+  const n = {}, r = c(e, ["sdkHttpResponse"]);
   r != null && h(n, ["sdkHttpResponse"], r);
-  const s = d(e, ["candidates"]);
+  const s = c(e, ["candidates"]);
   if (s != null) {
-    let c = s;
-    Array.isArray(c) && (c = c.map((f) => f)), h(n, ["candidates"], c);
+    let d = s;
+    Array.isArray(d) && (d = d.map((f) => f)), h(n, ["candidates"], d);
   }
-  const a = d(e, ["createTime"]);
+  const a = c(e, ["createTime"]);
   a != null && h(n, ["createTime"], a);
-  const o = d(e, ["modelVersion"]);
+  const o = c(e, ["modelVersion"]);
   o != null && h(n, ["modelVersion"], o);
-  const l = d(e, ["promptFeedback"]);
+  const l = c(e, ["promptFeedback"]);
   l != null && h(n, ["promptFeedback"], l);
-  const i = d(e, ["responseId"]);
+  const i = c(e, ["responseId"]);
   i != null && h(n, ["responseId"], i);
-  const u = d(e, ["usageMetadata"]);
+  const u = c(e, ["usageMetadata"]);
   return u != null && h(n, ["usageMetadata"], u), n;
 }
 function AJ(e, t, n) {
   const r = {};
-  if (d(e, ["outputGcsUri"]) !== void 0) throw new Error("outputGcsUri parameter is not supported in Gemini API.");
-  if (d(e, ["negativePrompt"]) !== void 0) throw new Error("negativePrompt parameter is not supported in Gemini API.");
-  const s = d(e, ["numberOfImages"]);
+  if (c(e, ["outputGcsUri"]) !== void 0) throw new Error("outputGcsUri parameter is not supported in Gemini API.");
+  if (c(e, ["negativePrompt"]) !== void 0) throw new Error("negativePrompt parameter is not supported in Gemini API.");
+  const s = c(e, ["numberOfImages"]);
   t !== void 0 && s != null && h(t, ["parameters", "sampleCount"], s);
-  const a = d(e, ["aspectRatio"]);
+  const a = c(e, ["aspectRatio"]);
   t !== void 0 && a != null && h(t, ["parameters", "aspectRatio"], a);
-  const o = d(e, ["guidanceScale"]);
-  if (t !== void 0 && o != null && h(t, ["parameters", "guidanceScale"], o), d(e, ["seed"]) !== void 0) throw new Error("seed parameter is not supported in Gemini API.");
-  const l = d(e, ["safetyFilterLevel"]);
+  const o = c(e, ["guidanceScale"]);
+  if (t !== void 0 && o != null && h(t, ["parameters", "guidanceScale"], o), c(e, ["seed"]) !== void 0) throw new Error("seed parameter is not supported in Gemini API.");
+  const l = c(e, ["safetyFilterLevel"]);
   t !== void 0 && l != null && h(t, ["parameters", "safetySetting"], l);
-  const i = d(e, ["personGeneration"]);
+  const i = c(e, ["personGeneration"]);
   t !== void 0 && i != null && h(t, ["parameters", "personGeneration"], i);
-  const u = d(e, ["includeSafetyAttributes"]);
+  const u = c(e, ["includeSafetyAttributes"]);
   t !== void 0 && u != null && h(t, ["parameters", "includeSafetyAttributes"], u);
-  const c = d(e, ["includeRaiReason"]);
-  t !== void 0 && c != null && h(t, ["parameters", "includeRaiReason"], c);
-  const f = d(e, ["language"]);
+  const d = c(e, ["includeRaiReason"]);
+  t !== void 0 && d != null && h(t, ["parameters", "includeRaiReason"], d);
+  const f = c(e, ["language"]);
   t !== void 0 && f != null && h(t, ["parameters", "language"], f);
-  const p = d(e, ["outputMimeType"]);
+  const p = c(e, ["outputMimeType"]);
   t !== void 0 && p != null && h(t, [
     "parameters",
     "outputOptions",
     "mimeType"
   ], p);
-  const g = d(e, ["outputCompressionQuality"]);
+  const g = c(e, ["outputCompressionQuality"]);
   if (t !== void 0 && g != null && h(t, [
     "parameters",
     "outputOptions",
     "compressionQuality"
-  ], g), d(e, ["addWatermark"]) !== void 0) throw new Error("addWatermark parameter is not supported in Gemini API.");
-  if (d(e, ["labels"]) !== void 0) throw new Error("labels parameter is not supported in Gemini API.");
-  const y = d(e, ["imageSize"]);
-  if (t !== void 0 && y != null && h(t, ["parameters", "sampleImageSize"], y), d(e, ["enhancePrompt"]) !== void 0) throw new Error("enhancePrompt parameter is not supported in Gemini API.");
+  ], g), c(e, ["addWatermark"]) !== void 0) throw new Error("addWatermark parameter is not supported in Gemini API.");
+  if (c(e, ["labels"]) !== void 0) throw new Error("labels parameter is not supported in Gemini API.");
+  const y = c(e, ["imageSize"]);
+  if (t !== void 0 && y != null && h(t, ["parameters", "sampleImageSize"], y), c(e, ["enhancePrompt"]) !== void 0) throw new Error("enhancePrompt parameter is not supported in Gemini API.");
   return r;
 }
 function TJ(e, t, n) {
-  const r = {}, s = d(e, ["outputGcsUri"]);
+  const r = {}, s = c(e, ["outputGcsUri"]);
   t !== void 0 && s != null && h(t, ["parameters", "storageUri"], s);
-  const a = d(e, ["negativePrompt"]);
+  const a = c(e, ["negativePrompt"]);
   t !== void 0 && a != null && h(t, ["parameters", "negativePrompt"], a);
-  const o = d(e, ["numberOfImages"]);
+  const o = c(e, ["numberOfImages"]);
   t !== void 0 && o != null && h(t, ["parameters", "sampleCount"], o);
-  const l = d(e, ["aspectRatio"]);
+  const l = c(e, ["aspectRatio"]);
   t !== void 0 && l != null && h(t, ["parameters", "aspectRatio"], l);
-  const i = d(e, ["guidanceScale"]);
+  const i = c(e, ["guidanceScale"]);
   t !== void 0 && i != null && h(t, ["parameters", "guidanceScale"], i);
-  const u = d(e, ["seed"]);
+  const u = c(e, ["seed"]);
   t !== void 0 && u != null && h(t, ["parameters", "seed"], u);
-  const c = d(e, ["safetyFilterLevel"]);
-  t !== void 0 && c != null && h(t, ["parameters", "safetySetting"], c);
-  const f = d(e, ["personGeneration"]);
+  const d = c(e, ["safetyFilterLevel"]);
+  t !== void 0 && d != null && h(t, ["parameters", "safetySetting"], d);
+  const f = c(e, ["personGeneration"]);
   t !== void 0 && f != null && h(t, ["parameters", "personGeneration"], f);
-  const p = d(e, ["includeSafetyAttributes"]);
+  const p = c(e, ["includeSafetyAttributes"]);
   t !== void 0 && p != null && h(t, ["parameters", "includeSafetyAttributes"], p);
-  const g = d(e, ["includeRaiReason"]);
+  const g = c(e, ["includeRaiReason"]);
   t !== void 0 && g != null && h(t, ["parameters", "includeRaiReason"], g);
-  const y = d(e, ["language"]);
+  const y = c(e, ["language"]);
   t !== void 0 && y != null && h(t, ["parameters", "language"], y);
-  const _ = d(e, ["outputMimeType"]);
+  const _ = c(e, ["outputMimeType"]);
   t !== void 0 && _ != null && h(t, [
     "parameters",
     "outputOptions",
     "mimeType"
   ], _);
-  const x = d(e, ["outputCompressionQuality"]);
+  const x = c(e, ["outputCompressionQuality"]);
   t !== void 0 && x != null && h(t, [
     "parameters",
     "outputOptions",
     "compressionQuality"
   ], x);
-  const C = d(e, ["addWatermark"]);
+  const C = c(e, ["addWatermark"]);
   t !== void 0 && C != null && h(t, ["parameters", "addWatermark"], C);
-  const E = d(e, ["labels"]);
+  const E = c(e, ["labels"]);
   t !== void 0 && E != null && h(t, ["labels"], E);
-  const R = d(e, ["imageSize"]);
+  const R = c(e, ["imageSize"]);
   t !== void 0 && R != null && h(t, ["parameters", "sampleImageSize"], R);
-  const N = d(e, ["enhancePrompt"]);
+  const N = c(e, ["enhancePrompt"]);
   return t !== void 0 && N != null && h(t, ["parameters", "enhancePrompt"], N), r;
 }
 function EJ(e, t, n) {
-  const r = {}, s = d(t, ["model"]);
+  const r = {}, s = c(t, ["model"]);
   s != null && h(r, ["_url", "model"], cn(e, s));
-  const a = d(t, ["prompt"]);
+  const a = c(t, ["prompt"]);
   a != null && h(r, ["instances[0]", "prompt"], a);
-  const o = d(t, ["config"]);
+  const o = c(t, ["config"]);
   return o != null && AJ(o, r), r;
 }
 function CJ(e, t, n) {
-  const r = {}, s = d(t, ["model"]);
+  const r = {}, s = c(t, ["model"]);
   s != null && h(r, ["_url", "model"], cn(e, s));
-  const a = d(t, ["prompt"]);
+  const a = c(t, ["prompt"]);
   a != null && h(r, ["instances[0]", "prompt"], a);
-  const o = d(t, ["config"]);
+  const o = c(t, ["config"]);
   return o != null && TJ(o, r), r;
 }
 function IJ(e, t) {
-  const n = {}, r = d(e, ["sdkHttpResponse"]);
+  const n = {}, r = c(e, ["sdkHttpResponse"]);
   r != null && h(n, ["sdkHttpResponse"], r);
-  const s = d(e, ["predictions"]);
+  const s = c(e, ["predictions"]);
   if (s != null) {
     let o = s;
     Array.isArray(o) && (o = o.map((l) => BJ(l))), h(n, ["generatedImages"], o);
   }
-  const a = d(e, ["positivePromptSafetyAttributes"]);
+  const a = c(e, ["positivePromptSafetyAttributes"]);
   return a != null && h(n, ["positivePromptSafetyAttributes"], cR(a)), n;
 }
 function xJ(e, t) {
-  const n = {}, r = d(e, ["sdkHttpResponse"]);
+  const n = {}, r = c(e, ["sdkHttpResponse"]);
   r != null && h(n, ["sdkHttpResponse"], r);
-  const s = d(e, ["predictions"]);
+  const s = c(e, ["predictions"]);
   if (s != null) {
     let o = s;
     Array.isArray(o) && (o = o.map((l) => Xv(l))), h(n, ["generatedImages"], o);
   }
-  const a = d(e, ["positivePromptSafetyAttributes"]);
+  const a = c(e, ["positivePromptSafetyAttributes"]);
   return a != null && h(n, ["positivePromptSafetyAttributes"], dR(a)), n;
 }
 function kJ(e, t, n) {
-  const r = {}, s = d(e, ["numberOfVideos"]);
-  if (t !== void 0 && s != null && h(t, ["parameters", "sampleCount"], s), d(e, ["outputGcsUri"]) !== void 0) throw new Error("outputGcsUri parameter is not supported in Gemini API.");
-  if (d(e, ["fps"]) !== void 0) throw new Error("fps parameter is not supported in Gemini API.");
-  const a = d(e, ["durationSeconds"]);
-  if (t !== void 0 && a != null && h(t, ["parameters", "durationSeconds"], a), d(e, ["seed"]) !== void 0) throw new Error("seed parameter is not supported in Gemini API.");
-  const o = d(e, ["aspectRatio"]);
+  const r = {}, s = c(e, ["numberOfVideos"]);
+  if (t !== void 0 && s != null && h(t, ["parameters", "sampleCount"], s), c(e, ["outputGcsUri"]) !== void 0) throw new Error("outputGcsUri parameter is not supported in Gemini API.");
+  if (c(e, ["fps"]) !== void 0) throw new Error("fps parameter is not supported in Gemini API.");
+  const a = c(e, ["durationSeconds"]);
+  if (t !== void 0 && a != null && h(t, ["parameters", "durationSeconds"], a), c(e, ["seed"]) !== void 0) throw new Error("seed parameter is not supported in Gemini API.");
+  const o = c(e, ["aspectRatio"]);
   t !== void 0 && o != null && h(t, ["parameters", "aspectRatio"], o);
-  const l = d(e, ["resolution"]);
+  const l = c(e, ["resolution"]);
   t !== void 0 && l != null && h(t, ["parameters", "resolution"], l);
-  const i = d(e, ["personGeneration"]);
-  if (t !== void 0 && i != null && h(t, ["parameters", "personGeneration"], i), d(e, ["pubsubTopic"]) !== void 0) throw new Error("pubsubTopic parameter is not supported in Gemini API.");
-  const u = d(e, ["negativePrompt"]);
+  const i = c(e, ["personGeneration"]);
+  if (t !== void 0 && i != null && h(t, ["parameters", "personGeneration"], i), c(e, ["pubsubTopic"]) !== void 0) throw new Error("pubsubTopic parameter is not supported in Gemini API.");
+  const u = c(e, ["negativePrompt"]);
   t !== void 0 && u != null && h(t, ["parameters", "negativePrompt"], u);
-  const c = d(e, ["enhancePrompt"]);
-  if (t !== void 0 && c != null && h(t, ["parameters", "enhancePrompt"], c), d(e, ["generateAudio"]) !== void 0) throw new Error("generateAudio parameter is not supported in Gemini API.");
-  const f = d(e, ["lastFrame"]);
+  const d = c(e, ["enhancePrompt"]);
+  if (t !== void 0 && d != null && h(t, ["parameters", "enhancePrompt"], d), c(e, ["generateAudio"]) !== void 0) throw new Error("generateAudio parameter is not supported in Gemini API.");
+  const f = c(e, ["lastFrame"]);
   t !== void 0 && f != null && h(t, ["instances[0]", "lastFrame"], jv(f));
-  const p = d(e, ["referenceImages"]);
+  const p = c(e, ["referenceImages"]);
   if (t !== void 0 && p != null) {
     let y = p;
     Array.isArray(y) && (y = y.map((_) => NY(_))), h(t, ["instances[0]", "referenceImages"], y);
   }
-  if (d(e, ["mask"]) !== void 0) throw new Error("mask parameter is not supported in Gemini API.");
-  if (d(e, ["compressionQuality"]) !== void 0) throw new Error("compressionQuality parameter is not supported in Gemini API.");
-  if (d(e, ["labels"]) !== void 0) throw new Error("labels parameter is not supported in Gemini API.");
-  const g = d(e, ["webhookConfig"]);
+  if (c(e, ["mask"]) !== void 0) throw new Error("mask parameter is not supported in Gemini API.");
+  if (c(e, ["compressionQuality"]) !== void 0) throw new Error("compressionQuality parameter is not supported in Gemini API.");
+  if (c(e, ["labels"]) !== void 0) throw new Error("labels parameter is not supported in Gemini API.");
+  const g = c(e, ["webhookConfig"]);
   return t !== void 0 && g != null && h(t, ["webhookConfig"], g), r;
 }
 function MJ(e, t, n) {
-  const r = {}, s = d(e, ["numberOfVideos"]);
+  const r = {}, s = c(e, ["numberOfVideos"]);
   t !== void 0 && s != null && h(t, ["parameters", "sampleCount"], s);
-  const a = d(e, ["outputGcsUri"]);
+  const a = c(e, ["outputGcsUri"]);
   t !== void 0 && a != null && h(t, ["parameters", "storageUri"], a);
-  const o = d(e, ["fps"]);
+  const o = c(e, ["fps"]);
   t !== void 0 && o != null && h(t, ["parameters", "fps"], o);
-  const l = d(e, ["durationSeconds"]);
+  const l = c(e, ["durationSeconds"]);
   t !== void 0 && l != null && h(t, ["parameters", "durationSeconds"], l);
-  const i = d(e, ["seed"]);
+  const i = c(e, ["seed"]);
   t !== void 0 && i != null && h(t, ["parameters", "seed"], i);
-  const u = d(e, ["aspectRatio"]);
+  const u = c(e, ["aspectRatio"]);
   t !== void 0 && u != null && h(t, ["parameters", "aspectRatio"], u);
-  const c = d(e, ["resolution"]);
-  t !== void 0 && c != null && h(t, ["parameters", "resolution"], c);
-  const f = d(e, ["personGeneration"]);
+  const d = c(e, ["resolution"]);
+  t !== void 0 && d != null && h(t, ["parameters", "resolution"], d);
+  const f = c(e, ["personGeneration"]);
   t !== void 0 && f != null && h(t, ["parameters", "personGeneration"], f);
-  const p = d(e, ["pubsubTopic"]);
+  const p = c(e, ["pubsubTopic"]);
   t !== void 0 && p != null && h(t, ["parameters", "pubsubTopic"], p);
-  const g = d(e, ["negativePrompt"]);
+  const g = c(e, ["negativePrompt"]);
   t !== void 0 && g != null && h(t, ["parameters", "negativePrompt"], g);
-  const y = d(e, ["enhancePrompt"]);
+  const y = c(e, ["enhancePrompt"]);
   t !== void 0 && y != null && h(t, ["parameters", "enhancePrompt"], y);
-  const _ = d(e, ["generateAudio"]);
+  const _ = c(e, ["generateAudio"]);
   t !== void 0 && _ != null && h(t, ["parameters", "generateAudio"], _);
-  const x = d(e, ["lastFrame"]);
+  const x = c(e, ["lastFrame"]);
   t !== void 0 && x != null && h(t, ["instances[0]", "lastFrame"], ka(x));
-  const C = d(e, ["referenceImages"]);
+  const C = c(e, ["referenceImages"]);
   if (t !== void 0 && C != null) {
     let m = C;
     Array.isArray(m) && (m = m.map((w) => $Y(w))), h(t, ["instances[0]", "referenceImages"], m);
   }
-  const E = d(e, ["mask"]);
+  const E = c(e, ["mask"]);
   t !== void 0 && E != null && h(t, ["instances[0]", "mask"], RY(E));
-  const R = d(e, ["compressionQuality"]);
+  const R = c(e, ["compressionQuality"]);
   t !== void 0 && R != null && h(t, ["parameters", "compressionQuality"], R);
-  const N = d(e, ["labels"]);
-  if (t !== void 0 && N != null && h(t, ["labels"], N), d(e, ["webhookConfig"]) !== void 0) throw new Error("webhookConfig parameter is not supported in Vertex AI.");
+  const N = c(e, ["labels"]);
+  if (t !== void 0 && N != null && h(t, ["labels"], N), c(e, ["webhookConfig"]) !== void 0) throw new Error("webhookConfig parameter is not supported in Vertex AI.");
   return r;
 }
 function PJ(e, t) {
-  const n = {}, r = d(e, ["name"]);
+  const n = {}, r = c(e, ["name"]);
   r != null && h(n, ["name"], r);
-  const s = d(e, ["metadata"]);
+  const s = c(e, ["metadata"]);
   s != null && h(n, ["metadata"], s);
-  const a = d(e, ["done"]);
+  const a = c(e, ["done"]);
   a != null && h(n, ["done"], a);
-  const o = d(e, ["error"]);
+  const o = c(e, ["error"]);
   o != null && h(n, ["error"], o);
-  const l = d(e, ["response", "generateVideoResponse"]);
+  const l = c(e, ["response", "generateVideoResponse"]);
   return l != null && h(n, ["response"], LJ(l)), n;
 }
 function RJ(e, t) {
-  const n = {}, r = d(e, ["name"]);
+  const n = {}, r = c(e, ["name"]);
   r != null && h(n, ["name"], r);
-  const s = d(e, ["metadata"]);
+  const s = c(e, ["metadata"]);
   s != null && h(n, ["metadata"], s);
-  const a = d(e, ["done"]);
+  const a = c(e, ["done"]);
   a != null && h(n, ["done"], a);
-  const o = d(e, ["error"]);
+  const o = c(e, ["error"]);
   o != null && h(n, ["error"], o);
-  const l = d(e, ["response"]);
+  const l = c(e, ["response"]);
   return l != null && h(n, ["response"], DJ(l)), n;
 }
 function NJ(e, t, n) {
-  const r = {}, s = d(t, ["model"]);
+  const r = {}, s = c(t, ["model"]);
   s != null && h(r, ["_url", "model"], cn(e, s));
-  const a = d(t, ["prompt"]);
+  const a = c(t, ["prompt"]);
   a != null && h(r, ["instances[0]", "prompt"], a);
-  const o = d(t, ["image"]);
+  const o = c(t, ["image"]);
   o != null && h(r, ["instances[0]", "image"], jv(o));
-  const l = d(t, ["video"]);
+  const l = c(t, ["video"]);
   l != null && h(r, ["instances[0]", "video"], hR(l));
-  const i = d(t, ["source"]);
+  const i = c(t, ["source"]);
   i != null && OJ(i, r);
-  const u = d(t, ["config"]);
+  const u = c(t, ["config"]);
   return u != null && kJ(u, r), r;
 }
 function $J(e, t, n) {
-  const r = {}, s = d(t, ["model"]);
+  const r = {}, s = c(t, ["model"]);
   s != null && h(r, ["_url", "model"], cn(e, s));
-  const a = d(t, ["prompt"]);
+  const a = c(t, ["prompt"]);
   a != null && h(r, ["instances[0]", "prompt"], a);
-  const o = d(t, ["image"]);
+  const o = c(t, ["image"]);
   o != null && h(r, ["instances[0]", "image"], ka(o));
-  const l = d(t, ["video"]);
+  const l = c(t, ["video"]);
   l != null && h(r, ["instances[0]", "video"], pR(l));
-  const i = d(t, ["source"]);
+  const i = c(t, ["source"]);
   i != null && FJ(i, r);
-  const u = d(t, ["config"]);
+  const u = c(t, ["config"]);
   return u != null && MJ(u, r), r;
 }
 function LJ(e, t) {
-  const n = {}, r = d(e, ["generatedSamples"]);
+  const n = {}, r = c(e, ["generatedSamples"]);
   if (r != null) {
     let o = r;
     Array.isArray(o) && (o = o.map((l) => qJ(l))), h(n, ["generatedVideos"], o);
   }
-  const s = d(e, ["raiMediaFilteredCount"]);
+  const s = c(e, ["raiMediaFilteredCount"]);
   s != null && h(n, ["raiMediaFilteredCount"], s);
-  const a = d(e, ["raiMediaFilteredReasons"]);
+  const a = c(e, ["raiMediaFilteredReasons"]);
   return a != null && h(n, ["raiMediaFilteredReasons"], a), n;
 }
 function DJ(e, t) {
-  const n = {}, r = d(e, ["videos"]);
+  const n = {}, r = c(e, ["videos"]);
   if (r != null) {
     let o = r;
     Array.isArray(o) && (o = o.map((l) => HJ(l))), h(n, ["generatedVideos"], o);
   }
-  const s = d(e, ["raiMediaFilteredCount"]);
+  const s = c(e, ["raiMediaFilteredCount"]);
   s != null && h(n, ["raiMediaFilteredCount"], s);
-  const a = d(e, ["raiMediaFilteredReasons"]);
+  const a = c(e, ["raiMediaFilteredReasons"]);
   return a != null && h(n, ["raiMediaFilteredReasons"], a), n;
 }
 function OJ(e, t, n) {
-  const r = {}, s = d(e, ["prompt"]);
+  const r = {}, s = c(e, ["prompt"]);
   t !== void 0 && s != null && h(t, ["instances[0]", "prompt"], s);
-  const a = d(e, ["image"]);
+  const a = c(e, ["image"]);
   t !== void 0 && a != null && h(t, ["instances[0]", "image"], jv(a));
-  const o = d(e, ["video"]);
+  const o = c(e, ["video"]);
   return t !== void 0 && o != null && h(t, ["instances[0]", "video"], hR(o)), r;
 }
 function FJ(e, t, n) {
-  const r = {}, s = d(e, ["prompt"]);
+  const r = {}, s = c(e, ["prompt"]);
   t !== void 0 && s != null && h(t, ["instances[0]", "prompt"], s);
-  const a = d(e, ["image"]);
+  const a = c(e, ["image"]);
   t !== void 0 && a != null && h(t, ["instances[0]", "image"], ka(a));
-  const o = d(e, ["video"]);
+  const o = c(e, ["video"]);
   return t !== void 0 && o != null && h(t, ["instances[0]", "video"], pR(o)), r;
 }
 function BJ(e, t) {
-  const n = {}, r = d(e, ["_self"]);
+  const n = {}, r = c(e, ["_self"]);
   r != null && h(n, ["image"], XJ(r));
-  const s = d(e, ["raiFilteredReason"]);
+  const s = c(e, ["raiFilteredReason"]);
   s != null && h(n, ["raiFilteredReason"], s);
-  const a = d(e, ["_self"]);
+  const a = c(e, ["_self"]);
   return a != null && h(n, ["safetyAttributes"], cR(a)), n;
 }
 function Xv(e, t) {
-  const n = {}, r = d(e, ["_self"]);
+  const n = {}, r = c(e, ["_self"]);
   r != null && h(n, ["image"], uR(r));
-  const s = d(e, ["raiFilteredReason"]);
+  const s = c(e, ["raiFilteredReason"]);
   s != null && h(n, ["raiFilteredReason"], s);
-  const a = d(e, ["_self"]);
+  const a = c(e, ["_self"]);
   a != null && h(n, ["safetyAttributes"], dR(a));
-  const o = d(e, ["prompt"]);
+  const o = c(e, ["prompt"]);
   return o != null && h(n, ["enhancedPrompt"], o), n;
 }
 function UJ(e, t) {
-  const n = {}, r = d(e, ["_self"]);
+  const n = {}, r = c(e, ["_self"]);
   r != null && h(n, ["mask"], uR(r));
-  const s = d(e, ["labels"]);
+  const s = c(e, ["labels"]);
   if (s != null) {
     let a = s;
     Array.isArray(a) && (a = a.map((o) => o)), h(n, ["labels"], a);
@@ -29798,172 +29798,172 @@ function UJ(e, t) {
   return n;
 }
 function qJ(e, t) {
-  const n = {}, r = d(e, ["video"]);
+  const n = {}, r = c(e, ["video"]);
   return r != null && h(n, ["video"], MY(r)), n;
 }
 function HJ(e, t) {
-  const n = {}, r = d(e, ["_self"]);
+  const n = {}, r = c(e, ["_self"]);
   return r != null && h(n, ["video"], PY(r)), n;
 }
 function zJ(e, t) {
-  const n = {}, r = d(e, ["modelSelectionConfig"]);
+  const n = {}, r = c(e, ["modelSelectionConfig"]);
   r != null && h(n, ["modelConfig"], r);
-  const s = d(e, ["responseJsonSchema"]);
+  const s = c(e, ["responseJsonSchema"]);
   s != null && h(n, ["responseJsonSchema"], s);
-  const a = d(e, ["audioTimestamp"]);
+  const a = c(e, ["audioTimestamp"]);
   a != null && h(n, ["audioTimestamp"], a);
-  const o = d(e, ["candidateCount"]);
+  const o = c(e, ["candidateCount"]);
   o != null && h(n, ["candidateCount"], o);
-  const l = d(e, ["enableAffectiveDialog"]);
+  const l = c(e, ["enableAffectiveDialog"]);
   l != null && h(n, ["enableAffectiveDialog"], l);
-  const i = d(e, ["frequencyPenalty"]);
+  const i = c(e, ["frequencyPenalty"]);
   i != null && h(n, ["frequencyPenalty"], i);
-  const u = d(e, ["logprobs"]);
+  const u = c(e, ["logprobs"]);
   u != null && h(n, ["logprobs"], u);
-  const c = d(e, ["maxOutputTokens"]);
-  c != null && h(n, ["maxOutputTokens"], c);
-  const f = d(e, ["mediaResolution"]);
+  const d = c(e, ["maxOutputTokens"]);
+  d != null && h(n, ["maxOutputTokens"], d);
+  const f = c(e, ["mediaResolution"]);
   f != null && h(n, ["mediaResolution"], f);
-  const p = d(e, ["presencePenalty"]);
+  const p = c(e, ["presencePenalty"]);
   p != null && h(n, ["presencePenalty"], p);
-  const g = d(e, ["responseLogprobs"]);
+  const g = c(e, ["responseLogprobs"]);
   g != null && h(n, ["responseLogprobs"], g);
-  const y = d(e, ["responseMimeType"]);
+  const y = c(e, ["responseMimeType"]);
   y != null && h(n, ["responseMimeType"], y);
-  const _ = d(e, ["responseModalities"]);
+  const _ = c(e, ["responseModalities"]);
   _ != null && h(n, ["responseModalities"], _);
-  const x = d(e, ["responseSchema"]);
+  const x = c(e, ["responseSchema"]);
   x != null && h(n, ["responseSchema"], x);
-  const C = d(e, ["routingConfig"]);
+  const C = c(e, ["routingConfig"]);
   C != null && h(n, ["routingConfig"], C);
-  const E = d(e, ["seed"]);
+  const E = c(e, ["seed"]);
   E != null && h(n, ["seed"], E);
-  const R = d(e, ["speechConfig"]);
+  const R = c(e, ["speechConfig"]);
   R != null && h(n, ["speechConfig"], R);
-  const N = d(e, ["stopSequences"]);
+  const N = c(e, ["stopSequences"]);
   N != null && h(n, ["stopSequences"], N);
-  const m = d(e, ["temperature"]);
+  const m = c(e, ["temperature"]);
   m != null && h(n, ["temperature"], m);
-  const w = d(e, ["thinkingConfig"]);
+  const w = c(e, ["thinkingConfig"]);
   w != null && h(n, ["thinkingConfig"], w);
-  const b = d(e, ["topK"]);
+  const b = c(e, ["topK"]);
   b != null && h(n, ["topK"], b);
-  const S = d(e, ["topP"]);
-  if (S != null && h(n, ["topP"], S), d(e, ["enableEnhancedCivicAnswers"]) !== void 0) throw new Error("enableEnhancedCivicAnswers parameter is not supported in Vertex AI.");
+  const S = c(e, ["topP"]);
+  if (S != null && h(n, ["topP"], S), c(e, ["enableEnhancedCivicAnswers"]) !== void 0) throw new Error("enableEnhancedCivicAnswers parameter is not supported in Vertex AI.");
   return n;
 }
 function KJ(e, t, n) {
-  const r = {}, s = d(t, ["model"]);
+  const r = {}, s = c(t, ["model"]);
   return s != null && h(r, ["_url", "name"], cn(e, s)), r;
 }
 function WJ(e, t, n) {
-  const r = {}, s = d(t, ["model"]);
+  const r = {}, s = c(t, ["model"]);
   return s != null && h(r, ["_url", "name"], cn(e, s)), r;
 }
 function VJ(e, t) {
-  const n = {}, r = d(e, ["authConfig"]);
+  const n = {}, r = c(e, ["authConfig"]);
   r != null && h(n, ["authConfig"], HG(r));
-  const s = d(e, ["enableWidget"]);
+  const s = c(e, ["enableWidget"]);
   return s != null && h(n, ["enableWidget"], s), n;
 }
 function GJ(e, t) {
-  const n = {}, r = d(e, ["searchTypes"]);
-  if (r != null && h(n, ["searchTypes"], r), d(e, ["blockingConfidence"]) !== void 0) throw new Error("blockingConfidence parameter is not supported in Gemini API.");
-  if (d(e, ["excludeDomains"]) !== void 0) throw new Error("excludeDomains parameter is not supported in Gemini API.");
-  const s = d(e, ["timeRangeFilter"]);
+  const n = {}, r = c(e, ["searchTypes"]);
+  if (r != null && h(n, ["searchTypes"], r), c(e, ["blockingConfidence"]) !== void 0) throw new Error("blockingConfidence parameter is not supported in Gemini API.");
+  if (c(e, ["excludeDomains"]) !== void 0) throw new Error("excludeDomains parameter is not supported in Gemini API.");
+  const s = c(e, ["timeRangeFilter"]);
   return s != null && h(n, ["timeRangeFilter"], s), n;
 }
 function JJ(e, t) {
-  const n = {}, r = d(e, ["aspectRatio"]);
+  const n = {}, r = c(e, ["aspectRatio"]);
   r != null && h(n, ["aspectRatio"], r);
-  const s = d(e, ["imageSize"]);
-  if (s != null && h(n, ["imageSize"], s), d(e, ["personGeneration"]) !== void 0) throw new Error("personGeneration parameter is not supported in Gemini API.");
-  if (d(e, ["prominentPeople"]) !== void 0) throw new Error("prominentPeople parameter is not supported in Gemini API.");
-  if (d(e, ["outputMimeType"]) !== void 0) throw new Error("outputMimeType parameter is not supported in Gemini API.");
-  if (d(e, ["outputCompressionQuality"]) !== void 0) throw new Error("outputCompressionQuality parameter is not supported in Gemini API.");
-  if (d(e, ["imageOutputOptions"]) !== void 0) throw new Error("imageOutputOptions parameter is not supported in Gemini API.");
+  const s = c(e, ["imageSize"]);
+  if (s != null && h(n, ["imageSize"], s), c(e, ["personGeneration"]) !== void 0) throw new Error("personGeneration parameter is not supported in Gemini API.");
+  if (c(e, ["prominentPeople"]) !== void 0) throw new Error("prominentPeople parameter is not supported in Gemini API.");
+  if (c(e, ["outputMimeType"]) !== void 0) throw new Error("outputMimeType parameter is not supported in Gemini API.");
+  if (c(e, ["outputCompressionQuality"]) !== void 0) throw new Error("outputCompressionQuality parameter is not supported in Gemini API.");
+  if (c(e, ["imageOutputOptions"]) !== void 0) throw new Error("imageOutputOptions parameter is not supported in Gemini API.");
   return n;
 }
 function YJ(e, t) {
-  const n = {}, r = d(e, ["aspectRatio"]);
+  const n = {}, r = c(e, ["aspectRatio"]);
   r != null && h(n, ["aspectRatio"], r);
-  const s = d(e, ["imageSize"]);
+  const s = c(e, ["imageSize"]);
   s != null && h(n, ["imageSize"], s);
-  const a = d(e, ["personGeneration"]);
+  const a = c(e, ["personGeneration"]);
   a != null && h(n, ["personGeneration"], a);
-  const o = d(e, ["prominentPeople"]);
+  const o = c(e, ["prominentPeople"]);
   o != null && h(n, ["prominentPeople"], o);
-  const l = d(e, ["outputMimeType"]);
+  const l = c(e, ["outputMimeType"]);
   l != null && h(n, ["imageOutputOptions", "mimeType"], l);
-  const i = d(e, ["outputCompressionQuality"]);
+  const i = c(e, ["outputCompressionQuality"]);
   i != null && h(n, ["imageOutputOptions", "compressionQuality"], i);
-  const u = d(e, ["imageOutputOptions"]);
+  const u = c(e, ["imageOutputOptions"]);
   return u != null && h(n, ["imageOutputOptions"], u), n;
 }
 function XJ(e, t) {
-  const n = {}, r = d(e, ["bytesBase64Encoded"]);
+  const n = {}, r = c(e, ["bytesBase64Encoded"]);
   r != null && h(n, ["imageBytes"], tl(r));
-  const s = d(e, ["mimeType"]);
+  const s = c(e, ["mimeType"]);
   return s != null && h(n, ["mimeType"], s), n;
 }
 function uR(e, t) {
-  const n = {}, r = d(e, ["gcsUri"]);
+  const n = {}, r = c(e, ["gcsUri"]);
   r != null && h(n, ["gcsUri"], r);
-  const s = d(e, ["bytesBase64Encoded"]);
+  const s = c(e, ["bytesBase64Encoded"]);
   s != null && h(n, ["imageBytes"], tl(s));
-  const a = d(e, ["mimeType"]);
+  const a = c(e, ["mimeType"]);
   return a != null && h(n, ["mimeType"], a), n;
 }
 function jv(e, t) {
   const n = {};
-  if (d(e, ["gcsUri"]) !== void 0) throw new Error("gcsUri parameter is not supported in Gemini API.");
-  const r = d(e, ["imageBytes"]);
+  if (c(e, ["gcsUri"]) !== void 0) throw new Error("gcsUri parameter is not supported in Gemini API.");
+  const r = c(e, ["imageBytes"]);
   r != null && h(n, ["bytesBase64Encoded"], tl(r));
-  const s = d(e, ["mimeType"]);
+  const s = c(e, ["mimeType"]);
   return s != null && h(n, ["mimeType"], s), n;
 }
 function ka(e, t) {
-  const n = {}, r = d(e, ["gcsUri"]);
+  const n = {}, r = c(e, ["gcsUri"]);
   r != null && h(n, ["gcsUri"], r);
-  const s = d(e, ["imageBytes"]);
+  const s = c(e, ["imageBytes"]);
   s != null && h(n, ["bytesBase64Encoded"], tl(s));
-  const a = d(e, ["mimeType"]);
+  const a = c(e, ["mimeType"]);
   return a != null && h(n, ["mimeType"], a), n;
 }
 function jJ(e, t, n, r) {
-  const s = {}, a = d(t, ["pageSize"]);
+  const s = {}, a = c(t, ["pageSize"]);
   n !== void 0 && a != null && h(n, ["_query", "pageSize"], a);
-  const o = d(t, ["pageToken"]);
+  const o = c(t, ["pageToken"]);
   n !== void 0 && o != null && h(n, ["_query", "pageToken"], o);
-  const l = d(t, ["filter"]);
+  const l = c(t, ["filter"]);
   n !== void 0 && l != null && h(n, ["_query", "filter"], l);
-  const i = d(t, ["queryBase"]);
+  const i = c(t, ["queryBase"]);
   return n !== void 0 && i != null && h(n, ["_url", "models_url"], eR(e, i)), s;
 }
 function QJ(e, t, n, r) {
-  const s = {}, a = d(t, ["pageSize"]);
+  const s = {}, a = c(t, ["pageSize"]);
   n !== void 0 && a != null && h(n, ["_query", "pageSize"], a);
-  const o = d(t, ["pageToken"]);
+  const o = c(t, ["pageToken"]);
   n !== void 0 && o != null && h(n, ["_query", "pageToken"], o);
-  const l = d(t, ["filter"]);
+  const l = c(t, ["filter"]);
   n !== void 0 && l != null && h(n, ["_query", "filter"], l);
-  const i = d(t, ["queryBase"]);
+  const i = c(t, ["queryBase"]);
   return n !== void 0 && i != null && h(n, ["_url", "models_url"], eR(e, i)), s;
 }
 function ZJ(e, t, n) {
-  const r = {}, s = d(t, ["config"]);
+  const r = {}, s = c(t, ["config"]);
   return s != null && jJ(e, s, r), r;
 }
 function eY(e, t, n) {
-  const r = {}, s = d(t, ["config"]);
+  const r = {}, s = c(t, ["config"]);
   return s != null && QJ(e, s, r), r;
 }
 function tY(e, t) {
-  const n = {}, r = d(e, ["sdkHttpResponse"]);
+  const n = {}, r = c(e, ["sdkHttpResponse"]);
   r != null && h(n, ["sdkHttpResponse"], r);
-  const s = d(e, ["nextPageToken"]);
+  const s = c(e, ["nextPageToken"]);
   s != null && h(n, ["nextPageToken"], s);
-  const a = d(e, ["_self"]);
+  const a = c(e, ["_self"]);
   if (a != null) {
     let o = tR(a);
     Array.isArray(o) && (o = o.map((l) => j0(l))), h(n, ["models"], o);
@@ -29971,11 +29971,11 @@ function tY(e, t) {
   return n;
 }
 function nY(e, t) {
-  const n = {}, r = d(e, ["sdkHttpResponse"]);
+  const n = {}, r = c(e, ["sdkHttpResponse"]);
   r != null && h(n, ["sdkHttpResponse"], r);
-  const s = d(e, ["nextPageToken"]);
+  const s = c(e, ["nextPageToken"]);
   s != null && h(n, ["nextPageToken"], s);
-  const a = d(e, ["_self"]);
+  const a = c(e, ["_self"]);
   if (a != null) {
     let o = tR(a);
     Array.isArray(o) && (o = o.map((l) => Q0(l))), h(n, ["models"], o);
@@ -29983,62 +29983,62 @@ function nY(e, t) {
   return n;
 }
 function rY(e, t) {
-  const n = {}, r = d(e, ["maskMode"]);
+  const n = {}, r = c(e, ["maskMode"]);
   r != null && h(n, ["maskMode"], r);
-  const s = d(e, ["segmentationClasses"]);
+  const s = c(e, ["segmentationClasses"]);
   s != null && h(n, ["maskClasses"], s);
-  const a = d(e, ["maskDilation"]);
+  const a = c(e, ["maskDilation"]);
   return a != null && h(n, ["dilation"], a), n;
 }
 function j0(e, t) {
-  const n = {}, r = d(e, ["name"]);
+  const n = {}, r = c(e, ["name"]);
   r != null && h(n, ["name"], r);
-  const s = d(e, ["displayName"]);
+  const s = c(e, ["displayName"]);
   s != null && h(n, ["displayName"], s);
-  const a = d(e, ["description"]);
+  const a = c(e, ["description"]);
   a != null && h(n, ["description"], a);
-  const o = d(e, ["version"]);
+  const o = c(e, ["version"]);
   o != null && h(n, ["version"], o);
-  const l = d(e, ["_self"]);
+  const l = c(e, ["_self"]);
   l != null && h(n, ["tunedModelInfo"], wY(l));
-  const i = d(e, ["inputTokenLimit"]);
+  const i = c(e, ["inputTokenLimit"]);
   i != null && h(n, ["inputTokenLimit"], i);
-  const u = d(e, ["outputTokenLimit"]);
+  const u = c(e, ["outputTokenLimit"]);
   u != null && h(n, ["outputTokenLimit"], u);
-  const c = d(e, ["supportedGenerationMethods"]);
-  c != null && h(n, ["supportedActions"], c);
-  const f = d(e, ["temperature"]);
+  const d = c(e, ["supportedGenerationMethods"]);
+  d != null && h(n, ["supportedActions"], d);
+  const f = c(e, ["temperature"]);
   f != null && h(n, ["temperature"], f);
-  const p = d(e, ["maxTemperature"]);
+  const p = c(e, ["maxTemperature"]);
   p != null && h(n, ["maxTemperature"], p);
-  const g = d(e, ["topP"]);
+  const g = c(e, ["topP"]);
   g != null && h(n, ["topP"], g);
-  const y = d(e, ["topK"]);
+  const y = c(e, ["topK"]);
   y != null && h(n, ["topK"], y);
-  const _ = d(e, ["thinking"]);
+  const _ = c(e, ["thinking"]);
   return _ != null && h(n, ["thinking"], _), n;
 }
 function Q0(e, t) {
-  const n = {}, r = d(e, ["name"]);
+  const n = {}, r = c(e, ["name"]);
   r != null && h(n, ["name"], r);
-  const s = d(e, ["displayName"]);
+  const s = c(e, ["displayName"]);
   s != null && h(n, ["displayName"], s);
-  const a = d(e, ["description"]);
+  const a = c(e, ["description"]);
   a != null && h(n, ["description"], a);
-  const o = d(e, ["versionId"]);
+  const o = c(e, ["versionId"]);
   o != null && h(n, ["version"], o);
-  const l = d(e, ["deployedModels"]);
+  const l = c(e, ["deployedModels"]);
   if (l != null) {
     let p = l;
     Array.isArray(p) && (p = p.map((g) => gJ(g))), h(n, ["endpoints"], p);
   }
-  const i = d(e, ["labels"]);
+  const i = c(e, ["labels"]);
   i != null && h(n, ["labels"], i);
-  const u = d(e, ["_self"]);
+  const u = c(e, ["_self"]);
   u != null && h(n, ["tunedModelInfo"], SY(u));
-  const c = d(e, ["defaultCheckpointId"]);
-  c != null && h(n, ["defaultCheckpointId"], c);
-  const f = d(e, ["checkpoints"]);
+  const d = c(e, ["defaultCheckpointId"]);
+  d != null && h(n, ["defaultCheckpointId"], d);
+  const f = c(e, ["checkpoints"]);
   if (f != null) {
     let p = f;
     Array.isArray(p) && (p = p.map((g) => g)), h(n, ["checkpoints"], p);
@@ -30046,108 +30046,108 @@ function Q0(e, t) {
   return n;
 }
 function sY(e, t) {
-  const n = {}, r = d(e, ["mediaResolution"]);
+  const n = {}, r = c(e, ["mediaResolution"]);
   r != null && h(n, ["mediaResolution"], r);
-  const s = d(e, ["codeExecutionResult"]);
+  const s = c(e, ["codeExecutionResult"]);
   s != null && h(n, ["codeExecutionResult"], s);
-  const a = d(e, ["executableCode"]);
+  const a = c(e, ["executableCode"]);
   a != null && h(n, ["executableCode"], a);
-  const o = d(e, ["fileData"]);
+  const o = c(e, ["fileData"]);
   o != null && h(n, ["fileData"], vJ(o));
-  const l = d(e, ["functionCall"]);
+  const l = c(e, ["functionCall"]);
   l != null && h(n, ["functionCall"], yJ(l));
-  const i = d(e, ["functionResponse"]);
+  const i = c(e, ["functionResponse"]);
   i != null && h(n, ["functionResponse"], i);
-  const u = d(e, ["inlineData"]);
+  const u = c(e, ["inlineData"]);
   u != null && h(n, ["inlineData"], zG(u));
-  const c = d(e, ["text"]);
-  c != null && h(n, ["text"], c);
-  const f = d(e, ["thought"]);
+  const d = c(e, ["text"]);
+  d != null && h(n, ["text"], d);
+  const f = c(e, ["thought"]);
   f != null && h(n, ["thought"], f);
-  const p = d(e, ["thoughtSignature"]);
+  const p = c(e, ["thoughtSignature"]);
   p != null && h(n, ["thoughtSignature"], p);
-  const g = d(e, ["videoMetadata"]);
+  const g = c(e, ["videoMetadata"]);
   g != null && h(n, ["videoMetadata"], g);
-  const y = d(e, ["toolCall"]);
+  const y = c(e, ["toolCall"]);
   y != null && h(n, ["toolCall"], y);
-  const _ = d(e, ["toolResponse"]);
+  const _ = c(e, ["toolResponse"]);
   _ != null && h(n, ["toolResponse"], _);
-  const x = d(e, ["partMetadata"]);
+  const x = c(e, ["partMetadata"]);
   return x != null && h(n, ["partMetadata"], x), n;
 }
 function aY(e, t) {
-  const n = {}, r = d(e, ["mediaResolution"]);
+  const n = {}, r = c(e, ["mediaResolution"]);
   r != null && h(n, ["mediaResolution"], r);
-  const s = d(e, ["codeExecutionResult"]);
+  const s = c(e, ["codeExecutionResult"]);
   s != null && h(n, ["codeExecutionResult"], s);
-  const a = d(e, ["executableCode"]);
+  const a = c(e, ["executableCode"]);
   a != null && h(n, ["executableCode"], a);
-  const o = d(e, ["fileData"]);
+  const o = c(e, ["fileData"]);
   o != null && h(n, ["fileData"], o);
-  const l = d(e, ["functionCall"]);
+  const l = c(e, ["functionCall"]);
   l != null && h(n, ["functionCall"], l);
-  const i = d(e, ["functionResponse"]);
+  const i = c(e, ["functionResponse"]);
   i != null && h(n, ["functionResponse"], i);
-  const u = d(e, ["inlineData"]);
+  const u = c(e, ["inlineData"]);
   u != null && h(n, ["inlineData"], u);
-  const c = d(e, ["text"]);
-  c != null && h(n, ["text"], c);
-  const f = d(e, ["thought"]);
+  const d = c(e, ["text"]);
+  d != null && h(n, ["text"], d);
+  const f = c(e, ["thought"]);
   f != null && h(n, ["thought"], f);
-  const p = d(e, ["thoughtSignature"]);
+  const p = c(e, ["thoughtSignature"]);
   p != null && h(n, ["thoughtSignature"], p);
-  const g = d(e, ["videoMetadata"]);
-  if (g != null && h(n, ["videoMetadata"], g), d(e, ["toolCall"]) !== void 0) throw new Error("toolCall parameter is not supported in Vertex AI.");
-  if (d(e, ["toolResponse"]) !== void 0) throw new Error("toolResponse parameter is not supported in Vertex AI.");
-  if (d(e, ["partMetadata"]) !== void 0) throw new Error("partMetadata parameter is not supported in Vertex AI.");
+  const g = c(e, ["videoMetadata"]);
+  if (g != null && h(n, ["videoMetadata"], g), c(e, ["toolCall"]) !== void 0) throw new Error("toolCall parameter is not supported in Vertex AI.");
+  if (c(e, ["toolResponse"]) !== void 0) throw new Error("toolResponse parameter is not supported in Vertex AI.");
+  if (c(e, ["partMetadata"]) !== void 0) throw new Error("partMetadata parameter is not supported in Vertex AI.");
   return n;
 }
 function oY(e, t) {
-  const n = {}, r = d(e, ["productImage"]);
+  const n = {}, r = c(e, ["productImage"]);
   return r != null && h(n, ["image"], ka(r)), n;
 }
 function iY(e, t, n) {
-  const r = {}, s = d(e, ["numberOfImages"]);
+  const r = {}, s = c(e, ["numberOfImages"]);
   t !== void 0 && s != null && h(t, ["parameters", "sampleCount"], s);
-  const a = d(e, ["baseSteps"]);
+  const a = c(e, ["baseSteps"]);
   t !== void 0 && a != null && h(t, ["parameters", "baseSteps"], a);
-  const o = d(e, ["outputGcsUri"]);
+  const o = c(e, ["outputGcsUri"]);
   t !== void 0 && o != null && h(t, ["parameters", "storageUri"], o);
-  const l = d(e, ["seed"]);
+  const l = c(e, ["seed"]);
   t !== void 0 && l != null && h(t, ["parameters", "seed"], l);
-  const i = d(e, ["safetyFilterLevel"]);
+  const i = c(e, ["safetyFilterLevel"]);
   t !== void 0 && i != null && h(t, ["parameters", "safetySetting"], i);
-  const u = d(e, ["personGeneration"]);
+  const u = c(e, ["personGeneration"]);
   t !== void 0 && u != null && h(t, ["parameters", "personGeneration"], u);
-  const c = d(e, ["addWatermark"]);
-  t !== void 0 && c != null && h(t, ["parameters", "addWatermark"], c);
-  const f = d(e, ["outputMimeType"]);
+  const d = c(e, ["addWatermark"]);
+  t !== void 0 && d != null && h(t, ["parameters", "addWatermark"], d);
+  const f = c(e, ["outputMimeType"]);
   t !== void 0 && f != null && h(t, [
     "parameters",
     "outputOptions",
     "mimeType"
   ], f);
-  const p = d(e, ["outputCompressionQuality"]);
+  const p = c(e, ["outputCompressionQuality"]);
   t !== void 0 && p != null && h(t, [
     "parameters",
     "outputOptions",
     "compressionQuality"
   ], p);
-  const g = d(e, ["enhancePrompt"]);
+  const g = c(e, ["enhancePrompt"]);
   t !== void 0 && g != null && h(t, ["parameters", "enhancePrompt"], g);
-  const y = d(e, ["labels"]);
+  const y = c(e, ["labels"]);
   return t !== void 0 && y != null && h(t, ["labels"], y), r;
 }
 function lY(e, t, n) {
-  const r = {}, s = d(t, ["model"]);
+  const r = {}, s = c(t, ["model"]);
   s != null && h(r, ["_url", "model"], cn(e, s));
-  const a = d(t, ["source"]);
+  const a = c(t, ["source"]);
   a != null && cY(a, r);
-  const o = d(t, ["config"]);
+  const o = c(t, ["config"]);
   return o != null && iY(o, r), r;
 }
 function uY(e, t) {
-  const n = {}, r = d(e, ["predictions"]);
+  const n = {}, r = c(e, ["predictions"]);
   if (r != null) {
     let s = r;
     Array.isArray(s) && (s = s.map((a) => Xv(a))), h(n, ["generatedImages"], s);
@@ -30155,15 +30155,15 @@ function uY(e, t) {
   return n;
 }
 function cY(e, t, n) {
-  const r = {}, s = d(e, ["prompt"]);
+  const r = {}, s = c(e, ["prompt"]);
   t !== void 0 && s != null && h(t, ["instances[0]", "prompt"], s);
-  const a = d(e, ["personImage"]);
+  const a = c(e, ["personImage"]);
   t !== void 0 && a != null && h(t, [
     "instances[0]",
     "personImage",
     "image"
   ], ka(a));
-  const o = d(e, ["productImages"]);
+  const o = c(e, ["productImages"]);
   if (t !== void 0 && o != null) {
     let l = o;
     Array.isArray(l) && (l = l.map((i) => oY(i))), h(t, ["instances[0]", "productImages"], l);
@@ -30171,71 +30171,71 @@ function cY(e, t, n) {
   return r;
 }
 function dY(e, t) {
-  const n = {}, r = d(e, ["referenceImage"]);
+  const n = {}, r = c(e, ["referenceImage"]);
   r != null && h(n, ["referenceImage"], ka(r));
-  const s = d(e, ["referenceId"]);
+  const s = c(e, ["referenceId"]);
   s != null && h(n, ["referenceId"], s);
-  const a = d(e, ["referenceType"]);
+  const a = c(e, ["referenceType"]);
   a != null && h(n, ["referenceType"], a);
-  const o = d(e, ["maskImageConfig"]);
+  const o = c(e, ["maskImageConfig"]);
   o != null && h(n, ["maskImageConfig"], rY(o));
-  const l = d(e, ["controlImageConfig"]);
+  const l = c(e, ["controlImageConfig"]);
   l != null && h(n, ["controlImageConfig"], XG(l));
-  const i = d(e, ["styleImageConfig"]);
+  const i = c(e, ["styleImageConfig"]);
   i != null && h(n, ["styleImageConfig"], i);
-  const u = d(e, ["subjectImageConfig"]);
+  const u = c(e, ["subjectImageConfig"]);
   return u != null && h(n, ["subjectImageConfig"], u), n;
 }
 function cR(e, t) {
-  const n = {}, r = d(e, ["safetyAttributes", "categories"]);
+  const n = {}, r = c(e, ["safetyAttributes", "categories"]);
   r != null && h(n, ["categories"], r);
-  const s = d(e, ["safetyAttributes", "scores"]);
+  const s = c(e, ["safetyAttributes", "scores"]);
   s != null && h(n, ["scores"], s);
-  const a = d(e, ["contentType"]);
+  const a = c(e, ["contentType"]);
   return a != null && h(n, ["contentType"], a), n;
 }
 function dR(e, t) {
-  const n = {}, r = d(e, ["safetyAttributes", "categories"]);
+  const n = {}, r = c(e, ["safetyAttributes", "categories"]);
   r != null && h(n, ["categories"], r);
-  const s = d(e, ["safetyAttributes", "scores"]);
+  const s = c(e, ["safetyAttributes", "scores"]);
   s != null && h(n, ["scores"], s);
-  const a = d(e, ["contentType"]);
+  const a = c(e, ["contentType"]);
   return a != null && h(n, ["contentType"], a), n;
 }
 function fY(e, t) {
-  const n = {}, r = d(e, ["category"]);
-  if (r != null && h(n, ["category"], r), d(e, ["method"]) !== void 0) throw new Error("method parameter is not supported in Gemini API.");
-  const s = d(e, ["threshold"]);
+  const n = {}, r = c(e, ["category"]);
+  if (r != null && h(n, ["category"], r), c(e, ["method"]) !== void 0) throw new Error("method parameter is not supported in Gemini API.");
+  const s = c(e, ["threshold"]);
   return s != null && h(n, ["threshold"], s), n;
 }
 function hY(e, t) {
-  const n = {}, r = d(e, ["image"]);
+  const n = {}, r = c(e, ["image"]);
   return r != null && h(n, ["image"], ka(r)), n;
 }
 function pY(e, t, n) {
-  const r = {}, s = d(e, ["mode"]);
+  const r = {}, s = c(e, ["mode"]);
   t !== void 0 && s != null && h(t, ["parameters", "mode"], s);
-  const a = d(e, ["maxPredictions"]);
+  const a = c(e, ["maxPredictions"]);
   t !== void 0 && a != null && h(t, ["parameters", "maxPredictions"], a);
-  const o = d(e, ["confidenceThreshold"]);
+  const o = c(e, ["confidenceThreshold"]);
   t !== void 0 && o != null && h(t, ["parameters", "confidenceThreshold"], o);
-  const l = d(e, ["maskDilation"]);
+  const l = c(e, ["maskDilation"]);
   t !== void 0 && l != null && h(t, ["parameters", "maskDilation"], l);
-  const i = d(e, ["binaryColorThreshold"]);
+  const i = c(e, ["binaryColorThreshold"]);
   t !== void 0 && i != null && h(t, ["parameters", "binaryColorThreshold"], i);
-  const u = d(e, ["labels"]);
+  const u = c(e, ["labels"]);
   return t !== void 0 && u != null && h(t, ["labels"], u), r;
 }
 function mY(e, t, n) {
-  const r = {}, s = d(t, ["model"]);
+  const r = {}, s = c(t, ["model"]);
   s != null && h(r, ["_url", "model"], cn(e, s));
-  const a = d(t, ["source"]);
+  const a = c(t, ["source"]);
   a != null && vY(a, r);
-  const o = d(t, ["config"]);
+  const o = c(t, ["config"]);
   return o != null && pY(o, r), r;
 }
 function gY(e, t) {
-  const n = {}, r = d(e, ["predictions"]);
+  const n = {}, r = c(e, ["predictions"]);
   if (r != null) {
     let s = r;
     Array.isArray(s) && (s = s.map((a) => UJ(a))), h(n, ["generatedMasks"], s);
@@ -30243,51 +30243,51 @@ function gY(e, t) {
   return n;
 }
 function vY(e, t, n) {
-  const r = {}, s = d(e, ["prompt"]);
+  const r = {}, s = c(e, ["prompt"]);
   t !== void 0 && s != null && h(t, ["instances[0]", "prompt"], s);
-  const a = d(e, ["image"]);
+  const a = c(e, ["image"]);
   t !== void 0 && a != null && h(t, ["instances[0]", "image"], ka(a));
-  const o = d(e, ["scribbleImage"]);
+  const o = c(e, ["scribbleImage"]);
   return t !== void 0 && o != null && h(t, ["instances[0]", "scribble"], hY(o)), r;
 }
 function yY(e, t) {
-  const n = {}, r = d(e, ["retrievalConfig"]);
+  const n = {}, r = c(e, ["retrievalConfig"]);
   r != null && h(n, ["retrievalConfig"], r);
-  const s = d(e, ["functionCallingConfig"]);
+  const s = c(e, ["functionCallingConfig"]);
   s != null && h(n, ["functionCallingConfig"], _J(s));
-  const a = d(e, ["includeServerSideToolInvocations"]);
+  const a = c(e, ["includeServerSideToolInvocations"]);
   return a != null && h(n, ["includeServerSideToolInvocations"], a), n;
 }
 function _Y(e, t) {
-  const n = {}, r = d(e, ["retrievalConfig"]);
+  const n = {}, r = c(e, ["retrievalConfig"]);
   r != null && h(n, ["retrievalConfig"], r);
-  const s = d(e, ["functionCallingConfig"]);
-  if (s != null && h(n, ["functionCallingConfig"], s), d(e, ["includeServerSideToolInvocations"]) !== void 0) throw new Error("includeServerSideToolInvocations parameter is not supported in Vertex AI.");
+  const s = c(e, ["functionCallingConfig"]);
+  if (s != null && h(n, ["functionCallingConfig"], s), c(e, ["includeServerSideToolInvocations"]) !== void 0) throw new Error("includeServerSideToolInvocations parameter is not supported in Vertex AI.");
   return n;
 }
 function bY(e, t) {
   const n = {};
-  if (d(e, ["retrieval"]) !== void 0) throw new Error("retrieval parameter is not supported in Gemini API.");
-  const r = d(e, ["computerUse"]);
+  if (c(e, ["retrieval"]) !== void 0) throw new Error("retrieval parameter is not supported in Gemini API.");
+  const r = c(e, ["computerUse"]);
   r != null && h(n, ["computerUse"], r);
-  const s = d(e, ["fileSearch"]);
+  const s = c(e, ["fileSearch"]);
   s != null && h(n, ["fileSearch"], s);
-  const a = d(e, ["googleSearch"]);
+  const a = c(e, ["googleSearch"]);
   a != null && h(n, ["googleSearch"], GJ(a));
-  const o = d(e, ["googleMaps"]);
+  const o = c(e, ["googleMaps"]);
   o != null && h(n, ["googleMaps"], VJ(o));
-  const l = d(e, ["codeExecution"]);
-  if (l != null && h(n, ["codeExecution"], l), d(e, ["enterpriseWebSearch"]) !== void 0) throw new Error("enterpriseWebSearch parameter is not supported in Gemini API.");
-  const i = d(e, ["functionDeclarations"]);
+  const l = c(e, ["codeExecution"]);
+  if (l != null && h(n, ["codeExecution"], l), c(e, ["enterpriseWebSearch"]) !== void 0) throw new Error("enterpriseWebSearch parameter is not supported in Gemini API.");
+  const i = c(e, ["functionDeclarations"]);
   if (i != null) {
     let p = i;
     Array.isArray(p) && (p = p.map((g) => g)), h(n, ["functionDeclarations"], p);
   }
-  const u = d(e, ["googleSearchRetrieval"]);
-  if (u != null && h(n, ["googleSearchRetrieval"], u), d(e, ["parallelAiSearch"]) !== void 0) throw new Error("parallelAiSearch parameter is not supported in Gemini API.");
-  const c = d(e, ["urlContext"]);
-  c != null && h(n, ["urlContext"], c);
-  const f = d(e, ["mcpServers"]);
+  const u = c(e, ["googleSearchRetrieval"]);
+  if (u != null && h(n, ["googleSearchRetrieval"], u), c(e, ["parallelAiSearch"]) !== void 0) throw new Error("parallelAiSearch parameter is not supported in Gemini API.");
+  const d = c(e, ["urlContext"]);
+  d != null && h(n, ["urlContext"], d);
+  const f = c(e, ["mcpServers"]);
   if (f != null) {
     let p = f;
     Array.isArray(p) && (p = p.map((g) => g)), h(n, ["mcpServers"], p);
@@ -30295,133 +30295,133 @@ function bY(e, t) {
   return n;
 }
 function fR(e, t) {
-  const n = {}, r = d(e, ["retrieval"]);
+  const n = {}, r = c(e, ["retrieval"]);
   r != null && h(n, ["retrieval"], r);
-  const s = d(e, ["computerUse"]);
-  if (s != null && h(n, ["computerUse"], s), d(e, ["fileSearch"]) !== void 0) throw new Error("fileSearch parameter is not supported in Vertex AI.");
-  const a = d(e, ["googleSearch"]);
+  const s = c(e, ["computerUse"]);
+  if (s != null && h(n, ["computerUse"], s), c(e, ["fileSearch"]) !== void 0) throw new Error("fileSearch parameter is not supported in Vertex AI.");
+  const a = c(e, ["googleSearch"]);
   a != null && h(n, ["googleSearch"], a);
-  const o = d(e, ["googleMaps"]);
+  const o = c(e, ["googleMaps"]);
   o != null && h(n, ["googleMaps"], o);
-  const l = d(e, ["codeExecution"]);
+  const l = c(e, ["codeExecution"]);
   l != null && h(n, ["codeExecution"], l);
-  const i = d(e, ["enterpriseWebSearch"]);
+  const i = c(e, ["enterpriseWebSearch"]);
   i != null && h(n, ["enterpriseWebSearch"], i);
-  const u = d(e, ["functionDeclarations"]);
+  const u = c(e, ["functionDeclarations"]);
   if (u != null) {
     let g = u;
     Array.isArray(g) && (g = g.map((y) => bJ(y))), h(n, ["functionDeclarations"], g);
   }
-  const c = d(e, ["googleSearchRetrieval"]);
-  c != null && h(n, ["googleSearchRetrieval"], c);
-  const f = d(e, ["parallelAiSearch"]);
+  const d = c(e, ["googleSearchRetrieval"]);
+  d != null && h(n, ["googleSearchRetrieval"], d);
+  const f = c(e, ["parallelAiSearch"]);
   f != null && h(n, ["parallelAiSearch"], f);
-  const p = d(e, ["urlContext"]);
-  if (p != null && h(n, ["urlContext"], p), d(e, ["mcpServers"]) !== void 0) throw new Error("mcpServers parameter is not supported in Vertex AI.");
+  const p = c(e, ["urlContext"]);
+  if (p != null && h(n, ["urlContext"], p), c(e, ["mcpServers"]) !== void 0) throw new Error("mcpServers parameter is not supported in Vertex AI.");
   return n;
 }
 function wY(e, t) {
-  const n = {}, r = d(e, ["baseModel"]);
+  const n = {}, r = c(e, ["baseModel"]);
   r != null && h(n, ["baseModel"], r);
-  const s = d(e, ["createTime"]);
+  const s = c(e, ["createTime"]);
   s != null && h(n, ["createTime"], s);
-  const a = d(e, ["updateTime"]);
+  const a = c(e, ["updateTime"]);
   return a != null && h(n, ["updateTime"], a), n;
 }
 function SY(e, t) {
-  const n = {}, r = d(e, ["labels", "google-vertex-llm-tuning-base-model-id"]);
+  const n = {}, r = c(e, ["labels", "google-vertex-llm-tuning-base-model-id"]);
   r != null && h(n, ["baseModel"], r);
-  const s = d(e, ["createTime"]);
+  const s = c(e, ["createTime"]);
   s != null && h(n, ["createTime"], s);
-  const a = d(e, ["updateTime"]);
+  const a = c(e, ["updateTime"]);
   return a != null && h(n, ["updateTime"], a), n;
 }
 function AY(e, t, n) {
-  const r = {}, s = d(e, ["displayName"]);
+  const r = {}, s = c(e, ["displayName"]);
   t !== void 0 && s != null && h(t, ["displayName"], s);
-  const a = d(e, ["description"]);
+  const a = c(e, ["description"]);
   t !== void 0 && a != null && h(t, ["description"], a);
-  const o = d(e, ["defaultCheckpointId"]);
+  const o = c(e, ["defaultCheckpointId"]);
   return t !== void 0 && o != null && h(t, ["defaultCheckpointId"], o), r;
 }
 function TY(e, t, n) {
-  const r = {}, s = d(e, ["displayName"]);
+  const r = {}, s = c(e, ["displayName"]);
   t !== void 0 && s != null && h(t, ["displayName"], s);
-  const a = d(e, ["description"]);
+  const a = c(e, ["description"]);
   t !== void 0 && a != null && h(t, ["description"], a);
-  const o = d(e, ["defaultCheckpointId"]);
+  const o = c(e, ["defaultCheckpointId"]);
   return t !== void 0 && o != null && h(t, ["defaultCheckpointId"], o), r;
 }
 function EY(e, t, n) {
-  const r = {}, s = d(t, ["model"]);
+  const r = {}, s = c(t, ["model"]);
   s != null && h(r, ["_url", "name"], cn(e, s));
-  const a = d(t, ["config"]);
+  const a = c(t, ["config"]);
   return a != null && AY(a, r), r;
 }
 function CY(e, t, n) {
-  const r = {}, s = d(t, ["model"]);
+  const r = {}, s = c(t, ["model"]);
   s != null && h(r, ["_url", "model"], cn(e, s));
-  const a = d(t, ["config"]);
+  const a = c(t, ["config"]);
   return a != null && TY(a, r), r;
 }
 function IY(e, t, n) {
-  const r = {}, s = d(e, ["outputGcsUri"]);
+  const r = {}, s = c(e, ["outputGcsUri"]);
   t !== void 0 && s != null && h(t, ["parameters", "storageUri"], s);
-  const a = d(e, ["safetyFilterLevel"]);
+  const a = c(e, ["safetyFilterLevel"]);
   t !== void 0 && a != null && h(t, ["parameters", "safetySetting"], a);
-  const o = d(e, ["personGeneration"]);
+  const o = c(e, ["personGeneration"]);
   t !== void 0 && o != null && h(t, ["parameters", "personGeneration"], o);
-  const l = d(e, ["includeRaiReason"]);
+  const l = c(e, ["includeRaiReason"]);
   t !== void 0 && l != null && h(t, ["parameters", "includeRaiReason"], l);
-  const i = d(e, ["outputMimeType"]);
+  const i = c(e, ["outputMimeType"]);
   t !== void 0 && i != null && h(t, [
     "parameters",
     "outputOptions",
     "mimeType"
   ], i);
-  const u = d(e, ["outputCompressionQuality"]);
+  const u = c(e, ["outputCompressionQuality"]);
   t !== void 0 && u != null && h(t, [
     "parameters",
     "outputOptions",
     "compressionQuality"
   ], u);
-  const c = d(e, ["enhanceInputImage"]);
-  t !== void 0 && c != null && h(t, [
+  const d = c(e, ["enhanceInputImage"]);
+  t !== void 0 && d != null && h(t, [
     "parameters",
     "upscaleConfig",
     "enhanceInputImage"
-  ], c);
-  const f = d(e, ["imagePreservationFactor"]);
+  ], d);
+  const f = c(e, ["imagePreservationFactor"]);
   t !== void 0 && f != null && h(t, [
     "parameters",
     "upscaleConfig",
     "imagePreservationFactor"
   ], f);
-  const p = d(e, ["labels"]);
+  const p = c(e, ["labels"]);
   t !== void 0 && p != null && h(t, ["labels"], p);
-  const g = d(e, ["numberOfImages"]);
+  const g = c(e, ["numberOfImages"]);
   t !== void 0 && g != null && h(t, ["parameters", "sampleCount"], g);
-  const y = d(e, ["mode"]);
+  const y = c(e, ["mode"]);
   return t !== void 0 && y != null && h(t, ["parameters", "mode"], y), r;
 }
 function xY(e, t, n) {
-  const r = {}, s = d(t, ["model"]);
+  const r = {}, s = c(t, ["model"]);
   s != null && h(r, ["_url", "model"], cn(e, s));
-  const a = d(t, ["image"]);
+  const a = c(t, ["image"]);
   a != null && h(r, ["instances[0]", "image"], ka(a));
-  const o = d(t, ["upscaleFactor"]);
+  const o = c(t, ["upscaleFactor"]);
   o != null && h(r, [
     "parameters",
     "upscaleConfig",
     "upscaleFactor"
   ], o);
-  const l = d(t, ["config"]);
+  const l = c(t, ["config"]);
   return l != null && IY(l, r), r;
 }
 function kY(e, t) {
-  const n = {}, r = d(e, ["sdkHttpResponse"]);
+  const n = {}, r = c(e, ["sdkHttpResponse"]);
   r != null && h(n, ["sdkHttpResponse"], r);
-  const s = d(e, ["predictions"]);
+  const s = c(e, ["predictions"]);
   if (s != null) {
     let a = s;
     Array.isArray(a) && (a = a.map((o) => Xv(o))), h(n, ["generatedImages"], a);
@@ -30429,130 +30429,130 @@ function kY(e, t) {
   return n;
 }
 function MY(e, t) {
-  const n = {}, r = d(e, ["uri"]);
+  const n = {}, r = c(e, ["uri"]);
   r != null && h(n, ["uri"], r);
-  const s = d(e, ["encodedVideo"]);
+  const s = c(e, ["encodedVideo"]);
   s != null && h(n, ["videoBytes"], tl(s));
-  const a = d(e, ["encoding"]);
+  const a = c(e, ["encoding"]);
   return a != null && h(n, ["mimeType"], a), n;
 }
 function PY(e, t) {
-  const n = {}, r = d(e, ["gcsUri"]);
+  const n = {}, r = c(e, ["gcsUri"]);
   r != null && h(n, ["uri"], r);
-  const s = d(e, ["bytesBase64Encoded"]);
+  const s = c(e, ["bytesBase64Encoded"]);
   s != null && h(n, ["videoBytes"], tl(s));
-  const a = d(e, ["mimeType"]);
+  const a = c(e, ["mimeType"]);
   return a != null && h(n, ["mimeType"], a), n;
 }
 function RY(e, t) {
-  const n = {}, r = d(e, ["image"]);
+  const n = {}, r = c(e, ["image"]);
   r != null && h(n, ["_self"], ka(r));
-  const s = d(e, ["maskMode"]);
+  const s = c(e, ["maskMode"]);
   return s != null && h(n, ["maskMode"], s), n;
 }
 function NY(e, t) {
-  const n = {}, r = d(e, ["image"]);
+  const n = {}, r = c(e, ["image"]);
   r != null && h(n, ["image"], jv(r));
-  const s = d(e, ["referenceType"]);
+  const s = c(e, ["referenceType"]);
   return s != null && h(n, ["referenceType"], s), n;
 }
 function $Y(e, t) {
-  const n = {}, r = d(e, ["image"]);
+  const n = {}, r = c(e, ["image"]);
   r != null && h(n, ["image"], ka(r));
-  const s = d(e, ["referenceType"]);
+  const s = c(e, ["referenceType"]);
   return s != null && h(n, ["referenceType"], s), n;
 }
 function hR(e, t) {
-  const n = {}, r = d(e, ["uri"]);
+  const n = {}, r = c(e, ["uri"]);
   r != null && h(n, ["uri"], r);
-  const s = d(e, ["videoBytes"]);
+  const s = c(e, ["videoBytes"]);
   s != null && h(n, ["encodedVideo"], tl(s));
-  const a = d(e, ["mimeType"]);
+  const a = c(e, ["mimeType"]);
   return a != null && h(n, ["encoding"], a), n;
 }
 function pR(e, t) {
-  const n = {}, r = d(e, ["uri"]);
+  const n = {}, r = c(e, ["uri"]);
   r != null && h(n, ["gcsUri"], r);
-  const s = d(e, ["videoBytes"]);
+  const s = c(e, ["videoBytes"]);
   s != null && h(n, ["bytesBase64Encoded"], tl(s));
-  const a = d(e, ["mimeType"]);
+  const a = c(e, ["mimeType"]);
   return a != null && h(n, ["mimeType"], a), n;
 }
 function LY(e, t) {
-  const n = {}, r = d(e, ["displayName"]);
+  const n = {}, r = c(e, ["displayName"]);
   return t !== void 0 && r != null && h(t, ["displayName"], r), n;
 }
 function DY(e) {
-  const t = {}, n = d(e, ["config"]);
+  const t = {}, n = c(e, ["config"]);
   return n != null && LY(n, t), t;
 }
 function OY(e, t) {
-  const n = {}, r = d(e, ["force"]);
+  const n = {}, r = c(e, ["force"]);
   return t !== void 0 && r != null && h(t, ["_query", "force"], r), n;
 }
 function FY(e) {
-  const t = {}, n = d(e, ["name"]);
+  const t = {}, n = c(e, ["name"]);
   n != null && h(t, ["_url", "name"], n);
-  const r = d(e, ["config"]);
+  const r = c(e, ["config"]);
   return r != null && OY(r, t), t;
 }
 function BY(e) {
-  const t = {}, n = d(e, ["name"]);
+  const t = {}, n = c(e, ["name"]);
   return n != null && h(t, ["_url", "name"], n), t;
 }
 function UY(e, t) {
-  const n = {}, r = d(e, ["customMetadata"]);
+  const n = {}, r = c(e, ["customMetadata"]);
   if (t !== void 0 && r != null) {
     let a = r;
     Array.isArray(a) && (a = a.map((o) => o)), h(t, ["customMetadata"], a);
   }
-  const s = d(e, ["chunkingConfig"]);
+  const s = c(e, ["chunkingConfig"]);
   return t !== void 0 && s != null && h(t, ["chunkingConfig"], s), n;
 }
 function qY(e) {
-  const t = {}, n = d(e, ["name"]);
+  const t = {}, n = c(e, ["name"]);
   n != null && h(t, ["name"], n);
-  const r = d(e, ["metadata"]);
+  const r = c(e, ["metadata"]);
   r != null && h(t, ["metadata"], r);
-  const s = d(e, ["done"]);
+  const s = c(e, ["done"]);
   s != null && h(t, ["done"], s);
-  const a = d(e, ["error"]);
+  const a = c(e, ["error"]);
   a != null && h(t, ["error"], a);
-  const o = d(e, ["response"]);
+  const o = c(e, ["response"]);
   return o != null && h(t, ["response"], zY(o)), t;
 }
 function HY(e) {
-  const t = {}, n = d(e, ["fileSearchStoreName"]);
+  const t = {}, n = c(e, ["fileSearchStoreName"]);
   n != null && h(t, ["_url", "file_search_store_name"], n);
-  const r = d(e, ["fileName"]);
+  const r = c(e, ["fileName"]);
   r != null && h(t, ["fileName"], r);
-  const s = d(e, ["config"]);
+  const s = c(e, ["config"]);
   return s != null && UY(s, t), t;
 }
 function zY(e) {
-  const t = {}, n = d(e, ["sdkHttpResponse"]);
+  const t = {}, n = c(e, ["sdkHttpResponse"]);
   n != null && h(t, ["sdkHttpResponse"], n);
-  const r = d(e, ["parent"]);
+  const r = c(e, ["parent"]);
   r != null && h(t, ["parent"], r);
-  const s = d(e, ["documentName"]);
+  const s = c(e, ["documentName"]);
   return s != null && h(t, ["documentName"], s), t;
 }
 function KY(e, t) {
-  const n = {}, r = d(e, ["pageSize"]);
+  const n = {}, r = c(e, ["pageSize"]);
   t !== void 0 && r != null && h(t, ["_query", "pageSize"], r);
-  const s = d(e, ["pageToken"]);
+  const s = c(e, ["pageToken"]);
   return t !== void 0 && s != null && h(t, ["_query", "pageToken"], s), n;
 }
 function WY(e) {
-  const t = {}, n = d(e, ["config"]);
+  const t = {}, n = c(e, ["config"]);
   return n != null && KY(n, t), t;
 }
 function VY(e) {
-  const t = {}, n = d(e, ["sdkHttpResponse"]);
+  const t = {}, n = c(e, ["sdkHttpResponse"]);
   n != null && h(t, ["sdkHttpResponse"], n);
-  const r = d(e, ["nextPageToken"]);
+  const r = c(e, ["nextPageToken"]);
   r != null && h(t, ["nextPageToken"], r);
-  const s = d(e, ["fileSearchStores"]);
+  const s = c(e, ["fileSearchStores"]);
   if (s != null) {
     let a = s;
     Array.isArray(a) && (a = a.map((o) => o)), h(t, ["fileSearchStores"], a);
@@ -30560,26 +30560,26 @@ function VY(e) {
   return t;
 }
 function mR(e, t) {
-  const n = {}, r = d(e, ["mimeType"]);
+  const n = {}, r = c(e, ["mimeType"]);
   t !== void 0 && r != null && h(t, ["mimeType"], r);
-  const s = d(e, ["displayName"]);
+  const s = c(e, ["displayName"]);
   t !== void 0 && s != null && h(t, ["displayName"], s);
-  const a = d(e, ["customMetadata"]);
+  const a = c(e, ["customMetadata"]);
   if (t !== void 0 && a != null) {
     let l = a;
     Array.isArray(l) && (l = l.map((i) => i)), h(t, ["customMetadata"], l);
   }
-  const o = d(e, ["chunkingConfig"]);
+  const o = c(e, ["chunkingConfig"]);
   return t !== void 0 && o != null && h(t, ["chunkingConfig"], o), n;
 }
 function GY(e) {
-  const t = {}, n = d(e, ["fileSearchStoreName"]);
+  const t = {}, n = c(e, ["fileSearchStoreName"]);
   n != null && h(t, ["_url", "file_search_store_name"], n);
-  const r = d(e, ["config"]);
+  const r = c(e, ["config"]);
   return r != null && mR(r, t), t;
 }
 function JY(e) {
-  const t = {}, n = d(e, ["sdkHttpResponse"]);
+  const t = {}, n = c(e, ["sdkHttpResponse"]);
   return n != null && h(t, ["sdkHttpResponse"], n), t;
 }
 var YY = "Content-Type", XY = "X-Server-Timeout", jY = "User-Agent", Z0 = "x-goog-api-client", QY = "google-genai-sdk/1.50.1", ZY = "v1beta1", eX = "v1beta", tX = /* @__PURE__ */ new Set(["us", "eu"]), nX = 5, rX = [
@@ -30729,9 +30729,9 @@ var YY = "Content-Type", XY = "X-Server-Timeout", jY = "User-Agent", Z0 = "x-goo
             if (a.trim().length > 0) throw new Error("Incomplete JSON segment at the end");
             break;
           }
-          const c = s.decode(u, { stream: !0 });
+          const d = s.decode(u, { stream: !0 });
           try {
-            const g = JSON.parse(c);
+            const g = JSON.parse(d);
             if ("error" in g) {
               const y = JSON.parse(JSON.stringify(g.error)), _ = y.status, x = y.code, C = `got status: ${_}. ${JSON.stringify(g)}`;
               if (x >= 400 && x < 600) throw new iR({
@@ -30742,7 +30742,7 @@ var YY = "Content-Type", XY = "X-Server-Timeout", jY = "User-Agent", Z0 = "x-goo
           } catch (g) {
             if (g.name === "ApiError") throw g;
           }
-          a += c;
+          a += d;
           let f = -1, p = 0;
           for (; ; ) {
             f = -1, p = 0;
@@ -30809,16 +30809,16 @@ var YY = "Content-Type", XY = "X-Server-Timeout", jY = "User-Agent", Z0 = "x-goo
     const o = (n = t?.mimeType) !== null && n !== void 0 ? n : a.type;
     if (o === void 0 || o === "") throw new Error("Can not determine mimeType. Please provide mimeType in the config.");
     r.mimeType = o;
-    const l = { file: r }, i = this.getFileName(e), u = lt("upload/v1beta/files", l._url), c = await this.fetchUploadUrl(u, r.sizeBytes, r.mimeType, i, l, t?.httpOptions);
-    return s.upload(e, c, this);
+    const l = { file: r }, i = this.getFileName(e), u = lt("upload/v1beta/files", l._url), d = await this.fetchUploadUrl(u, r.sizeBytes, r.mimeType, i, l, t?.httpOptions);
+    return s.upload(e, d, this);
   }
   async uploadFileToFileSearchStore(e, t, n) {
     var r;
     const s = this.clientOptions.uploader, a = await s.stat(t), o = String(a.size), l = (r = n?.mimeType) !== null && r !== void 0 ? r : a.type;
     if (l === void 0 || l === "") throw new Error("Can not determine mimeType. Please provide mimeType in the config.");
-    const i = `upload/v1beta/${e}:uploadToFileSearchStore`, u = this.getFileName(t), c = {};
-    n != null && mR(n, c);
-    const f = await this.fetchUploadUrl(i, o, l, u, c, n?.httpOptions);
+    const i = `upload/v1beta/${e}:uploadToFileSearchStore`, u = this.getFileName(t), d = {};
+    n != null && mR(n, d);
+    const f = await this.fetchUploadUrl(i, o, l, u, d, n?.httpOptions);
     return s.uploadToFileSearchStore(t, f, this);
   }
   async downloadFile(e) {
@@ -30888,8 +30888,8 @@ function aX(e, t) {
   function r(a, o) {
     const l = Object.assign({}, a);
     for (const i in o) if (Object.prototype.hasOwnProperty.call(o, i)) {
-      const u = o[i], c = l[i];
-      u && typeof u == "object" && !Array.isArray(u) && c && typeof c == "object" && !Array.isArray(c) ? l[i] = r(c, u) : (c && u && typeof c != typeof u && console.warn(`includeExtraBodyToRequestInit:deepMerge: Type mismatch for key "${i}". Original type: ${typeof c}, New type: ${typeof u}. Overwriting.`), l[i] = u);
+      const u = o[i], d = l[i];
+      u && typeof u == "object" && !Array.isArray(u) && d && typeof d == "object" && !Array.isArray(d) ? l[i] = r(d, u) : (d && u && typeof d != typeof u && console.warn(`includeExtraBodyToRequestInit:deepMerge: Type mismatch for key "${i}". Original type: ${typeof d}, New type: ${typeof u}. Overwriting.`), l[i] = u);
     }
     return l;
   }
@@ -30932,14 +30932,14 @@ var cX = class yR {
     var t, n, r, s;
     if (this.mcpTools.length > 0) return;
     const a = {}, o = [];
-    for (const c of this.mcpClients) try {
-      for (var l = !0, i = (n = void 0, Ea(uX(c))), u; u = await i.next(), t = u.done, !t; l = !0) {
+    for (const d of this.mcpClients) try {
+      for (var l = !0, i = (n = void 0, Ea(uX(d))), u; u = await i.next(), t = u.done, !t; l = !0) {
         s = u.value, l = !1;
         const f = s;
         o.push(f);
         const p = f.name;
         if (a[p]) throw new Error(`Duplicate function name ${p} found in MCP tools. Please ensure function names are unique.`);
-        a[p] = c;
+        a[p] = d;
       }
     } catch (f) {
       n = { error: f };
@@ -30992,10 +30992,10 @@ var fX = class {
     };
     const i = new Promise((_) => {
       l = _;
-    }), u = e.callbacks, c = function() {
+    }), u = e.callbacks, d = function() {
       l({});
     }, f = this.apiClient, p = {
-      onopen: c,
+      onopen: d,
       onmessage: (_) => {
         dX(f, u.onmessage, _);
       },
@@ -31074,9 +31074,9 @@ var yX = class {
     if (e.config && e.config.httpOptions) throw new Error("The Live module does not support httpOptions at request-level in LiveConnectConfig yet. Please use the client-level httpOptions configuration instead.");
     const l = this.apiClient.getWebsocketBaseUrl(), i = this.apiClient.getApiVersion();
     let u;
-    const c = this.apiClient.getHeaders();
-    e.config && e.config.tools && gR(e.config.tools) && vR(c);
-    const f = SX(c);
+    const d = this.apiClient.getHeaders();
+    e.config && e.config.tools && gR(e.config.tools) && vR(d);
+    const f = SX(d);
     if (this.apiClient.isVertexAI()) {
       const S = this.apiClient.getProject(), I = this.apiClient.getLocation(), k = this.apiClient.getApiKey(), P = !!S && !!I || !!k;
       this.apiClient.getCustomBaseUrl() && !P ? u = l : (u = `${l}/ws/google.cloud.aiplatform.${i}.LlmBidiService/BidiGenerateContent`, await this.auth.addAuthHeaders(f, u));
@@ -31243,7 +31243,7 @@ var TX = class extends oi {
         const y = i.map((_) => `tools[${_}]`).join(", ");
         throw new Error(`Automatic function calling with CallableTools (or MCP objects) and basic FunctionDeclarations is not yet supported. Incompatible tools found at ${y}.`);
       }
-      let u, c;
+      let u, d;
       const f = hs(l.contents), p = (s = (r = (n = l.config) === null || n === void 0 ? void 0 : n.automaticFunctionCalling) === null || r === void 0 ? void 0 : r.maximumRemoteCalls) !== null && s !== void 0 ? s : AI;
       let g = 0;
       for (; g < p && (u = await this.generateContentInternal(l), !(!u.functionCalls || u.functionCalls.length === 0)); ) {
@@ -31252,22 +31252,22 @@ var TX = class extends oi {
           const C = await x.callTool(u.functionCalls);
           _.push(...C);
         }
-        g++, c = {
+        g++, d = {
           role: "user",
           parts: _
-        }, l.contents = hs(l.contents), l.contents.push(y), l.contents.push(c), CI(l.config) && (f.push(y), f.push(c));
+        }, l.contents = hs(l.contents), l.contents.push(y), l.contents.push(d), CI(l.config) && (f.push(y), f.push(d));
       }
       return CI(l.config) && (u.automaticFunctionCallingHistory = f), u;
     }, this.generateContentStream = async (t) => {
       var n, r, s, a, o;
       if (this.maybeMoveToResponseJsonSchem(t), TI(t.config)) {
-        const c = await this.processParamsMaybeAddMcpUsage(t);
-        return await this.generateContentStreamInternal(c);
+        const d = await this.processParamsMaybeAddMcpUsage(t);
+        return await this.generateContentStreamInternal(d);
       }
       const l = EI(t);
       if (l.length > 0) {
-        const c = l.map((f) => `tools[${f}]`).join(", ");
-        throw new Error(`Incompatible tools found at ${c}. Automatic function calling with CallableTools (or MCP objects) and basic FunctionDeclarations" is not yet supported.`);
+        const d = l.map((f) => `tools[${f}]`).join(", ");
+        throw new Error(`Incompatible tools found at ${d}. Automatic function calling with CallableTools (or MCP objects) and basic FunctionDeclarations" is not yet supported.`);
       }
       const i = (s = (r = (n = t?.config) === null || n === void 0 ? void 0 : n.toolConfig) === null || r === void 0 ? void 0 : r.functionCallingConfig) === null || s === void 0 ? void 0 : s.streamFunctionCallArguments, u = (o = (a = t?.config) === null || a === void 0 ? void 0 : a.automaticFunctionCalling) === null || o === void 0 ? void 0 : o.disable;
       if (i && !u) throw new Error("Running in streaming mode with 'streamFunctionCallArguments' enabled, this feature is not compatible with automatic function calling (AFC). Please set 'config.automaticFunctionCalling.disable' to true to disable AFC or leave 'config.toolConfig.functionCallingConfig.streamFunctionCallArguments' to be undefined or set to false to disable streaming function call arguments feature.");
@@ -31364,11 +31364,11 @@ var TX = class extends oi {
     const s = (r = (n = (t = e.config) === null || t === void 0 ? void 0 : t.automaticFunctionCalling) === null || n === void 0 ? void 0 : n.maximumRemoteCalls) !== null && r !== void 0 ? r : AI;
     let a = !1, o = 0;
     const l = await this.initAfcToolsMap(e);
-    return (function(i, u, c) {
+    return (function(i, u, d) {
       return Ta(this, arguments, function* () {
         for (var f, p, g, y, _, x; o < s; ) {
           a && (o++, a = !1);
-          const N = yield qt(i.processParamsMaybeAddMcpUsage(c)), m = yield qt(i.generateContentStreamInternal(N)), w = [], b = [];
+          const N = yield qt(i.processParamsMaybeAddMcpUsage(d)), m = yield qt(i.generateContentStreamInternal(N)), w = [], b = [];
           try {
             for (var C = !0, E = (p = void 0, Ea(m)), R; R = yield qt(E.next()), f = R.done, !f; C = !0) {
               y = R.value, C = !1;
@@ -31405,7 +31405,7 @@ var TX = class extends oi {
             I.push(...b), I.push({
               role: "user",
               parts: w
-            }), c.contents = hs(c.contents).concat(I);
+            }), d.contents = hs(d.contents).concat(I);
           } else break;
         }
       });
@@ -31423,12 +31423,12 @@ var TX = class extends oi {
         httpMethod: "POST",
         httpOptions: (t = e.config) === null || t === void 0 ? void 0 : t.httpOptions,
         abortSignal: (n = e.config) === null || n === void 0 ? void 0 : n.abortSignal
-      }).then((u) => u.json().then((c) => {
-        const f = c;
+      }).then((u) => u.json().then((d) => {
+        const f = d;
         return f.sdkHttpResponse = { headers: u.headers }, f;
       })), a.then((u) => {
-        const c = wI(u), f = new Nd();
-        return Object.assign(f, c), f;
+        const d = wI(u), f = new Nd();
+        return Object.assign(f, d), f;
       });
     } else {
       const i = yI(this.apiClient, e);
@@ -31439,12 +31439,12 @@ var TX = class extends oi {
         httpMethod: "POST",
         httpOptions: (r = e.config) === null || r === void 0 ? void 0 : r.httpOptions,
         abortSignal: (s = e.config) === null || s === void 0 ? void 0 : s.abortSignal
-      }).then((u) => u.json().then((c) => {
-        const f = c;
+      }).then((u) => u.json().then((d) => {
+        const f = d;
         return f.sdkHttpResponse = { headers: u.headers }, f;
       })), a.then((u) => {
-        const c = bI(u), f = new Nd();
-        return Object.assign(f, c), f;
+        const d = bI(u), f = new Nd();
+        return Object.assign(f, d), f;
       });
     }
   }
@@ -31462,9 +31462,9 @@ var TX = class extends oi {
         abortSignal: (n = e.config) === null || n === void 0 ? void 0 : n.abortSignal
       }), a.then(function(u) {
         return Ta(this, arguments, function* () {
-          var c, f, p, g;
+          var d, f, p, g;
           try {
-            for (var y = !0, _ = Ea(u), x; x = yield qt(_.next()), c = x.done, !c; y = !0) {
+            for (var y = !0, _ = Ea(u), x; x = yield qt(_.next()), d = x.done, !d; y = !0) {
               g = x.value, y = !1;
               const C = g, E = wI(yield qt(C.json()), e);
               E.sdkHttpResponse = { headers: C.headers };
@@ -31475,7 +31475,7 @@ var TX = class extends oi {
             f = { error: C };
           } finally {
             try {
-              !y && !c && (p = _.return) && (yield qt(p.call(_)));
+              !y && !d && (p = _.return) && (yield qt(p.call(_)));
             } finally {
               if (f) throw f.error;
             }
@@ -31493,9 +31493,9 @@ var TX = class extends oi {
         abortSignal: (s = e.config) === null || s === void 0 ? void 0 : s.abortSignal
       }), a.then(function(u) {
         return Ta(this, arguments, function* () {
-          var c, f, p, g;
+          var d, f, p, g;
           try {
-            for (var y = !0, _ = Ea(u), x; x = yield qt(_.next()), c = x.done, !c; y = !0) {
+            for (var y = !0, _ = Ea(u), x; x = yield qt(_.next()), d = x.done, !d; y = !0) {
               g = x.value, y = !1;
               const C = g, E = bI(yield qt(C.json()), e);
               E.sdkHttpResponse = { headers: C.headers };
@@ -31506,7 +31506,7 @@ var TX = class extends oi {
             f = { error: C };
           } finally {
             try {
-              !y && !c && (p = _.return) && (yield qt(p.call(_)));
+              !y && !d && (p = _.return) && (yield qt(p.call(_)));
             } finally {
               if (f) throw f.error;
             }
@@ -31527,12 +31527,12 @@ var TX = class extends oi {
         httpMethod: "POST",
         httpOptions: (t = e.config) === null || t === void 0 ? void 0 : t.httpOptions,
         abortSignal: (n = e.config) === null || n === void 0 ? void 0 : n.abortSignal
-      }).then((u) => u.json().then((c) => {
-        const f = c;
+      }).then((u) => u.json().then((d) => {
+        const f = d;
         return f.sdkHttpResponse = { headers: u.headers }, f;
       })), a.then((u) => {
-        const c = mJ(u, e), f = new QC();
-        return Object.assign(f, c), f;
+        const d = mJ(u, e), f = new QC();
+        return Object.assign(f, d), f;
       });
     } else {
       const i = fJ(this.apiClient, e);
@@ -31543,12 +31543,12 @@ var TX = class extends oi {
         httpMethod: "POST",
         httpOptions: (r = e.config) === null || r === void 0 ? void 0 : r.httpOptions,
         abortSignal: (s = e.config) === null || s === void 0 ? void 0 : s.abortSignal
-      }).then((u) => u.json().then((c) => {
-        const f = c;
+      }).then((u) => u.json().then((d) => {
+        const f = d;
         return f.sdkHttpResponse = { headers: u.headers }, f;
       })), a.then((u) => {
-        const c = pJ(u), f = new QC();
-        return Object.assign(f, c), f;
+        const d = pJ(u), f = new QC();
+        return Object.assign(f, d), f;
       });
     }
   }
@@ -31564,12 +31564,12 @@ var TX = class extends oi {
         httpMethod: "POST",
         httpOptions: (t = e.config) === null || t === void 0 ? void 0 : t.httpOptions,
         abortSignal: (n = e.config) === null || n === void 0 ? void 0 : n.abortSignal
-      }).then((u) => u.json().then((c) => {
-        const f = c;
+      }).then((u) => u.json().then((d) => {
+        const f = d;
         return f.sdkHttpResponse = { headers: u.headers }, f;
       })), a.then((u) => {
-        const c = xJ(u), f = new ZC();
-        return Object.assign(f, c), f;
+        const d = xJ(u), f = new ZC();
+        return Object.assign(f, d), f;
       });
     } else {
       const i = EJ(this.apiClient, e);
@@ -31580,12 +31580,12 @@ var TX = class extends oi {
         httpMethod: "POST",
         httpOptions: (r = e.config) === null || r === void 0 ? void 0 : r.httpOptions,
         abortSignal: (s = e.config) === null || s === void 0 ? void 0 : s.abortSignal
-      }).then((u) => u.json().then((c) => {
-        const f = c;
+      }).then((u) => u.json().then((d) => {
+        const f = d;
         return f.sdkHttpResponse = { headers: u.headers }, f;
       })), a.then((u) => {
-        const c = IJ(u), f = new ZC();
-        return Object.assign(f, c), f;
+        const d = IJ(u), f = new ZC();
+        return Object.assign(f, d), f;
       });
     }
   }
@@ -31704,12 +31704,12 @@ var TX = class extends oi {
         httpMethod: "GET",
         httpOptions: (t = e.config) === null || t === void 0 ? void 0 : t.httpOptions,
         abortSignal: (n = e.config) === null || n === void 0 ? void 0 : n.abortSignal
-      }).then((u) => u.json().then((c) => {
-        const f = c;
+      }).then((u) => u.json().then((d) => {
+        const f = d;
         return f.sdkHttpResponse = { headers: u.headers }, f;
       })), a.then((u) => {
-        const c = nY(u), f = new eI();
-        return Object.assign(f, c), f;
+        const d = nY(u), f = new eI();
+        return Object.assign(f, d), f;
       });
     } else {
       const i = ZJ(this.apiClient, e);
@@ -31720,12 +31720,12 @@ var TX = class extends oi {
         httpMethod: "GET",
         httpOptions: (r = e.config) === null || r === void 0 ? void 0 : r.httpOptions,
         abortSignal: (s = e.config) === null || s === void 0 ? void 0 : s.abortSignal
-      }).then((u) => u.json().then((c) => {
-        const f = c;
+      }).then((u) => u.json().then((d) => {
+        const f = d;
         return f.sdkHttpResponse = { headers: u.headers }, f;
       })), a.then((u) => {
-        const c = tY(u), f = new eI();
-        return Object.assign(f, c), f;
+        const d = tY(u), f = new eI();
+        return Object.assign(f, d), f;
       });
     }
   }
@@ -31766,12 +31766,12 @@ var TX = class extends oi {
         httpMethod: "DELETE",
         httpOptions: (t = e.config) === null || t === void 0 ? void 0 : t.httpOptions,
         abortSignal: (n = e.config) === null || n === void 0 ? void 0 : n.abortSignal
-      }).then((u) => u.json().then((c) => {
-        const f = c;
+      }).then((u) => u.json().then((d) => {
+        const f = d;
         return f.sdkHttpResponse = { headers: u.headers }, f;
       })), a.then((u) => {
-        const c = oJ(u), f = new tI();
-        return Object.assign(f, c), f;
+        const d = oJ(u), f = new tI();
+        return Object.assign(f, d), f;
       });
     } else {
       const i = rJ(this.apiClient, e);
@@ -31782,12 +31782,12 @@ var TX = class extends oi {
         httpMethod: "DELETE",
         httpOptions: (r = e.config) === null || r === void 0 ? void 0 : r.httpOptions,
         abortSignal: (s = e.config) === null || s === void 0 ? void 0 : s.abortSignal
-      }).then((u) => u.json().then((c) => {
-        const f = c;
+      }).then((u) => u.json().then((d) => {
+        const f = d;
         return f.sdkHttpResponse = { headers: u.headers }, f;
       })), a.then((u) => {
-        const c = aJ(u), f = new tI();
-        return Object.assign(f, c), f;
+        const d = aJ(u), f = new tI();
+        return Object.assign(f, d), f;
       });
     }
   }
@@ -31803,12 +31803,12 @@ var TX = class extends oi {
         httpMethod: "POST",
         httpOptions: (t = e.config) === null || t === void 0 ? void 0 : t.httpOptions,
         abortSignal: (n = e.config) === null || n === void 0 ? void 0 : n.abortSignal
-      }).then((u) => u.json().then((c) => {
-        const f = c;
+      }).then((u) => u.json().then((d) => {
+        const f = d;
         return f.sdkHttpResponse = { headers: u.headers }, f;
       })), a.then((u) => {
-        const c = nJ(u), f = new nI();
-        return Object.assign(f, c), f;
+        const d = nJ(u), f = new nI();
+        return Object.assign(f, d), f;
       });
     } else {
       const i = ZG(this.apiClient, e);
@@ -31819,12 +31819,12 @@ var TX = class extends oi {
         httpMethod: "POST",
         httpOptions: (r = e.config) === null || r === void 0 ? void 0 : r.httpOptions,
         abortSignal: (s = e.config) === null || s === void 0 ? void 0 : s.abortSignal
-      }).then((u) => u.json().then((c) => {
-        const f = c;
+      }).then((u) => u.json().then((d) => {
+        const f = d;
         return f.sdkHttpResponse = { headers: u.headers }, f;
       })), a.then((u) => {
-        const c = tJ(u), f = new nI();
-        return Object.assign(f, c), f;
+        const d = tJ(u), f = new nI();
+        return Object.assign(f, d), f;
       });
     }
   }
@@ -31862,8 +31862,8 @@ var TX = class extends oi {
         httpOptions: (t = e.config) === null || t === void 0 ? void 0 : t.httpOptions,
         abortSignal: (n = e.config) === null || n === void 0 ? void 0 : n.abortSignal
       }).then((u) => u.json()), a.then((u) => {
-        const c = RJ(u), f = new rI();
-        return Object.assign(f, c), f;
+        const d = RJ(u), f = new rI();
+        return Object.assign(f, d), f;
       });
     } else {
       const i = NJ(this.apiClient, e);
@@ -31875,8 +31875,8 @@ var TX = class extends oi {
         httpOptions: (r = e.config) === null || r === void 0 ? void 0 : r.httpOptions,
         abortSignal: (s = e.config) === null || s === void 0 ? void 0 : s.abortSignal
       }).then((u) => u.json()), a.then((u) => {
-        const c = PJ(u), f = new rI();
-        return Object.assign(f, c), f;
+        const d = PJ(u), f = new rI();
+        return Object.assign(f, d), f;
       });
     }
   }
@@ -31981,166 +31981,166 @@ var TX = class extends oi {
 };
 function II(e) {
   const t = {};
-  if (d(e, ["languageCodes"]) !== void 0) throw new Error("languageCodes parameter is not supported in Gemini API.");
+  if (c(e, ["languageCodes"]) !== void 0) throw new Error("languageCodes parameter is not supported in Gemini API.");
   return t;
 }
 function CX(e) {
-  const t = {}, n = d(e, ["apiKey"]);
-  if (n != null && h(t, ["apiKey"], n), d(e, ["apiKeyConfig"]) !== void 0) throw new Error("apiKeyConfig parameter is not supported in Gemini API.");
-  if (d(e, ["authType"]) !== void 0) throw new Error("authType parameter is not supported in Gemini API.");
-  if (d(e, ["googleServiceAccountConfig"]) !== void 0) throw new Error("googleServiceAccountConfig parameter is not supported in Gemini API.");
-  if (d(e, ["httpBasicAuthConfig"]) !== void 0) throw new Error("httpBasicAuthConfig parameter is not supported in Gemini API.");
-  if (d(e, ["oauthConfig"]) !== void 0) throw new Error("oauthConfig parameter is not supported in Gemini API.");
-  if (d(e, ["oidcConfig"]) !== void 0) throw new Error("oidcConfig parameter is not supported in Gemini API.");
+  const t = {}, n = c(e, ["apiKey"]);
+  if (n != null && h(t, ["apiKey"], n), c(e, ["apiKeyConfig"]) !== void 0) throw new Error("apiKeyConfig parameter is not supported in Gemini API.");
+  if (c(e, ["authType"]) !== void 0) throw new Error("authType parameter is not supported in Gemini API.");
+  if (c(e, ["googleServiceAccountConfig"]) !== void 0) throw new Error("googleServiceAccountConfig parameter is not supported in Gemini API.");
+  if (c(e, ["httpBasicAuthConfig"]) !== void 0) throw new Error("httpBasicAuthConfig parameter is not supported in Gemini API.");
+  if (c(e, ["oauthConfig"]) !== void 0) throw new Error("oauthConfig parameter is not supported in Gemini API.");
+  if (c(e, ["oidcConfig"]) !== void 0) throw new Error("oidcConfig parameter is not supported in Gemini API.");
   return t;
 }
 function IX(e) {
-  const t = {}, n = d(e, ["data"]);
-  if (n != null && h(t, ["data"], n), d(e, ["displayName"]) !== void 0) throw new Error("displayName parameter is not supported in Gemini API.");
-  const r = d(e, ["mimeType"]);
+  const t = {}, n = c(e, ["data"]);
+  if (n != null && h(t, ["data"], n), c(e, ["displayName"]) !== void 0) throw new Error("displayName parameter is not supported in Gemini API.");
+  const r = c(e, ["mimeType"]);
   return r != null && h(t, ["mimeType"], r), t;
 }
 function xX(e) {
-  const t = {}, n = d(e, ["parts"]);
+  const t = {}, n = c(e, ["parts"]);
   if (n != null) {
     let s = n;
     Array.isArray(s) && (s = s.map((a) => OX(a))), h(t, ["parts"], s);
   }
-  const r = d(e, ["role"]);
+  const r = c(e, ["role"]);
   return r != null && h(t, ["role"], r), t;
 }
 function kX(e, t, n) {
-  const r = {}, s = d(t, ["expireTime"]);
+  const r = {}, s = c(t, ["expireTime"]);
   n !== void 0 && s != null && h(n, ["expireTime"], s);
-  const a = d(t, ["newSessionExpireTime"]);
+  const a = c(t, ["newSessionExpireTime"]);
   n !== void 0 && a != null && h(n, ["newSessionExpireTime"], a);
-  const o = d(t, ["uses"]);
+  const o = c(t, ["uses"]);
   n !== void 0 && o != null && h(n, ["uses"], o);
-  const l = d(t, ["liveConnectConstraints"]);
+  const l = c(t, ["liveConnectConstraints"]);
   n !== void 0 && l != null && h(n, ["bidiGenerateContentSetup"], DX(e, l));
-  const i = d(t, ["lockAdditionalFields"]);
+  const i = c(t, ["lockAdditionalFields"]);
   return n !== void 0 && i != null && h(n, ["fieldMask"], i), r;
 }
 function MX(e, t) {
-  const n = {}, r = d(t, ["config"]);
+  const n = {}, r = c(t, ["config"]);
   return r != null && h(n, ["config"], kX(e, r, n)), n;
 }
 function PX(e) {
   const t = {};
-  if (d(e, ["displayName"]) !== void 0) throw new Error("displayName parameter is not supported in Gemini API.");
-  const n = d(e, ["fileUri"]);
+  if (c(e, ["displayName"]) !== void 0) throw new Error("displayName parameter is not supported in Gemini API.");
+  const n = c(e, ["fileUri"]);
   n != null && h(t, ["fileUri"], n);
-  const r = d(e, ["mimeType"]);
+  const r = c(e, ["mimeType"]);
   return r != null && h(t, ["mimeType"], r), t;
 }
 function RX(e) {
-  const t = {}, n = d(e, ["id"]);
+  const t = {}, n = c(e, ["id"]);
   n != null && h(t, ["id"], n);
-  const r = d(e, ["args"]);
+  const r = c(e, ["args"]);
   r != null && h(t, ["args"], r);
-  const s = d(e, ["name"]);
-  if (s != null && h(t, ["name"], s), d(e, ["partialArgs"]) !== void 0) throw new Error("partialArgs parameter is not supported in Gemini API.");
-  if (d(e, ["willContinue"]) !== void 0) throw new Error("willContinue parameter is not supported in Gemini API.");
+  const s = c(e, ["name"]);
+  if (s != null && h(t, ["name"], s), c(e, ["partialArgs"]) !== void 0) throw new Error("partialArgs parameter is not supported in Gemini API.");
+  if (c(e, ["willContinue"]) !== void 0) throw new Error("willContinue parameter is not supported in Gemini API.");
   return t;
 }
 function NX(e) {
-  const t = {}, n = d(e, ["authConfig"]);
+  const t = {}, n = c(e, ["authConfig"]);
   n != null && h(t, ["authConfig"], CX(n));
-  const r = d(e, ["enableWidget"]);
+  const r = c(e, ["enableWidget"]);
   return r != null && h(t, ["enableWidget"], r), t;
 }
 function $X(e) {
-  const t = {}, n = d(e, ["searchTypes"]);
-  if (n != null && h(t, ["searchTypes"], n), d(e, ["blockingConfidence"]) !== void 0) throw new Error("blockingConfidence parameter is not supported in Gemini API.");
-  if (d(e, ["excludeDomains"]) !== void 0) throw new Error("excludeDomains parameter is not supported in Gemini API.");
-  const r = d(e, ["timeRangeFilter"]);
+  const t = {}, n = c(e, ["searchTypes"]);
+  if (n != null && h(t, ["searchTypes"], n), c(e, ["blockingConfidence"]) !== void 0) throw new Error("blockingConfidence parameter is not supported in Gemini API.");
+  if (c(e, ["excludeDomains"]) !== void 0) throw new Error("excludeDomains parameter is not supported in Gemini API.");
+  const r = c(e, ["timeRangeFilter"]);
   return r != null && h(t, ["timeRangeFilter"], r), t;
 }
 function LX(e, t) {
-  const n = {}, r = d(e, ["generationConfig"]);
+  const n = {}, r = c(e, ["generationConfig"]);
   t !== void 0 && r != null && h(t, ["setup", "generationConfig"], r);
-  const s = d(e, ["responseModalities"]);
+  const s = c(e, ["responseModalities"]);
   t !== void 0 && s != null && h(t, [
     "setup",
     "generationConfig",
     "responseModalities"
   ], s);
-  const a = d(e, ["temperature"]);
+  const a = c(e, ["temperature"]);
   t !== void 0 && a != null && h(t, [
     "setup",
     "generationConfig",
     "temperature"
   ], a);
-  const o = d(e, ["topP"]);
+  const o = c(e, ["topP"]);
   t !== void 0 && o != null && h(t, [
     "setup",
     "generationConfig",
     "topP"
   ], o);
-  const l = d(e, ["topK"]);
+  const l = c(e, ["topK"]);
   t !== void 0 && l != null && h(t, [
     "setup",
     "generationConfig",
     "topK"
   ], l);
-  const i = d(e, ["maxOutputTokens"]);
+  const i = c(e, ["maxOutputTokens"]);
   t !== void 0 && i != null && h(t, [
     "setup",
     "generationConfig",
     "maxOutputTokens"
   ], i);
-  const u = d(e, ["mediaResolution"]);
+  const u = c(e, ["mediaResolution"]);
   t !== void 0 && u != null && h(t, [
     "setup",
     "generationConfig",
     "mediaResolution"
   ], u);
-  const c = d(e, ["seed"]);
-  t !== void 0 && c != null && h(t, [
+  const d = c(e, ["seed"]);
+  t !== void 0 && d != null && h(t, [
     "setup",
     "generationConfig",
     "seed"
-  ], c);
-  const f = d(e, ["speechConfig"]);
+  ], d);
+  const f = c(e, ["speechConfig"]);
   t !== void 0 && f != null && h(t, [
     "setup",
     "generationConfig",
     "speechConfig"
   ], SS(f));
-  const p = d(e, ["thinkingConfig"]);
+  const p = c(e, ["thinkingConfig"]);
   t !== void 0 && p != null && h(t, [
     "setup",
     "generationConfig",
     "thinkingConfig"
   ], p);
-  const g = d(e, ["enableAffectiveDialog"]);
+  const g = c(e, ["enableAffectiveDialog"]);
   t !== void 0 && g != null && h(t, [
     "setup",
     "generationConfig",
     "enableAffectiveDialog"
   ], g);
-  const y = d(e, ["systemInstruction"]);
+  const y = c(e, ["systemInstruction"]);
   t !== void 0 && y != null && h(t, ["setup", "systemInstruction"], xX(wr(y)));
-  const _ = d(e, ["tools"]);
+  const _ = c(e, ["tools"]);
   if (t !== void 0 && _ != null) {
     let S = Kc(_);
     Array.isArray(S) && (S = S.map((I) => UX(zc(I)))), h(t, ["setup", "tools"], S);
   }
-  const x = d(e, ["sessionResumption"]);
+  const x = c(e, ["sessionResumption"]);
   t !== void 0 && x != null && h(t, ["setup", "sessionResumption"], BX(x));
-  const C = d(e, ["inputAudioTranscription"]);
+  const C = c(e, ["inputAudioTranscription"]);
   t !== void 0 && C != null && h(t, ["setup", "inputAudioTranscription"], II(C));
-  const E = d(e, ["outputAudioTranscription"]);
+  const E = c(e, ["outputAudioTranscription"]);
   t !== void 0 && E != null && h(t, ["setup", "outputAudioTranscription"], II(E));
-  const R = d(e, ["realtimeInputConfig"]);
+  const R = c(e, ["realtimeInputConfig"]);
   t !== void 0 && R != null && h(t, ["setup", "realtimeInputConfig"], R);
-  const N = d(e, ["contextWindowCompression"]);
+  const N = c(e, ["contextWindowCompression"]);
   t !== void 0 && N != null && h(t, ["setup", "contextWindowCompression"], N);
-  const m = d(e, ["proactivity"]);
-  if (t !== void 0 && m != null && h(t, ["setup", "proactivity"], m), d(e, ["explicitVadSignal"]) !== void 0) throw new Error("explicitVadSignal parameter is not supported in Gemini API.");
-  const w = d(e, ["avatarConfig"]);
+  const m = c(e, ["proactivity"]);
+  if (t !== void 0 && m != null && h(t, ["setup", "proactivity"], m), c(e, ["explicitVadSignal"]) !== void 0) throw new Error("explicitVadSignal parameter is not supported in Gemini API.");
+  const w = c(e, ["avatarConfig"]);
   t !== void 0 && w != null && h(t, ["setup", "avatarConfig"], w);
-  const b = d(e, ["safetySettings"]);
+  const b = c(e, ["safetySettings"]);
   if (t !== void 0 && b != null) {
     let S = b;
     Array.isArray(S) && (S = S.map((I) => FX(I))), h(t, ["setup", "safetySettings"], S);
@@ -32148,77 +32148,77 @@ function LX(e, t) {
   return n;
 }
 function DX(e, t) {
-  const n = {}, r = d(t, ["model"]);
+  const n = {}, r = c(t, ["model"]);
   r != null && h(n, ["setup", "model"], cn(e, r));
-  const s = d(t, ["config"]);
+  const s = c(t, ["config"]);
   return s != null && h(n, ["config"], LX(s, n)), n;
 }
 function OX(e) {
-  const t = {}, n = d(e, ["mediaResolution"]);
+  const t = {}, n = c(e, ["mediaResolution"]);
   n != null && h(t, ["mediaResolution"], n);
-  const r = d(e, ["codeExecutionResult"]);
+  const r = c(e, ["codeExecutionResult"]);
   r != null && h(t, ["codeExecutionResult"], r);
-  const s = d(e, ["executableCode"]);
+  const s = c(e, ["executableCode"]);
   s != null && h(t, ["executableCode"], s);
-  const a = d(e, ["fileData"]);
+  const a = c(e, ["fileData"]);
   a != null && h(t, ["fileData"], PX(a));
-  const o = d(e, ["functionCall"]);
+  const o = c(e, ["functionCall"]);
   o != null && h(t, ["functionCall"], RX(o));
-  const l = d(e, ["functionResponse"]);
+  const l = c(e, ["functionResponse"]);
   l != null && h(t, ["functionResponse"], l);
-  const i = d(e, ["inlineData"]);
+  const i = c(e, ["inlineData"]);
   i != null && h(t, ["inlineData"], IX(i));
-  const u = d(e, ["text"]);
+  const u = c(e, ["text"]);
   u != null && h(t, ["text"], u);
-  const c = d(e, ["thought"]);
-  c != null && h(t, ["thought"], c);
-  const f = d(e, ["thoughtSignature"]);
+  const d = c(e, ["thought"]);
+  d != null && h(t, ["thought"], d);
+  const f = c(e, ["thoughtSignature"]);
   f != null && h(t, ["thoughtSignature"], f);
-  const p = d(e, ["videoMetadata"]);
+  const p = c(e, ["videoMetadata"]);
   p != null && h(t, ["videoMetadata"], p);
-  const g = d(e, ["toolCall"]);
+  const g = c(e, ["toolCall"]);
   g != null && h(t, ["toolCall"], g);
-  const y = d(e, ["toolResponse"]);
+  const y = c(e, ["toolResponse"]);
   y != null && h(t, ["toolResponse"], y);
-  const _ = d(e, ["partMetadata"]);
+  const _ = c(e, ["partMetadata"]);
   return _ != null && h(t, ["partMetadata"], _), t;
 }
 function FX(e) {
-  const t = {}, n = d(e, ["category"]);
-  if (n != null && h(t, ["category"], n), d(e, ["method"]) !== void 0) throw new Error("method parameter is not supported in Gemini API.");
-  const r = d(e, ["threshold"]);
+  const t = {}, n = c(e, ["category"]);
+  if (n != null && h(t, ["category"], n), c(e, ["method"]) !== void 0) throw new Error("method parameter is not supported in Gemini API.");
+  const r = c(e, ["threshold"]);
   return r != null && h(t, ["threshold"], r), t;
 }
 function BX(e) {
-  const t = {}, n = d(e, ["handle"]);
-  if (n != null && h(t, ["handle"], n), d(e, ["transparent"]) !== void 0) throw new Error("transparent parameter is not supported in Gemini API.");
+  const t = {}, n = c(e, ["handle"]);
+  if (n != null && h(t, ["handle"], n), c(e, ["transparent"]) !== void 0) throw new Error("transparent parameter is not supported in Gemini API.");
   return t;
 }
 function UX(e) {
   const t = {};
-  if (d(e, ["retrieval"]) !== void 0) throw new Error("retrieval parameter is not supported in Gemini API.");
-  const n = d(e, ["computerUse"]);
+  if (c(e, ["retrieval"]) !== void 0) throw new Error("retrieval parameter is not supported in Gemini API.");
+  const n = c(e, ["computerUse"]);
   n != null && h(t, ["computerUse"], n);
-  const r = d(e, ["fileSearch"]);
+  const r = c(e, ["fileSearch"]);
   r != null && h(t, ["fileSearch"], r);
-  const s = d(e, ["googleSearch"]);
+  const s = c(e, ["googleSearch"]);
   s != null && h(t, ["googleSearch"], $X(s));
-  const a = d(e, ["googleMaps"]);
+  const a = c(e, ["googleMaps"]);
   a != null && h(t, ["googleMaps"], NX(a));
-  const o = d(e, ["codeExecution"]);
-  if (o != null && h(t, ["codeExecution"], o), d(e, ["enterpriseWebSearch"]) !== void 0) throw new Error("enterpriseWebSearch parameter is not supported in Gemini API.");
-  const l = d(e, ["functionDeclarations"]);
+  const o = c(e, ["codeExecution"]);
+  if (o != null && h(t, ["codeExecution"], o), c(e, ["enterpriseWebSearch"]) !== void 0) throw new Error("enterpriseWebSearch parameter is not supported in Gemini API.");
+  const l = c(e, ["functionDeclarations"]);
   if (l != null) {
     let f = l;
     Array.isArray(f) && (f = f.map((p) => p)), h(t, ["functionDeclarations"], f);
   }
-  const i = d(e, ["googleSearchRetrieval"]);
-  if (i != null && h(t, ["googleSearchRetrieval"], i), d(e, ["parallelAiSearch"]) !== void 0) throw new Error("parallelAiSearch parameter is not supported in Gemini API.");
-  const u = d(e, ["urlContext"]);
+  const i = c(e, ["googleSearchRetrieval"]);
+  if (i != null && h(t, ["googleSearchRetrieval"], i), c(e, ["parallelAiSearch"]) !== void 0) throw new Error("parallelAiSearch parameter is not supported in Gemini API.");
+  const u = c(e, ["urlContext"]);
   u != null && h(t, ["urlContext"], u);
-  const c = d(e, ["mcpServers"]);
-  if (c != null) {
-    let f = c;
+  const d = c(e, ["mcpServers"]);
+  if (d != null) {
+    let f = d;
     Array.isArray(f) && (f = f.map((p) => p)), h(t, ["mcpServers"], f);
   }
   return t;
@@ -32287,37 +32287,37 @@ var zX = class extends oi {
   }
 };
 function KX(e, t) {
-  const n = {}, r = d(e, ["force"]);
+  const n = {}, r = c(e, ["force"]);
   return t !== void 0 && r != null && h(t, ["_query", "force"], r), n;
 }
 function WX(e) {
-  const t = {}, n = d(e, ["name"]);
+  const t = {}, n = c(e, ["name"]);
   n != null && h(t, ["_url", "name"], n);
-  const r = d(e, ["config"]);
+  const r = c(e, ["config"]);
   return r != null && KX(r, t), t;
 }
 function VX(e) {
-  const t = {}, n = d(e, ["name"]);
+  const t = {}, n = c(e, ["name"]);
   return n != null && h(t, ["_url", "name"], n), t;
 }
 function GX(e, t) {
-  const n = {}, r = d(e, ["pageSize"]);
+  const n = {}, r = c(e, ["pageSize"]);
   t !== void 0 && r != null && h(t, ["_query", "pageSize"], r);
-  const s = d(e, ["pageToken"]);
+  const s = c(e, ["pageToken"]);
   return t !== void 0 && s != null && h(t, ["_query", "pageToken"], s), n;
 }
 function JX(e) {
-  const t = {}, n = d(e, ["parent"]);
+  const t = {}, n = c(e, ["parent"]);
   n != null && h(t, ["_url", "parent"], n);
-  const r = d(e, ["config"]);
+  const r = c(e, ["config"]);
   return r != null && GX(r, t), t;
 }
 function YX(e) {
-  const t = {}, n = d(e, ["sdkHttpResponse"]);
+  const t = {}, n = c(e, ["sdkHttpResponse"]);
   n != null && h(t, ["sdkHttpResponse"], n);
-  const r = d(e, ["nextPageToken"]);
+  const r = c(e, ["nextPageToken"]);
   r != null && h(t, ["nextPageToken"], r);
-  const s = d(e, ["documents"]);
+  const s = c(e, ["documents"]);
   if (s != null) {
     let a = s;
     Array.isArray(a) && (a = a.map((o) => o)), h(t, ["documents"], a);
@@ -32683,11 +32683,11 @@ async function a1(e) {
   else if (fj(e)) try {
     for (var l = !0, i = Ea(e), u; u = await i.next(), t = u.done, !t; l = !0) {
       s = u.value, l = !1;
-      const c = s;
-      o.push(...await a1(c));
+      const d = s;
+      o.push(...await a1(d));
     }
-  } catch (c) {
-    n = { error: c };
+  } catch (d) {
+    n = { error: d };
   } finally {
     try {
       !l && !t && (r = i.return) && await r.call(i);
@@ -32696,8 +32696,8 @@ async function a1(e) {
     }
   }
   else {
-    const c = (a = e?.constructor) === null || a === void 0 ? void 0 : a.name;
-    throw new Error(`Unexpected data type: ${typeof e}${c ? `; constructor: ${c}` : ""}${gj(e)}`);
+    const d = (a = e?.constructor) === null || a === void 0 ? void 0 : a.name;
+    throw new Error(`Unexpected data type: ${typeof e}${d ? `; constructor: ${d}` : ""}${gj(e)}`);
   }
   return o;
 }
@@ -32716,31 +32716,31 @@ function NR(e) {
 var MI = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.create(null)), vj = (e = NR) => (function(n, ...r) {
   if (n.length === 1) return n[0];
   let s = !1;
-  const a = [], o = n.reduce((c, f, p) => {
+  const a = [], o = n.reduce((d, f, p) => {
     var g, y, _;
     /[?#]/.test(f) && (s = !0);
     const x = r[p];
     let C = (s ? encodeURIComponent : e)("" + x);
     return p !== r.length && (x == null || typeof x == "object" && x.toString === ((_ = Object.getPrototypeOf((y = Object.getPrototypeOf((g = x.hasOwnProperty) !== null && g !== void 0 ? g : MI)) !== null && y !== void 0 ? y : MI)) === null || _ === void 0 ? void 0 : _.toString)) && (C = x + "", a.push({
-      start: c.length + f.length,
+      start: d.length + f.length,
       length: C.length,
       error: `Value of type ${Object.prototype.toString.call(x).slice(8, -1)} is not a valid path parameter`
-    })), c + f + (p === r.length ? "" : C);
+    })), d + f + (p === r.length ? "" : C);
   }, ""), l = o.split(/[?#]/, 1)[0], i = /(^|\/)(?:\.|%2e){1,2}(?=\/|$)/gi;
   let u;
   for (; (u = i.exec(l)) !== null; ) {
-    const c = u[0].startsWith("/"), f = c ? 1 : 0, p = c ? u[0].slice(1) : u[0];
+    const d = u[0].startsWith("/"), f = d ? 1 : 0, p = d ? u[0].slice(1) : u[0];
     a.push({
       start: u.index + f,
       length: p.length,
       error: `Value "${p}" can't be safely passed as a path parameter`
     });
   }
-  if (a.sort((c, f) => c.start - f.start), a.length > 0) {
-    let c = 0;
+  if (a.sort((d, f) => d.start - f.start), a.length > 0) {
+    let d = 0;
     const f = a.reduce((p, g) => {
-      const y = " ".repeat(g.start - c), _ = "^".repeat(g.length);
-      return c = g.start + g.length, p + y + _;
+      const y = " ".repeat(g.start - d), _ = "^".repeat(g.length);
+      return d = g.start + g.length, p + y + _;
     }, "");
     throw new ia(`Path parameters result in path with invalid segments:
 ${a.map((p) => p.error).join(`
@@ -32924,7 +32924,7 @@ var Tl = (e) => (e.options && (e.options = Object.assign({}, e.options), delete 
     const a = r ? jr(r) : console;
     function o() {
       return Ta(this, arguments, function* () {
-        var i, u, c, f;
+        var i, u, d, f;
         if (s) throw new ia("Cannot iterate over a consumed stream, use `.tee()` to split the stream.");
         s = !0;
         let p = !1;
@@ -32947,7 +32947,7 @@ var Tl = (e) => (e.options && (e.options = Object.assign({}, e.options), delete 
             u = { error: x };
           } finally {
             try {
-              !g && !i && (c = y.return) && (yield qt(c.call(y)));
+              !g && !i && (d = y.return) && (yield qt(d.call(y)));
             } finally {
               if (u) throw u.error;
             }
@@ -32967,7 +32967,7 @@ var Tl = (e) => (e.options && (e.options = Object.assign({}, e.options), delete 
     let s = !1;
     function a() {
       return Ta(this, arguments, function* () {
-        var i, u, c, f;
+        var i, u, d, f;
         const p = new Zv(), g = MR(t);
         try {
           for (var y = !0, _ = Ea(g), x; x = yield qt(_.next()), i = x.done, !i; y = !0) {
@@ -32979,7 +32979,7 @@ var Tl = (e) => (e.options && (e.options = Object.assign({}, e.options), delete 
           u = { error: C };
         } finally {
           try {
-            !y && !i && (c = _.return) && (yield qt(c.call(_)));
+            !y && !i && (d = _.return) && (yield qt(d.call(_)));
           } finally {
             if (u) throw u.error;
           }
@@ -32989,7 +32989,7 @@ var Tl = (e) => (e.options && (e.options = Object.assign({}, e.options), delete 
     }
     function o() {
       return Ta(this, arguments, function* () {
-        var i, u, c, f;
+        var i, u, d, f;
         if (s) throw new ia("Cannot iterate over a consumed stream, use `.tee()` to split the stream.");
         s = !0;
         let p = !1;
@@ -33004,7 +33004,7 @@ var Tl = (e) => (e.options && (e.options = Object.assign({}, e.options), delete 
             u = { error: x };
           } finally {
             try {
-              !g && !i && (c = y.return) && (yield qt(c.call(y)));
+              !g && !i && (d = y.return) && (yield qt(d.call(y)));
             } finally {
               if (u) throw u.error;
             }
@@ -33065,8 +33065,8 @@ function Sj(e, t) {
       throw t.abort(), typeof globalThis.navigator < "u" && globalThis.navigator.product === "ReactNative" ? new ia("The default react-native fetch implementation does not support streaming. Please use expo/fetch: https://docs.expo.dev/versions/latest/sdk/expo/#expofetch-api") : new ia("Attempted to iterate over a response with no body");
     const l = new Tj(), i = new Zv(), u = MR(e.body);
     try {
-      for (var c = !0, f = Ea(Aj(u)), p; p = yield qt(f.next()), r = p.done, !r; c = !0) {
-        o = p.value, c = !1;
+      for (var d = !0, f = Ea(Aj(u)), p; p = yield qt(f.next()), r = p.done, !r; d = !0) {
+        o = p.value, d = !1;
         const g = o;
         for (const y of i.decode(g)) {
           const _ = l.decode(y);
@@ -33077,7 +33077,7 @@ function Sj(e, t) {
       s = { error: g };
     } finally {
       try {
-        !c && !r && (a = f.return) && (yield qt(a.call(f)));
+        !d && !r && (a = f.return) && (yield qt(a.call(f)));
       } finally {
         if (s) throw s.error;
       }
@@ -33229,18 +33229,18 @@ var $d = (e) => {
   if (typeof globalThis.Deno < "u") return ((a = (s = (r = globalThis.Deno.env) === null || r === void 0 ? void 0 : r.get) === null || s === void 0 ? void 0 : s.call(r, e)) === null || a === void 0 ? void 0 : a.trim()) || void 0;
 }, UR, qR = class HR {
   constructor(t) {
-    var n, r, s, a, o, l, i, { baseURL: u = Q_("GEMINI_NEXT_GEN_API_BASE_URL"), apiKey: c = (n = Q_("GEMINI_API_KEY")) !== null && n !== void 0 ? n : null, apiVersion: f = "v1beta" } = t, p = Hi(t, [
+    var n, r, s, a, o, l, i, { baseURL: u = Q_("GEMINI_NEXT_GEN_API_BASE_URL"), apiKey: d = (n = Q_("GEMINI_API_KEY")) !== null && n !== void 0 ? n : null, apiVersion: f = "v1beta" } = t, p = Hi(t, [
       "baseURL",
       "apiKey",
       "apiVersion"
     ]);
     const g = Object.assign(Object.assign({
-      apiKey: c,
+      apiKey: d,
       apiVersion: f
     }, p), { baseURL: u || "https://generativelanguage.googleapis.com" });
     this.baseURL = g.baseURL, this.timeout = (r = g.timeout) !== null && r !== void 0 ? r : HR.DEFAULT_TIMEOUT, this.logger = (s = g.logger) !== null && s !== void 0 ? s : console;
     const y = "warn";
-    this.logLevel = y, this.logLevel = (o = (a = RI(g.logLevel, "ClientOptions.logLevel", this)) !== null && a !== void 0 ? a : RI(Q_("GEMINI_NEXT_GEN_API_LOG"), "process.env['GEMINI_NEXT_GEN_API_LOG']", this)) !== null && o !== void 0 ? o : y, this.fetchOptions = g.fetchOptions, this.maxRetries = (l = g.maxRetries) !== null && l !== void 0 ? l : 2, this.fetch = (i = g.fetch) !== null && i !== void 0 ? i : aj(), this.encoder = lj, this._options = g, this.apiKey = c, this.apiVersion = f, this.clientAdapter = g.clientAdapter;
+    this.logLevel = y, this.logLevel = (o = (a = RI(g.logLevel, "ClientOptions.logLevel", this)) !== null && a !== void 0 ? a : RI(Q_("GEMINI_NEXT_GEN_API_LOG"), "process.env['GEMINI_NEXT_GEN_API_LOG']", this)) !== null && o !== void 0 ? o : y, this.fetchOptions = g.fetchOptions, this.maxRetries = (l = g.maxRetries) !== null && l !== void 0 ? l : 2, this.fetch = (i = g.fetch) !== null && i !== void 0 ? i : aj(), this.encoder = lj, this._options = g, this.apiKey = d, this.apiVersion = f, this.clientAdapter = g.clientAdapter;
   }
   withOptions(t) {
     return new this.constructor(Object.assign(Object.assign(Object.assign({}, this._options), {
@@ -33324,20 +33324,20 @@ var $d = (e) => {
     var s, a, o;
     const l = await t, i = (s = l.maxRetries) !== null && s !== void 0 ? s : this.maxRetries;
     n == null && (n = i), await this.prepareOptions(l);
-    const { req: u, url: c, timeout: f } = await this.buildRequest(l, { retryCount: i - n });
+    const { req: u, url: d, timeout: f } = await this.buildRequest(l, { retryCount: i - n });
     await this.prepareRequest(u, {
-      url: c,
+      url: d,
       options: l
     });
     const p = "log_" + (Math.random() * (1 << 24) | 0).toString(16).padStart(6, "0"), g = r === void 0 ? "" : `, retryOf: ${r}`, y = Date.now();
     if (jr(this).debug(`[${p}] sending request`, Tl({
       retryOfRequestLogID: r,
       method: l.method,
-      url: c,
+      url: d,
       options: l,
       headers: u.headers
     })), !((a = l.signal) === null || a === void 0) && a.aborted) throw new r1();
-    const _ = new AbortController(), x = await this.fetchWithTimeout(c, u, f, _).catch(t1), C = Date.now();
+    const _ = new AbortController(), x = await this.fetchWithTimeout(d, u, f, _).catch(t1), C = Date.now();
     if (x instanceof globalThis.Error) {
       const R = `retrying, ${n} attempts remaining`;
       if (!((o = l.signal) === null || o === void 0) && o.aborted) throw new r1();
@@ -33345,18 +33345,18 @@ var $d = (e) => {
       if (n)
         return jr(this).info(`[${p}] connection ${N ? "timed out" : "failed"} - ${R}`), jr(this).debug(`[${p}] connection ${N ? "timed out" : "failed"} (${R})`, Tl({
           retryOfRequestLogID: r,
-          url: c,
+          url: d,
           durationMs: C - y,
           message: x.message
         })), this.retryRequest(l, n, r ?? p);
       throw jr(this).info(`[${p}] connection ${N ? "timed out" : "failed"} - error; no more retries left`), jr(this).debug(`[${p}] connection ${N ? "timed out" : "failed"} (error; no more retries left)`, Tl({
         retryOfRequestLogID: r,
-        url: c,
+        url: d,
         durationMs: C - y,
         message: x.message
       })), N ? new bR() : new Qv({ cause: x });
     }
-    const E = `[${p}${g}] ${u.method} ${c} ${x.ok ? "succeeded" : "failed"} with status ${x.status} in ${C - y}ms`;
+    const E = `[${p}${g}] ${u.method} ${d} ${x.ok ? "succeeded" : "failed"} with status ${x.status} in ${C - y}ms`;
     if (!x.ok) {
       const R = await this.shouldRetry(x);
       if (n && R) {
@@ -33399,12 +33399,12 @@ var $d = (e) => {
   async fetchWithTimeout(t, n, r, s) {
     const a = n || {}, { signal: o, method: l } = a, i = Hi(a, ["signal", "method"]), u = this._makeAbort(s);
     o && o.addEventListener("abort", u, { once: !0 });
-    const c = setTimeout(u, r), f = globalThis.ReadableStream && i.body instanceof globalThis.ReadableStream || typeof i.body == "object" && i.body !== null && Symbol.asyncIterator in i.body, p = Object.assign(Object.assign(Object.assign({ signal: s.signal }, f ? { duplex: "half" } : {}), { method: "GET" }), i);
+    const d = setTimeout(u, r), f = globalThis.ReadableStream && i.body instanceof globalThis.ReadableStream || typeof i.body == "object" && i.body !== null && Symbol.asyncIterator in i.body, p = Object.assign(Object.assign(Object.assign({ signal: s.signal }, f ? { duplex: "half" } : {}), { method: "GET" }), i);
     l && (p.method = l.toUpperCase());
     try {
       return await this.fetch.call(void 0, t, p);
     } finally {
-      clearTimeout(c);
+      clearTimeout(d);
     }
   }
   async shouldRetry(t) {
@@ -33436,7 +33436,7 @@ var $d = (e) => {
   }
   async buildRequest(t, { retryCount: n = 0 } = {}) {
     var r, s, a;
-    const o = Object.assign({}, t), { method: l, path: i, query: u, defaultBaseURL: c } = o, f = this.buildURL(i, u, c);
+    const o = Object.assign({}, t), { method: l, path: i, query: u, defaultBaseURL: d } = o, f = this.buildURL(i, u, d);
     "timeout" in o && nj("timeout", o.timeout), o.timeout = (r = o.timeout) !== null && r !== void 0 ? r : this.timeout;
     const { bodyHeaders: p, body: g } = this.buildBody({ options: o }), y = await this.buildHeaders({
       options: t,
@@ -33519,282 +33519,282 @@ fr.toFile = mj;
 fr.Interactions = LR;
 fr.Webhooks = OR;
 function kj(e, t) {
-  const n = {}, r = d(e, ["name"]);
+  const n = {}, r = c(e, ["name"]);
   return r != null && h(n, ["_url", "name"], r), n;
 }
 function Mj(e, t) {
-  const n = {}, r = d(e, ["name"]);
+  const n = {}, r = c(e, ["name"]);
   return r != null && h(n, ["_url", "name"], r), n;
 }
 function Pj(e, t) {
-  const n = {}, r = d(e, ["sdkHttpResponse"]);
+  const n = {}, r = c(e, ["sdkHttpResponse"]);
   return r != null && h(n, ["sdkHttpResponse"], r), n;
 }
 function Rj(e, t) {
-  const n = {}, r = d(e, ["sdkHttpResponse"]);
+  const n = {}, r = c(e, ["sdkHttpResponse"]);
   return r != null && h(n, ["sdkHttpResponse"], r), n;
 }
 function Nj(e, t, n) {
   const r = {};
-  if (d(e, ["validationDataset"]) !== void 0) throw new Error("validationDataset parameter is not supported in Gemini API.");
-  const s = d(e, ["tunedModelDisplayName"]);
-  if (t !== void 0 && s != null && h(t, ["displayName"], s), d(e, ["description"]) !== void 0) throw new Error("description parameter is not supported in Gemini API.");
-  const a = d(e, ["epochCount"]);
+  if (c(e, ["validationDataset"]) !== void 0) throw new Error("validationDataset parameter is not supported in Gemini API.");
+  const s = c(e, ["tunedModelDisplayName"]);
+  if (t !== void 0 && s != null && h(t, ["displayName"], s), c(e, ["description"]) !== void 0) throw new Error("description parameter is not supported in Gemini API.");
+  const a = c(e, ["epochCount"]);
   t !== void 0 && a != null && h(t, [
     "tuningTask",
     "hyperparameters",
     "epochCount"
   ], a);
-  const o = d(e, ["learningRateMultiplier"]);
+  const o = c(e, ["learningRateMultiplier"]);
   if (o != null && h(r, [
     "tuningTask",
     "hyperparameters",
     "learningRateMultiplier"
-  ], o), d(e, ["exportLastCheckpointOnly"]) !== void 0) throw new Error("exportLastCheckpointOnly parameter is not supported in Gemini API.");
-  if (d(e, ["preTunedModelCheckpointId"]) !== void 0) throw new Error("preTunedModelCheckpointId parameter is not supported in Gemini API.");
-  if (d(e, ["adapterSize"]) !== void 0) throw new Error("adapterSize parameter is not supported in Gemini API.");
-  if (d(e, ["tuningMode"]) !== void 0) throw new Error("tuningMode parameter is not supported in Gemini API.");
-  if (d(e, ["customBaseModel"]) !== void 0) throw new Error("customBaseModel parameter is not supported in Gemini API.");
-  const l = d(e, ["batchSize"]);
+  ], o), c(e, ["exportLastCheckpointOnly"]) !== void 0) throw new Error("exportLastCheckpointOnly parameter is not supported in Gemini API.");
+  if (c(e, ["preTunedModelCheckpointId"]) !== void 0) throw new Error("preTunedModelCheckpointId parameter is not supported in Gemini API.");
+  if (c(e, ["adapterSize"]) !== void 0) throw new Error("adapterSize parameter is not supported in Gemini API.");
+  if (c(e, ["tuningMode"]) !== void 0) throw new Error("tuningMode parameter is not supported in Gemini API.");
+  if (c(e, ["customBaseModel"]) !== void 0) throw new Error("customBaseModel parameter is not supported in Gemini API.");
+  const l = c(e, ["batchSize"]);
   t !== void 0 && l != null && h(t, [
     "tuningTask",
     "hyperparameters",
     "batchSize"
   ], l);
-  const i = d(e, ["learningRate"]);
+  const i = c(e, ["learningRate"]);
   if (t !== void 0 && i != null && h(t, [
     "tuningTask",
     "hyperparameters",
     "learningRate"
-  ], i), d(e, ["labels"]) !== void 0) throw new Error("labels parameter is not supported in Gemini API.");
-  if (d(e, ["beta"]) !== void 0) throw new Error("beta parameter is not supported in Gemini API.");
-  if (d(e, ["baseTeacherModel"]) !== void 0) throw new Error("baseTeacherModel parameter is not supported in Gemini API.");
-  if (d(e, ["tunedTeacherModelSource"]) !== void 0) throw new Error("tunedTeacherModelSource parameter is not supported in Gemini API.");
-  if (d(e, ["sftLossWeightMultiplier"]) !== void 0) throw new Error("sftLossWeightMultiplier parameter is not supported in Gemini API.");
-  if (d(e, ["outputUri"]) !== void 0) throw new Error("outputUri parameter is not supported in Gemini API.");
-  if (d(e, ["encryptionSpec"]) !== void 0) throw new Error("encryptionSpec parameter is not supported in Gemini API.");
+  ], i), c(e, ["labels"]) !== void 0) throw new Error("labels parameter is not supported in Gemini API.");
+  if (c(e, ["beta"]) !== void 0) throw new Error("beta parameter is not supported in Gemini API.");
+  if (c(e, ["baseTeacherModel"]) !== void 0) throw new Error("baseTeacherModel parameter is not supported in Gemini API.");
+  if (c(e, ["tunedTeacherModelSource"]) !== void 0) throw new Error("tunedTeacherModelSource parameter is not supported in Gemini API.");
+  if (c(e, ["sftLossWeightMultiplier"]) !== void 0) throw new Error("sftLossWeightMultiplier parameter is not supported in Gemini API.");
+  if (c(e, ["outputUri"]) !== void 0) throw new Error("outputUri parameter is not supported in Gemini API.");
+  if (c(e, ["encryptionSpec"]) !== void 0) throw new Error("encryptionSpec parameter is not supported in Gemini API.");
   return r;
 }
 function $j(e, t, n) {
   const r = {};
-  let s = d(n, ["config", "method"]);
+  let s = c(n, ["config", "method"]);
   if (s === void 0 && (s = "SUPERVISED_FINE_TUNING"), s === "SUPERVISED_FINE_TUNING") {
-    const w = d(e, ["validationDataset"]);
+    const w = c(e, ["validationDataset"]);
     t !== void 0 && w != null && h(t, ["supervisedTuningSpec"], Z_(w));
   } else if (s === "PREFERENCE_TUNING") {
-    const w = d(e, ["validationDataset"]);
+    const w = c(e, ["validationDataset"]);
     t !== void 0 && w != null && h(t, ["preferenceOptimizationSpec"], Z_(w));
   } else if (s === "DISTILLATION") {
-    const w = d(e, ["validationDataset"]);
+    const w = c(e, ["validationDataset"]);
     t !== void 0 && w != null && h(t, ["distillationSpec"], Z_(w));
   }
-  const a = d(e, ["tunedModelDisplayName"]);
+  const a = c(e, ["tunedModelDisplayName"]);
   t !== void 0 && a != null && h(t, ["tunedModelDisplayName"], a);
-  const o = d(e, ["description"]);
+  const o = c(e, ["description"]);
   t !== void 0 && o != null && h(t, ["description"], o);
-  let l = d(n, ["config", "method"]);
+  let l = c(n, ["config", "method"]);
   if (l === void 0 && (l = "SUPERVISED_FINE_TUNING"), l === "SUPERVISED_FINE_TUNING") {
-    const w = d(e, ["epochCount"]);
+    const w = c(e, ["epochCount"]);
     t !== void 0 && w != null && h(t, [
       "supervisedTuningSpec",
       "hyperParameters",
       "epochCount"
     ], w);
   } else if (l === "PREFERENCE_TUNING") {
-    const w = d(e, ["epochCount"]);
+    const w = c(e, ["epochCount"]);
     t !== void 0 && w != null && h(t, [
       "preferenceOptimizationSpec",
       "hyperParameters",
       "epochCount"
     ], w);
   } else if (l === "DISTILLATION") {
-    const w = d(e, ["epochCount"]);
+    const w = c(e, ["epochCount"]);
     t !== void 0 && w != null && h(t, [
       "distillationSpec",
       "hyperParameters",
       "epochCount"
     ], w);
   }
-  let i = d(n, ["config", "method"]);
+  let i = c(n, ["config", "method"]);
   if (i === void 0 && (i = "SUPERVISED_FINE_TUNING"), i === "SUPERVISED_FINE_TUNING") {
-    const w = d(e, ["learningRateMultiplier"]);
+    const w = c(e, ["learningRateMultiplier"]);
     t !== void 0 && w != null && h(t, [
       "supervisedTuningSpec",
       "hyperParameters",
       "learningRateMultiplier"
     ], w);
   } else if (i === "PREFERENCE_TUNING") {
-    const w = d(e, ["learningRateMultiplier"]);
+    const w = c(e, ["learningRateMultiplier"]);
     t !== void 0 && w != null && h(t, [
       "preferenceOptimizationSpec",
       "hyperParameters",
       "learningRateMultiplier"
     ], w);
   } else if (i === "DISTILLATION") {
-    const w = d(e, ["learningRateMultiplier"]);
+    const w = c(e, ["learningRateMultiplier"]);
     t !== void 0 && w != null && h(t, [
       "distillationSpec",
       "hyperParameters",
       "learningRateMultiplier"
     ], w);
   }
-  let u = d(n, ["config", "method"]);
+  let u = c(n, ["config", "method"]);
   if (u === void 0 && (u = "SUPERVISED_FINE_TUNING"), u === "SUPERVISED_FINE_TUNING") {
-    const w = d(e, ["exportLastCheckpointOnly"]);
+    const w = c(e, ["exportLastCheckpointOnly"]);
     t !== void 0 && w != null && h(t, ["supervisedTuningSpec", "exportLastCheckpointOnly"], w);
   } else if (u === "PREFERENCE_TUNING") {
-    const w = d(e, ["exportLastCheckpointOnly"]);
+    const w = c(e, ["exportLastCheckpointOnly"]);
     t !== void 0 && w != null && h(t, ["preferenceOptimizationSpec", "exportLastCheckpointOnly"], w);
   } else if (u === "DISTILLATION") {
-    const w = d(e, ["exportLastCheckpointOnly"]);
+    const w = c(e, ["exportLastCheckpointOnly"]);
     t !== void 0 && w != null && h(t, ["distillationSpec", "exportLastCheckpointOnly"], w);
   }
-  let c = d(n, ["config", "method"]);
-  if (c === void 0 && (c = "SUPERVISED_FINE_TUNING"), c === "SUPERVISED_FINE_TUNING") {
-    const w = d(e, ["adapterSize"]);
+  let d = c(n, ["config", "method"]);
+  if (d === void 0 && (d = "SUPERVISED_FINE_TUNING"), d === "SUPERVISED_FINE_TUNING") {
+    const w = c(e, ["adapterSize"]);
     t !== void 0 && w != null && h(t, [
       "supervisedTuningSpec",
       "hyperParameters",
       "adapterSize"
     ], w);
-  } else if (c === "PREFERENCE_TUNING") {
-    const w = d(e, ["adapterSize"]);
+  } else if (d === "PREFERENCE_TUNING") {
+    const w = c(e, ["adapterSize"]);
     t !== void 0 && w != null && h(t, [
       "preferenceOptimizationSpec",
       "hyperParameters",
       "adapterSize"
     ], w);
-  } else if (c === "DISTILLATION") {
-    const w = d(e, ["adapterSize"]);
+  } else if (d === "DISTILLATION") {
+    const w = c(e, ["adapterSize"]);
     t !== void 0 && w != null && h(t, [
       "distillationSpec",
       "hyperParameters",
       "adapterSize"
     ], w);
   }
-  let f = d(n, ["config", "method"]);
+  let f = c(n, ["config", "method"]);
   if (f === void 0 && (f = "SUPERVISED_FINE_TUNING"), f === "SUPERVISED_FINE_TUNING") {
-    const w = d(e, ["tuningMode"]);
+    const w = c(e, ["tuningMode"]);
     t !== void 0 && w != null && h(t, ["supervisedTuningSpec", "tuningMode"], w);
   } else if (f === "DISTILLATION") {
-    const w = d(e, ["tuningMode"]);
+    const w = c(e, ["tuningMode"]);
     t !== void 0 && w != null && h(t, ["distillationSpec", "tuningMode"], w);
   }
-  const p = d(e, ["customBaseModel"]);
+  const p = c(e, ["customBaseModel"]);
   t !== void 0 && p != null && h(t, ["customBaseModel"], p);
-  let g = d(n, ["config", "method"]);
+  let g = c(n, ["config", "method"]);
   if (g === void 0 && (g = "SUPERVISED_FINE_TUNING"), g === "SUPERVISED_FINE_TUNING") {
-    const w = d(e, ["batchSize"]);
+    const w = c(e, ["batchSize"]);
     t !== void 0 && w != null && h(t, [
       "supervisedTuningSpec",
       "hyperParameters",
       "batchSize"
     ], w);
   } else if (g === "DISTILLATION") {
-    const w = d(e, ["batchSize"]);
+    const w = c(e, ["batchSize"]);
     t !== void 0 && w != null && h(t, [
       "distillationSpec",
       "hyperParameters",
       "batchSize"
     ], w);
   }
-  let y = d(n, ["config", "method"]);
+  let y = c(n, ["config", "method"]);
   if (y === void 0 && (y = "SUPERVISED_FINE_TUNING"), y === "SUPERVISED_FINE_TUNING") {
-    const w = d(e, ["learningRate"]);
+    const w = c(e, ["learningRate"]);
     t !== void 0 && w != null && h(t, [
       "supervisedTuningSpec",
       "hyperParameters",
       "learningRate"
     ], w);
   } else if (y === "DISTILLATION") {
-    const w = d(e, ["learningRate"]);
+    const w = c(e, ["learningRate"]);
     t !== void 0 && w != null && h(t, [
       "distillationSpec",
       "hyperParameters",
       "learningRate"
     ], w);
   }
-  const _ = d(e, ["labels"]);
+  const _ = c(e, ["labels"]);
   t !== void 0 && _ != null && h(t, ["labels"], _);
-  const x = d(e, ["beta"]);
+  const x = c(e, ["beta"]);
   t !== void 0 && x != null && h(t, [
     "preferenceOptimizationSpec",
     "hyperParameters",
     "beta"
   ], x);
-  const C = d(e, ["baseTeacherModel"]);
+  const C = c(e, ["baseTeacherModel"]);
   t !== void 0 && C != null && h(t, ["distillationSpec", "baseTeacherModel"], C);
-  const E = d(e, ["tunedTeacherModelSource"]);
+  const E = c(e, ["tunedTeacherModelSource"]);
   t !== void 0 && E != null && h(t, ["distillationSpec", "tunedTeacherModelSource"], E);
-  const R = d(e, ["sftLossWeightMultiplier"]);
+  const R = c(e, ["sftLossWeightMultiplier"]);
   t !== void 0 && R != null && h(t, [
     "distillationSpec",
     "hyperParameters",
     "sftLossWeightMultiplier"
   ], R);
-  const N = d(e, ["outputUri"]);
+  const N = c(e, ["outputUri"]);
   t !== void 0 && N != null && h(t, ["outputUri"], N);
-  const m = d(e, ["encryptionSpec"]);
+  const m = c(e, ["encryptionSpec"]);
   return t !== void 0 && m != null && h(t, ["encryptionSpec"], m), r;
 }
 function Lj(e, t) {
-  const n = {}, r = d(e, ["baseModel"]);
+  const n = {}, r = c(e, ["baseModel"]);
   r != null && h(n, ["baseModel"], r);
-  const s = d(e, ["preTunedModel"]);
+  const s = c(e, ["preTunedModel"]);
   s != null && h(n, ["preTunedModel"], s);
-  const a = d(e, ["trainingDataset"]);
+  const a = c(e, ["trainingDataset"]);
   a != null && Vj(a);
-  const o = d(e, ["config"]);
+  const o = c(e, ["config"]);
   return o != null && Nj(o, n), n;
 }
 function Dj(e, t) {
-  const n = {}, r = d(e, ["baseModel"]);
+  const n = {}, r = c(e, ["baseModel"]);
   r != null && h(n, ["baseModel"], r);
-  const s = d(e, ["preTunedModel"]);
+  const s = c(e, ["preTunedModel"]);
   s != null && h(n, ["preTunedModel"], s);
-  const a = d(e, ["trainingDataset"]);
+  const a = c(e, ["trainingDataset"]);
   a != null && Gj(a, n, t);
-  const o = d(e, ["config"]);
+  const o = c(e, ["config"]);
   return o != null && $j(o, n, t), n;
 }
 function Oj(e, t) {
-  const n = {}, r = d(e, ["name"]);
+  const n = {}, r = c(e, ["name"]);
   return r != null && h(n, ["_url", "name"], r), n;
 }
 function Fj(e, t) {
-  const n = {}, r = d(e, ["name"]);
+  const n = {}, r = c(e, ["name"]);
   return r != null && h(n, ["_url", "name"], r), n;
 }
 function Bj(e, t, n) {
-  const r = {}, s = d(e, ["pageSize"]);
+  const r = {}, s = c(e, ["pageSize"]);
   t !== void 0 && s != null && h(t, ["_query", "pageSize"], s);
-  const a = d(e, ["pageToken"]);
+  const a = c(e, ["pageToken"]);
   t !== void 0 && a != null && h(t, ["_query", "pageToken"], a);
-  const o = d(e, ["filter"]);
+  const o = c(e, ["filter"]);
   return t !== void 0 && o != null && h(t, ["_query", "filter"], o), r;
 }
 function Uj(e, t, n) {
-  const r = {}, s = d(e, ["pageSize"]);
+  const r = {}, s = c(e, ["pageSize"]);
   t !== void 0 && s != null && h(t, ["_query", "pageSize"], s);
-  const a = d(e, ["pageToken"]);
+  const a = c(e, ["pageToken"]);
   t !== void 0 && a != null && h(t, ["_query", "pageToken"], a);
-  const o = d(e, ["filter"]);
+  const o = c(e, ["filter"]);
   return t !== void 0 && o != null && h(t, ["_query", "filter"], o), r;
 }
 function qj(e, t) {
-  const n = {}, r = d(e, ["config"]);
+  const n = {}, r = c(e, ["config"]);
   return r != null && Bj(r, n), n;
 }
 function Hj(e, t) {
-  const n = {}, r = d(e, ["config"]);
+  const n = {}, r = c(e, ["config"]);
   return r != null && Uj(r, n), n;
 }
 function zj(e, t) {
-  const n = {}, r = d(e, ["sdkHttpResponse"]);
+  const n = {}, r = c(e, ["sdkHttpResponse"]);
   r != null && h(n, ["sdkHttpResponse"], r);
-  const s = d(e, ["nextPageToken"]);
+  const s = c(e, ["nextPageToken"]);
   s != null && h(n, ["nextPageToken"], s);
-  const a = d(e, ["tunedModels"]);
+  const a = c(e, ["tunedModels"]);
   if (a != null) {
     let o = a;
     Array.isArray(o) && (o = o.map((l) => zR(l))), h(n, ["tuningJobs"], o);
@@ -33802,11 +33802,11 @@ function zj(e, t) {
   return n;
 }
 function Kj(e, t) {
-  const n = {}, r = d(e, ["sdkHttpResponse"]);
+  const n = {}, r = c(e, ["sdkHttpResponse"]);
   r != null && h(n, ["sdkHttpResponse"], r);
-  const s = d(e, ["nextPageToken"]);
+  const s = c(e, ["nextPageToken"]);
   s != null && h(n, ["nextPageToken"], s);
-  const a = d(e, ["tuningJobs"]);
+  const a = c(e, ["tuningJobs"]);
   if (a != null) {
     let o = a;
     Array.isArray(o) && (o = o.map((l) => o1(l))), h(n, ["tuningJobs"], o);
@@ -33814,16 +33814,16 @@ function Kj(e, t) {
   return n;
 }
 function Wj(e, t) {
-  const n = {}, r = d(e, ["name"]);
+  const n = {}, r = c(e, ["name"]);
   r != null && h(n, ["model"], r);
-  const s = d(e, ["name"]);
+  const s = c(e, ["name"]);
   return s != null && h(n, ["endpoint"], s), n;
 }
 function Vj(e, t) {
   const n = {};
-  if (d(e, ["gcsUri"]) !== void 0) throw new Error("gcsUri parameter is not supported in Gemini API.");
-  if (d(e, ["vertexDatasetResource"]) !== void 0) throw new Error("vertexDatasetResource parameter is not supported in Gemini API.");
-  const r = d(e, ["examples"]);
+  if (c(e, ["gcsUri"]) !== void 0) throw new Error("gcsUri parameter is not supported in Gemini API.");
+  if (c(e, ["vertexDatasetResource"]) !== void 0) throw new Error("vertexDatasetResource parameter is not supported in Gemini API.");
+  const r = c(e, ["examples"]);
   if (r != null) {
     let s = r;
     Array.isArray(s) && (s = s.map((a) => a)), h(n, ["examples", "examples"], s);
@@ -33832,136 +33832,136 @@ function Vj(e, t) {
 }
 function Gj(e, t, n) {
   const r = {};
-  let s = d(n, ["config", "method"]);
+  let s = c(n, ["config", "method"]);
   if (s === void 0 && (s = "SUPERVISED_FINE_TUNING"), s === "SUPERVISED_FINE_TUNING") {
-    const o = d(e, ["gcsUri"]);
+    const o = c(e, ["gcsUri"]);
     t !== void 0 && o != null && h(t, ["supervisedTuningSpec", "trainingDatasetUri"], o);
   } else if (s === "PREFERENCE_TUNING") {
-    const o = d(e, ["gcsUri"]);
+    const o = c(e, ["gcsUri"]);
     t !== void 0 && o != null && h(t, ["preferenceOptimizationSpec", "trainingDatasetUri"], o);
   } else if (s === "DISTILLATION") {
-    const o = d(e, ["gcsUri"]);
+    const o = c(e, ["gcsUri"]);
     t !== void 0 && o != null && h(t, ["distillationSpec", "promptDatasetUri"], o);
   }
-  let a = d(n, ["config", "method"]);
+  let a = c(n, ["config", "method"]);
   if (a === void 0 && (a = "SUPERVISED_FINE_TUNING"), a === "SUPERVISED_FINE_TUNING") {
-    const o = d(e, ["vertexDatasetResource"]);
+    const o = c(e, ["vertexDatasetResource"]);
     t !== void 0 && o != null && h(t, ["supervisedTuningSpec", "trainingDatasetUri"], o);
   } else if (a === "PREFERENCE_TUNING") {
-    const o = d(e, ["vertexDatasetResource"]);
+    const o = c(e, ["vertexDatasetResource"]);
     t !== void 0 && o != null && h(t, ["preferenceOptimizationSpec", "trainingDatasetUri"], o);
   } else if (a === "DISTILLATION") {
-    const o = d(e, ["vertexDatasetResource"]);
+    const o = c(e, ["vertexDatasetResource"]);
     t !== void 0 && o != null && h(t, ["distillationSpec", "promptDatasetUri"], o);
   }
-  if (d(e, ["examples"]) !== void 0) throw new Error("examples parameter is not supported in Vertex AI.");
+  if (c(e, ["examples"]) !== void 0) throw new Error("examples parameter is not supported in Vertex AI.");
   return r;
 }
 function zR(e, t) {
-  const n = {}, r = d(e, ["sdkHttpResponse"]);
+  const n = {}, r = c(e, ["sdkHttpResponse"]);
   r != null && h(n, ["sdkHttpResponse"], r);
-  const s = d(e, ["name"]);
+  const s = c(e, ["name"]);
   s != null && h(n, ["name"], s);
-  const a = d(e, ["state"]);
+  const a = c(e, ["state"]);
   a != null && h(n, ["state"], QP(a));
-  const o = d(e, ["createTime"]);
+  const o = c(e, ["createTime"]);
   o != null && h(n, ["createTime"], o);
-  const l = d(e, ["tuningTask", "startTime"]);
+  const l = c(e, ["tuningTask", "startTime"]);
   l != null && h(n, ["startTime"], l);
-  const i = d(e, ["tuningTask", "completeTime"]);
+  const i = c(e, ["tuningTask", "completeTime"]);
   i != null && h(n, ["endTime"], i);
-  const u = d(e, ["updateTime"]);
+  const u = c(e, ["updateTime"]);
   u != null && h(n, ["updateTime"], u);
-  const c = d(e, ["description"]);
-  c != null && h(n, ["description"], c);
-  const f = d(e, ["baseModel"]);
+  const d = c(e, ["description"]);
+  d != null && h(n, ["description"], d);
+  const f = c(e, ["baseModel"]);
   f != null && h(n, ["baseModel"], f);
-  const p = d(e, ["_self"]);
+  const p = c(e, ["_self"]);
   return p != null && h(n, ["tunedModel"], Wj(p)), n;
 }
 function o1(e, t) {
-  const n = {}, r = d(e, ["sdkHttpResponse"]);
+  const n = {}, r = c(e, ["sdkHttpResponse"]);
   r != null && h(n, ["sdkHttpResponse"], r);
-  const s = d(e, ["name"]);
+  const s = c(e, ["name"]);
   s != null && h(n, ["name"], s);
-  const a = d(e, ["state"]);
+  const a = c(e, ["state"]);
   a != null && h(n, ["state"], QP(a));
-  const o = d(e, ["createTime"]);
+  const o = c(e, ["createTime"]);
   o != null && h(n, ["createTime"], o);
-  const l = d(e, ["startTime"]);
+  const l = c(e, ["startTime"]);
   l != null && h(n, ["startTime"], l);
-  const i = d(e, ["endTime"]);
+  const i = c(e, ["endTime"]);
   i != null && h(n, ["endTime"], i);
-  const u = d(e, ["updateTime"]);
+  const u = c(e, ["updateTime"]);
   u != null && h(n, ["updateTime"], u);
-  const c = d(e, ["error"]);
-  c != null && h(n, ["error"], c);
-  const f = d(e, ["description"]);
+  const d = c(e, ["error"]);
+  d != null && h(n, ["error"], d);
+  const f = c(e, ["description"]);
   f != null && h(n, ["description"], f);
-  const p = d(e, ["baseModel"]);
+  const p = c(e, ["baseModel"]);
   p != null && h(n, ["baseModel"], p);
-  const g = d(e, ["tunedModel"]);
+  const g = c(e, ["tunedModel"]);
   g != null && h(n, ["tunedModel"], g);
-  const y = d(e, ["preTunedModel"]);
+  const y = c(e, ["preTunedModel"]);
   y != null && h(n, ["preTunedModel"], y);
-  const _ = d(e, ["supervisedTuningSpec"]);
+  const _ = c(e, ["supervisedTuningSpec"]);
   _ != null && h(n, ["supervisedTuningSpec"], _);
-  const x = d(e, ["preferenceOptimizationSpec"]);
+  const x = c(e, ["preferenceOptimizationSpec"]);
   x != null && h(n, ["preferenceOptimizationSpec"], x);
-  const C = d(e, ["distillationSpec"]);
+  const C = c(e, ["distillationSpec"]);
   C != null && h(n, ["distillationSpec"], C);
-  const E = d(e, ["tuningDataStats"]);
+  const E = c(e, ["tuningDataStats"]);
   E != null && h(n, ["tuningDataStats"], E);
-  const R = d(e, ["encryptionSpec"]);
+  const R = c(e, ["encryptionSpec"]);
   R != null && h(n, ["encryptionSpec"], R);
-  const N = d(e, ["partnerModelTuningSpec"]);
+  const N = c(e, ["partnerModelTuningSpec"]);
   N != null && h(n, ["partnerModelTuningSpec"], N);
-  const m = d(e, ["customBaseModel"]);
+  const m = c(e, ["customBaseModel"]);
   m != null && h(n, ["customBaseModel"], m);
-  const w = d(e, ["evaluateDatasetRuns"]);
+  const w = c(e, ["evaluateDatasetRuns"]);
   if (w != null) {
     let J = w;
     Array.isArray(J) && (J = J.map((ae) => ae)), h(n, ["evaluateDatasetRuns"], J);
   }
-  const b = d(e, ["experiment"]);
+  const b = c(e, ["experiment"]);
   b != null && h(n, ["experiment"], b);
-  const S = d(e, ["fullFineTuningSpec"]);
+  const S = c(e, ["fullFineTuningSpec"]);
   S != null && h(n, ["fullFineTuningSpec"], S);
-  const I = d(e, ["labels"]);
+  const I = c(e, ["labels"]);
   I != null && h(n, ["labels"], I);
-  const k = d(e, ["outputUri"]);
+  const k = c(e, ["outputUri"]);
   k != null && h(n, ["outputUri"], k);
-  const P = d(e, ["pipelineJob"]);
+  const P = c(e, ["pipelineJob"]);
   P != null && h(n, ["pipelineJob"], P);
-  const U = d(e, ["serviceAccount"]);
+  const U = c(e, ["serviceAccount"]);
   U != null && h(n, ["serviceAccount"], U);
-  const K = d(e, ["tunedModelDisplayName"]);
+  const K = c(e, ["tunedModelDisplayName"]);
   K != null && h(n, ["tunedModelDisplayName"], K);
-  const j = d(e, ["tuningJobState"]);
+  const j = c(e, ["tuningJobState"]);
   j != null && h(n, ["tuningJobState"], j);
-  const V = d(e, ["veoTuningSpec"]);
+  const V = c(e, ["veoTuningSpec"]);
   V != null && h(n, ["veoTuningSpec"], V);
-  const W = d(e, ["distillationSamplingSpec"]);
+  const W = c(e, ["distillationSamplingSpec"]);
   W != null && h(n, ["distillationSamplingSpec"], W);
-  const $ = d(e, ["tuningJobMetadata"]);
+  const $ = c(e, ["tuningJobMetadata"]);
   return $ != null && h(n, ["tuningJobMetadata"], $), n;
 }
 function Jj(e, t) {
-  const n = {}, r = d(e, ["sdkHttpResponse"]);
+  const n = {}, r = c(e, ["sdkHttpResponse"]);
   r != null && h(n, ["sdkHttpResponse"], r);
-  const s = d(e, ["name"]);
+  const s = c(e, ["name"]);
   s != null && h(n, ["name"], s);
-  const a = d(e, ["metadata"]);
+  const a = c(e, ["metadata"]);
   a != null && h(n, ["metadata"], a);
-  const o = d(e, ["done"]);
+  const o = c(e, ["done"]);
   o != null && h(n, ["done"], o);
-  const l = d(e, ["error"]);
+  const l = c(e, ["error"]);
   return l != null && h(n, ["error"], l), n;
 }
 function Z_(e, t) {
-  const n = {}, r = d(e, ["gcsUri"]);
+  const n = {}, r = c(e, ["gcsUri"]);
   r != null && h(n, ["validationDatasetUri"], r);
-  const s = d(e, ["vertexDatasetResource"]);
+  const s = c(e, ["vertexDatasetResource"]);
   return s != null && h(n, ["validationDatasetUri"], s), n;
 }
 var Yj = class extends oi {
@@ -33999,8 +33999,8 @@ var Yj = class extends oi {
         httpMethod: "GET",
         httpOptions: (t = e.config) === null || t === void 0 ? void 0 : t.httpOptions,
         abortSignal: (n = e.config) === null || n === void 0 ? void 0 : n.abortSignal
-      }).then((u) => u.json().then((c) => {
-        const f = c;
+      }).then((u) => u.json().then((d) => {
+        const f = d;
         return f.sdkHttpResponse = { headers: u.headers }, f;
       })), a.then((u) => o1(u));
     } else {
@@ -34012,8 +34012,8 @@ var Yj = class extends oi {
         httpMethod: "GET",
         httpOptions: (r = e.config) === null || r === void 0 ? void 0 : r.httpOptions,
         abortSignal: (s = e.config) === null || s === void 0 ? void 0 : s.abortSignal
-      }).then((u) => u.json().then((c) => {
-        const f = c;
+      }).then((u) => u.json().then((d) => {
+        const f = d;
         return f.sdkHttpResponse = { headers: u.headers }, f;
       })), a.then((u) => zR(u));
     }
@@ -34030,12 +34030,12 @@ var Yj = class extends oi {
         httpMethod: "GET",
         httpOptions: (t = e.config) === null || t === void 0 ? void 0 : t.httpOptions,
         abortSignal: (n = e.config) === null || n === void 0 ? void 0 : n.abortSignal
-      }).then((u) => u.json().then((c) => {
-        const f = c;
+      }).then((u) => u.json().then((d) => {
+        const f = d;
         return f.sdkHttpResponse = { headers: u.headers }, f;
       })), a.then((u) => {
-        const c = Kj(u), f = new sI();
-        return Object.assign(f, c), f;
+        const d = Kj(u), f = new sI();
+        return Object.assign(f, d), f;
       });
     } else {
       const i = qj(e);
@@ -34046,12 +34046,12 @@ var Yj = class extends oi {
         httpMethod: "GET",
         httpOptions: (r = e.config) === null || r === void 0 ? void 0 : r.httpOptions,
         abortSignal: (s = e.config) === null || s === void 0 ? void 0 : s.abortSignal
-      }).then((u) => u.json().then((c) => {
-        const f = c;
+      }).then((u) => u.json().then((d) => {
+        const f = d;
         return f.sdkHttpResponse = { headers: u.headers }, f;
       })), a.then((u) => {
-        const c = zj(u), f = new sI();
-        return Object.assign(f, c), f;
+        const d = zj(u), f = new sI();
+        return Object.assign(f, d), f;
       });
     }
   }
@@ -34067,12 +34067,12 @@ var Yj = class extends oi {
         httpMethod: "POST",
         httpOptions: (t = e.config) === null || t === void 0 ? void 0 : t.httpOptions,
         abortSignal: (n = e.config) === null || n === void 0 ? void 0 : n.abortSignal
-      }).then((u) => u.json().then((c) => {
-        const f = c;
+      }).then((u) => u.json().then((d) => {
+        const f = d;
         return f.sdkHttpResponse = { headers: u.headers }, f;
       })), a.then((u) => {
-        const c = Rj(u), f = new aI();
-        return Object.assign(f, c), f;
+        const d = Rj(u), f = new aI();
+        return Object.assign(f, d), f;
       });
     } else {
       const i = kj(e);
@@ -34083,12 +34083,12 @@ var Yj = class extends oi {
         httpMethod: "POST",
         httpOptions: (r = e.config) === null || r === void 0 ? void 0 : r.httpOptions,
         abortSignal: (s = e.config) === null || s === void 0 ? void 0 : s.abortSignal
-      }).then((u) => u.json().then((c) => {
-        const f = c;
+      }).then((u) => u.json().then((d) => {
+        const f = d;
         return f.sdkHttpResponse = { headers: u.headers }, f;
       })), a.then((u) => {
-        const c = Pj(u), f = new aI();
-        return Object.assign(f, c), f;
+        const d = Pj(u), f = new aI();
+        return Object.assign(f, d), f;
       });
     }
   }
@@ -34155,15 +34155,15 @@ async function KR(e, t, n, r) {
     const g = new URL(i), y = new URL(t);
     y.protocol = g.protocol, y.host = g.host, y.port = g.port, l = y.toString();
   }
-  let u = 0, c = 0, f = new J0(new Response()), p = "upload";
-  for (u = e.size; c < u; ) {
-    const g = Math.min(jj, u - c), y = e.slice(c, c + g);
-    c + g >= u && (p += ", finalize");
+  let u = 0, d = 0, f = new J0(new Response()), p = "upload";
+  for (u = e.size; d < u; ) {
+    const g = Math.min(jj, u - d), y = e.slice(d, d + g);
+    d + g >= u && (p += ", finalize");
     let _ = 0, x = Zj;
     for (; _ < Qj; ) {
       const C = Object.assign(Object.assign({}, r?.headers || {}), {
         "X-Goog-Upload-Command": p,
-        "X-Goog-Upload-Offset": String(c),
+        "X-Goog-Upload-Offset": String(d),
         "Content-Length": String(g)
       });
       if (f = await n.request({
@@ -34178,8 +34178,8 @@ async function KR(e, t, n, r) {
       }), !((a = f?.headers) === null || a === void 0) && a[Vg]) break;
       _++, await sQ(x), x = x * eQ;
     }
-    if (c += g, ((o = f?.headers) === null || o === void 0 ? void 0 : o[Vg]) !== "active") break;
-    if (u <= c) throw new Error("All content has been uploaded, but the upload status is not finalized.");
+    if (d += g, ((o = f?.headers) === null || o === void 0 ? void 0 : o[Vg]) !== "active") break;
+    if (u <= d) throw new Error("All content has been uploaded, but the upload status is not finalized.");
   }
   return f;
 }
@@ -34342,8 +34342,8 @@ function pQ(e = [], t = "") {
   if (!a?.parts?.length) return n[n.length - 1];
   if (s) {
     const i = /* @__PURE__ */ new Map();
-    n.forEach((c) => {
-      c.parts.forEach((f, p) => {
+    n.forEach((d) => {
+      d.parts.forEach((f, p) => {
         const g = eb(f, p);
         if (!g) return;
         const y = i.get(g);
@@ -34351,12 +34351,12 @@ function pQ(e = [], t = "") {
       });
     });
     const u = /* @__PURE__ */ new Set();
-    a.parts = a.parts.map((c, f) => {
-      const p = eb(c, f);
-      return p ? (u.add(p), i.get(p) || c) : c;
-    }), s.parts.forEach((c, f) => {
-      const p = eb(c, f);
-      !p || u.has(p) || (a.parts.push(i.get(p) || Rf(c)), u.add(p));
+    a.parts = a.parts.map((d, f) => {
+      const p = eb(d, f);
+      return p ? (u.add(p), i.get(p) || d) : d;
+    }), s.parts.forEach((d, f) => {
+      const p = eb(d, f);
+      !p || u.has(p) || (a.parts.push(i.get(p) || Rf(d)), u.add(p));
     });
   }
   const o = String(t || ""), l = a.parts.filter((i) => !(typeof i?.text == "string" && !i?.thought));
@@ -34612,7 +34612,7 @@ var CQ = class {
   }
   async sendThroughChat(e, t, n) {
     let r, s, a, o = [], l = null;
-    const i = { ...t }, u = typeof n.onStreamProgress == "function", c = WR(e).length;
+    const i = { ...t }, u = typeof n.onStreamProgress == "function", d = WR(e).length;
     if (u) {
       const y = await e.sendMessageStream(i), _ = /* @__PURE__ */ new Map();
       let x = "", C = [], E = null;
@@ -34647,7 +34647,7 @@ var CQ = class {
       })), a = x;
     } else
       r = await e.sendMessage(i), s = BI(r), a = OI(r);
-    const f = FI(r), p = f.length ? f : o, g = AQ(e, c);
+    const f = FI(r), p = f.length ? f : o, g = AQ(e, d);
     return {
       text: a,
       toolCalls: p,
@@ -34971,10 +34971,10 @@ var c1 = (e, t) => (c1 = Object.hasOwn ?? Function.prototype.call.bind(Object.pr
   let o = "";
   for (let l = 0; l < a.length; l += nb) {
     const i = a.length >= nb ? a.slice(l, l + nb) : a, u = [];
-    for (let c = 0; c < i.length; ++c) {
-      let f = i.charCodeAt(c);
+    for (let d = 0; d < i.length; ++d) {
+      let f = i.charCodeAt(d);
       if (f === 45 || f === 46 || f === 95 || f === 126 || f >= 48 && f <= 57 || f >= 65 && f <= 90 || f >= 97 && f <= 122 || s === "RFC1738" && (f === 40 || f === 41)) {
-        u[u.length] = i.charAt(c);
+        u[u.length] = i.charAt(d);
         continue;
       }
       if (f < 128) {
@@ -34989,7 +34989,7 @@ var c1 = (e, t) => (c1 = Object.hasOwn ?? Function.prototype.call.bind(Object.pr
         u[u.length] = Ka[224 | f >> 12] + Ka[128 | f >> 6 & 63] + Ka[128 | f & 63];
         continue;
       }
-      c += 1, f = 65536 + ((f & 1023) << 10 | i.charCodeAt(c) & 1023), u[u.length] = Ka[240 | f >> 18] + Ka[128 | f >> 12 & 63] + Ka[128 | f >> 6 & 63] + Ka[128 | f & 63];
+      d += 1, f = 65536 + ((f & 1023) << 10 | i.charCodeAt(d) & 1023), u[u.length] = Ka[240 | f >> 18] + Ka[128 | f >> 12 & 63] + Ka[128 | f >> 6 & 63] + Ka[128 | f & 63];
     }
     o += u.join("");
   }
@@ -35044,7 +35044,7 @@ function qQ(e) {
   return typeof e == "string" || typeof e == "number" || typeof e == "boolean" || typeof e == "symbol" || typeof e == "bigint";
 }
 var rb = {};
-function f5(e, t, n, r, s, a, o, l, i, u, c, f, p, g, y, _, x, C) {
+function f5(e, t, n, r, s, a, o, l, i, u, d, f, p, g, y, _, x, C) {
   let E = e, R = C, N = 0, m = !1;
   for (; (R = R.get(rb)) !== void 0 && !m; ) {
     const k = R.get(e);
@@ -35075,7 +35075,7 @@ function f5(e, t, n, r, s, a, o, l, i, u, c, f, p, g, y, _, x, C) {
   else if (fs(u)) b = u;
   else {
     const k = Object.keys(E);
-    b = c ? k.sort(c) : k;
+    b = d ? k.sort(d) : k;
   }
   const S = l ? String(t).replace(/\./g, "%2E") : String(t), I = r && fs(E) && E.length === 1 ? S + "[]" : S;
   if (s && fs(E) && E.length === 0) return I + "[]";
@@ -35085,7 +35085,7 @@ function f5(e, t, n, r, s, a, o, l, i, u, c, f, p, g, y, _, x, C) {
     const K = f && l ? P.replace(/\./g, "%2E") : P, j = fs(E) ? typeof n == "function" ? n(I, K) : I : I + (f ? "." + K : "[" + K + "]");
     C.set(e, N);
     const V = /* @__PURE__ */ new WeakMap();
-    V.set(rb, C), d5(w, f5(U, j, n, r, s, a, o, l, n === "comma" && _ && fs(E) ? null : i, u, c, f, p, g, y, _, x, V));
+    V.set(rb, C), d5(w, f5(U, j, n, r, s, a, o, l, n === "comma" && _ && fs(E) ? null : i, u, d, f, p, g, y, _, x, V));
   }
   return w;
 }
@@ -35142,9 +35142,9 @@ function zQ(e, t = {}) {
     const g = s[p];
     r.skipNulls && n[g] === null || d5(o, f5(n[g], g, l, i, r.allowEmptyArrays, r.strictNullHandling, r.skipNulls, r.encodeDotInKeys, r.encode ? r.encoder : null, r.filter, r.sort, r.allowDots, r.serializeDate, r.format, r.formatter, r.encodeValuesOnly, r.charset, u));
   }
-  const c = o.join(r.delimiter);
+  const d = o.join(r.delimiter);
   let f = r.addQueryPrefix === !0 ? "?" : "";
-  return r.charsetSentinel && (r.charset === "iso-8859-1" ? f += "utf8=%26%2310003%3B&" : f += "utf8=%E2%9C%93&"), c.length > 0 ? f + c : "";
+  return r.charsetSentinel && (r.charset === "iso-8859-1" ? f += "utf8=%26%2310003%3B&" : f += "utf8=%E2%9C%93&"), d.length > 0 ? f + d : "";
 }
 function KQ(e) {
   return zQ(e, { arrayFormat: "brackets" });
@@ -35278,28 +35278,28 @@ var El = (e) => (e.options && (e.options = { ...e.options }, delete e.options.he
               continue;
             }
             if (u.event === null || !u.event.startsWith("thread.")) {
-              let c;
+              let d;
               try {
-                c = JSON.parse(u.data);
+                d = JSON.parse(u.data);
               } catch (f) {
                 throw o.error("Could not parse message into JSON:", u.data), o.error("From chunk:", u.raw), f;
               }
-              if (c && c.error) throw new Hr(void 0, c.error, void 0, t.headers);
+              if (d && d.error) throw new Hr(void 0, d.error, void 0, t.headers);
               yield s ? {
                 event: u.event,
-                data: c
-              } : c;
+                data: d
+              } : d;
             } else {
-              let c;
+              let d;
               try {
-                c = JSON.parse(u.data);
+                d = JSON.parse(u.data);
               } catch (f) {
                 throw console.error("Could not parse message into JSON:", u.data), console.error("From chunk:", u.raw), f;
               }
-              if (u.event == "error") throw new Hr(void 0, c.error, c.message, void 0);
+              if (u.event == "error") throw new Hr(void 0, d.error, d.message, void 0);
               yield {
                 event: u.event,
-                data: c
+                data: d
               };
             }
           }
@@ -35317,7 +35317,7 @@ var El = (e) => (e.options && (e.options = { ...e.options }, delete e.options.he
     let s = !1;
     async function* a() {
       const l = new ty(), i = i5(t);
-      for await (const u of i) for (const c of l.decode(u)) yield c;
+      for await (const u of i) for (const d of l.decode(u)) yield d;
       for (const u of l.flush()) yield u;
     }
     async function* o() {
@@ -35744,15 +35744,15 @@ function w5(e) {
 var nx = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.create(null)), uZ = (e = w5) => function(n, ...r) {
   if (n.length === 1) return n[0];
   let s = !1;
-  const a = [], o = n.reduce((c, f, p) => {
+  const a = [], o = n.reduce((d, f, p) => {
     /[?#]/.test(f) && (s = !0);
     const g = r[p];
     let y = (s ? encodeURIComponent : e)("" + g);
     return p !== r.length && (g == null || typeof g == "object" && g.toString === Object.getPrototypeOf(Object.getPrototypeOf(g.hasOwnProperty ?? nx) ?? nx)?.toString) && (y = g + "", a.push({
-      start: c.length + f.length,
+      start: d.length + f.length,
       length: y.length,
       error: `Value of type ${Object.prototype.toString.call(g).slice(8, -1)} is not a valid path parameter`
-    })), c + f + (p === r.length ? "" : y);
+    })), d + f + (p === r.length ? "" : y);
   }, ""), l = o.split(/[?#]/, 1)[0], i = /(?<=^|\/)(?:\.|%2e){1,2}(?=\/|$)/gi;
   let u;
   for (; (u = i.exec(l)) !== null; ) a.push({
@@ -35760,11 +35760,11 @@ var nx = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.create(null)), uZ 
     length: u[0].length,
     error: `Value "${u[0]}" can't be safely passed as a path parameter`
   });
-  if (a.sort((c, f) => c.start - f.start), a.length > 0) {
-    let c = 0;
+  if (a.sort((d, f) => d.start - f.start), a.length > 0) {
+    let d = 0;
     const f = a.reduce((p, g) => {
-      const y = " ".repeat(g.start - c), _ = "^".repeat(g.length);
-      return c = g.start + g.length, p + y + _;
+      const y = " ".repeat(g.start - d), _ = "^".repeat(g.length);
+      return d = g.start + g.length, p + y + _;
     }, "");
     throw new wt(`Path parameters result in path with invalid segments:
 ${a.map((p) => p.error).join(`
@@ -36026,8 +36026,8 @@ var Jr, m1, Qg, g1, v1, y1, I5, x5, gZ = 10, k5 = class extends RS {
         };
       }
       return p;
-    }), c = {};
-    for (const p of u) p.type === "function" && (c[p.function.name || p.function.function.name] = p.function);
+    }), d = {};
+    for (const p of u) p.type === "function" && (d[p.function.name || p.function.function.name] = p.function);
     const f = "tools" in t ? u.map((p) => p.type === "function" ? {
       type: "function",
       function: {
@@ -36049,7 +36049,7 @@ var Jr, m1, Qg, g1, v1, y1, I5, x5, gZ = 10, k5 = class extends RS {
       if (!g.tool_calls?.length) return;
       for (const y of g.tool_calls) {
         if (y.type !== "function") continue;
-        const _ = y.id, { name: x, arguments: C } = y.function, E = c[x];
+        const _ = y.id, { name: x, arguments: C } = y.function, E = d[x];
         if (E) {
           if (l && l !== x) {
             const w = `Invalid tool_call: ${JSON.stringify(x)}. ${JSON.stringify(l)} requested. Please try again`;
@@ -36061,7 +36061,7 @@ var Jr, m1, Qg, g1, v1, y1, I5, x5, gZ = 10, k5 = class extends RS {
             continue;
           }
         } else {
-          const w = `Invalid tool_call: ${JSON.stringify(x)}. Available options are: ${Object.keys(c).map((b) => JSON.stringify(b)).join(", ")}. Please try again`;
+          const w = `Invalid tool_call: ${JSON.stringify(x)}. Available options are: ${Object.keys(d).map((b) => JSON.stringify(b)).join(", ")}. Please try again`;
           this._addMessage({
             role: r,
             tool_call_id: _,
@@ -36174,7 +36174,7 @@ var wZ = (e, t) => {
     throw new yZ(`${p} at position ${r}`);
   }, a = (p) => {
     throw new _Z(`${p} at position ${r}`);
-  }, o = () => (f(), r >= n && s("Unexpected end of input"), e[r] === '"' ? l() : e[r] === "{" ? i() : e[r] === "[" ? u() : e.substring(r, r + 4) === "null" || vr.NULL & t && n - r < 4 && "null".startsWith(e.substring(r)) ? (r += 4, null) : e.substring(r, r + 4) === "true" || vr.BOOL & t && n - r < 4 && "true".startsWith(e.substring(r)) ? (r += 4, !0) : e.substring(r, r + 5) === "false" || vr.BOOL & t && n - r < 5 && "false".startsWith(e.substring(r)) ? (r += 5, !1) : e.substring(r, r + 8) === "Infinity" || vr.INFINITY & t && n - r < 8 && "Infinity".startsWith(e.substring(r)) ? (r += 8, 1 / 0) : e.substring(r, r + 9) === "-Infinity" || vr.MINUS_INFINITY & t && 1 < n - r && n - r < 9 && "-Infinity".startsWith(e.substring(r)) ? (r += 9, -1 / 0) : e.substring(r, r + 3) === "NaN" || vr.NAN & t && n - r < 3 && "NaN".startsWith(e.substring(r)) ? (r += 3, NaN) : c()), l = () => {
+  }, o = () => (f(), r >= n && s("Unexpected end of input"), e[r] === '"' ? l() : e[r] === "{" ? i() : e[r] === "[" ? u() : e.substring(r, r + 4) === "null" || vr.NULL & t && n - r < 4 && "null".startsWith(e.substring(r)) ? (r += 4, null) : e.substring(r, r + 4) === "true" || vr.BOOL & t && n - r < 4 && "true".startsWith(e.substring(r)) ? (r += 4, !0) : e.substring(r, r + 5) === "false" || vr.BOOL & t && n - r < 5 && "false".startsWith(e.substring(r)) ? (r += 5, !1) : e.substring(r, r + 8) === "Infinity" || vr.INFINITY & t && n - r < 8 && "Infinity".startsWith(e.substring(r)) ? (r += 8, 1 / 0) : e.substring(r, r + 9) === "-Infinity" || vr.MINUS_INFINITY & t && 1 < n - r && n - r < 9 && "-Infinity".startsWith(e.substring(r)) ? (r += 9, -1 / 0) : e.substring(r, r + 3) === "NaN" || vr.NAN & t && n - r < 3 && "NaN".startsWith(e.substring(r)) ? (r += 3, NaN) : d()), l = () => {
     const p = r;
     let g = !1;
     for (r++; r < n && (e[r] !== '"' || g && e[r - 1] === "\\"); )
@@ -36228,7 +36228,7 @@ var wZ = (e, t) => {
       s("Expected ']' at end of array");
     }
     return r++, p;
-  }, c = () => {
+  }, d = () => {
     if (r === 0) {
       e === "-" && vr.NUM & t && s("Not sure what '-' is");
       try {
@@ -36396,7 +36396,7 @@ var wZ = (e, t) => {
       ...u,
       choices: []
     }, "f");
-    for (const { delta: c, finish_reason: f, index: p, logprobs: g = null, ...y } of n.choices) {
+    for (const { delta: d, finish_reason: f, index: p, logprobs: g = null, ...y } of n.choices) {
       let _ = l.choices[p];
       if (_ || (_ = l.choices[p] = {
         finish_reason: f,
@@ -36413,8 +36413,8 @@ var wZ = (e, t) => {
         if (f === "length") throw new t5();
         if (f === "content_filter") throw new n5();
       }
-      if (Object.assign(_, y), !c) continue;
-      const { content: x, refusal: C, function_call: E, role: R, tool_calls: N, ...m } = c;
+      if (Object.assign(_, y), !d) continue;
+      const { content: x, refusal: C, function_call: E, role: R, tool_calls: N, ...m } = d;
       if (Object.assign(_.message, m), C && (_.message.refusal = (_.message.refusal || "") + C), R && (_.message.role = R), E && (_.message.function_call ? (E.name && (_.message.function_call.name = E.name), E.arguments && ((a = _.message.function_call).arguments ?? (a.arguments = ""), _.message.function_call.arguments += E.arguments)) : _.message.function_call = E), x && (_.message.content = (_.message.content || "") + x, !_.message.refusal && ke(this, or, "m", lb).call(this) && (_.message.parsed = rx(_.message.content))), N) {
         _.message.tool_calls || (_.message.tool_calls = []);
         for (const { index: w, id: b, type: S, function: I, ...k } of N) {
@@ -36477,14 +36477,14 @@ function SZ(e, t) {
   return cZ({
     ...l,
     id: n,
-    choices: r.map(({ message: i, finish_reason: u, index: c, logprobs: f, ...p }) => {
-      if (!u) throw new wt(`missing finish_reason for choice ${c}`);
+    choices: r.map(({ message: i, finish_reason: u, index: d, logprobs: f, ...p }) => {
+      if (!u) throw new wt(`missing finish_reason for choice ${d}`);
       const { content: g = null, function_call: y, tool_calls: _, ...x } = i, C = i.role;
-      if (!C) throw new wt(`missing role for choice ${c}`);
+      if (!C) throw new wt(`missing role for choice ${d}`);
       if (y) {
         const { arguments: E, name: R } = y;
-        if (E == null) throw new wt(`missing function_call.arguments for choice ${c}`);
-        if (!R) throw new wt(`missing function_call.name for choice ${c}`);
+        if (E == null) throw new wt(`missing function_call.arguments for choice ${d}`);
+        if (!R) throw new wt(`missing function_call.name for choice ${d}`);
         return {
           ...p,
           message: {
@@ -36497,13 +36497,13 @@ function SZ(e, t) {
             refusal: i.refusal ?? null
           },
           finish_reason: u,
-          index: c,
+          index: d,
           logprobs: f
         };
       }
       return _ ? {
         ...p,
-        index: c,
+        index: d,
         finish_reason: u,
         logprobs: f,
         message: {
@@ -36513,13 +36513,13 @@ function SZ(e, t) {
           refusal: i.refusal ?? null,
           tool_calls: _.map((E, R) => {
             const { function: N, type: m, id: w, ...b } = E, { arguments: S, name: I, ...k } = N || {};
-            if (w == null) throw new wt(`missing choices[${c}].tool_calls[${R}].id
+            if (w == null) throw new wt(`missing choices[${d}].tool_calls[${R}].id
 ${nm(e)}`);
-            if (m == null) throw new wt(`missing choices[${c}].tool_calls[${R}].type
+            if (m == null) throw new wt(`missing choices[${d}].tool_calls[${R}].type
 ${nm(e)}`);
-            if (I == null) throw new wt(`missing choices[${c}].tool_calls[${R}].function.name
+            if (I == null) throw new wt(`missing choices[${d}].tool_calls[${R}].function.name
 ${nm(e)}`);
-            if (S == null) throw new wt(`missing choices[${c}].tool_calls[${R}].function.arguments
+            if (S == null) throw new wt(`missing choices[${d}].tool_calls[${R}].function.arguments
 ${nm(e)}`);
             return {
               ...b,
@@ -36542,7 +36542,7 @@ ${nm(e)}`);
           refusal: i.refusal ?? null
         },
         finish_reason: u,
-        index: c,
+        index: d,
         logprobs: f
       };
     }),
@@ -39411,8 +39411,8 @@ var $Z = async (e) => {
   async uploadAndPoll(e, { files: t, fileIds: n = [] }, r) {
     if (t == null || t.length == 0) throw new Error("No `files` provided to process. If you've already uploaded files you should use `.createAndPoll()` instead");
     const s = r?.maxConcurrency ?? 5, a = Math.min(s, t.length), o = this._client, l = t.values(), i = [...n];
-    async function u(c) {
-      for (let f of c) {
+    async function u(d) {
+      for (let f of d) {
         const p = await o.files.create({
           file: f,
           purpose: "assistants"
@@ -39655,11 +39655,11 @@ var O6 = class extends Ze {
     const u = Math.floor(Date.now() / 1e3);
     if (u - i > r) throw new tf("Webhook timestamp is too old");
     if (i > u + r) throw new tf("Webhook timestamp is too new");
-    const c = a.split(" ").map((y) => y.startsWith("v1,") ? y.substring(3) : y), f = n.startsWith("whsec_") ? Buffer.from(n.replace("whsec_", ""), "base64") : Buffer.from(n, "utf-8"), p = l ? `${l}.${o}.${e}` : `${o}.${e}`, g = await crypto.subtle.importKey("raw", f, {
+    const d = a.split(" ").map((y) => y.startsWith("v1,") ? y.substring(3) : y), f = n.startsWith("whsec_") ? Buffer.from(n.replace("whsec_", ""), "base64") : Buffer.from(n, "utf-8"), p = l ? `${l}.${o}.${e}` : `${o}.${e}`, g = await crypto.subtle.importKey("raw", f, {
       name: "HMAC",
       hash: "SHA-256"
     }, !1, ["verify"]);
-    for (const y of c) try {
+    for (const y of d) try {
       const _ = Buffer.from(y, "base64");
       if (await crypto.subtle.verify("HMAC", g, _, new TextEncoder().encode(p))) return;
     } catch {
@@ -39704,10 +39704,10 @@ https://help.openai.com/en/articles/5112595-best-practices-for-api-key-safety
     this.baseURL = i.baseURL, this.timeout = i.timeout ?? jS.DEFAULT_TIMEOUT, this.logger = i.logger ?? console;
     const u = "warn";
     this.logLevel = u, this.logLevel = ZI(i.logLevel, "ClientOptions.logLevel", this) ?? ZI(Ai("OPENAI_LOG"), "process.env['OPENAI_LOG']", this) ?? u, this.fetchOptions = i.fetchOptions, this.maxRetries = i.maxRetries ?? 2, this.fetch = i.fetch ?? s5(), Nt(this, Hm, FQ, "f");
-    const c = Ai("OPENAI_CUSTOM_HEADERS");
-    if (c) {
+    const d = Ai("OPENAI_CUSTOM_HEADERS");
+    if (d) {
       const f = {};
-      for (const p of c.split(`
+      for (const p of d.split(`
 `)) {
         const g = p.indexOf(":");
         g >= 0 && (f[p.substring(0, g).trim()] = p.substring(g + 1).trim());
@@ -39830,7 +39830,7 @@ https://help.openai.com/en/articles/5112595-best-practices-for-api-key-safety
       url: o,
       options: r
     });
-    const i = "log_" + (Math.random() * (1 << 24) | 0).toString(16).padStart(6, "0"), u = n === void 0 ? "" : `, retryOf: ${n}`, c = Date.now();
+    const i = "log_" + (Math.random() * (1 << 24) | 0).toString(16).padStart(6, "0"), u = n === void 0 ? "" : `, retryOf: ${n}`, d = Date.now();
     if (Ir(this).debug(`[${i}] sending request`, El({
       retryOfRequestLogID: n,
       method: r.method,
@@ -39847,20 +39847,20 @@ https://help.openai.com/en/articles/5112595-best-practices-for-api-key-safety
         return Ir(this).info(`[${i}] connection ${C ? "timed out" : "failed"} - ${x}`), Ir(this).debug(`[${i}] connection ${C ? "timed out" : "failed"} (${x})`, El({
           retryOfRequestLogID: n,
           url: o,
-          durationMs: y - c,
+          durationMs: y - d,
           message: g.message
         })), this.retryRequest(r, t, n ?? i);
       throw Ir(this).info(`[${i}] connection ${C ? "timed out" : "failed"} - error; no more retries left`), Ir(this).debug(`[${i}] connection ${C ? "timed out" : "failed"} (error; no more retries left)`, El({
         retryOfRequestLogID: n,
         url: o,
-        durationMs: y - c,
+        durationMs: y - d,
         message: g.message
       })), g instanceof r5 || g instanceof IQ ? g : C ? new CS() : new ey({
         message: DZ(g),
         cause: g
       });
     }
-    const _ = `[${i}${u}${[...g.headers.entries()].filter(([x]) => x === "x-request-id").map(([x, C]) => ", " + x + ": " + JSON.stringify(C)).join("")}] ${a.method} ${o} ${g.ok ? "succeeded" : "failed"} with status ${g.status} in ${y - c}ms`;
+    const _ = `[${i}${u}${[...g.headers.entries()].filter(([x]) => x === "x-request-id").map(([x, C]) => ", " + x + ": " + JSON.stringify(C)).join("")}] ${a.method} ${o} ${g.ok ? "succeeded" : "failed"} with status ${g.status} in ${y - d}ms`;
     if (!g.ok) {
       if (g.status === 401 && this._workloadIdentityAuth && f.bearerAuth && !r.__metadata?.hasStreamingBody && !r.__metadata?.workloadIdentityTokenRefreshed)
         return await VI(g.body), this._workloadIdentityAuth.invalidateToken(), this.makeRequest({
@@ -39878,7 +39878,7 @@ https://help.openai.com/en/articles/5112595-best-practices-for-api-key-safety
           url: g.url,
           status: g.status,
           headers: g.headers,
-          durationMs: y - c
+          durationMs: y - d
         })), this.retryRequest(r, t, n ?? i, g.headers);
       }
       const C = x ? "error; no more retries left" : "error; not retryable";
@@ -39890,7 +39890,7 @@ https://help.openai.com/en/articles/5112595-best-practices-for-api-key-safety
         status: g.status,
         headers: g.headers,
         message: N,
-        durationMs: Date.now() - c
+        durationMs: Date.now() - d
       })), this.makeStatusError(g.status, R, N, g.headers);
     }
     return Ir(this).info(_), Ir(this).debug(`[${i}] response start`, El({
@@ -39898,14 +39898,14 @@ https://help.openai.com/en/articles/5112595-best-practices-for-api-key-safety
       url: g.url,
       status: g.status,
       headers: g.headers,
-      durationMs: y - c
+      durationMs: y - d
     })), {
       response: g,
       options: r,
       controller: p,
       requestLogID: i,
       retryOfRequestLogID: n,
-      startTime: c
+      startTime: d
     };
   }
   getAPIList(e, t, n) {
@@ -39939,15 +39939,15 @@ https://help.openai.com/en/articles/5112595-best-practices-for-api-key-safety
   async fetchWithTimeout(e, t, n, r) {
     const { signal: s, method: a, ...o } = t || {}, l = this._makeAbort(r);
     s && s.addEventListener("abort", l, { once: !0 });
-    const i = setTimeout(l, n), u = globalThis.ReadableStream && o.body instanceof globalThis.ReadableStream || typeof o.body == "object" && o.body !== null && Symbol.asyncIterator in o.body, c = {
+    const i = setTimeout(l, n), u = globalThis.ReadableStream && o.body instanceof globalThis.ReadableStream || typeof o.body == "object" && o.body !== null && Symbol.asyncIterator in o.body, d = {
       signal: r.signal,
       ...u ? { duplex: "half" } : {},
       method: "GET",
       ...o
     };
-    a && (c.method = a.toUpperCase());
+    a && (d.method = a.toUpperCase());
     try {
-      return await this.fetch.call(void 0, e, c);
+      return await this.fetch.call(void 0, e, d);
     } finally {
       clearTimeout(i);
     }
@@ -39981,8 +39981,8 @@ https://help.openai.com/en/articles/5112595-best-practices-for-api-key-safety
   async buildRequest(e, { retryCount: t = 0 } = {}) {
     const n = { ...e }, { method: r, path: s, query: a, defaultBaseURL: o } = n, l = this.buildURL(s, a, o);
     "timeout" in n && PQ("timeout", n.timeout), n.timeout = n.timeout ?? this.timeout;
-    const { bodyHeaders: i, body: u, isStreamingBody: c } = this.buildBody({ options: n });
-    return c && (e.__metadata = {
+    const { bodyHeaders: i, body: u, isStreamingBody: d } = this.buildBody({ options: n });
+    return d && (e.__metadata = {
       ...e.__metadata,
       hasStreamingBody: !0
     }), {
@@ -40136,8 +40136,8 @@ function qZ(e = "") {
     }
     const o = r + 6, l = t.slice(o + 2, o + 6);
     if (BZ(a) && t.slice(o, o + 2) === "\\u" && !gx(t, o) && UZ(l)) {
-      const i = Number.parseInt(a, 16), u = Number.parseInt(l, 16), c = 65536 + (i - 55296 << 10) + (u - 56320);
-      n += String.fromCodePoint(c), r += 12;
+      const i = Number.parseInt(a, 16), u = Number.parseInt(l, 16), d = 65536 + (i - 55296 << 10) + (u - 56320);
+      n += String.fromCodePoint(d), r += 12;
       continue;
     }
     n += String.fromCharCode(Number.parseInt(a, 16)), r += 6;
@@ -40724,60 +40724,69 @@ function aee(e = {}, t = {}) {
   return zr(e) ? zr(t) ? su(ms(e) || {}, t, "") : ms(e) : ms(t);
 }
 function E1(e, t = "") {
-  const n = Array.isArray(e.messages) ? e.messages : [], r = jZ(n), s = n.map((c, f) => {
-    const p = ru(c?.tool_calls);
-    if (tee(c, f, r)) {
-      const y = fy(c);
-      if (eee(y)) return yx({
-        ...y,
-        ...p.length ? { tool_calls: p } : {}
+  const n = Array.isArray(e.messages) ? e.messages : [], r = jZ(n), s = n.map((f, p) => {
+    const g = ru(f?.tool_calls);
+    if (tee(f, p, r)) {
+      const _ = fy(f);
+      if (eee(_)) return yx({
+        ..._,
+        ...g.length ? { tool_calls: g } : {}
       }, t);
     }
-    const g = {
-      role: c.role,
-      content: c.content
+    const y = {
+      role: f.role,
+      content: f.content
     };
-    if (c.role === "tool") {
-      const y = c.tool_call_id || c.toolCallId;
-      y && (g.tool_call_id = y);
+    if (f.role === "tool") {
+      const _ = f.tool_call_id || f.toolCallId;
+      _ && (y.tool_call_id = _);
     }
-    return c.role === "assistant" && p.length && (g.tool_calls = p), yx(g, t);
+    return f.role === "assistant" && g.length && (y.tool_calls = g), yx(y, t);
   }), a = String(e.systemPrompt || "").trim();
   a && s[0]?.role !== "system" && s.unshift({
     role: "system",
     content: a
   });
-  const o = /* @__PURE__ */ new Set(), l = /* @__PURE__ */ new Set();
-  for (let c = 0; c < s.length; c++) {
-    const f = s[c];
+  const o = /* @__PURE__ */ new Set();
+  s.forEach((f) => {
+    f.role === "tool" && f.tool_call_id && o.add(f.tool_call_id);
+  }), s.forEach((f) => {
     if (f.role === "assistant" && Array.isArray(f.tool_calls)) {
-      const p = /* @__PURE__ */ new Map();
-      f.tool_calls.forEach((g) => {
-        const y = g?.id;
-        if (y)
-          if (o.has(y)) {
-            const _ = `${y}-dedup-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-            p.set(y, _), g.id = _, o.add(_);
-          } else o.add(y);
+      const p = f.tool_calls.filter((g) => g?.id && o.has(g.id));
+      p.length !== f.tool_calls.length && (console.warn("[buildNativeMessages] Removed", f.tool_calls.length - p.length, "orphan tool_calls without matching tool messages"), p.length ? f.tool_calls = p : delete f.tool_calls);
+    }
+  });
+  const l = /* @__PURE__ */ new Set(), i = /* @__PURE__ */ new Set();
+  for (let f = 0; f < s.length; f++) {
+    const p = s[f];
+    if (p.role === "assistant" && Array.isArray(p.tool_calls)) {
+      const g = /* @__PURE__ */ new Map();
+      p.tool_calls.forEach((y) => {
+        const _ = y?.id;
+        if (_)
+          if (l.has(_)) {
+            const x = `${_}-dedup-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+            g.set(_, x), y.id = x, l.add(x);
+          } else l.add(_);
       });
-      for (let g = c + 1; g < s.length; g++) {
-        const y = s[g];
-        if (y.role !== "tool") break;
-        l.add(g), p.has(y.tool_call_id) && (y.tool_call_id = p.get(y.tool_call_id)), o.add(y.tool_call_id);
+      for (let y = f + 1; y < s.length; y++) {
+        const _ = s[y];
+        if (_.role !== "tool") break;
+        i.add(y), g.has(_.tool_call_id) && (_.tool_call_id = g.get(_.tool_call_id)), l.add(_.tool_call_id);
       }
     }
-    if (f.role === "tool" && f.tool_call_id && !l.has(c)) if (o.has(f.tool_call_id)) {
-      const p = `${f.tool_call_id}-histdup-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-      f.tool_call_id = p, o.add(p);
-    } else o.add(f.tool_call_id);
+    if (p.role === "tool" && p.tool_call_id && !i.has(f)) if (l.has(p.tool_call_id)) {
+      const g = `${p.tool_call_id}-histdup-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      p.tool_call_id = g, l.add(g);
+    } else l.add(p.tool_call_id);
   }
-  const i = s.filter((c) => c.role === "tool" && c.tool_call_id).map((c) => c.tool_call_id), u = new Set(i);
-  if (i.length !== u.size) {
-    const c = i.filter((f, p) => i.indexOf(f) !== p);
-    console.error("[buildNativeMessages] CRITICAL: duplicate tool_call_ids remain after dedup:", c), console.error("[buildNativeMessages] all tool messages:", s.filter((f) => f.role === "tool").map((f) => ({
-      tool_call_id: f.tool_call_id,
-      content_preview: String(f.content || "").slice(0, 40)
-    }))), console.error("[buildNativeMessages] all assistant tool_calls:", s.filter((f) => f.role === "assistant" && Array.isArray(f.tool_calls)).map((f) => f.tool_calls.map((p) => p.id)));
+  const u = s.filter((f) => f.role === "tool" && f.tool_call_id).map((f) => f.tool_call_id), d = new Set(u);
+  if (u.length !== d.size) {
+    const f = u.filter((p, g) => u.indexOf(p) !== g);
+    console.error("[buildNativeMessages] CRITICAL: duplicate tool_call_ids remain after dedup:", f), console.error("[buildNativeMessages] all tool messages:", s.filter((p) => p.role === "tool").map((p) => ({
+      tool_call_id: p.tool_call_id,
+      content_preview: String(p.content || "").slice(0, 40)
+    }))), console.error("[buildNativeMessages] all assistant tool_calls:", s.filter((p) => p.role === "assistant" && Array.isArray(p.tool_calls)).map((p) => p.tool_calls.map((g) => g.id)));
   }
   return V6(s, t);
 }
@@ -40805,8 +40814,8 @@ function C1(e, t = "") {
     if (s.role === "assistant") {
       const a = ZZ(s);
       if (a.length) {
-        const o = fy(s), l = typeof o?.content == "string" ? o.content : String(s.content || ""), i = a.map((u, c) => {
-          const f = u.function?.name || "", p = u.id || `tool-call-${c + 1}`;
+        const o = fy(s), l = typeof o?.content == "string" ? o.content : String(s.content || ""), i = a.map((u, d) => {
+          const f = u.function?.name || "", p = u.id || `tool-call-${d + 1}`;
           return f && n.set(p, f), `<tool_call>${JSON.stringify({
             id: p,
             name: f,
@@ -40929,8 +40938,8 @@ async function iee(e, t) {
     for (s += r.decode(i, { stream: !0 }); ; ) {
       const u = s.match(a);
       if (!u || typeof u.index != "number") break;
-      const c = u.index, f = s.slice(0, c);
-      s = s.slice(c + u[0].length);
+      const d = u.index, f = s.slice(0, d);
+      s = s.slice(d + u[0].length);
       const p = f.split(/\r?\n/).filter((g) => g.startsWith("data:")).map((g) => g.slice(5).trimStart()).join(`
 `).trim();
       !p || p === "[DONE]" || t(JSON.parse(p));
@@ -41019,11 +41028,11 @@ var lee = class {
         ...!E.length && R.length ? { toolCallDraft: !0 } : {}
       });
     });
-    const i = Of(a), u = Oi(s.toolCalls), c = Nl(s.content), f = Fi(a, {});
-    c.thoughts.forEach((y) => f.push(y));
-    const p = u.length ? [] : Df(c.cleaned), g = [...u, ...p];
+    const i = Of(a), u = Oi(s.toolCalls), d = Nl(s.content), f = Fi(a, {});
+    d.thoughts.forEach((y) => f.push(y));
+    const p = u.length ? [] : Df(d.cleaned), g = [...u, ...p];
     return {
-      text: u.length ? c.cleaned : $l(c.cleaned),
+      text: u.length ? d.cleaned : $l(d.cleaned),
       toolCalls: g,
       thoughts: f,
       finishReason: o,
@@ -41077,9 +41086,9 @@ var lee = class {
         requestInspection: s
       };
     }
-    const a = await this.client.chat.completions.create(r, { signal: e.signal }), o = a.choices?.[0] || {}, l = o.message || {}, i = Fi(l, o), u = Oi(l.tool_calls || []), c = Nl(W6(l.content));
-    c.thoughts.forEach((_) => i.push(_));
-    const f = u.length ? [] : Df(c.cleaned), p = [...u, ...f], g = u.length ? c.cleaned : $l(c.cleaned), y = ev(l, o);
+    const a = await this.client.chat.completions.create(r, { signal: e.signal }), o = a.choices?.[0] || {}, l = o.message || {}, i = Fi(l, o), u = Oi(l.tool_calls || []), d = Nl(W6(l.content));
+    d.thoughts.forEach((_) => i.push(_));
+    const f = u.length ? [] : Df(d.cleaned), p = [...u, ...f], g = u.length ? d.cleaned : $l(d.cleaned), y = ev(l, o);
     return {
       text: g,
       toolCalls: p,
@@ -41343,11 +41352,11 @@ var _ee = class {
         const f = new Error(u);
         throw f.name = "ProxyEndpointError", f.rawDisplay = u, f;
       }
-      const c = Array.isArray(i.output) ? i.output : [];
+      const d = Array.isArray(i.output) ? i.output : [];
       return {
-        output: c,
-        thoughts: cee(c),
-        toolCalls: c.filter((f) => f.type === "function_call" && f.name).map((f, p) => ({
+        output: d,
+        thoughts: cee(d),
+        toolCalls: d.filter((f) => f.type === "function_call" && f.name).map((f, p) => ({
           id: f.call_id || `response-tool-${p + 1}`,
           name: f.name || "",
           arguments: f.arguments || "{}"
@@ -41366,7 +41375,7 @@ var _ee = class {
         body: u,
         legacySystemInInput: i
       });
-      const c = this.client.responses.stream(u, { signal: e.signal }), f = /* @__PURE__ */ new Map(), p = /* @__PURE__ */ new Map(), g = /* @__PURE__ */ new Map(), y = () => {
+      const d = this.client.responses.stream(u, { signal: e.signal }), f = /* @__PURE__ */ new Map(), p = /* @__PURE__ */ new Map(), g = /* @__PURE__ */ new Map(), y = () => {
         const _ = [];
         Array.from(p.entries()).sort(([x], [C]) => ub(x, C)).forEach(([, x]) => nv(_, "推理文本", x)), Array.from(g.entries()).sort(([x], [C]) => ub(x, C)).forEach(([, x]) => nv(_, "推理摘要", x)), yee(e, {
           text: Array.from(f.entries()).sort(([x], [C]) => ub(x, C)).map(([, x]) => x).join(`
@@ -41374,16 +41383,16 @@ var _ee = class {
           thoughts: _
         });
       };
-      return c.on("response.output_text.delta", (_) => {
+      return d.on("response.output_text.delta", (_) => {
         const x = `${_.output_index}:${_.content_index}`;
         f.set(x, `${f.get(x) || ""}${_.delta}`), y();
-      }), c.on("response.reasoning_text.delta", (_) => {
+      }), d.on("response.reasoning_text.delta", (_) => {
         const x = `${_.output_index}:${_.content_index}`;
         p.set(x, `${p.get(x) || ""}${_.delta}`), y();
-      }), c.on("response.reasoning_summary_text.delta", (_) => {
+      }), d.on("response.reasoning_summary_text.delta", (_) => {
         const x = `${_.output_index}:${_.summary_index}`;
         g.set(x, `${g.get(x) || ""}${_.delta}`), y();
-      }), await c.finalResponse();
+      }), await d.finalResponse();
     }, a = !gee(this.config.baseUrl);
     let o, l;
     try {
@@ -41819,8 +41828,8 @@ function Oee(e, t = {}) {
       o = i.model || i.modelVersion || o, a = i?.candidates?.[0]?.finishReason || a;
       const u = X6(i);
       u.parts.length && l.push(...e2(u.parts) || []), n = Nee(n, j6(u)), r = $ee(r, Z6(u));
-      const c = Q6(u);
-      c.length && (s = c), Dee(e, {
+      const d = Q6(u);
+      d.length && (s = d), Dee(e, {
         text: n,
         thoughts: s,
         ...r.length ? {
@@ -41969,13 +41978,13 @@ var qee = class {
       signal: e.signal,
       onRequest: n.onRequest
     });
-    const l = Oi(r.toolCalls, "st-openai-tool"), { thinkTagged: i, cleanedText: u } = cb(r.content, l), c = Fi(s, {});
-    i.thoughts.forEach((p) => c.push(p));
+    const l = Oi(r.toolCalls, "st-openai-tool"), { thinkTagged: i, cleanedText: u } = cb(r.content, l), d = Fi(s, {});
+    i.thoughts.forEach((p) => d.push(p));
     const f = l.length ? [] : Df(i.cleaned);
     return {
       text: u,
       toolCalls: [...l, ...f],
-      thoughts: c,
+      thoughts: d,
       finishReason: a,
       model: o,
       provider: "sillytavern-openai-compatible",
@@ -41988,10 +41997,10 @@ var qee = class {
       onRequest: n.onRequest
     }), s = r.choices?.[0] || {}, a = s.message || {}, o = Fi(a, s), l = Oi(a.tool_calls || [], "st-openai-tool"), { thinkTagged: i, cleanedText: u } = cb(W6(a.content), l);
     i.thoughts.forEach((p) => o.push(p));
-    const c = l.length ? [] : Df(i.cleaned), f = ev(a, s);
+    const d = l.length ? [] : Df(i.cleaned), f = ev(a, s);
     return {
       text: u,
-      toolCalls: [...l, ...c],
+      toolCalls: [...l, ...d],
       thoughts: o,
       finishReason: s.finish_reason || "stop",
       model: r.model || this.config.model,
@@ -42183,8 +42192,8 @@ function jee(e = {}, t, n, r, s) {
   for (const u of l) {
     if (i.has(u)) continue;
     i.add(u);
-    const c = s(o?.[u]?.[r]);
-    if (c) return c;
+    const d = s(o?.[u]?.[r]);
+    if (d) return d;
   }
   return s(e?.delegateConfig?.[r]);
 }
@@ -42643,10 +42652,10 @@ function yte(e, t, n, r) {
   if (gte(s)) {
     const l = s.split(/[\s_-]+/).filter(Boolean);
     if (!l.length) return [];
-    const i = l.map(sv).join("[\\s_-]+"), u = new RegExp(`(^|[^a-z0-9])(${i})(?=$|[^a-z0-9])`, "gi"), c = [];
+    const i = l.map(sv).join("[\\s_-]+"), u = new RegExp(`(^|[^a-z0-9])(${i})(?=$|[^a-z0-9])`, "gi"), d = [];
     for (const f of t.matchAll(u)) {
       const p = f[1] || "", g = f[2] || "", y = Number(f.index || 0) + p.length, _ = y + g.length;
-      l.length === 1 && vte(n, y, _) || c.push({
+      l.length === 1 && vte(n, y, _) || d.push({
         coordinate: "text",
         start: y,
         end: _,
@@ -42654,7 +42663,7 @@ function yte(e, t, n, r) {
         tokenCount: l.length
       });
     }
-    return c;
+    return d;
   }
   const o = r.indexOf(a);
   return o < 0 ? [] : [{
@@ -42738,8 +42747,8 @@ function Tte(e = {}) {
   })).flatMap((i) => {
     if (!Fg(i.file.path)) return [];
     const u = rv(i.characterName);
-    return !c8(u) || n.has(u) ? [] : yte(i.characterName, s, r, a).map((c) => ({
-      ...c,
+    return !c8(u) || n.has(u) ? [] : yte(i.characterName, s, r, a).map((d) => ({
+      ...d,
       path: i.file.path,
       file: i.file,
       characterName: i.characterName
@@ -42770,13 +42779,13 @@ async function h8(e) {
     r ? WH(t) : Promise.resolve("")
   ]), l = n && s?.status === "ready" && Array.isArray(s.files) || n && s?.status === "stale" && s.error && Array.isArray(s.files) ? s : n ? await kh(t) : null, i = Array.isArray(l?.files) ? l.files : [], u = i.some(d8);
   if (!u && !a.length && !o) return {};
-  const c = u ? Tte({
+  const d = u ? Tte({
     memoryFiles: i,
     queryText: e.queryText,
     ignoredTerms: e.ignoredTerms
   }) : {};
   return {
-    ...u ? await Ate(t, c) : c,
+    ...u ? await Ate(t, d) : d,
     structuredStates: a,
     ...o ? { spatialState: o } : {}
   };
@@ -42904,13 +42913,13 @@ function Dte(e = {}) {
   function u() {
     t = "", n = 0, r = "", s = "";
   }
-  function c() {
+  function d() {
     return s;
   }
   return {
     record: i,
     reset: u,
-    getMessage: c
+    getMessage: d
   };
 }
 var g8 = [
@@ -43326,7 +43335,7 @@ async function ane(e) {
   const t = hy(e.agentConfig || {}, {
     role: "delegate",
     timeoutMs: u2
-  }), n = e.executeManagerOnce ? null : s2(t, { missingApiKeyMessage: "请先在 API 配置里填写记忆管理员 API。" }), r = e.executeManagerOnce || ((b) => ene(n, t, b)), s = !!n?.supportsSessionToolLoop || e.executeManagerOnce?.supportsSessionToolLoop === !0, a = e.caller === "auto" ? qte(N0(), e.sessionContract) : N0(), o = [], l = [], i = /* @__PURE__ */ new Set(), u = /* @__PURE__ */ new Set(), c = /* @__PURE__ */ new Set();
+  }), n = e.executeManagerOnce ? null : s2(t, { missingApiKeyMessage: "请先在 API 配置里填写记忆管理员 API。" }), r = e.executeManagerOnce || ((b) => ene(n, t, b)), s = !!n?.supportsSessionToolLoop || e.executeManagerOnce?.supportsSessionToolLoop === !0, a = e.caller === "auto" ? qte(N0(), e.sessionContract) : N0(), o = [], l = [], i = /* @__PURE__ */ new Set(), u = /* @__PURE__ */ new Set(), d = /* @__PURE__ */ new Set();
   let f = "", p = "", g = !1, y = null, _ = "", x = "", C = 0, E = !1, R = !1;
   const N = Dte({
     threshold: 3,
@@ -43397,7 +43406,7 @@ async function ane(e) {
         toolTrace: o,
         changedFiles: [...i],
         changedStates: [...u],
-        changedTasks: [...c],
+        changedTasks: [...d],
         protocolMessages: [...l, fe]
       };
     }
@@ -43473,7 +43482,7 @@ async function ane(e) {
         error: "manager_tool_not_available"
       } : te = Se.result;
       const ge = "path" in te ? te.path : "", we = "docType" in te && te.docType ? `${te.docType}/${te.docId || ""}` : "", ue = "eventId" in te && te.eventId ? `event/${te.eventId}` : "";
-      te.changed && ge && i.add(ge), te.changed && we && u.add(we), te.changed && ue && c.add(ue), Object.assign(F, {
+      te.changed && ge && i.add(ge), te.changed && we && u.add(we), te.changed && ue && d.add(ue), Object.assign(F, {
         status: "resolved",
         ok: te.ok,
         args: Nx(Be),
@@ -43650,7 +43659,7 @@ async function E8(e) {
     agentConfig: e.agentConfig
   });
   let n = "", r = t.provider || "", s = t.model || "", a = [], o = [], l = [], i = [], u = [];
-  const c = ine(t.id, e.signal), f = (p) => {
+  const d = ine(t.id, e.signal), f = (p) => {
     p.type !== "clear_stream_draft" && u.push(p.message), e.onProtocolEvent?.(p);
   };
   try {
@@ -43723,7 +43732,7 @@ async function E8(e) {
       error: g
     };
   } finally {
-    c();
+    d();
   }
 }
 function une(e = []) {
@@ -43817,8 +43826,8 @@ async function cne(e) {
         preservedTurns: a,
         status: `正在只保留最近 ${a} 轮管理员上下文...`
       });
-      const c = o.slice(0, l).flat().map((f) => f.order);
-      c.length && await p0(t, c), r = n ? r.filter((f) => !c.includes(f.order)) : await Qs(t);
+      const d = o.slice(0, l).flat().map((f) => f.order);
+      d.length && await p0(t, d), r = n ? r.filter((f) => !d.includes(f.order)) : await Qs(t);
     }
     const i = await Bx({
       sessionId: t,
@@ -43948,7 +43957,7 @@ async function C8(e) {
       };
     await am(e);
     const u = [...i.changedFiles || []];
-    let c = [...i.changedTasks || []], f = i.managerRun;
+    let d = [...i.changedTasks || []], f = i.managerRun;
     if (n.includeQuestOrchestration) {
       const p = await lz(t, a.assistantMessage.order, {
         managerRunId: s.id,
@@ -43957,13 +43966,13 @@ async function C8(e) {
         }
       });
       if (p.length) {
-        c = [.../* @__PURE__ */ new Set([...c, ...p.map((_) => `event/${_.id}`)])];
+        d = [.../* @__PURE__ */ new Set([...d, ...p.map((_) => `event/${_.id}`)])];
         const g = `系统已放弃 ${p.length} 条过期事件线索。`, y = String(f.outputText || "").trim();
         f = await lv(f, {
           outputText: y && y !== "已检查并回复。" ? `${y}
 ${g}` : g,
           parsedAction: "manager_state_updated",
-          changedTasks: c
+          changedTasks: d
         });
       }
     }
@@ -43977,7 +43986,7 @@ ${g}` : g,
       managerRun: f,
       changedFiles: u,
       changedStates: i.changedStates,
-      changedTasks: c,
+      changedTasks: d,
       protocolMessages: i.protocolMessages
     };
   } catch (a) {
@@ -44154,8 +44163,8 @@ async function pne(e = "", t = 0) {
       "queued",
       "running"
     ].includes(i.status) && (a += 1);
-    const u = await Th(i.id), c = await sS(i.id);
-    o += u.filter((f) => String(f.afterHash || "").trim()).length, c.some((f) => String(f.afterHash || "").trim()) && (l += 1);
+    const u = await Th(i.id), d = await sS(i.id);
+    o += u.filter((f) => String(f.afterHash || "").trim()).length, d.some((f) => String(f.afterHash || "").trim()) && (l += 1);
   }
   return {
     affectedRuns: s.length,
@@ -44180,7 +44189,7 @@ async function h2(e = "", t = 0) {
   let a = 0, o = 0;
   const l = [];
   for (const i of s.runIds) {
-    if (!(await sS(i)).some((c) => String(c.afterHash || "").trim())) continue;
+    if (!(await sS(i)).some((d) => String(d.afterHash || "").trim())) continue;
     const u = await N3(i);
     a += u.rolledBack, o += u.skipped, l.push(...u.conflicts);
   }
@@ -44263,7 +44272,7 @@ async function k8(e) {
     }
   }
   const u = /* @__PURE__ */ new Map();
-  let c = 0, f = null, p = 0, g = 0;
+  let d = 0, f = null, p = 0, g = 0;
   for (; ; ) {
     let y;
     if (n) {
@@ -44274,7 +44283,7 @@ async function k8(e) {
         total: f
       }, p += y.messages.length;
     } else
-      y = await Lv(t, i, c), c += i;
+      y = await Lv(t, i, d), d += i;
     g = y.total, y.messages.forEach((x) => u.set(x.order, x));
     const _ = [...u.values()].sort((x, C) => x.order - C.order);
     if (_.length >= g || _ne(_) >= l) return Gu({
@@ -44323,14 +44332,14 @@ function Ane(e) {
   }] : [];
 }
 function Tne(e = {}) {
-  const t = Array.isArray(e.memoryFiles) ? e.memoryFiles : [], n = Array.isArray(e.structuredStates) ? e.structuredStates : [], r = String(e.spatialState || "").trim(), s = Array.isArray(e.questHooks) ? e.questHooks.map((c) => String(c || "").trim()).filter(Boolean) : [], a = [];
+  const t = Array.isArray(e.memoryFiles) ? e.memoryFiles : [], n = Array.isArray(e.structuredStates) ? e.structuredStates : [], r = String(e.spatialState || "").trim(), s = Array.isArray(e.questHooks) ? e.questHooks.map((d) => String(d || "").trim()).filter(Boolean) : [], a = [];
   s.length && a.push(s.join(`
 `));
-  const o = t.find((c) => String(c.path || "") === "memory/state.md"), l = String(o?.content || "").trim();
+  const o = t.find((d) => String(d.path || "") === "memory/state.md"), l = String(o?.content || "").trim();
   l && a.push(`## 会话记忆
 ${l}`);
-  const i = t.filter((c) => String(c.path || "").startsWith("memory/characters/")).map((c) => {
-    const f = String(c.path || "").slice(18).replace(/\.md$/i, ""), p = String(c.title || f || "相关人物").trim(), g = String(c.content || "").trim();
+  const i = t.filter((d) => String(d.path || "").startsWith("memory/characters/")).map((d) => {
+    const f = String(d.path || "").slice(18).replace(/\.md$/i, ""), p = String(d.title || f || "相关人物").trim(), g = String(d.content || "").trim();
     return g ? `### ${p}
 ${g}` : "";
   }).filter(Boolean);
@@ -44338,7 +44347,7 @@ ${g}` : "";
 ${i.join(`
 
 `)}`);
-  const u = r ? [] : n.map((c) => String(c.digest || "").trim()).filter(Boolean);
+  const u = r ? [] : n.map((d) => String(d.digest || "").trim()).filter(Boolean);
   return u.length && a.push(`## 状态摘要
 ${u.join(`
 
@@ -44597,10 +44606,10 @@ async function D8(e) {
         }
       });
     }
-    return o.role === "assistant" && Array.isArray(o.thoughts) && o.thoughts.forEach((u, c) => {
+    return o.role === "assistant" && Array.isArray(o.thoughts) && o.thoughts.forEach((u, d) => {
       const f = String(u?.text || "");
       f && a.push({
-        id: `reasoning:prompt:${l}:${c}`,
+        id: `reasoning:prompt:${l}:${d}`,
         text: f,
         placement: "reasoning",
         options: {
@@ -44614,9 +44623,9 @@ async function D8(e) {
   const r = await qh(e.applyRegex, n), s = new Map(r.map((a) => [a.id, a]));
   return {
     messages: t.map((a, o) => {
-      const l = a.role === "user" ? "userInput" : a.role === "assistant" ? "aiOutput" : "", i = l ? s.get(`${l}:prompt:${o}`) : null, u = Array.isArray(a.thoughts) ? a.thoughts.map((c, f) => ({
-        ...c,
-        text: s.get(`reasoning:prompt:${o}:${f}`)?.text ?? c.text
+      const l = a.role === "user" ? "userInput" : a.role === "assistant" ? "aiOutput" : "", i = l ? s.get(`${l}:prompt:${o}`) : null, u = Array.isArray(a.thoughts) ? a.thoughts.map((d, f) => ({
+        ...d,
+        text: s.get(`reasoning:prompt:${o}:${f}`)?.text ?? d.text
       })) : a.thoughts;
       return {
         ...a,
@@ -44670,13 +44679,13 @@ async function qx(e) {
   t.forEach((l, i) => {
     const u = String(l.content || "");
     if (u) {
-      const c = `${e.scope}:${i}:content`;
+      const d = `${e.scope}:${i}:content`;
       r.push({
         entryIndex: i,
         field: "content",
-        id: c
+        id: d
       }), n.push({
-        id: c,
+        id: d,
         text: u,
         options: e.options
       });
@@ -44685,13 +44694,13 @@ async function qx(e) {
       "key",
       "keysecondary",
       "secondary_keys"
-    ].forEach((c) => {
-      One(l[c]).forEach((f, p) => {
+    ].forEach((d) => {
+      One(l[d]).forEach((f, p) => {
         if (!f) return;
-        const g = `${e.scope}:${i}:${c}:${p}`;
+        const g = `${e.scope}:${i}:${d}:${p}`;
         r.push({
           entryIndex: i,
-          field: c,
+          field: d,
           valueIndex: p,
           id: g
         }), n.push({
@@ -44712,9 +44721,9 @@ async function qx(e) {
       u.content = i;
       return;
     }
-    const c = u[l.field];
-    if (Array.isArray(c)) {
-      const f = [...c];
+    const d = u[l.field];
+    if (Array.isArray(d)) {
+      const f = [...d];
       f[l.valueIndex || 0] = i, u[l.field] = f;
     } else u[l.field] = i;
   }), o;
@@ -44749,10 +44758,10 @@ async function cv(e) {
       text: l,
       options: e.options
     }), a.role === "assistant" && Array.isArray(a.thoughts) && a.thoughts.forEach((i, u) => {
-      const c = String(i?.text || "");
-      c && n.push({
+      const d = String(i?.text || "");
+      d && n.push({
         id: `thought:${o}:${u}`,
-        text: c,
+        text: d,
         options: e.options
       });
     });
@@ -44776,8 +44785,8 @@ function Uf(e) {
     const s = {};
     return Object.entries(r).forEach(([a, o]) => {
       if (!a || !o || typeof o != "object" || Array.isArray(o)) return;
-      const l = o, i = {}, u = Number(l.hash), c = Number(l.start), f = Number(l.end);
-      Number.isFinite(u) && (i.hash = u), Number.isFinite(c) && (i.start = c), Number.isFinite(f) && (i.end = f), l.protected === !0 && (i.protected = !0), Object.keys(i).length && (s[a] = i);
+      const l = o, i = {}, u = Number(l.hash), d = Number(l.start), f = Number(l.end);
+      Number.isFinite(u) && (i.hash = u), Number.isFinite(d) && (i.start = d), Number.isFinite(f) && (i.end = f), l.protected === !0 && (i.protected = !0), Object.keys(i).length && (s[a] = i);
     }), s;
   };
   return {
@@ -44848,7 +44857,7 @@ function Pc(e = {}, t = [], n = {}) {
     model: String(n.model || r.model || ""),
     toolMode: r.toolMode,
     messageCount: o.length,
-    messageChars: o.reduce((c, f) => c + String(f.content || "").length, 0),
+    messageChars: o.reduce((d, f) => d + String(f.content || "").length, 0),
     rawMessagesJson: l,
     rawRequestJson: u,
     requestKind: n.requestKind || "actual",
@@ -44939,7 +44948,7 @@ function Une(e) {
     }
     s.push(f);
   });
-  const c = n[n.length - 1];
+  const d = n[n.length - 1];
   return {
     turn: a,
     worldEntryStates: {},
@@ -44951,7 +44960,7 @@ function Une(e) {
     lastRequestSnapshot: l,
     lastProvider: i,
     lastModel: u,
-    lastError: c?.error ? String(c.content || "") : ""
+    lastError: d?.error ? String(d.content || "") : ""
   };
 }
 async function q8(e) {
@@ -44960,7 +44969,7 @@ async function q8(e) {
   let o = 0, l = {}, i = {
     sticky: {},
     cooldown: {}
-  }, u, c, f = "", p = "";
+  }, u, d, f = "", p = "";
   for (let y = 0; y < n.length; y += 1) {
     const _ = n[y], x = lu(_.content);
     if (_.role !== "user" || _.error || !x) {
@@ -44997,7 +45006,7 @@ async function q8(e) {
         entryStates: l,
         diagnostics: e.diagnostics || {}
       });
-      l = zw(l, m.buildResult.meta.worldEntryStateUpdates), o += 1, u = m.buildSnapshot, c = C.requestSnapshot || _.requestSnapshot, f = String(C.provider || ""), p = String(C.model || "");
+      l = zw(l, m.buildResult.meta.worldEntryStateUpdates), o += 1, u = m.buildSnapshot, d = C.requestSnapshot || _.requestSnapshot, f = String(C.provider || ""), p = String(C.model || "");
     }
     a.push(_);
   }
@@ -45007,7 +45016,7 @@ async function q8(e) {
     worldEntryStates: l,
     nativeWorldInfoTimedState: i,
     lastBuildSnapshot: u,
-    lastRequestSnapshot: c,
+    lastRequestSnapshot: d,
     lastProvider: f,
     lastModel: p,
     lastError: g?.error ? String(g.content || "") : ""
@@ -45057,9 +45066,9 @@ async function Hne(e, t, n) {
   let s;
   try {
     s = await tr("provider_chat", () => r.adapter.chat(r.task));
-  } catch (c) {
-    const f = c?.requestInspection;
-    throw f && c && typeof c == "object" && (c.requestSnapshot = Pc(n.agentConfig, r.snapshotMessages, {
+  } catch (d) {
+    const f = d?.requestInspection;
+    throw f && d && typeof d == "object" && (d.requestSnapshot = Pc(n.agentConfig, r.snapshotMessages, {
       provider: String(f.provider || r.providerConfig.provider || ""),
       model: String(f.model || r.providerConfig.model || ""),
       requestInspection: f,
@@ -45067,7 +45076,7 @@ async function Hne(e, t, n) {
       chatPreset: n.chatPreset,
       regexApplications: n.regexApplications,
       requestTask: r.task
-    })), c;
+    })), d;
   }
   const a = s?.requestInspection || r.requestSnapshot.requestInspection || null, o = String(s?.text || ""), l = String(s?.provider || a?.provider || r.providerConfig.provider || ""), i = String(s?.model || a?.model || r.providerConfig.model || ""), u = r8(s || {}, r.providerConfig, { fallbackPrefix: "tavern-rp-tool" });
   return {
@@ -45099,7 +45108,7 @@ async function zne(e) {
     text: e.currentUserMessage
   })), i = {};
   Bo(i, l.summary);
-  const u = m2(r), c = lu(await tr("simulate_user_input_substitute", () => O8({
+  const u = m2(r), d = lu(await tr("simulate_user_input_substitute", () => O8({
     applySubstituteParams: e.applySubstituteParams,
     id: "userInput:simulate",
     text: l.text,
@@ -45107,7 +45116,7 @@ async function zne(e) {
   }))), f = n ? await k8({
     sessionId: n.id,
     contextWindowStartOrder: s.contextWindowStartOrder,
-    currentUserMessage: c
+    currentUserMessage: d
   }) : null, p = {
     ...r,
     worldSettings: {
@@ -45118,14 +45127,14 @@ async function zne(e) {
   }, g = await tr("simulate_native_worldbook_runtime", () => v2({
     getNativeWorldInfoRuntime: e.getNativeWorldInfoRuntime,
     context: p,
-    currentUserMessage: c,
+    currentUserMessage: d,
     trigger: String(e.generationTrigger || "normal"),
     timedState: s.nativeWorldInfoTimedState
   })), y = await tr("simulate_world_entry_substitute", () => g2({
     applySubstituteParams: e.applySubstituteParams,
     context: g.context,
     options: u
-  })), _ = await tr("simulate_memory_query", () => f8(y, c)), x = n && (a.includeMemoryFiles || a.includeStructuredStates) ? await tr("simulate_memory_retrieval", () => h8({
+  })), _ = await tr("simulate_memory_query", () => f8(y, d)), x = n && (a.includeMemoryFiles || a.includeStructuredStates) ? await tr("simulate_memory_retrieval", () => h8({
     sessionId: n.id,
     queryText: _,
     ignoredTerms: o2(y),
@@ -45137,7 +45146,7 @@ async function zne(e) {
   } : void 0, a), R = P8(a), N = await tr("simulate_brain_build", () => ww({
     context: y,
     chatPreset: t,
-    currentUserMessage: c,
+    currentUserMessage: d,
     historyMode: e.historyMode || "raw",
     turn: s.turn,
     entryStates: s.worldEntryStates,
@@ -45190,7 +45199,7 @@ async function zne(e) {
     chatPreset: t,
     baseBuildResult: N.buildResult,
     baseBuildSnapshot: N.buildSnapshot,
-    currentUserMessage: c,
+    currentUserMessage: d,
     generationType: String(e.generationTrigger || "normal"),
     memoryContext: E,
     runtimeProtocolMessages: R,
@@ -45232,7 +45241,7 @@ function Wne(e) {
 }
 async function Vne(e) {
   const t = i8(), n = [...e.messages], r = [], s = Gne(e.agentConfig, e.executeRunOnce);
-  let a = "", o, l = "", i = "", u = "", c, f = Pc(e.agentConfig, e.messages, {
+  let a = "", o, l = "", i = "", u = "", d, f = Pc(e.agentConfig, e.messages, {
     chatPreset: e.chatPreset,
     regexApplications: e.regexApplications
   }), p, g = "", y = !1, _ = !1;
@@ -45265,7 +45274,7 @@ async function Vne(e) {
         }
       }
     });
-    p = void 0, g = "", l = String(E.provider || l || ""), i = String(E.model || i || ""), u = String(E.finishReason || u || ""), c = E.providerPayload, f = E.requestSnapshot || f;
+    p = void 0, g = "", l = String(E.provider || l || ""), i = String(E.model || i || ""), u = String(E.finishReason || u || ""), d = E.providerPayload, f = E.requestSnapshot || f;
     const R = String(E.text || ""), N = Array.isArray(E.toolCalls) ? E.toolCalls : [];
     if (!N.length) {
       if (!N1(R) && y && !_) {
@@ -45285,7 +45294,7 @@ async function Vne(e) {
         provider: l,
         model: i,
         finishReason: u,
-        providerPayload: c,
+        providerPayload: d,
         requestSnapshot: f,
         runtimeEvents: r
       };
@@ -45369,7 +45378,7 @@ async function Yne(e) {
     const D = o.order + 1;
     await h2(n.id, D), await U3(n.id, D - 1), await P3(n.id, D - 1), await B3(n.id, D), await M3(n.id, D), await kh(n.id), await V4(n.id, await Ww(n.id, D));
   }
-  const l = ps(n.state || e.runtimeState || {}), i = O1(l), u = rh(i), c = { ...e.diagnostics || {} };
+  const l = ps(n.state || e.runtimeState || {}), i = O1(l), u = rh(i), d = { ...e.diagnostics || {} };
   o || (e.runManager === !0 && u.hasAutomaticManagerWork && Jne({
     sessionId: n.id,
     agentConfig: e.agentConfig,
@@ -45384,7 +45393,7 @@ async function Yne(e) {
     contextSnapshot: r,
     chatPreset: e.chatPreset,
     historyMode: e.historyMode || "raw",
-    diagnostics: c,
+    diagnostics: d,
     applySubstituteParams: e.applySubstituteParams,
     getNativeWorldInfoRuntime: e.getNativeWorldInfoRuntime
   }) : null, g = o ? Nne({
@@ -45468,7 +45477,7 @@ async function Yne(e) {
     memoryContext: fe,
     runtimeDepthEntries: Ane(j),
     runtimeProtocolMessages: Ie,
-    diagnostics: c,
+    diagnostics: d,
     regexApplications: w,
     transformConversationMessages: async (D) => {
       const L = await cv({
@@ -45521,7 +45530,7 @@ async function Yne(e) {
     memoryContext: fe,
     chancePrompt: j ? LM().content : "",
     runtimeProtocolMessages: Ie,
-    diagnostics: c
+    diagnostics: d
   }), F = await h0(n.id, {
     contextSnapshot: r,
     buildSnapshot: Be,
@@ -45993,7 +46002,7 @@ function lre(e) {
   function u() {
     o(), s = null, e.clearRuntimeDisplayRegexRequests(), t.runtimeText.value = "", t.runtimeThoughts.value = [], t.runtimeActionCheckEvents.value = [], t.runtimeFinalizedAssistantMessage.value = null, t.runtimeUserMessageVisible.value = !1, t.runtimePendingUserMessage.value = "";
   }
-  function c() {
+  function d() {
     t.currentUserMessage.value = "", t.runtimeError.value = "", t.runtimeProvider.value = "", t.runtimeModel.value = "", u();
   }
   function f() {
@@ -46138,7 +46147,7 @@ function lre(e) {
     flushDeferredAssistantCommit: g,
     handleChatSubmit: x,
     resolveDeferredAssistantCommit: p,
-    resetChatRunPreviewState: c,
+    resetChatRunPreviewState: d,
     runOnce: C,
     scheduleRuntimeStreamSnapshot: i
   };
@@ -46202,11 +46211,11 @@ function fre(e = "", t = -1) {
   };
   if (t > 0 && a.has(n[t - 1])) return l(t);
   for (let i = 0; i < r && t + i < s; i += 1) {
-    const u = t + i, c = n[u];
-    if (c === `
+    const u = t + i, d = n[u];
+    if (d === `
 `) return u + 1;
-    if (a.has(c)) return l(u + 1);
-    if (c === "." && n.slice(u, u + 3) === "...") return l(u + 3);
+    if (a.has(d)) return l(u + 1);
+    if (d === "." && n.slice(u, u + 3) === "...") return l(u + 3);
   }
   return t;
 }
@@ -46299,7 +46308,7 @@ function mre(e) {
   function u(L) {
     return s.value[e.messageKey(L)] || null;
   }
-  function c(L) {
+  function d(L) {
     return L?.status === "queued" || L?.status === "running";
   }
   function f() {
@@ -46454,7 +46463,7 @@ function mre(e) {
     }
   }
   function V(L) {
-    return c(u(L));
+    return d(u(L));
   }
   function W(L) {
     return u(L)?.progressText || "";
@@ -46511,7 +46520,7 @@ function mre(e) {
   }
   function oe(L = "") {
     const X = String(L || "").trim(), le = s.value[X];
-    if (!(!le || !c(le))) {
+    if (!(!le || !d(le))) {
       if (le.status === "queued") {
         a.value = a.value.filter((ve) => ve !== X), x(), _(X, {
           status: "cancelled",
@@ -46685,7 +46694,7 @@ function mre(e) {
   }
   async function re(L) {
     const X = u(L);
-    if (c(X)) {
+    if (d(X)) {
       oe(X.key);
       return;
     }
@@ -46826,7 +46835,7 @@ ${E}`), console.error("[小白酒馆] host request failed", {
       y >= 0 && n.splice(y, 1);
     };
   }
-  function c(g) {
+  function d(g) {
     if (g.origin !== window.location.origin) return;
     const y = g.data || {};
     if (y.source === vre) {
@@ -46838,10 +46847,10 @@ ${E}`), console.error("[小白酒馆] host request failed", {
     }
   }
   function f() {
-    r || (r = !0, window.addEventListener("message", c));
+    r || (r = !0, window.addEventListener("message", d));
   }
   function p(g = /* @__PURE__ */ new Error("tavern_host_bridge_disposed")) {
-    r && (window.removeEventListener("message", c), r = !1), t.forEach((y) => {
+    r && (window.removeEventListener("message", d), r = !1), t.forEach((y) => {
       y.abort && y.signal && y.signal.removeEventListener("abort", y.abort), y.reject(g);
     }), t.clear(), n.length = 0;
   }
@@ -46856,11 +46865,11 @@ ${E}`), console.error("[小白酒馆] host request failed", {
   };
 }
 function bre() {
-  const e = /* @__PURE__ */ ie([]), t = /* @__PURE__ */ ie(""), n = /* @__PURE__ */ ie([]), r = /* @__PURE__ */ ie(0), s = /* @__PURE__ */ ie(null), a = /* @__PURE__ */ ie(null), o = /* @__PURE__ */ ie(-1), l = /* @__PURE__ */ ie({}), i = Q(() => e.value.find((f) => f.id === t.value) || null), u = Q(() => n.value), c = Q(() => wre(n.value));
+  const e = /* @__PURE__ */ ie([]), t = /* @__PURE__ */ ie(""), n = /* @__PURE__ */ ie([]), r = /* @__PURE__ */ ie(0), s = /* @__PURE__ */ ie(null), a = /* @__PURE__ */ ie(null), o = /* @__PURE__ */ ie(-1), l = /* @__PURE__ */ ie({}), i = Q(() => e.value.find((f) => f.id === t.value) || null), u = Q(() => n.value), d = Q(() => wre(n.value));
   return {
     chatMessages: u,
     currentAssistantFloor: Q(() => o.value),
-    latestSessionMessage: c,
+    latestSessionMessage: d,
     loadedSessionMessageEndOrder: a,
     loadedSessionMessageStartOrder: s,
     loadedSessionMessages: n,
@@ -46928,14 +46937,14 @@ function Sre(e, t) {
       K === e.selectedSessionId.value || K in e.sessionMessageCounts.value || (U[K] = Math.max(0, Math.floor(Number(j) || 0)));
     }), e.sessionMessageCounts.value = U;
   }
-  function c() {
+  function d() {
     e.loadedSessionMessages.value = [], e.selectedSessionMessageTotal.value = 0, e.loadedSessionMessageStartOrder.value = null, e.loadedSessionMessageEndOrder.value = null, e.selectedSessionLatestAssistantOrder.value = -1;
   }
   async function f(S = {}) {
     t.reportStartupProgress(96, "loadSelectedSessionMessageWindow");
     const I = String(S.sessionId || e.selectedSessionId.value || "").trim(), k = n + 1;
     if (n = k, !I) {
-      c();
+      d();
       return;
     }
     S.reset && t.resetChatMessageWindowState();
@@ -46993,7 +47002,7 @@ function Sre(e, t) {
     return await Eq(S);
   }
   async function E(S = {}) {
-    e.selectedSessionId.value = "", S.clearCharacterError !== !1 && (t.selectedSessionCharacterError.value = ""), c(), S.persist && await C(""), S.refreshManager && await t.refreshManagerRecords("");
+    e.selectedSessionId.value = "", S.clearCharacterError !== !1 && (t.selectedSessionCharacterError.value = ""), d(), S.persist && await C(""), S.refreshManager && await t.refreshManagerRecords("");
   }
   async function R() {
     t.reportStartupProgress(94, "refreshSessions"), e.sessions.value = await Aq();
@@ -47026,7 +47035,7 @@ function Sre(e, t) {
         e.selectedSessionId.value = K.id, await C(K.id), await R(), t.activeView.value = "chat", t.chatFocus.value = "chat", t.scrollChatToBottom(!0);
         return;
       }
-      if (e.selectedSessionId.value = "", t.selectedSessionCharacterError.value = "", c(), await C(""), await R(), P) {
+      if (e.selectedSessionId.value = "", t.selectedSessionCharacterError.value = "", d(), await C(""), await R(), P) {
         t.selectedCharacterPreviewKey.value = P, t.syncCharacterWorldbookState(P), t.openCharacterSettingsWorkspace();
         return;
       }
@@ -47046,7 +47055,7 @@ function Sre(e, t) {
   return {
     ...e,
     chatMessageWindow: s,
-    clearLoadedSessionMessageWindow: c,
+    clearLoadedSessionMessageWindow: d,
     clearSelectedSession: E,
     handleChatMessageWindowLimitChanged: b,
     loadSelectedSessionMessageWindow: f,
@@ -47599,7 +47608,7 @@ var tse = { class: "character-workspace-panel" }, nse = {
 }, rae = { class: "empty-content" }, sae = /* @__PURE__ */ xn({
   __name: "TavernCharacterWorkspacePanel",
   setup(e) {
-    const { avatarAvailable: t, batchSize: n, characterWorldbookBusy: r, characterWorldbookState: s, characters: a, enterSelected: o, filteredCount: l, hiddenCount: i, liveCharacterKey: u, loadMore: c, movePreview: f, openCharacterWorldbook: p, pendingCharacterSessionKey: g, pendingError: y, pendingPreviewCharacterKey: _, refresh: x, rememberBrokenAvatar: C, searchText: E, select: R, selectFirstVisible: N, selectGreeting: m, selectLastVisible: w, selectedCharacter: b, selectedGreetingIndex: S, shortText: I, syncWorldbookState: k, visibleCharacters: P } = K8(), { removeSession: U, selectedCharacterSessions: K, selectSession: j, sessionFloorLabel: V } = my(), W = uu(), $ = /* @__PURE__ */ ie(null), J = /* @__PURE__ */ ie(!1), ae = /* @__PURE__ */ ie(!1), be = /* @__PURE__ */ ie(!1), Pe = Q(() => {
+    const { avatarAvailable: t, batchSize: n, characterWorldbookBusy: r, characterWorldbookState: s, characters: a, enterSelected: o, filteredCount: l, hiddenCount: i, liveCharacterKey: u, loadMore: d, movePreview: f, openCharacterWorldbook: p, pendingCharacterSessionKey: g, pendingError: y, pendingPreviewCharacterKey: _, refresh: x, rememberBrokenAvatar: C, searchText: E, select: R, selectFirstVisible: N, selectGreeting: m, selectLastVisible: w, selectedCharacter: b, selectedGreetingIndex: S, shortText: I, syncWorldbookState: k, visibleCharacters: P } = K8(), { removeSession: U, selectedCharacterSessions: K, selectSession: j, sessionFloorLabel: V } = my(), W = uu(), $ = /* @__PURE__ */ ie(null), J = /* @__PURE__ */ ie(!1), ae = /* @__PURE__ */ ie(!1), be = /* @__PURE__ */ ie(!1), Pe = Q(() => {
       const Ee = b.value;
       return Ee ? [String(Ee.firstMessage || "").trim(), ...Ee.alternateGreetings || []].filter(Boolean) : [];
     }), fe = Q(() => {
@@ -47762,7 +47771,7 @@ var tse = { class: "character-workspace-panel" }, nse = {
           key: 0,
           type: "button",
           class: "archive-load-more character-load-more",
-          onClick: De[0] || (De[0] = (...Ue) => T(c) && T(c)(...Ue))
+          onClick: De[0] || (De[0] = (...Ue) => T(d) && T(d)(...Ue))
         }, " 加载更多角色 (" + ee(Math.min(T(i), T(n))) + ") ", 1)) : Te("", !0)], 544),
         T(P).length ? Te("", !0) : (O(), B("div", _se, " 没有匹配的角色。 "))
       ]),
@@ -47935,7 +47944,7 @@ var tse = { class: "character-workspace-panel" }, nse = {
 }, Pae = /* @__PURE__ */ xn({
   __name: "TavernAssistantPresetSettingsPanel",
   setup(e) {
-    const t = nl(), n = uu(), { activeAssistantPresetId: r, activeSettingsWorkspace: s, assistantPreset: a, assistantPresetDirty: o, assistantPresetItems: l, assistantPresets: i, assistantPresetSaveFeedback: u, assistantPresetStatus: c, createAssistantPreset: f, deleteCurrentAssistantPreset: p, importAssistantPreset: g, saveCurrentAssistantPreset: y, selectAssistantPreset: _, selectAssistantPresetItem: x, selectedAssistantPresetItem: C, shortText: E, updateAssistantPresetPatch: R, updateSelectedAssistantPresetItem: N } = t, m = Q(() => String(r.value || a.value.id || "").trim()), w = Q(() => i.value.find((V) => V.id === m.value) || null), b = /* @__PURE__ */ ie(null), S = Q(() => {
+    const t = nl(), n = uu(), { activeAssistantPresetId: r, activeSettingsWorkspace: s, assistantPreset: a, assistantPresetDirty: o, assistantPresetItems: l, assistantPresets: i, assistantPresetSaveFeedback: u, assistantPresetStatus: d, createAssistantPreset: f, deleteCurrentAssistantPreset: p, importAssistantPreset: g, saveCurrentAssistantPreset: y, selectAssistantPreset: _, selectAssistantPresetItem: x, selectedAssistantPresetItem: C, shortText: E, updateAssistantPresetPatch: R, updateSelectedAssistantPresetItem: N } = t, m = Q(() => String(r.value || a.value.id || "").trim()), w = Q(() => i.value.find((V) => V.id === m.value) || null), b = /* @__PURE__ */ ie(null), S = Q(() => {
       const V = u.value.status;
       return V === "saving" ? "正在保存" : V === "success" ? "已保存" : V === "error" ? u.value.error || "保存失败" : "保存";
     }), I = Q(() => ({
@@ -48073,7 +48082,7 @@ var tse = { class: "character-workspace-panel" }, nse = {
           onChange: K
         }, null, 544)
       ])]),
-      T(c) ? (O(), B("div", Sae, [v("span", null, ee(T(c)), 1)])) : Te("", !0),
+      T(d) ? (O(), B("div", Sae, [v("span", null, ee(T(d)), 1)])) : Te("", !0),
       v("div", Aae, [v("aside", Tae, [W[15] || (W[15] = v("div", { class: "assistant-preset-nav-head" }, [v("strong", null, "维护规则")], -1)), (O(!0), B(Ge, null, ut(T(l), ($) => (O(), B("button", {
         key: $.id,
         type: "button",
@@ -48099,7 +48108,7 @@ var tse = { class: "character-workspace-panel" }, nse = {
 }, Qae = ["disabled", "onClick"], Zae = /* @__PURE__ */ xn({
   __name: "TavernBaseSettingsPanel",
   setup(e) {
-    const { activeSettingsWorkspace: t, baseSettingsLoading: n, baseSettingsSaving: r, baseSettingsStatus: s, currentTavernUser: a, displaySettings: o, shortText: l, switchingTavernUserId: i, switchTavernUser: u, tavernUsers: c, updateDisplaySettingsPatch: f } = nl(), p = Q(() => a.value?.name || "未选择 USER"), g = Q(() => a.value?.description || "聊天上下文会沿用这位 USER 的身份与头像。"), y = Q(() => a.value ? x(a.value) : "U"), _ = Q(() => a.value?.id || c.value.find((w) => w.active)?.id || "");
+    const { activeSettingsWorkspace: t, baseSettingsLoading: n, baseSettingsSaving: r, baseSettingsStatus: s, currentTavernUser: a, displaySettings: o, shortText: l, switchingTavernUserId: i, switchTavernUser: u, tavernUsers: d, updateDisplaySettingsPatch: f } = nl(), p = Q(() => a.value?.name || "未选择 USER"), g = Q(() => a.value?.description || "聊天上下文会沿用这位 USER 的身份与头像。"), y = Q(() => a.value ? x(a.value) : "U"), _ = Q(() => a.value?.id || d.value.find((w) => w.active)?.id || "");
     function x(w) {
       return (String(w.name || w.id || "U").trim().slice(0, 1) || "U").toUpperCase();
     }
@@ -48132,9 +48141,9 @@ var tse = { class: "character-workspace-panel" }, nse = {
           v("select", {
             class: "base-user-select",
             value: _.value,
-            disabled: T(n) || !!T(i) || !T(c).length,
+            disabled: T(n) || !!T(i) || !T(d).length,
             onChange: b[0] || (b[0] = (S) => C(S.target.value))
-          }, [T(c).length ? Te("", !0) : (O(), B("option", Oae, ee(T(n) ? "正在读取 USER 列表" : "没有可切换的 USER"), 1)), (O(!0), B(Ge, null, ut(T(c), (S) => (O(), B("option", {
+          }, [T(d).length ? Te("", !0) : (O(), B("option", Oae, ee(T(n) ? "正在读取 USER 列表" : "没有可切换的 USER"), 1)), (O(!0), B(Ge, null, ut(T(d), (S) => (O(), B("option", {
             key: S.id,
             value: S.id
           }, ee(S.name), 9, Fae))), 128))], 40, Dae),
@@ -48236,14 +48245,14 @@ var eoe = { class: "panel-head preset-page-head" }, toe = { class: "panel-pills"
 }, Koe = /* @__PURE__ */ xn({
   __name: "TavernChatPresetSettingsPanel",
   setup(e) {
-    const { activePromptOrderLabel: t, activeSettingsWorkspace: n, canEditPromptOrder: r, chatPresetOptions: s, discardPresetChanges: a, filteredPromptEditorRows: o, hiddenPromptCount: l, movePromptRow: i, preset: u, presetDirty: c, presetRows: f, presetSaveFeedback: p, presetStatus: g, presetTotalChars: y, PROMPT_EDITOR_BATCH_SIZE: _, promptEditorRows: x, promptRoleDisplay: C, promptRowIndex: E, promptSearchText: R, promptVisibleLimit: N, saveCurrentPreset: m, selectChatPresetFromHost: w, selectedPresetSourceId: b, selectedPromptIdentifier: S, selectedPromptRow: I, togglePromptRow: k, updatePromptByIdentifier: P, visiblePromptEditorRows: U } = nl(), K = Q(() => String(b.value || u.value.promptManager?.name || u.value.name || "").trim()), j = /* @__PURE__ */ ie(!1), V = gy("(max-width: 560px)"), W = Q(() => n.value === "chatPreset" && (!V.value || j.value)), $ = Q(() => {
+    const { activePromptOrderLabel: t, activeSettingsWorkspace: n, canEditPromptOrder: r, chatPresetOptions: s, discardPresetChanges: a, filteredPromptEditorRows: o, hiddenPromptCount: l, movePromptRow: i, preset: u, presetDirty: d, presetRows: f, presetSaveFeedback: p, presetStatus: g, presetTotalChars: y, PROMPT_EDITOR_BATCH_SIZE: _, promptEditorRows: x, promptRoleDisplay: C, promptRowIndex: E, promptSearchText: R, promptVisibleLimit: N, saveCurrentPreset: m, selectChatPresetFromHost: w, selectedPresetSourceId: b, selectedPromptIdentifier: S, selectedPromptRow: I, togglePromptRow: k, updatePromptByIdentifier: P, visiblePromptEditorRows: U } = nl(), K = Q(() => String(b.value || u.value.promptManager?.name || u.value.name || "").trim()), j = /* @__PURE__ */ ie(!1), V = gy("(max-width: 560px)"), W = Q(() => n.value === "chatPreset" && (!V.value || j.value)), $ = Q(() => {
       const Ie = p.value.status;
       return Ie === "saving" ? "正在保存" : Ie === "success" ? "已保存" : Ie === "error" ? p.value.error || "保存失败" : "保存";
     }), J = Q(() => ({
       "is-saving": p.value.status === "saving",
       "is-success": p.value.status === "success",
       "is-error": p.value.status === "error"
-    })), ae = Q(() => !r.value || !c.value || p.value.status === "saving");
+    })), ae = Q(() => !r.value || !d.value || p.value.status === "saving");
     function be(Ie) {
       S.value = Ie, j.value = !0;
     }
@@ -48256,7 +48265,7 @@ var eoe = { class: "panel-head preset-page-head" }, toe = { class: "panel-pills"
     return Ct(n, (Ie) => {
       Ie !== "chatPreset" && (j.value = !1);
     }), (Ie, oe) => ur((O(), B("div", { class: ze(["panel step-panel preset-workspace", { "is-mobile-editor-open": j.value }]) }, [
-      v("div", eoe, [oe[9] || (oe[9] = v("div", null, [v("h2", null, "聊天预设")], -1)), v("div", toe, [T(c) ? (O(), B("span", noe, "未保存")) : Te("", !0), v("span", roe, ee(T(f).length) + " 条 · " + ee(T(y)) + " 字", 1)])]),
+      v("div", eoe, [oe[9] || (oe[9] = v("div", null, [v("h2", null, "聊天预设")], -1)), v("div", toe, [T(d) ? (O(), B("span", noe, "未保存")) : Te("", !0), v("span", roe, ee(T(f).length) + " 条 · " + ee(T(y)) + " 字", 1)])]),
       v("div", soe, [v("label", aoe, [v("select", {
         value: K.value,
         onChange: oe[0] || (oe[0] = (Se) => T(w)(Se.target.value))
@@ -48268,7 +48277,7 @@ var eoe = { class: "panel-head preset-page-head" }, toe = { class: "panel-pills"
         class: "settings-icon-tool",
         title: "放弃修改",
         "aria-label": "放弃修改",
-        disabled: !T(c),
+        disabled: !T(d),
         onClick: oe[1] || (oe[1] = (...Se) => T(a) && T(a)(...Se))
       }, [...oe[10] || (oe[10] = [v("svg", {
         viewBox: "0 0 24 24",
@@ -48444,7 +48453,7 @@ var eoe = { class: "panel-head preset-page-head" }, toe = { class: "panel-pills"
     function u(y) {
       return y.closest(".chat-scroll");
     }
-    function c() {
+    function d() {
       const y = a.value, _ = o.value;
       if (!y || !_) return;
       const x = u(y), C = x?.scrollTop ?? 0, E = y.offsetHeight, R = 144, N = 420, m = window.getComputedStyle(y);
@@ -48457,7 +48466,7 @@ var eoe = { class: "panel-head preset-page-head" }, toe = { class: "panel-pills"
     function f() {
       Qt(() => {
         const y = a.value;
-        y && (c(), y.focus(), y.setSelectionRange(y.value.length, y.value.length));
+        y && (d(), y.focus(), y.setSelectionRange(y.value.length, y.value.length));
       });
     }
     function p(y = {}) {
@@ -48485,7 +48494,7 @@ var eoe = { class: "panel-head preset-page-head" }, toe = { class: "panel-pills"
         class: "message-edit-box",
         rows: "6",
         "data-message-editor": e.messageKey,
-        onInput: c,
+        onInput: d,
         onKeydown: g
       }, null, 40, Goe), [[Aa, s.value]]),
       v("div", {
@@ -48538,9 +48547,9 @@ var eoe = { class: "panel-head preset-page-head" }, toe = { class: "panel-pills"
   __name: "TavernDrawCapsule",
   props: { mobile: { type: Boolean } },
   setup(e) {
-    const t = e, n = W8(), { homeThemeDark: r } = uu(), { drawLatestAssistantMessage: s, openTavernDrawSettings: a, refreshTavernDrawQuickSettings: o, tavernDrawCapsuleIcon: l, tavernDrawCapsuleMainDisabled: i, tavernDrawCapsuleStatusClass: u, tavernDrawCapsuleStatusText: c, tavernDrawCapsuleTitle: f, tavernDrawCapsuleVisible: p, tavernDrawQuickSettings: g, tavernDrawQuickSettingsLoading: y, updateTavernDrawQuickSettings: _ } = n, x = /* @__PURE__ */ ie(!1), C = /* @__PURE__ */ ie(!1), E = /* @__PURE__ */ ie(null), R = /* @__PURE__ */ ie({}), N = /* @__PURE__ */ ie({});
+    const t = e, n = W8(), { homeThemeDark: r } = uu(), { drawLatestAssistantMessage: s, openTavernDrawSettings: a, refreshTavernDrawQuickSettings: o, tavernDrawCapsuleIcon: l, tavernDrawCapsuleMainDisabled: i, tavernDrawCapsuleStatusClass: u, tavernDrawCapsuleStatusText: d, tavernDrawCapsuleTitle: f, tavernDrawCapsuleVisible: p, tavernDrawQuickSettings: g, tavernDrawQuickSettingsLoading: y, updateTavernDrawQuickSettings: _ } = n, x = /* @__PURE__ */ ie(!1), C = /* @__PURE__ */ ie(!1), E = /* @__PURE__ */ ie(null), R = /* @__PURE__ */ ie({}), N = /* @__PURE__ */ ie({});
     let m = 0;
-    const w = Q(() => !!(c.value || u.value || l.value === "■")), b = Q(() => g.value.available && g.value.presets.length > 0 && g.value.sizeOptions.length > 0), S = Q(() => g.value.auto === !0), I = Q(() => c.value || (l.value === "■" ? "绘制中" : f.value)), k = Q(() => ae(I.value, u.value, l.value)), P = Q(() => l.value === "■" || u.value.includes("running")), U = Q(() => !x.value && C.value && w.value), K = Q(() => P.value ? f.value : "查看画图状态"), j = Q(() => P.value ? "画图进行中" : u.value.includes("success") ? "画图完成" : u.value.includes("error") ? "画图失败" : "画图状态"), V = Q(() => {
+    const w = Q(() => !!(d.value || u.value || l.value === "■")), b = Q(() => g.value.available && g.value.presets.length > 0 && g.value.sizeOptions.length > 0), S = Q(() => g.value.auto === !0), I = Q(() => d.value || (l.value === "■" ? "绘制中" : f.value)), k = Q(() => ae(I.value, u.value, l.value)), P = Q(() => l.value === "■" || u.value.includes("running")), U = Q(() => !x.value && C.value && w.value), K = Q(() => P.value ? f.value : "查看画图状态"), j = Q(() => P.value ? "画图进行中" : u.value.includes("success") ? "画图完成" : u.value.includes("error") ? "画图失败" : "画图状态"), V = Q(() => {
       const D = I.value.trim();
       if (D) return D;
       const L = f.value.trim();
@@ -48823,7 +48832,7 @@ var Mie = ["aria-hidden"], Pie = {
   __name: "TavernConversationPanel",
   emits: ["open-contract", "open-author-note"],
   setup(e, { emit: t }) {
-    const n = t, r = uu(), s = b2(), a = my(), o = W8(), { activeView: l, homeThemeDark: i, openPromptInspector: u, rememberBrokenAvatar: c } = r, { actionFeedback: f, cancelEditMessage: p, canEditMessage: g, canRerunMessage: y, canSendMessage: _, chatComposeTextareaRef: x, chatFocus: C, chatLayout: E, chatScrollControlsActive: R, chatScrollRef: N, copyMessage: m, currentUserMessage: w, deleteMessageTurn: b, displayMessageContent: S, displayMessageRenderProjection: I, displayMessageThoughtBlocks: k, displayRuntimeRenderProjection: P, displayRuntimeThoughtBlocks: U, formatMessageTime: K, handleChatScroll: j, handleChatSubmit: V, handleChatTouchMove: W, handleChatTouchStart: $, handleChatWheel: J, handleComposeInput: ae, handleComposeKeydown: be, isEditingMessage: Pe, isCancellingRun: fe, isRunning: Ie, markdownSignature: oe, htmlRenderEnabled: Se, messageKey: Be, renderChatMarkdown: F, rerunFromMessage: te, revealOlderChatMessages: ge, roleLabel: we, runtimeActionCheckEvents: ue, runtimeFinalizedAssistantMessage: re, runtimePendingUserMessage: D, runtimeText: L, runtimeThoughts: X, runtimeUserMessageVisible: le, saveEditMessage: ve, scrollChatToBottom: ce, scrollChatToTop: xe, showChatScrollBottom: Me, showChatScrollTop: pe, startEditMessage: G, thoughtBlocks: Re, thoughtSummaryLabel: me, visibleCharacterAvatar: qe, visibleUserAvatar: Ee } = s, { chatMessages: De, chatMessageWindow: Ue, createNewChatSession: ht, currentChatCharacterSessions: St, removeSession: kt, selectedSessionId: Dt, selectSession: yt, sessionDisplayTitle: Zt, sessionFloorLabel: Vt, visibleChatMessages: ne } = a, { canDrawMessage: de, drawMessage: Ae, drawMessageStatusClass: Le, drawMessageStatusText: We, drawMessageTitle: nt, isDrawingMessage: st } = o;
+    const n = t, r = uu(), s = b2(), a = my(), o = W8(), { activeView: l, homeThemeDark: i, openPromptInspector: u, rememberBrokenAvatar: d } = r, { actionFeedback: f, cancelEditMessage: p, canEditMessage: g, canRerunMessage: y, canSendMessage: _, chatComposeTextareaRef: x, chatFocus: C, chatLayout: E, chatScrollControlsActive: R, chatScrollRef: N, copyMessage: m, currentUserMessage: w, deleteMessageTurn: b, displayMessageContent: S, displayMessageRenderProjection: I, displayMessageThoughtBlocks: k, displayRuntimeRenderProjection: P, displayRuntimeThoughtBlocks: U, formatMessageTime: K, handleChatScroll: j, handleChatSubmit: V, handleChatTouchMove: W, handleChatTouchStart: $, handleChatWheel: J, handleComposeInput: ae, handleComposeKeydown: be, isEditingMessage: Pe, isCancellingRun: fe, isRunning: Ie, markdownSignature: oe, htmlRenderEnabled: Se, messageKey: Be, renderChatMarkdown: F, rerunFromMessage: te, revealOlderChatMessages: ge, roleLabel: we, runtimeActionCheckEvents: ue, runtimeFinalizedAssistantMessage: re, runtimePendingUserMessage: D, runtimeText: L, runtimeThoughts: X, runtimeUserMessageVisible: le, saveEditMessage: ve, scrollChatToBottom: ce, scrollChatToTop: xe, showChatScrollBottom: Me, showChatScrollTop: pe, startEditMessage: G, thoughtBlocks: Re, thoughtSummaryLabel: me, visibleCharacterAvatar: qe, visibleUserAvatar: Ee } = s, { chatMessages: De, chatMessageWindow: Ue, createNewChatSession: ht, currentChatCharacterSessions: St, removeSession: kt, selectedSessionId: Dt, selectSession: yt, sessionDisplayTitle: Zt, sessionFloorLabel: Vt, visibleChatMessages: ne } = a, { canDrawMessage: de, drawMessage: Ae, drawMessageStatusClass: Le, drawMessageStatusText: We, drawMessageTitle: nt, isDrawingMessage: st } = o;
     function mt(Rt) {
       N.value = Rt instanceof HTMLElement ? Rt : null;
     }
@@ -48960,7 +48969,7 @@ var Mie = ["aria-hidden"], Pie = {
       T(qe) ? (O(), B("div", Pie, [v("img", {
         src: T(qe),
         alt: "",
-        onError: Je[0] || (Je[0] = (Oe) => T(c)(T(qe)))
+        onError: Je[0] || (Je[0] = (Oe) => T(d)(T(qe)))
       }, null, 40, Rie)])) : Te("", !0),
       v("header", Nie, [v("div", $ie, [v("div", Lie, [
         v("button", {
@@ -49027,12 +49036,12 @@ var Mie = ["aria-hidden"], Pie = {
               key: 0,
               src: T(Ee),
               alt: "",
-              onError: Je[8] || (Je[8] = (jt) => T(c)(T(Ee)))
+              onError: Je[8] || (Je[8] = (jt) => T(d)(T(Ee)))
             }, null, 40, Kie)) : Oe.role !== "user" && T(qe) ? (O(), B("img", {
               key: 1,
               src: T(qe),
               alt: "",
-              onError: Je[9] || (Je[9] = (jt) => T(c)(T(qe)))
+              onError: Je[9] || (Je[9] = (jt) => T(d)(T(qe)))
             }, null, 40, Wie)) : (O(), B("span", Vie, ee(String(T(we)(Oe.role)).slice(0, 1)), 1))]),
             v("span", Gie, ee(Oe.error ? "错误" : T(we)(Oe.role)), 1),
             v("span", Jie, [v("span", {
@@ -49142,7 +49151,7 @@ var Mie = ["aria-hidden"], Pie = {
             key: 0,
             src: T(Ee),
             alt: "",
-            onError: Je[11] || (Je[11] = (Oe) => T(c)(T(Ee)))
+            onError: Je[11] || (Je[11] = (Oe) => T(d)(T(Ee)))
           }, null, 40, dle)) : (O(), B("span", fle, ee(String(T(we)("user")).slice(0, 1)), 1))]),
           v("span", hle, ee(T(we)("user")), 1),
           Je[32] || (Je[32] = v("span", { class: "bubble-meta-line" }, [v("small", { class: "bubble-time-tag" }, "发送中")], -1))
@@ -49157,7 +49166,7 @@ var Mie = ["aria-hidden"], Pie = {
             key: 0,
             src: T(qe),
             alt: "",
-            onError: Je[12] || (Je[12] = (Oe) => T(c)(T(qe)))
+            onError: Je[12] || (Je[12] = (Oe) => T(d)(T(qe)))
           }, null, 40, _le)) : (O(), B("span", ble, ee(String(T(we)("assistant")).slice(0, 1)), 1))]), v("span", wle, ee(T(we)("assistant")), 1)]), v("small", null, ee(T(re) ? "已完成" : "生成中"), 1)]),
           (O(!0), B(Ge, null, ut([Vs.value], (Oe) => (O(), B(Ge, { key: `${lm}:${Oe.length}` }, [Oe.length ? (O(), B("details", {
             key: 0,
@@ -49180,7 +49189,7 @@ var Mie = ["aria-hidden"], Pie = {
           key: 0,
           src: T(qe),
           alt: "",
-          onError: Je[14] || (Je[14] = (Oe) => T(c)(T(qe)))
+          onError: Je[14] || (Je[14] = (Oe) => T(d)(T(qe)))
         }, null, 40, kle)) : (O(), B("span", Mle, ee(String(T(we)("assistant")).slice(0, 1)), 1))]), v("span", Ple, ee(T(we)("assistant")), 1)]), v("small", null, ee(T(re) ? "已完成" : "生成中"), 1)]), Je[33] || (Je[33] = v("p", null, "正在组织回复...", -1))])) : Te("", !0),
         !T(De).length && !T(Ie) ? (O(), B("p", Rle, " 写一句话，开始。 ")) : Te("", !0),
         Je[34] || (Je[34] = v("div", {
@@ -49351,7 +49360,7 @@ var Mie = ["aria-hidden"], Pie = {
   __name: "TavernManagerPanel",
   emits: ["open-contract"],
   setup(e, { emit: t }) {
-    const n = t, r = uu(), s = b2(), a = V8(), { activeView: o, homeThemeDark: l, shortText: i } = r, { chatFocus: u, cancelEditMessage: c, formatMessageTime: f, handleComposeInput: p, htmlRenderEnabled: g, markdownSignature: y, renderChatMarkdown: _, roleLabel: x, thoughtSummaryLabel: C } = s, { activeMemoryFiles: E, archivedManagerRuns: R, canEditManagerMessage: N, canRerunManagerMessage: m, canSendManagerMessage: w, copyManagerMessage: b, currentManagerWorkRun: S, deleteManagerMessageTurn: I, editingMessageDraft: k, enhanceManagerMarkdown: P, formatRunActivityLine: U, formatRunIssueLine: K, formatRunInputLine: j, formatRunMapLine: V, formatRunMemoryLine: W, formatRunModelLine: $, formatRunTaskLine: J, handleEditInput: ae, handleManagerComposeKeydown: be, handleManagerEditKeydown: Pe, handleManagerScroll: fe, handleManagerSubmit: Ie, handleManagerTouchMove: oe, handleManagerTouchStart: Se, handleManagerWheel: Be, hiddenManagerRunCount: F, isEditingManagerMessage: te, isEditingManagerMessageDirty: ge, isManagerAssistantCancelling: we, isManagerAssistantRunning: ue, isManagerRunRetrying: re, liveManagerChatDisplayItems: D, managerActionFeedback: L, managerBusy: X, managerCompactionOverlay: le, managerComposeTextareaRef: ve, managerInputDraft: ce, managerMessageWindow: xe, managerRuns: Me, managerRunTone: pe, managerScrollControlsActive: G, managerScrollRef: Re, managerWorkRef: me, managerStatusLabel: qe, managerToolStatusLabel: Ee, managerToolTone: De, managerToolTraceItems: Ue, managerToolTurnPreview: ht, managerToolTurnSummary: St, memoryFileDisplayName: kt, memoryFiles: Dt, memoryIndexStatusLine: yt, retryManagerRun: Zt, revealOlderManagerMessages: Vt, rerunFromManagerMessage: ne, saveEditManagerMessage: de, scrollManagerToBottom: Ae, scrollManagerToTop: Le, selectedMemoryFile: We, showManagerScrollBottom: nt, showManagerScrollTop: st, startEditManagerMessage: mt, toolTraceSummary: At, updateManagerScrollButtons: Gt, visibleManagerChatItems: an } = a;
+    const n = t, r = uu(), s = b2(), a = V8(), { activeView: o, homeThemeDark: l, shortText: i } = r, { chatFocus: u, cancelEditMessage: d, formatMessageTime: f, handleComposeInput: p, htmlRenderEnabled: g, markdownSignature: y, renderChatMarkdown: _, roleLabel: x, thoughtSummaryLabel: C } = s, { activeMemoryFiles: E, archivedManagerRuns: R, canEditManagerMessage: N, canRerunManagerMessage: m, canSendManagerMessage: w, copyManagerMessage: b, currentManagerWorkRun: S, deleteManagerMessageTurn: I, editingMessageDraft: k, enhanceManagerMarkdown: P, formatRunActivityLine: U, formatRunIssueLine: K, formatRunInputLine: j, formatRunMapLine: V, formatRunMemoryLine: W, formatRunModelLine: $, formatRunTaskLine: J, handleEditInput: ae, handleManagerComposeKeydown: be, handleManagerEditKeydown: Pe, handleManagerScroll: fe, handleManagerSubmit: Ie, handleManagerTouchMove: oe, handleManagerTouchStart: Se, handleManagerWheel: Be, hiddenManagerRunCount: F, isEditingManagerMessage: te, isEditingManagerMessageDirty: ge, isManagerAssistantCancelling: we, isManagerAssistantRunning: ue, isManagerRunRetrying: re, liveManagerChatDisplayItems: D, managerActionFeedback: L, managerBusy: X, managerCompactionOverlay: le, managerComposeTextareaRef: ve, managerInputDraft: ce, managerMessageWindow: xe, managerRuns: Me, managerRunTone: pe, managerScrollControlsActive: G, managerScrollRef: Re, managerWorkRef: me, managerStatusLabel: qe, managerToolStatusLabel: Ee, managerToolTone: De, managerToolTraceItems: Ue, managerToolTurnPreview: ht, managerToolTurnSummary: St, memoryFileDisplayName: kt, memoryFiles: Dt, memoryIndexStatusLine: yt, retryManagerRun: Zt, revealOlderManagerMessages: Vt, rerunFromManagerMessage: ne, saveEditManagerMessage: de, scrollManagerToBottom: Ae, scrollManagerToTop: Le, selectedMemoryFile: We, showManagerScrollBottom: nt, showManagerScrollTop: st, startEditManagerMessage: mt, toolTraceSummary: At, updateManagerScrollButtons: Gt, visibleManagerChatItems: an } = a;
     function ot(Pt) {
       Re.value = Pt instanceof HTMLElement ? Pt : null;
     }
@@ -49563,7 +49572,7 @@ var Mie = ["aria-hidden"], Pie = {
             }, " 保存并重发 ", 8, Fue)) : Te("", !0),
             v("button", {
               type: "button",
-              onClick: rt[8] || (rt[8] = (...Xt) => T(c) && T(c)(...Xt))
+              onClick: rt[8] || (rt[8] = (...Xt) => T(d) && T(d)(...Xt))
             }, " 取消 ")
           ])])) : Te("", !0),
           T(te)($e.message) ? Te("", !0) : (O(), B("div", {
@@ -49678,7 +49687,7 @@ var Mie = ["aria-hidden"], Pie = {
 }, ode = /* @__PURE__ */ xn({
   __name: "TavernRegexSettingsPanel",
   setup(e) {
-    const { activeSettingsWorkspace: t, applyActiveRegexScript: n, createRegexScript: r, deleteRegexScript: s, expandRegexGroup: a, linesFromList: o, listFromLines: l, REGEX_GROUP_BATCH_SIZE: i, regexDirty: u, regexDraft: c, regexDraftTypeLabel: f, regexGroups: p, regexGroupsForDisplay: g, regexPlacementLabel: y, regexScriptRows: _, regexSearchText: x, regexStatus: C, saveCurrentRegexScript: E, selectedRegexKey: R, selectedRegexRow: N, selectRegexScript: m, toggleRegexPlacement: w, updateRegexPatch: b } = nl(), S = /* @__PURE__ */ ie(!1), I = gy("(max-width: 560px)"), k = /* @__PURE__ */ ie(""), P = /* @__PURE__ */ ie(!1), U = Q(() => {
+    const { activeSettingsWorkspace: t, applyActiveRegexScript: n, createRegexScript: r, deleteRegexScript: s, expandRegexGroup: a, linesFromList: o, listFromLines: l, REGEX_GROUP_BATCH_SIZE: i, regexDirty: u, regexDraft: d, regexDraftTypeLabel: f, regexGroups: p, regexGroupsForDisplay: g, regexPlacementLabel: y, regexScriptRows: _, regexSearchText: x, regexStatus: C, saveCurrentRegexScript: E, selectedRegexKey: R, selectedRegexRow: N, selectRegexScript: m, toggleRegexPlacement: w, updateRegexPatch: b } = nl(), S = /* @__PURE__ */ ie(!1), I = gy("(max-width: 560px)"), k = /* @__PURE__ */ ie(""), P = /* @__PURE__ */ ie(!1), U = Q(() => {
       const Ie = k.value;
       return Ie ? g.value.filter((oe) => oe.key === Ie) : g.value;
     }), K = Q(() => p.value.filter((Ie) => Number.isFinite(Ie.scriptType))), j = Q(() => t.value === "regex" && (!I.value || S.value));
@@ -49783,8 +49792,8 @@ var Mie = ["aria-hidden"], Pie = {
           class: "native-add-row",
           onClick: (Be) => T(a)(Se.key)
         }, " 再显示 " + ee(Math.min(Se.hiddenCount, T(i))) + " 条 ", 9, Ece)) : Te("", !0)
-      ]))), 128)), T(x) && !U.value.length ? (O(), B("div", Cce, " 没有匹配的正则。 ")) : Te("", !0)]), j.value ? (O(), B("section", Ice, [T(R) || T(c).scriptName ? (O(), B(Ge, { key: 0 }, [v("div", xce, [
-        v("strong", null, ee(T(c).scriptName || "新正则"), 1),
+      ]))), 128)), T(x) && !U.value.length ? (O(), B("div", Cce, " 没有匹配的正则。 ")) : Te("", !0)]), j.value ? (O(), B("section", Ice, [T(R) || T(d).scriptName ? (O(), B(Ge, { key: 0 }, [v("div", xce, [
+        v("strong", null, ee(T(d).scriptName || "新正则"), 1),
         v("span", null, ee(T(f)()), 1),
         v("div", kce, [v("button", {
           type: "button",
@@ -49793,28 +49802,28 @@ var Mie = ["aria-hidden"], Pie = {
         }, " 取消 "), v("button", {
           type: "button",
           class: "regex-editor-primary",
-          disabled: !T(c).scriptName || !T(u),
+          disabled: !T(d).scriptName || !T(u),
           onClick: ae
         }, " 保存 ", 8, Mce)])
       ]), v("div", Pce, [
         v("section", Rce, [
           oe[22] || (oe[22] = v("div", { class: "regex-section-title" }, " 查找与替换 ", -1)),
           v("div", Nce, [v("label", null, [oe[18] || (oe[18] = v("span", null, "名称", -1)), v("input", {
-            value: T(c).scriptName || "",
+            value: T(d).scriptName || "",
             onInput: oe[2] || (oe[2] = (Se) => T(b)({ scriptName: Se.target.value }))
           }, null, 40, $ce)]), v("label", null, [oe[19] || (oe[19] = v("span", null, "匹配", -1)), v("input", {
-            value: T(c).findRegex || "",
+            value: T(d).findRegex || "",
             spellcheck: "false",
             onInput: oe[3] || (oe[3] = (Se) => T(b)({ findRegex: Se.target.value }))
           }, null, 40, Lce)])]),
           v("label", Dce, [oe[20] || (oe[20] = v("span", null, "替换为", -1)), v("textarea", {
-            value: T(c).replaceString || "",
+            value: T(d).replaceString || "",
             rows: "5",
             spellcheck: "false",
             onInput: oe[4] || (oe[4] = (Se) => T(b)({ replaceString: Se.target.value }))
           }, null, 40, Oce)]),
           v("label", Fce, [oe[21] || (oe[21] = v("span", null, "裁剪字符串", -1)), v("textarea", {
-            value: T(o)(T(c).trimStrings),
+            value: T(o)(T(d).trimStrings),
             rows: "3",
             spellcheck: "false",
             onInput: oe[5] || (oe[5] = (Se) => T(b)({ trimStrings: T(l)(Se.target.value) }))
@@ -49831,32 +49840,32 @@ var Mie = ["aria-hidden"], Pie = {
           class: "inline-check"
         }, [v("input", {
           type: "checkbox",
-          checked: (T(c).placement || []).includes(Se),
+          checked: (T(d).placement || []).includes(Se),
           onChange: (Be) => T(w)(Se, Be.target.checked)
         }, null, 40, Hce), v("span", null, ee(T(y)(Se)), 1)])), 64))])]),
         v("section", zce, [oe[26] || (oe[26] = v("div", { class: "regex-section-title" }, " 表层替换 ", -1)), v("div", Kce, [v("label", Wce, [v("input", {
           type: "checkbox",
-          checked: T(c).markdownOnly === !0,
+          checked: T(d).markdownOnly === !0,
           onChange: oe[6] || (oe[6] = (Se) => T(b)({ markdownOnly: Se.target.checked }))
         }, null, 40, Vce), oe[24] || (oe[24] = v("span", null, "只改显示", -1))]), v("label", Gce, [v("input", {
           type: "checkbox",
-          checked: T(c).promptOnly === !0,
+          checked: T(d).promptOnly === !0,
           onChange: oe[7] || (oe[7] = (Se) => T(b)({ promptOnly: Se.target.checked }))
         }, null, 40, Jce), oe[25] || (oe[25] = v("span", null, "只改提示词", -1))])])]),
         v("section", Yce, [
           oe[33] || (oe[33] = v("div", { class: "regex-section-title" }, " 其他选项 ", -1)),
           v("div", Xce, [v("label", jce, [v("input", {
             type: "checkbox",
-            checked: T(c).disabled === !0,
+            checked: T(d).disabled === !0,
             onChange: oe[8] || (oe[8] = (Se) => T(b)({ disabled: Se.target.checked }))
           }, null, 40, Qce), oe[27] || (oe[27] = v("span", null, "停用", -1))]), v("label", Zce, [v("input", {
             type: "checkbox",
-            checked: T(c).runOnEdit === !0,
+            checked: T(d).runOnEdit === !0,
             onChange: oe[9] || (oe[9] = (Se) => T(b)({ runOnEdit: Se.target.checked }))
           }, null, 40, ede), oe[28] || (oe[28] = v("span", null, "编辑时执行", -1))])]),
           v("div", tde, [
             v("label", null, [oe[30] || (oe[30] = v("span", null, "查找宏", -1)), v("select", {
-              value: T(c).substituteRegex ?? 0,
+              value: T(d).substituteRegex ?? 0,
               onChange: oe[10] || (oe[10] = (Se) => T(b)({ substituteRegex: Number(Se.target.value) }))
             }, [...oe[29] || (oe[29] = [
               v("option", { value: 0 }, "不替换", -1),
@@ -49865,12 +49874,12 @@ var Mie = ["aria-hidden"], Pie = {
             ])], 40, nde)]),
             v("label", null, [oe[31] || (oe[31] = v("span", null, "最小深度", -1)), v("input", {
               type: "number",
-              value: T(c).minDepth ?? "",
+              value: T(d).minDepth ?? "",
               onInput: oe[11] || (oe[11] = (Se) => T(b)({ minDepth: Se.target.value === "" ? null : Number(Se.target.value) }))
             }, null, 40, rde)]),
             v("label", null, [oe[32] || (oe[32] = v("span", null, "最大深度", -1)), v("input", {
               type: "number",
-              value: T(c).maxDepth ?? "",
+              value: T(d).maxDepth ?? "",
               onInput: oe[12] || (oe[12] = (Se) => T(b)({ maxDepth: Se.target.value === "" ? null : Number(Se.target.value) }))
             }, null, 40, sde)])
           ])
@@ -49940,10 +49949,10 @@ function fde(e) {
       u(S, b, N + 1), b += I + Qx;
     }), m;
   };
-  let c = 0;
+  let d = 0;
   hb(o).forEach((E) => {
-    const R = u(E, c, 0);
-    c += R + lde;
+    const R = u(E, d, 0);
+    d += R + lde;
   });
   const f = new Map(l.map((E) => [E.key, E])), p = /* @__PURE__ */ new Map(), g = (Array.isArray(e?.links) ? e.links : []).map((E) => {
     const R = f.get(E.from), N = f.get(E.to);
@@ -50422,11 +50431,11 @@ var yde = {
         links: Array.isArray(re.links) ? re.links.filter(k) : [],
         actors: Array.isArray(re.actors) ? re.actors.filter(P) : []
       };
-    }), i = Q(() => fde(l.value)), u = Q(() => new Map(l.value.locations.map((ue) => [ue.key, ue]))), c = Q(() => u.value.get(n.value) || f.value || l.value.locations[0] || null), f = Q(() => u.value.get(l.value.activeLocationKey || "") || null), p = Q(() => String(f.value?.mapDocId || "").trim()), g = Q(() => !!p.value && !!t.activeMapDocId && p.value !== t.activeMapDocId), y = Q(() => String(t.patches.at(-1)?.summary || "").trim()), _ = Q(() => {
+    }), i = Q(() => fde(l.value)), u = Q(() => new Map(l.value.locations.map((ue) => [ue.key, ue]))), d = Q(() => u.value.get(n.value) || f.value || l.value.locations[0] || null), f = Q(() => u.value.get(l.value.activeLocationKey || "") || null), p = Q(() => String(f.value?.mapDocId || "").trim()), g = Q(() => !!p.value && !!t.activeMapDocId && p.value !== t.activeMapDocId), y = Q(() => String(t.patches.at(-1)?.summary || "").trim()), _ = Q(() => {
       const ue = /* @__PURE__ */ new Map();
       return t.mapDocuments.forEach((re) => ue.set(re.docId, re.title || re.docId)), ue;
-    }), x = Q(() => new Set(t.mapDocuments.map((ue) => ue.docId))), C = Q(() => U(c.value?.key || "")), E = Q(() => C.value.map(K).filter(Boolean)), R = Q(() => {
-      const ue = c.value?.key || "";
+    }), x = Q(() => new Set(t.mapDocuments.map((ue) => ue.docId))), C = Q(() => U(d.value?.key || "")), E = Q(() => C.value.map(K).filter(Boolean)), R = Q(() => {
+      const ue = d.value?.key || "";
       return l.value.links.filter((re) => re.from === ue || re.to === ue);
     }), N = Q(() => t.displayMode !== "detail"), m = Q(() => t.displayMode !== "graph"), w = Q(() => {
       const [ue, re, D, L] = i.value.viewBox, [X, le] = s.value, ve = Math.max(0.5, Math.min(4, a.value)), ce = D / ve, xe = L / ve;
@@ -50664,12 +50673,12 @@ var yde = {
         v("span", Nde, ee(T(tN)), 1)
       ], 2)) : Te("", !0),
       m.value ? (O(), B("aside", $de, [
-        v("header", null, [v("div", null, [v("strong", null, ee(c.value?.name || "地点"), 1), v("span", null, ee(c.value?.key), 1)]), v("em", null, ee(c.value?.status === "visited" ? "已探索" : "已知"), 1)]),
-        c.value?.brief ? (O(), B("p", Lde, ee(c.value.brief), 1)) : Te("", !0),
+        v("header", null, [v("div", null, [v("strong", null, ee(d.value?.name || "地点"), 1), v("span", null, ee(d.value?.key), 1)]), v("em", null, ee(d.value?.status === "visited" ? "已探索" : "已知"), 1)]),
+        d.value?.brief ? (O(), B("p", Lde, ee(d.value.brief), 1)) : Te("", !0),
         v("dl", null, [
-          v("div", null, [re[5] || (re[5] = v("dt", null, "层级", -1)), v("dd", null, ee(c.value?.scale || "-"), 1)]),
-          v("div", null, [re[6] || (re[6] = v("dt", null, "上级", -1)), v("dd", null, ee(c.value?.parent ? u.value.get(c.value.parent)?.name || c.value.parent : "顶级地点"), 1)]),
-          v("div", null, [re[7] || (re[7] = v("dt", null, "场景图", -1)), v("dd", null, ee(J(c.value)), 1)]),
+          v("div", null, [re[5] || (re[5] = v("dt", null, "层级", -1)), v("dd", null, ee(d.value?.scale || "-"), 1)]),
+          v("div", null, [re[6] || (re[6] = v("dt", null, "上级", -1)), v("dd", null, ee(d.value?.parent ? u.value.get(d.value.parent)?.name || d.value.parent : "顶级地点"), 1)]),
+          v("div", null, [re[7] || (re[7] = v("dt", null, "场景图", -1)), v("dd", null, ee(J(d.value)), 1)]),
           v("div", null, [re[8] || (re[8] = v("dt", null, "人物", -1)), v("dd", null, ee(E.value.length ? E.value.join("、") : "无"), 1)])
         ]),
         R.value.length ? (O(), B("div", Dde, [(O(!0), B(Ge, null, ut(R.value, (D) => (O(), B("span", { key: D.id }, ee(D.label || D.kind) + " · " + ee(u.value.get(D.from)?.name || D.from) + " → " + ee(u.value.get(D.to)?.name || D.to), 1))), 128))])) : Te("", !0),
@@ -50711,7 +50720,7 @@ var yde = {
     assistantFloor: { default: -1 }
   },
   setup(e) {
-    const t = e, n = Q(() => (Array.isArray(t.tasks) ? t.tasks : []).filter((g) => g.status !== "abandoned").sort((g, y) => Number(y.updatedOrder) - Number(g.updatedOrder) || Number(y.updatedAt) - Number(g.updatedAt))), r = Q(() => n.value.filter((g) => g.status === "active")), s = Q(() => n.value.filter((g) => g.status === "completed")), a = Q(() => r.value[0] || null), o = Q(() => r.value.slice(1, 4)), l = Q(() => s.value.slice(0, 3)), i = Q(() => Math.max(0, s.value.length - l.value.length)), u = Q(() => t.enabled ? Number(t.assistantFloor) < 5 ? "剧情展开后会出现事件线索" : "当前没有足够新鲜的方向" : "事件功能未授权"), c = Q(() => t.enabled ? Number(t.assistantFloor) < 5 ? "先让人物、地点和关系沉淀几轮，系统不会过早生成方向。" : "后台没有找到对味的新钩子时会保持空白。" : "开启契约里的织线者后，后台会维护可回滚的事件线索池。");
+    const t = e, n = Q(() => (Array.isArray(t.tasks) ? t.tasks : []).filter((g) => g.status !== "abandoned").sort((g, y) => Number(y.updatedOrder) - Number(g.updatedOrder) || Number(y.updatedAt) - Number(g.updatedAt))), r = Q(() => n.value.filter((g) => g.status === "active")), s = Q(() => n.value.filter((g) => g.status === "completed")), a = Q(() => r.value[0] || null), o = Q(() => r.value.slice(1, 4)), l = Q(() => s.value.slice(0, 3)), i = Q(() => Math.max(0, s.value.length - l.value.length)), u = Q(() => t.enabled ? Number(t.assistantFloor) < 5 ? "剧情展开后会出现事件线索" : "当前没有足够新鲜的方向" : "事件功能未授权"), d = Q(() => t.enabled ? Number(t.assistantFloor) < 5 ? "先让人物、地点和关系沉淀几轮，系统不会过早生成方向。" : "后台没有找到对味的新钩子时会保持空白。" : "开启契约里的织线者后，后台会维护可回滚的事件线索池。");
     function f(g) {
       const y = Number(g.updatedOrder);
       return Number.isFinite(y) && y >= 0 ? `#${y}` : "";
@@ -50726,7 +50735,7 @@ var yde = {
         v("div", zde, ee(a.value.current), 1),
         v("div", Kde, [y[1] || (y[1] = v("span", null, "远景", -1)), v("p", null, ee(a.value.horizon), 1)]),
         v("div", Wde, [y[2] || (y[2] = v("span", null, "达成标志", -1)), v("p", null, ee(a.value.doneWhen), 1)])
-      ])) : (O(), B("div", Vde, [v("strong", null, ee(u.value), 1), v("p", null, ee(c.value), 1)])),
+      ])) : (O(), B("div", Vde, [v("strong", null, ee(u.value), 1), v("p", null, ee(d.value), 1)])),
       o.value.length ? (O(), B("div", Gde, [v("header", null, [y[3] || (y[3] = v("strong", null, "其他线索", -1)), v("span", null, ee(o.value.length), 1)]), (O(!0), B(Ge, null, ut(o.value, (_) => (O(), B("article", {
         key: _.id,
         class: "tavern-event-card"
@@ -50946,7 +50955,7 @@ function Efe(e, t, n = {}) {
       r.set(l, u), s.push(u.bounds);
       return;
     }
-    let c = {
+    let d = {
       ...u,
       score: Number.POSITIVE_INFINITY
     };
@@ -50956,13 +50965,13 @@ function Efe(e, t, n = {}) {
         x: Number((o.x + f).toFixed(2)),
         y: Number((o.y + p).toFixed(2))
       }, y = g.x, _ = g.y, x = sk(g), C = s.reduce((N, m) => N + ak(x, m), 0), E = (y - o.x) * (y - o.x) + (_ - o.y) * (_ - o.y), R = C * _fe + E * bfe;
-      R < c.score && (c = {
+      R < d.score && (d = {
         x: y,
         y: _,
         bounds: x,
         score: R
       });
-    }), r.set(l, c), s.push(c.bounds);
+    }), r.set(l, d), s.push(d.bounds);
   }), e.map((o, l) => {
     const i = r.get(l);
     return i ? {
@@ -51339,7 +51348,7 @@ var Ufe = {
     function r(q) {
       return String(q || "").trim().replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "item";
     }
-    const s = e, a = t, o = /* @__PURE__ */ ie(0), l = /* @__PURE__ */ ie(0), i = /* @__PURE__ */ ie("patch"), u = /* @__PURE__ */ ie(0), c = /* @__PURE__ */ ie(""), f = /* @__PURE__ */ ie(null), p = /* @__PURE__ */ ie([0, 0]), g = /* @__PURE__ */ ie(1), y = /* @__PURE__ */ ie(null);
+    const s = e, a = t, o = /* @__PURE__ */ ie(0), l = /* @__PURE__ */ ie(0), i = /* @__PURE__ */ ie("patch"), u = /* @__PURE__ */ ie(0), d = /* @__PURE__ */ ie(""), f = /* @__PURE__ */ ie(null), p = /* @__PURE__ */ ie([0, 0]), g = /* @__PURE__ */ ie(1), y = /* @__PURE__ */ ie(null);
     let _;
     function x(q) {
       return `${r(q)}-r${l.value}`;
@@ -51368,7 +51377,7 @@ var Ufe = {
       };
     }
     const w = Q(() => {
-      const q = Array.isArray(s.documents) ? s.documents : [], Z = String(c.value || s.activeDocId || s.document?.docId || "").trim();
+      const q = Array.isArray(s.documents) ? s.documents : [], Z = String(d.value || s.activeDocId || s.document?.docId || "").trim();
       return q.find((Y) => Y.docId === Z) || q.find((Y) => Y.docId === s.activeDocId) || s.document || null;
     }), b = Q(() => {
       const q = String(w.value?.docId || "").trim();
@@ -51449,8 +51458,8 @@ var Ufe = {
       s.document?.docId,
       s.documents.length
     ], () => {
-      const q = String(s.selectedDocId || c.value || s.activeDocId || s.document?.docId || "").trim(), Z = le.value.some((He) => He.docId === q) ? q : String(s.activeDocId || s.document?.docId || le.value[0]?.docId || "").trim(), Y = c.value;
-      c.value = Z, Y && Z && Y !== Z && Ue(), Z && Z !== s.selectedDocId && a("update:selectedDocId", Z);
+      const q = String(s.selectedDocId || d.value || s.activeDocId || s.document?.docId || "").trim(), Z = le.value.some((He) => He.docId === q) ? q : String(s.activeDocId || s.document?.docId || le.value[0]?.docId || "").trim(), Y = d.value;
+      d.value = Z, Y && Z && Y !== Z && Ue(), Z && Z !== s.selectedDocId && a("update:selectedDocId", Z);
     }, { immediate: !0 }), Ct(() => b.value.length, () => {
       u.value >= P.value.length && (u.value = Math.max(0, P.value.length - 1)), i.value === "timeline" && !K.value && (i.value = "patch", De()), k.value = !1;
     }), Jl(() => {
@@ -52093,7 +52102,7 @@ var Ufe = {
     }
     function La(q) {
       const Z = q.target instanceof HTMLSelectElement ? q.target : null;
-      c.value = String(Z?.value || "").trim(), a("update:selectedDocId", c.value), i.value = "patch", De(), o.value += 1, Ue();
+      d.value = String(Z?.value || "").trim(), a("update:selectedDocId", d.value), i.value = "patch", De(), o.value += 1, Ue();
     }
     function mo(q) {
       const Z = q.currentTarget instanceof SVGSVGElement ? q.currentTarget : f.value;
@@ -52886,20 +52895,20 @@ function Dpe(e, t = 36) {
   function a() {
     n.value = !1, r = null, s = 0;
   }
-  function o(c) {
-    c.button && c.button !== 0 || (r = c.clientY, s = 0, n.value = !0, c.currentTarget?.setPointerCapture?.(c.pointerId));
+  function o(d) {
+    d.button && d.button !== 0 || (r = d.clientY, s = 0, n.value = !0, d.currentTarget?.setPointerCapture?.(d.pointerId));
   }
-  function l(c) {
-    r !== null && (s = c.clientY - r, s > 0 && c.cancelable && c.preventDefault());
+  function l(d) {
+    r !== null && (s = d.clientY - r, s > 0 && d.cancelable && d.preventDefault());
   }
-  function i(c) {
+  function i(d) {
     if (r === null) return;
-    c.currentTarget?.releasePointerCapture?.(c.pointerId);
+    d.currentTarget?.releasePointerCapture?.(d.pointerId);
     const f = s >= t;
     a(), f && e();
   }
-  function u(c) {
-    c.currentTarget?.releasePointerCapture?.(c.pointerId), a();
+  function u(d) {
+    d.currentTarget?.releasePointerCapture?.(d.pointerId), a();
   }
   return {
     dragging: n,
@@ -52952,7 +52961,7 @@ var Ope = { class: "tavern-workspace-panel" }, Fpe = { class: "tavern-workspace-
     "toggle-memory-directory"
   ],
   setup(e, { emit: t }) {
-    const n = t, r = ese(), s = my(), a = G8(), { chatWorkspacePanel: o, displayUserName: l, visibleUserAvatar: i } = a, { activeMemoryFiles: u, discardMemoryDraft: c, enterMemoryEditMode: f, expandMemoryFileGroup: p, formatMemoryFileMeta: g, MEMORY_FILE_BATCH_SIZE: y, MEMORY_TURN_BATCH_SIZE: _, memoryDirectoryGroups: x, memoryEditorDirty: C, memoryEditorDocumentAvailable: E, memoryEditorDraft: R, memoryEditorLoadedPath: N, memoryEditorMode: m, memoryEditorReadOnly: w, memoryEditorStatus: b, memoryFileDisplayName: S, memoryFiles: I, memoryFileSearchText: k, markdownSignature: P, previewMemoryDraft: U, renderChatMarkdown: K, saveSelectedMemoryFile: j, selectedMemoryFileEntry: V, selectedMemoryFilePath: W, selectMemoryFile: $ } = r, { activeMapDocId: J, atlasActiveLocationKey: ae, atlasStateDocument: be, atlasStatePatches: Pe, mapStateDocuments: fe, mapStateDocument: Ie, mapStatePatches: oe, sessionContract: Se, tavernTasks: Be } = a, { currentAssistantFloor: F } = s, te = /* @__PURE__ */ ie("scene"), ge = /* @__PURE__ */ ie(""), we = /* @__PURE__ */ ie(!1), ue = Q(() => {
+    const n = t, r = ese(), s = my(), a = G8(), { chatWorkspacePanel: o, displayUserName: l, visibleUserAvatar: i } = a, { activeMemoryFiles: u, discardMemoryDraft: d, enterMemoryEditMode: f, expandMemoryFileGroup: p, formatMemoryFileMeta: g, MEMORY_FILE_BATCH_SIZE: y, MEMORY_TURN_BATCH_SIZE: _, memoryDirectoryGroups: x, memoryEditorDirty: C, memoryEditorDocumentAvailable: E, memoryEditorDraft: R, memoryEditorLoadedPath: N, memoryEditorMode: m, memoryEditorReadOnly: w, memoryEditorStatus: b, memoryFileDisplayName: S, memoryFiles: I, memoryFileSearchText: k, markdownSignature: P, previewMemoryDraft: U, renderChatMarkdown: K, saveSelectedMemoryFile: j, selectedMemoryFileEntry: V, selectedMemoryFilePath: W, selectMemoryFile: $ } = r, { activeMapDocId: J, atlasActiveLocationKey: ae, atlasStateDocument: be, atlasStatePatches: Pe, mapStateDocuments: fe, mapStateDocument: Ie, mapStatePatches: oe, sessionContract: Se, tavernTasks: Be } = a, { currentAssistantFloor: F } = s, te = /* @__PURE__ */ ie("scene"), ge = /* @__PURE__ */ ie(""), we = /* @__PURE__ */ ie(!1), ue = Q(() => {
       const ot = be.value?.data, Ve = ot && typeof ot == "object" && !Array.isArray(ot) ? ot : {};
       return {
         version: 1,
@@ -53260,7 +53269,7 @@ var Ope = { class: "tavern-workspace-panel" }, Fpe = { class: "tavern-workspace-
           "file-meta": T(V) ? T(g)(T(V)) : "",
           onEnterEdit: T(f),
           onPreview: T(U),
-          onDiscard: T(c),
+          onDiscard: T(d),
           onSave: T(j)
         }, null, 8, [
           "draft",
@@ -53335,7 +53344,7 @@ var Ope = { class: "tavern-workspace-panel" }, Fpe = { class: "tavern-workspace-
 }, Qge = /* @__PURE__ */ xn({
   __name: "TavernWorldbooksSettingsPanel",
   setup(e) {
-    const { activeSettingsWorkspace: t, cancelWorldbookEntryEdit: n, globalWorldbookOptions: r, globalWorldbookSelected: s, globalWorldbookSaving: a, globalWorldbookStatus: o, hiddenWorldbookPreviewEntryCount: l, isEditingWorldbookEntry: i, saveWorldbookEntryDraft: u, selectedWorldbook: c, selectedWorldbookName: f, showMoreWorldbookPreviewEntries: p, startWorldbookEntryEdit: g, toggleGlobalWorldbook: y, updateWorldbookEntryDraftPatch: _, WORLDBOOK_PREVIEW_BATCH_SIZE: x, worldbookEntryDirty: C, worldbookEntryDraft: E, worldbookEntrySaving: R, worldbookEntryStatus: N, worldbookOptions: m, worldbookPreview: w, worldbookPreviewStatus: b, worldbookStatus: S } = nl(), I = w2(), k = /* @__PURE__ */ ie(!1), P = [
+    const { activeSettingsWorkspace: t, cancelWorldbookEntryEdit: n, globalWorldbookOptions: r, globalWorldbookSelected: s, globalWorldbookSaving: a, globalWorldbookStatus: o, hiddenWorldbookPreviewEntryCount: l, isEditingWorldbookEntry: i, saveWorldbookEntryDraft: u, selectedWorldbook: d, selectedWorldbookName: f, showMoreWorldbookPreviewEntries: p, startWorldbookEntryEdit: g, toggleGlobalWorldbook: y, updateWorldbookEntryDraftPatch: _, WORLDBOOK_PREVIEW_BATCH_SIZE: x, worldbookEntryDirty: C, worldbookEntryDraft: E, worldbookEntrySaving: R, worldbookEntryStatus: N, worldbookOptions: m, worldbookPreview: w, worldbookPreviewStatus: b, worldbookStatus: S } = nl(), I = w2(), k = /* @__PURE__ */ ie(!1), P = [
       {
         value: "0:",
         label: "↑Char",
@@ -53586,7 +53595,7 @@ var Ope = { class: "tavern-workspace-panel" }, Fpe = { class: "tavern-workspace-
             value: Re.name
           }, ee(Re.name), 9, Ime))), 128))
         ], 40, Eme)])]),
-        v("div", xme, [v("div", kme, [T(c) ? (O(), B("div", Mme, [T(b) ? (O(), B("div", Pme, ee(T(b)), 1)) : T(w) && T(w).name === T(c).name ? (O(), B(Ge, { key: 1 }, [v("div", Rme, [
+        v("div", xme, [v("div", kme, [T(d) ? (O(), B("div", Mme, [T(b) ? (O(), B("div", Pme, ee(T(b)), 1)) : T(w) && T(w).name === T(d).name ? (O(), B(Ge, { key: 1 }, [v("div", Rme, [
           v("span", null, [v("strong", null, ee(T(w).entryCount), 1), G[32] || (G[32] = v("small", null, "条目", -1))]),
           v("span", null, [v("strong", null, ee(T(w).enabledCount), 1), G[33] || (G[33] = v("small", null, "启用", -1))]),
           v("span", null, [v("strong", null, ee(T(w).constantCount), 1), G[34] || (G[34] = v("small", null, "常驻", -1))]),
@@ -53899,7 +53908,7 @@ var Ope = { class: "tavern-workspace-panel" }, Fpe = { class: "tavern-workspace-
 }, yve = ["onClick"], _ve = { class: "chat-app-menu-label-full" }, bve = { class: "chat-app-menu-label-mobile" }, wve = { class: "chat-mobile-context-row" }, Sve = { class: "chat-flip-card" }, Ave = { class: "compose-author-note-body" }, Tve = { class: "compose-author-note-field" }, Eve = { class: "compose-author-note-field" }, Cve = { class: "compose-author-note-segments" }, Ive = ["onClick"], xve = { class: "compose-author-note-grid" }, kve = { class: "compose-author-note-field" }, Mve = { class: "compose-author-note-field" }, Pve = { class: "compose-author-note-field" }, Rve = { class: "compose-author-note-segments" }, Nve = ["onClick"], $ve = { class: "compose-author-note-check" }, Lve = { class: "compose-author-note-actions" }, Dve = ["disabled"], Ove = { class: "chat-quick-settings-head" }, Fve = { id: "chat-quick-settings-title" }, Bve = { class: "xb-main" }, Uve = /* @__PURE__ */ xn({
   __name: "TavernChatPage",
   setup(e) {
-    const t = uu(), n = K8(), r = b2(), s = V8(), a = my(), o = nl(), l = G8(), { activeView: i, chatFocus: u, homeThemeDark: c } = t, { chatAutoScroll: f, chatLayout: p, chatScrollRef: g, currentAuthorNote: y, saveCurrentAuthorNote: _, messageKey: x, updateChatScrollButtons: C } = r, { chatMessageWindow: E, selectedSessionId: R, visibleChatMessages: N } = a, { managerAutoScroll: m, managerMessageWindow: w, managerScrollRef: b, updateManagerScrollButtons: S, visibleManagerChatItems: I } = s, { chatWorkspacePanel: k, saveSessionContract: P, sessionContract: U } = l, { activeSettingsWorkspace: K, apiSettingsRootRef: j, loadTavernUsers: V, refreshPresets: W, refreshRegexFromHost: $, syncChatPresetFromHost: J, syncGlobalWorldbooksFromHost: ae, syncWorldbooksForCurrentCharacter: be } = o, { refresh: Pe } = n;
+    const t = uu(), n = K8(), r = b2(), s = V8(), a = my(), o = nl(), l = G8(), { activeView: i, chatFocus: u, homeThemeDark: d } = t, { chatAutoScroll: f, chatLayout: p, chatScrollRef: g, currentAuthorNote: y, saveCurrentAuthorNote: _, messageKey: x, updateChatScrollButtons: C } = r, { chatMessageWindow: E, selectedSessionId: R, visibleChatMessages: N } = a, { managerAutoScroll: m, managerMessageWindow: w, managerScrollRef: b, updateManagerScrollButtons: S, visibleManagerChatItems: I } = s, { chatWorkspacePanel: k, saveSessionContract: P, sessionContract: U } = l, { activeSettingsWorkspace: K, apiSettingsRootRef: j, loadTavernUsers: V, refreshPresets: W, refreshRegexFromHost: $, syncChatPresetFromHost: J, syncGlobalWorldbooksFromHost: ae, syncWorldbooksForCurrentCharacter: be } = o, { refresh: Pe } = n;
     let fe = null, Ie = null, oe = !0, Se = !0;
     const Be = /* @__PURE__ */ ie(!1), F = /* @__PURE__ */ ie(null), te = /* @__PURE__ */ ie(!1), ge = /* @__PURE__ */ ie(null), we = /* @__PURE__ */ ie(null), ue = /* @__PURE__ */ ie(!1), re = /* @__PURE__ */ ie(""), D = /* @__PURE__ */ ie(ta(U.value)), L = /* @__PURE__ */ ie(!1), X = /* @__PURE__ */ ie(Ri(zb)), le = /* @__PURE__ */ ie(!1), ve = /* @__PURE__ */ ie(""), ce = /* @__PURE__ */ ie("none"), xe = /* @__PURE__ */ ie(!1), Me = gy("(max-width: 760px)"), pe = Q(() => JSON.stringify(D.value) !== JSON.stringify(U.value)), G = Q(() => !Me.value || ce.value === "workspace"), Re = Q(() => i.value === "chat" && u.value === "chat"), me = Q(() => i.value === "chat" && u.value === "manager"), qe = Q(() => [
       E.value.startIndex,
@@ -54120,10 +54129,10 @@ var Ope = { class: "tavern-workspace-panel" }, Fpe = { class: "tavern-workspace-
         v("button", {
           type: "button",
           class: "home-icon-button home-theme-button",
-          title: T(c) ? "切换到白天" : "切换到夜间",
-          "aria-label": T(c) ? "切换到白天" : "切换到夜间",
-          onClick: Qe[0] || (Qe[0] = (gt) => c.value = !T(c))
-        }, [T(c) ? (O(), B("svg", eve, [...Qe[15] || (Qe[15] = [Yn('<circle cx="12" cy="12" r="4"></circle><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="m4.93 4.93 1.41 1.41"></path><path d="m17.66 17.66 1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="m6.34 17.66-1.41 1.41"></path><path d="m19.07 4.93-1.41 1.41"></path>', 9)])])) : (O(), B("span", tve, "☾"))], 8, Zge),
+          title: T(d) ? "切换到白天" : "切换到夜间",
+          "aria-label": T(d) ? "切换到白天" : "切换到夜间",
+          onClick: Qe[0] || (Qe[0] = (gt) => d.value = !T(d))
+        }, [T(d) ? (O(), B("svg", eve, [...Qe[15] || (Qe[15] = [Yn('<circle cx="12" cy="12" r="4"></circle><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="m4.93 4.93 1.41 1.41"></path><path d="m17.66 17.66 1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="m6.34 17.66-1.41 1.41"></path><path d="m19.07 4.93-1.41 1.41"></path>', 9)])])) : (O(), B("span", tve, "☾"))], 8, Zge),
         v("button", {
           type: "button",
           class: "home-icon-button page-home-button",
@@ -54195,10 +54204,10 @@ var Ope = { class: "tavern-workspace-panel" }, Fpe = { class: "tavern-workspace-
         v("button", {
           type: "button",
           class: "chat-mobile-icon-button chat-mobile-utility-button",
-          title: T(c) ? "切换到白天" : "切换到夜间",
-          "aria-label": T(c) ? "切换到白天" : "切换到夜间",
-          onClick: Qe[4] || (Qe[4] = (gt) => c.value = !T(c))
-        }, [T(c) ? (O(), B("svg", pve, [...Qe[19] || (Qe[19] = [Yn('<circle cx="12" cy="12" r="4"></circle><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="m4.93 4.93 1.41 1.41"></path><path d="m17.66 17.66 1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="m6.34 17.66-1.41 1.41"></path><path d="m19.07 4.93-1.41 1.41"></path>', 9)])])) : (O(), B("svg", mve, [...Qe[20] || (Qe[20] = [v("path", { d: "M20.2 14.5A7.3 7.3 0 0 1 9.5 3.8 8.7 8.7 0 1 0 20.2 14.5Z" }, null, -1)])]))], 8, hve),
+          title: T(d) ? "切换到白天" : "切换到夜间",
+          "aria-label": T(d) ? "切换到白天" : "切换到夜间",
+          onClick: Qe[4] || (Qe[4] = (gt) => d.value = !T(d))
+        }, [T(d) ? (O(), B("svg", pve, [...Qe[19] || (Qe[19] = [Yn('<circle cx="12" cy="12" r="4"></circle><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="m4.93 4.93 1.41 1.41"></path><path d="m17.66 17.66 1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="m6.34 17.66-1.41 1.41"></path><path d="m19.07 4.93-1.41 1.41"></path>', 9)])])) : (O(), B("svg", mve, [...Qe[20] || (Qe[20] = [v("path", { d: "M20.2 14.5A7.3 7.3 0 0 1 9.5 3.8 8.7 8.7 0 1 0 20.2 14.5Z" }, null, -1)])]))], 8, hve),
         v("button", {
           type: "button",
           class: "chat-mobile-icon-button chat-mobile-utility-button",
@@ -54416,7 +54425,7 @@ function Hve(e) {
   }).filter((t) => t.text);
 }
 function zve(e) {
-  const t = /* @__PURE__ */ ie(Date.now()), n = Q(() => e.managerRuns.value[0] || null), r = Q(() => e.managerRuns.value.find((S) => c(S.status)) || n.value), s = Q(() => {
+  const t = /* @__PURE__ */ ie(Date.now()), n = Q(() => e.managerRuns.value[0] || null), r = Q(() => e.managerRuns.value.find((S) => d(S.status)) || n.value), s = Q(() => {
     const S = String(r.value?.id || "");
     return e.managerRuns.value.filter((I) => String(I.id || "") !== S).slice(0, e.visibleRunLimit);
   }), a = Q(() => {
@@ -54437,7 +54446,7 @@ function zve(e) {
     const I = Math.max(0, t.value - Number(S || 0));
     return !S || I < 3e3 ? "刚开始" : i(I).replace(/前$/, "");
   }
-  function c(S = "") {
+  function d(S = "") {
     return ["queued", "running"].includes(String(S || ""));
   }
   function f(S = "") {
@@ -54574,7 +54583,7 @@ ${JSON.stringify(fe)}`, oe = fe.length && !k.has(Ie) ? fe : [];
     formatRunModelLine: g,
     formatRunTaskLine: R,
     hiddenManagerRunCount: a,
-    isManagerRunLive: c,
+    isManagerRunLive: d,
     managerBusy: o,
     managerRunTone: p,
     managerStatusClock: t,
@@ -54631,7 +54640,7 @@ function Kve(e) {
       }
     }
   }
-  function c() {
+  function d() {
     !e.memoryEditorDocumentAvailable.value || e.memoryEditorReadOnly.value || (e.memoryEditorMode.value = "edit", Qt(() => {
       document.querySelector('[data-memory-editor-textarea="true"]')?.focus();
     }));
@@ -54644,7 +54653,7 @@ function Kve(e) {
   }
   return {
     discardMemoryDraft: p,
-    enterMemoryEditMode: c,
+    enterMemoryEditMode: d,
     formatMemoryFileMeta: s,
     invalidateMemoryFileRecordLoad: o,
     loadMemoryFileIntoEditor: a,
@@ -54788,8 +54797,8 @@ var Wve = {
         "include-home": "",
         "home-last": "",
         dark: T(l),
-        onHome: u[0] || (u[0] = (c) => o.value = "home"),
-        onToggleTheme: u[1] || (u[1] = (c) => l.value = !T(l))
+        onHome: u[0] || (u[0] = (d) => o.value = "home"),
+        onToggleTheme: u[1] || (u[1] = (d) => l.value = !T(l))
       }, null, 8, ["dark"]),
       nr(mye, {
         active: T(r),
@@ -55053,7 +55062,7 @@ function $ye(e = {}) {
     const ge = String(F || "").trim() || "openai-compatible";
     return te === "delegate" ? `delegate:${ge}` : ge;
   }
-  function c(F, te = "main") {
+  function d(F, te = "main") {
     return t.pullStateByProvider?.[u(F, te)] || {
       status: "idle",
       message: ""
@@ -55292,7 +55301,7 @@ function $ye(e = {}) {
     };
   }
   function j(F = R(), te = F.provider || "openai-compatible", ge = "main") {
-    const we = c(te, ge);
+    const we = d(te, ge);
     return typeof l == "function" ? l({
       state: t,
       draft: F,
@@ -55335,7 +55344,7 @@ function $ye(e = {}) {
     ne && (ne.value = String(Ps(te.delegateTemperature, 0.2))), de && (de.checked = !!(te.delegateSendTemperature ?? !0)), St && (St.style.display = Nu(ue) ? "" : "none"), kt && (Wa(kt, Ex), kt.value = te.delegateToolMode || "native"), Zt && (Wa(Zt, P1), Zt.value = Ms(te.delegateReasoningEffort)), Dt && (Dt.checked = !!te.delegateReasoningEnabled), yt && (yt.style.display = te.delegateReasoningEnabled ? "" : "none"), ht && (Wa(ht, re.map((Le) => ({
       value: Le,
       label: Le
-    })), "手动填写"), ht.value = re.includes(te.delegateModel) ? te.delegateModel : ""), V(F, "#xb-assistant-model-pull-status", c(ge)), V(F, "#xb-assistant-delegate-model-pull-status", c(ue, "delegate"));
+    })), "手动填写"), ht.value = re.includes(te.delegateModel) ? te.delegateModel : ""), V(F, "#xb-assistant-model-pull-status", d(ge)), V(F, "#xb-assistant-delegate-model-pull-status", d(ue, "delegate"));
     const Ae = F.querySelector("#xb-assistant-runtime");
     if (Ae) {
       const Le = t.configPage === "delegate";
@@ -55624,7 +55633,7 @@ function Dye(e = {}) {
   };
 }
 function Oye(e = {}) {
-  const { configSave: t = {}, runtimeText: n = "", inlineToastText: r = "", showInlineToast: s = !0, showAssistantPermissions: a = !0, showDelegateSettings: o = !0, activePage: l = "main", delegatePresetHint: i = "DelegateRun 分身会使用这里的独立 API 配置；可以和主助手使用不同 Provider、Base URL、模型和 Tool 调用格式。", isBusy: u = !1, canDeletePreset: c = !0 } = e, f = Dye(t), p = Lye(t), g = u || String(t?.status || "") === "saving" ? "disabled" : "", y = u || !c ? "disabled" : "", _ = l === "delegate" ? "delegate" : "main", x = _ === "main", C = _ === "delegate", E = a ? `
+  const { configSave: t = {}, runtimeText: n = "", inlineToastText: r = "", showInlineToast: s = !0, showAssistantPermissions: a = !0, showDelegateSettings: o = !0, activePage: l = "main", delegatePresetHint: i = "DelegateRun 分身会使用这里的独立 API 配置；可以和主助手使用不同 Provider、Base URL、模型和 Tool 调用格式。", isBusy: u = !1, canDeletePreset: d = !0 } = e, f = Dye(t), p = Lye(t), g = u || String(t?.status || "") === "saving" ? "disabled" : "", y = u || !d ? "disabled" : "", _ = l === "delegate" ? "delegate" : "main", x = _ === "main", C = _ === "delegate", E = a ? `
             <label>
                 <span>斜杠命令权限</span>
                 <select id="xb-assistant-permission-mode"></select>
@@ -56008,7 +56017,7 @@ function Jye(e) {
     error: ""
   }), a = /* @__PURE__ */ ie("");
   let o = null, l = null;
-  const i = /* @__PURE__ */ ie(t), u = /* @__PURE__ */ ie(t), c = /* @__PURE__ */ ie({}), f = /* @__PURE__ */ ie(""), p = /* @__PURE__ */ ie({
+  const i = /* @__PURE__ */ ie(t), u = /* @__PURE__ */ ie(t), d = /* @__PURE__ */ ie({}), f = /* @__PURE__ */ ie(""), p = /* @__PURE__ */ ie({
     status: "idle",
     error: ""
   }), g = /* @__PURE__ */ ie(JSON.stringify(t)), y = /* @__PURE__ */ ie(""), _ = /* @__PURE__ */ ie(n), x = /* @__PURE__ */ ie(n), C = /* @__PURE__ */ ie([]), E = /* @__PURE__ */ ie(""), R = /* @__PURE__ */ ie(""), N = /* @__PURE__ */ ie({
@@ -56030,7 +56039,7 @@ function Jye(e) {
     const z = Gt.value;
     return `预设「${z.currentPresetName || "默认"}」 · ${z.providerLabel} / ${z.model || "未选择模型"}`;
   }), at = Q(() => {
-    const z = yr(c.value.components), se = Array.isArray(z.promptManager) ? z.promptManager : [], _e = String(i.value.promptManager?.name || i.value.name || "").trim(), Ne = /* @__PURE__ */ new Set();
+    const z = yr(d.value.components), se = Array.isArray(z.promptManager) ? z.promptManager : [], _e = String(i.value.promptManager?.name || i.value.name || "").trim(), Ne = /* @__PURE__ */ new Set();
     return [_e, ...se].map((it) => {
       if (typeof it == "string") return it.trim();
       const _t = yr(it);
@@ -56376,7 +56385,7 @@ function Jye(e) {
     f.value = "正在同步";
     try {
       const z = await e.requestHost("xb-tavern:list-chat-presets"), se = z.result || z;
-      c.value = se, An(se.active, { replaceDraft: !st.value }), f.value = "";
+      d.value = se, An(se.active, { replaceDraft: !st.value }), f.value = "";
     } catch (z) {
       f.value = z instanceof Error ? z.message : String(z || "读取失败");
     }
@@ -57016,7 +57025,7 @@ function Jye(e) {
     });
   }
   function td(z) {
-    "chatPreset" in z && An(z.chatPreset, { replaceDraft: !st.value }), "chatPresetList" in z && (c.value = z.chatPresetList || {});
+    "chatPreset" in z && An(z.chatPreset, { replaceDraft: !st.value }), "chatPresetList" in z && (d.value = z.chatPresetList || {});
   }
   function nd(z) {
     e.activeSettingsWorkspace.value = z, e.activeView.value = "settings";
@@ -57257,7 +57266,7 @@ var Yye = ["data-chat-font-size"], Xye = { class: "xb-os-stage" }, jye = { class
 }, o_e = ["placeholder"], i_e = { class: "tavern-dialog-actions" }, pm = 48, l_e = 12, u_e = 36, mk = 48, Sb = 24, gk = 480, c_e = 200, d_e = 1e9, vk = "LittleWhiteBox_Tavern_theme", f_e = /* @__PURE__ */ xn({
   __name: "App",
   setup(e) {
-    const t = /* @__PURE__ */ ie({}), n = /* @__PURE__ */ ie({}), r = /* @__PURE__ */ ie({}), s = /* @__PURE__ */ ie(Ju({})), a = /* @__PURE__ */ ie(!0), o = Q(() => Ho(s.value.hiddenOutsideCount)), l = Q(() => ow(s.value.loadBatchSize)), i = /* @__PURE__ */ ie({}), u = /* @__PURE__ */ ie("15px"), c = /* @__PURE__ */ ie("23px"), f = /* @__PURE__ */ ie([]), p = /* @__PURE__ */ ie(""), g = /* @__PURE__ */ ie(0), y = /* @__PURE__ */ ie(""), _ = /* @__PURE__ */ ie(""), x = /* @__PURE__ */ ie(null), C = /* @__PURE__ */ ie(!1), E = /* @__PURE__ */ ie(""), R = /* @__PURE__ */ ie(!1), N = /* @__PURE__ */ ie([]), m = /* @__PURE__ */ ie(0), w = /* @__PURE__ */ ie(""), b = /* @__PURE__ */ ie(""), S = /* @__PURE__ */ ie("等待读取角色与会话"), I = /* @__PURE__ */ ie("raw"), k = ire(), { currentUserMessage: P, isCancellingRun: U, isRunning: K, runtimeActionCheckEvents: j, runtimeError: V, runtimeFinalizedAssistantMessage: W, runtimeModel: $, runtimePendingUserMessage: J, runtimeProvider: ae, runtimeText: be, runtimeThoughts: Pe, runtimeUserMessageVisible: fe } = k, Ie = /* @__PURE__ */ ie(null), oe = bre(), { chatMessages: Se, currentAssistantFloor: Be, latestSessionMessage: F, loadedSessionMessageEndOrder: te, loadedSessionMessageStartOrder: ge, loadedSessionMessages: we, selectedSession: ue, selectedSessionId: re, selectedSessionLatestAssistantOrder: D, selectedSessionMessageTotal: L, sessionMessageCounts: X, sessions: le, visibleChatMessages: ve } = oe, ce = /* @__PURE__ */ ie([]), xe = /* @__PURE__ */ ie([]), Me = /* @__PURE__ */ ie([]), pe = /* @__PURE__ */ ie(null), G = /* @__PURE__ */ ie(""), Re = /* @__PURE__ */ ie(null), me = /* @__PURE__ */ ie(null), qe = /* @__PURE__ */ ie(""), Ee = /* @__PURE__ */ ie(""), De = /* @__PURE__ */ ie(""), Ue = /* @__PURE__ */ ie("preview"), ht = /* @__PURE__ */ ie(""), St = /* @__PURE__ */ ie("state"), kt = /* @__PURE__ */ ie([]), Dt = /* @__PURE__ */ ie("main"), yt = /* @__PURE__ */ ie(null), Zt = /* @__PURE__ */ ie([]), Vt = /* @__PURE__ */ ie(null), ne = /* @__PURE__ */ ie([]), de = /* @__PURE__ */ ie(""), Ae = /* @__PURE__ */ ie(""), Le = /* @__PURE__ */ ie(""), We = /* @__PURE__ */ ie(""), nt = /* @__PURE__ */ ie(""), st = /* @__PURE__ */ ie([]), mt = /* @__PURE__ */ ie(!1), At = /* @__PURE__ */ ie(!1), Gt = /* @__PURE__ */ ie(null), an = /* @__PURE__ */ ie(null), ot = /* @__PURE__ */ ie(""), Ve = /* @__PURE__ */ ie(pm), at = /* @__PURE__ */ ie(""), et = /* @__PURE__ */ ie({}), Qe = /* @__PURE__ */ ie({});
+    const t = /* @__PURE__ */ ie({}), n = /* @__PURE__ */ ie({}), r = /* @__PURE__ */ ie({}), s = /* @__PURE__ */ ie(Ju({})), a = /* @__PURE__ */ ie(!0), o = Q(() => Ho(s.value.hiddenOutsideCount)), l = Q(() => ow(s.value.loadBatchSize)), i = /* @__PURE__ */ ie({}), u = /* @__PURE__ */ ie("15px"), d = /* @__PURE__ */ ie("23px"), f = /* @__PURE__ */ ie([]), p = /* @__PURE__ */ ie(""), g = /* @__PURE__ */ ie(0), y = /* @__PURE__ */ ie(""), _ = /* @__PURE__ */ ie(""), x = /* @__PURE__ */ ie(null), C = /* @__PURE__ */ ie(!1), E = /* @__PURE__ */ ie(""), R = /* @__PURE__ */ ie(!1), N = /* @__PURE__ */ ie([]), m = /* @__PURE__ */ ie(0), w = /* @__PURE__ */ ie(""), b = /* @__PURE__ */ ie(""), S = /* @__PURE__ */ ie("等待读取角色与会话"), I = /* @__PURE__ */ ie("raw"), k = ire(), { currentUserMessage: P, isCancellingRun: U, isRunning: K, runtimeActionCheckEvents: j, runtimeError: V, runtimeFinalizedAssistantMessage: W, runtimeModel: $, runtimePendingUserMessage: J, runtimeProvider: ae, runtimeText: be, runtimeThoughts: Pe, runtimeUserMessageVisible: fe } = k, Ie = /* @__PURE__ */ ie(null), oe = bre(), { chatMessages: Se, currentAssistantFloor: Be, latestSessionMessage: F, loadedSessionMessageEndOrder: te, loadedSessionMessageStartOrder: ge, loadedSessionMessages: we, selectedSession: ue, selectedSessionId: re, selectedSessionLatestAssistantOrder: D, selectedSessionMessageTotal: L, sessionMessageCounts: X, sessions: le, visibleChatMessages: ve } = oe, ce = /* @__PURE__ */ ie([]), xe = /* @__PURE__ */ ie([]), Me = /* @__PURE__ */ ie([]), pe = /* @__PURE__ */ ie(null), G = /* @__PURE__ */ ie(""), Re = /* @__PURE__ */ ie(null), me = /* @__PURE__ */ ie(null), qe = /* @__PURE__ */ ie(""), Ee = /* @__PURE__ */ ie(""), De = /* @__PURE__ */ ie(""), Ue = /* @__PURE__ */ ie("preview"), ht = /* @__PURE__ */ ie(""), St = /* @__PURE__ */ ie("state"), kt = /* @__PURE__ */ ie([]), Dt = /* @__PURE__ */ ie("main"), yt = /* @__PURE__ */ ie(null), Zt = /* @__PURE__ */ ie([]), Vt = /* @__PURE__ */ ie(null), ne = /* @__PURE__ */ ie([]), de = /* @__PURE__ */ ie(""), Ae = /* @__PURE__ */ ie(""), Le = /* @__PURE__ */ ie(""), We = /* @__PURE__ */ ie(""), nt = /* @__PURE__ */ ie(""), st = /* @__PURE__ */ ie([]), mt = /* @__PURE__ */ ie(!1), At = /* @__PURE__ */ ie(!1), Gt = /* @__PURE__ */ ie(null), an = /* @__PURE__ */ ie(null), ot = /* @__PURE__ */ ie(""), Ve = /* @__PURE__ */ ie(pm), at = /* @__PURE__ */ ie(""), et = /* @__PURE__ */ ie({}), Qe = /* @__PURE__ */ ie({});
     function gt() {
       const [A] = String(window.location.hash || "").replace(/^#\/?/, "").split("/");
       return A === "chat" || A === "settings" || A === "about" ? A : "home";
@@ -57302,7 +57311,7 @@ var Yye = ["data-chat-font-size"], Xye = { class: "xb-os-stage" }, jye = { class
       loadBatchSize: l
     }), Xt = rt.scrollRef, ls = $e.scrollRef, Kr = rt.autoScroll, ho = $e.autoScroll, Pa = rt.showScrollTop, Rt = rt.showScrollBottom, Je = rt.scrollControlsActive, Oe = $e.showScrollTop, jt = $e.showScrollBottom, Dr = $e.scrollControlsActive, Ra = rt.messageWindowLimit, ci = $e.messageWindowLimit, Ar = /* @__PURE__ */ ie(""), Gs = /* @__PURE__ */ ie(""), po = /* @__PURE__ */ ie(!1), Wr = /* @__PURE__ */ ie("history"), _s = /* @__PURE__ */ ie(""), Na = /* @__PURE__ */ ie(""), An = /* @__PURE__ */ ie(""), Mn = /* @__PURE__ */ ie(""), sr = /* @__PURE__ */ ie({}), bs = /* @__PURE__ */ ie({}), $a = /* @__PURE__ */ ie(null), Tn = /* @__PURE__ */ ie(null), ws = /* @__PURE__ */ ie(null), gr = /* @__PURE__ */ ie(null), La = /* @__PURE__ */ ie(null), mo = /* @__PURE__ */ ie(null), go = /* @__PURE__ */ ie(!1), cu = Q(() => ({
       "--xb-host-main-font-size": u.value,
-      "--xb-host-prose-line-height": c.value
+      "--xb-host-prose-line-height": d.value
     }));
     let Da = null;
     function q(A, M) {
@@ -58341,7 +58350,7 @@ var Yye = ["data-chat-font-size"], Xye = { class: "xb-os-stage" }, jye = { class
       }
       "diagnostics" in A && (n.value = A.diagnostics || {});
       const M = "hostMainFontSizePx" in A ? Ws(A.hostMainFontSizePx, u.value) : u.value;
-      u.value = M, c.value = "hostProseLineHeightPx" in A ? Ws(A.hostProseLineHeightPx, Vs(M)) : Vs(M), "agentConfig" in A && (r.value = A.agentConfig || r.value, td()), "tavernDisplaySettings" in A && (s.value = Ju(A.tavernDisplaySettings)), "htmlRenderEnabled" in A && (a.value = A.htmlRenderEnabled !== !1), _y(A), f.value = A.availableCharacters || f.value, S.value = n.value.message || "", F$().catch((H) => {
+      u.value = M, d.value = "hostProseLineHeightPx" in A ? Ws(A.hostProseLineHeightPx, Vs(M)) : Vs(M), "agentConfig" in A && (r.value = A.agentConfig || r.value, td()), "tavernDisplaySettings" in A && (s.value = Ju(A.tavernDisplaySettings)), "htmlRenderEnabled" in A && (a.value = A.htmlRenderEnabled !== !1), _y(A), f.value = A.availableCharacters || f.value, S.value = n.value.message || "", F$().catch((H) => {
         w.value = H instanceof Error ? H.message : String(H || "create_session_failed"), id();
       }), Qt(yu);
     }
