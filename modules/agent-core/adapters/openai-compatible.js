@@ -499,20 +499,23 @@ export function buildNativeMessages(task, model = '') {
     }
 
     // Global deduplication of tool_call_id across all messages.
-    // We use message-index-scoped remapping so only tool messages that
-    // belong to the remapped assistant get updated.
+    // Process messages in order, tracking the current assistant's remaps so
+    // only tool messages that follow the remapped assistant get updated.
     const seenToolCallIds = new Set();
-    const duplicateRemaps = new Map(); // key: `${assistantIndex}:${oldId}` -> newId
+    const activeAssistantRemaps = new Map(); // oldId -> newId for the current active assistant
 
-    // First pass: identify duplicates in assistant tool_calls
-    normalizedMessages.forEach((message, msgIndex) => {
+    for (let i = 0; i < normalizedMessages.length; i++) {
+        const message = normalizedMessages[i];
+
         if (message.role === 'assistant' && Array.isArray(message.tool_calls)) {
+            // New assistant message: reset active remaps and check for duplicates
+            activeAssistantRemaps.clear();
             message.tool_calls.forEach((toolCall) => {
                 const id = toolCall?.id;
                 if (!id) return;
                 if (seenToolCallIds.has(id)) {
                     const newId = `${id}-dedup-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-                    duplicateRemaps.set(`${msgIndex}:${id}`, newId);
+                    activeAssistantRemaps.set(id, newId);
                     toolCall.id = newId;
                     seenToolCallIds.add(newId);
                 } else {
@@ -520,28 +523,10 @@ export function buildNativeMessages(task, model = '') {
                 }
             });
         }
-    });
 
-    // Second pass: update tool messages to match their specific assistant's remapped IDs.
-    // For each tool message, walk backwards to find the nearest assistant that owns
-    // this tool_call_id, then apply the remap only if that assistant was modified.
-    for (let i = 0; i < normalizedMessages.length; i++) {
-        const message = normalizedMessages[i];
         if (message.role === 'tool' && message.tool_call_id) {
-            for (let j = i - 1; j >= 0; j--) {
-                const prevMessage = normalizedMessages[j];
-                if (prevMessage?.role === 'assistant' && Array.isArray(prevMessage.tool_calls)) {
-                    const hasMatchingToolCall = prevMessage.tool_calls.some(
-                        (tc) => tc.id === message.tool_call_id
-                    );
-                    if (hasMatchingToolCall) {
-                        const remapKey = `${j}:${message.tool_call_id}`;
-                        if (duplicateRemaps.has(remapKey)) {
-                            message.tool_call_id = duplicateRemaps.get(remapKey);
-                        }
-                        break;
-                    }
-                }
+            if (activeAssistantRemaps.has(message.tool_call_id)) {
+                message.tool_call_id = activeAssistantRemaps.get(message.tool_call_id);
             }
         }
     }
