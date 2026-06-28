@@ -479,8 +479,11 @@ export function buildNativeMessages(task, model = '') {
             content: message.content,
         };
 
-        if (message.role === 'tool' && message.tool_call_id) {
-            baseMessage.tool_call_id = message.tool_call_id;
+        if (message.role === 'tool') {
+            const toolCallId = message.tool_call_id || message.toolCallId;
+            if (toolCallId) {
+                baseMessage.tool_call_id = toolCallId;
+            }
         }
 
         if (message.role === 'assistant' && topLevelToolCalls.length) {
@@ -539,6 +542,22 @@ export function buildNativeMessages(task, model = '') {
                 message.tool_call_id = activeAssistantRemaps.get(message.tool_call_id);
             }
         }
+    }
+
+    // Final safety check: detect any remaining duplicate tool_call_ids
+    const finalToolCallIds = normalizedMessages
+        .filter((m) => m.role === 'tool' && m.tool_call_id)
+        .map((m) => m.tool_call_id);
+    const uniqueFinalIds = new Set(finalToolCallIds);
+    if (finalToolCallIds.length !== uniqueFinalIds.size) {
+        const dupes = finalToolCallIds.filter((id, idx) => finalToolCallIds.indexOf(id) !== idx);
+        console.error('[buildNativeMessages] CRITICAL: duplicate tool_call_ids remain after dedup:', dupes);
+        console.error('[buildNativeMessages] all tool messages:', normalizedMessages
+            .filter((m) => m.role === 'tool')
+            .map((m) => ({ tool_call_id: m.tool_call_id, content_preview: String(m.content || '').slice(0, 40) })));
+        console.error('[buildNativeMessages] all assistant tool_calls:', normalizedMessages
+            .filter((m) => m.role === 'assistant' && Array.isArray(m.tool_calls))
+            .map((m) => m.tool_calls.map((tc) => tc.id)));
     }
 
     return normalizeFinalClaudeLikeMessageRole(normalizedMessages, model);
