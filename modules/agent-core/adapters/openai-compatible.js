@@ -499,16 +499,25 @@ export function buildNativeMessages(task, model = '') {
     }
 
     // Global deduplication of tool_call_id across all messages.
-    // Process messages in order, tracking the current assistant's remaps so
-    // only tool messages that follow the remapped assistant get updated.
+    // Pre-scan all tool messages to collect historical tool_call_ids, then
+    // process assistant tool_calls in order, remapping any ID that conflicts
+    // with a prior tool_call_id or prior assistant tool_call.
     const seenToolCallIds = new Set();
     const activeAssistantRemaps = new Map(); // oldId -> newId for the current active assistant
 
+    // Pre-scan: collect all existing tool_call_ids so we detect cross-turn conflicts
+    normalizedMessages.forEach((message) => {
+        if (message.role === 'tool' && message.tool_call_id) {
+            seenToolCallIds.add(message.tool_call_id);
+        }
+    });
+
+    // Process assistant tool_calls and update trailing tool messages
     for (let i = 0; i < normalizedMessages.length; i++) {
         const message = normalizedMessages[i];
 
         if (message.role === 'assistant' && Array.isArray(message.tool_calls)) {
-            // New assistant message: reset active remaps and check for duplicates
+            // New assistant message: reset active remaps for this block
             activeAssistantRemaps.clear();
             message.tool_calls.forEach((toolCall) => {
                 const id = toolCall?.id;
