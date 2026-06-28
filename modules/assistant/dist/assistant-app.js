@@ -26066,21 +26066,29 @@ function hv(e, t = "") {
     role: "system",
     content: s
   });
-  const o = /* @__PURE__ */ new Set();
-  i.forEach((u) => {
-    u.role === "tool" && u.tool_call_id && (o.has(u.tool_call_id) ? u.tool_call_id = `${u.tool_call_id}-histdup-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` : o.add(u.tool_call_id));
-  });
-  const a = /* @__PURE__ */ new Map();
+  const o = /* @__PURE__ */ new Set(), a = /* @__PURE__ */ new Set();
   for (let u = 0; u < i.length; u++) {
     const d = i[u];
-    d.role === "assistant" && Array.isArray(d.tool_calls) && (a.clear(), d.tool_calls.forEach((f) => {
-      const m = f?.id;
-      if (m)
-        if (o.has(m)) {
-          const O = `${m}-dedup-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-          a.set(m, O), f.id = O, o.add(O);
-        } else o.add(m);
-    })), d.role === "tool" && d.tool_call_id && a.has(d.tool_call_id) && (d.tool_call_id = a.get(d.tool_call_id));
+    if (d.role === "assistant" && Array.isArray(d.tool_calls)) {
+      const f = /* @__PURE__ */ new Map();
+      d.tool_calls.forEach((m) => {
+        const O = m?.id;
+        if (O)
+          if (o.has(O)) {
+            const y = `${O}-dedup-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+            f.set(O, y), m.id = y, o.add(y);
+          } else o.add(O);
+      });
+      for (let m = u + 1; m < i.length; m++) {
+        const O = i[m];
+        if (O.role !== "tool") break;
+        a.add(m), f.has(O.tool_call_id) && (O.tool_call_id = f.get(O.tool_call_id)), o.add(O.tool_call_id);
+      }
+    }
+    if (d.role === "tool" && d.tool_call_id && !a.has(u)) if (o.has(d.tool_call_id)) {
+      const f = `${d.tool_call_id}-histdup-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      d.tool_call_id = f, o.add(f);
+    } else o.add(d.tool_call_id);
   }
   const l = i.filter((u) => u.role === "tool" && u.tool_call_id).map((u) => u.tool_call_id), c = new Set(l);
   if (l.length !== c.size) {

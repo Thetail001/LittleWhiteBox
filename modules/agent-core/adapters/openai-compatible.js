@@ -502,44 +502,51 @@ export function buildNativeMessages(task, model = '') {
     }
 
     // Global deduplication of tool_call_id across all messages.
-    // Phase 1: Deduplicate historical tool messages that share the same
-    // tool_call_id (provider may reuse IDs across turns, e.g. DeepSeek).
-    const seenToolCallIds = new Set();
-    normalizedMessages.forEach((message) => {
-        if (message.role === 'tool' && message.tool_call_id) {
-            if (seenToolCallIds.has(message.tool_call_id)) {
-                message.tool_call_id = `${message.tool_call_id}-histdup-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-            } else {
-                seenToolCallIds.add(message.tool_call_id);
-            }
-        }
-    });
+    // Process messages in order: when an assistant has tool_calls, ensure
+    // each tool_call.id is unique (remap if already used). Then update
+    // immediately following tool messages to match the new IDs.
+    // Any tool message not following an assistant (e.g., orphaned) is checked
+    // for duplicates independently.
+    const usedIds = new Set();
+    const processedToolIndices = new Set();
 
-    // Phase 2: Process assistant tool_calls and update trailing tool messages.
-    // Any assistant tool_call id that conflicts with a historical ID gets remapped.
-    const activeAssistantRemaps = new Map(); // oldId -> newId for the current active assistant
     for (let i = 0; i < normalizedMessages.length; i++) {
         const message = normalizedMessages[i];
 
         if (message.role === 'assistant' && Array.isArray(message.tool_calls)) {
-            activeAssistantRemaps.clear();
+            const remaps = new Map(); // oldId -> newId for this assistant
             message.tool_calls.forEach((toolCall) => {
                 const id = toolCall?.id;
                 if (!id) return;
-                if (seenToolCallIds.has(id)) {
+                if (usedIds.has(id)) {
                     const newId = `${id}-dedup-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-                    activeAssistantRemaps.set(id, newId);
+                    remaps.set(id, newId);
                     toolCall.id = newId;
-                    seenToolCallIds.add(newId);
+                    usedIds.add(newId);
                 } else {
-                    seenToolCallIds.add(id);
+                    usedIds.add(id);
                 }
             });
+
+            // Update immediately following tool messages
+            for (let j = i + 1; j < normalizedMessages.length; j++) {
+                const toolMsg = normalizedMessages[j];
+                if (toolMsg.role !== 'tool') break;
+                processedToolIndices.add(j);
+                if (remaps.has(toolMsg.tool_call_id)) {
+                    toolMsg.tool_call_id = remaps.get(toolMsg.tool_call_id);
+                }
+                usedIds.add(toolMsg.tool_call_id);
+            }
         }
 
-        if (message.role === 'tool' && message.tool_call_id) {
-            if (activeAssistantRemaps.has(message.tool_call_id)) {
-                message.tool_call_id = activeAssistantRemaps.get(message.tool_call_id);
+        if (message.role === 'tool' && message.tool_call_id && !processedToolIndices.has(i)) {
+            if (usedIds.has(message.tool_call_id)) {
+                const newId = `${message.tool_call_id}-histdup-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+                message.tool_call_id = newId;
+                usedIds.add(newId);
+            } else {
+                usedIds.add(message.tool_call_id);
             }
         }
     }
