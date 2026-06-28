@@ -1,6 +1,7 @@
 import 'fake-indexeddb/auto';
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
 import db, {
@@ -34,11 +35,13 @@ import {
 import {
     parseTavernCharacterArchiveJsonlBatches,
     parseTavernCharacterArchiveJsonl,
+    sha256Hex,
     TavernCharacterArchiveWriter,
     textToBytes,
     type TavernCharacterArchiveJsonlCodec,
 } from '../shared/character-archive-jsonl';
 import {
+    buildTavernCharacterArchiveCharacterHash,
     buildTavernCharacterArchivePartFilename,
     downloadTavernCharacterArchiveFile,
     downloadTavernCharacterArchiveManifest,
@@ -303,6 +306,45 @@ test('tavern character archive part filenames are scoped by archive id', () => {
     assert.notEqual(previous, next);
     assert.equal(previous, 'LWB_TavernCharacterArchive_hash-a_archive-old_part_0001.jsonl.gz');
     assert.equal(next, 'LWB_TavernCharacterArchive_hash-a_archive-new_part_0001.jsonl.gz');
+});
+
+test('tavern character archive hashes do not depend on browser WebCrypto', async () => {
+    assert.equal(
+        await sha256Hex(textToBytes('')),
+        'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+    );
+    assert.equal(
+        await sha256Hex(textToBytes('abc')),
+        'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
+    );
+    assert.equal(
+        await buildTavernCharacterArchiveCharacterHash('abc'),
+        'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
+    );
+    const edgeSizes = [55, 56, 57, 63, 64, 65, 127, 128, 129, 4099];
+    for (const size of edgeSizes) {
+        const bytes = new Uint8Array(size);
+        for (let index = 0; index < bytes.length; index += 1) {
+            bytes[index] = index % 251;
+        }
+        assert.equal(await sha256Hex(bytes), createHash('sha256').update(bytes).digest('hex'));
+    }
+});
+
+test('tavern character archive source does not call browser crypto APIs', () => {
+    const jsonlSource = readFileSync(new URL('../shared/character-archive-jsonl.ts', import.meta.url), 'utf8');
+    const storageSource = readFileSync(new URL('../shared/character-archive-server-storage.ts', import.meta.url), 'utf8');
+    const dbSource = readFileSync(new URL('../shared/character-archive-db.ts', import.meta.url), 'utf8');
+    const appSource = readFileSync(new URL('../app-src/App.vue', import.meta.url), 'utf8');
+    const archiveSource = `${jsonlSource}\n${storageSource}\n${dbSource}\n${appSource}`;
+
+    assert(!archiveSource.includes('crypto.subtle'));
+    assert(!archiveSource.includes('crypto_subtle_unavailable'));
+    assert(!archiveSource.includes('globalThis.crypto'));
+    assert(!jsonlSource.includes('paddedLength'));
+    assert(!jsonlSource.includes('padded.set(input)'));
+    assert(jsonlSource.includes('DEFAULT_SHA256_YIELD_BLOCKS'));
+    assert(jsonlSource.includes('yieldMainThread'));
 });
 
 test('tavern character archive JSONL parser yields bounded batches', () => {

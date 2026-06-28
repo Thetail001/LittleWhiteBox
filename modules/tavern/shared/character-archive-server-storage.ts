@@ -2,9 +2,9 @@ import type {
     TavernCharacterArchiveManifest,
 } from './character-archive-types';
 import {
-    bytesToArrayBuffer,
     bytesToBase64,
     bytesToText,
+    sha256Hex,
     textToBytes,
 } from './character-archive-jsonl';
 
@@ -88,13 +88,7 @@ function isArchiveNotFoundError(error: unknown): boolean {
 export async function buildTavernCharacterArchiveCharacterHash(characterKey = ''): Promise<string> {
     const key = String(characterKey || '').trim();
     if (!key) {throw new Error('character_key_required');}
-    if (!globalThis.crypto?.subtle) {
-        throw new Error('crypto_subtle_unavailable');
-    }
-    const digest = await globalThis.crypto.subtle.digest('SHA-256', bytesToArrayBuffer(textToBytes(key)));
-    return Array.from(new Uint8Array(digest))
-        .map((value) => value.toString(16).padStart(2, '0'))
-        .join('');
+    return await sha256Hex(textToBytes(key));
 }
 
 export function buildTavernCharacterArchiveManifestFilename(characterHash = ''): string {

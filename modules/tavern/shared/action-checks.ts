@@ -75,12 +75,6 @@ function resolveD20Roll(roller?: () => number): number {
     if (typeof roller === 'function') {
         return clampInteger(roller(), 1, ACTION_CHECK_DIE_SIDES, 1);
     }
-    const cryptography = globalThis.crypto;
-    if (cryptography?.getRandomValues) {
-        const values = new Uint32Array(1);
-        cryptography.getRandomValues(values);
-        return (values[0] % ACTION_CHECK_DIE_SIDES) + 1;
-    }
     return Math.floor(Math.random() * ACTION_CHECK_DIE_SIDES) + 1;
 }
 

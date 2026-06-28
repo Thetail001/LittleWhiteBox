@@ -88,6 +88,12 @@ function sourceMatches(pattern: RegExp): Array<{ path: string; line: number; tex
     });
 }
 
+test('tavern source does not depend on browser crypto APIs', () => {
+    const browserCryptoReferences = sourceMatches(/globalThis\.crypto|crypto\.subtle|getRandomValues|randomUUID|crypto_subtle_unavailable/);
+
+    assert.deepEqual(browserCryptoReferences, []);
+});
+
 test('tavern source keeps cross-frame messages behind clone-safe wrappers', () => {
     const directPostMessages = sourceMatches(/postMessage\(/);
     assert.deepEqual(

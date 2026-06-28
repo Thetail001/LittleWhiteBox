@@ -2279,8 +2279,6 @@ async function bindSelectedCharacterWorldbook(name: string) {
 }
 
 function createCharacterArchiveId(): string {
-    const cryptoApi = globalThis.crypto;
-    if (cryptoApi?.randomUUID) {return cryptoApi.randomUUID();}
     return `archive-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 

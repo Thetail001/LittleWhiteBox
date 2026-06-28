@@ -67,10 +67,6 @@ function normalizeScriptType(value) {
   throw new Error("\u672A\u77E5\u6B63\u5219\u7C7B\u578B\u3002");
 }
 function createId() {
-  const cryptoApi = globalThis.crypto;
-  if (cryptoApi?.randomUUID) {
-    return cryptoApi.randomUUID();
-  }
   return `regex-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 function normalizeStringArray(value) {
