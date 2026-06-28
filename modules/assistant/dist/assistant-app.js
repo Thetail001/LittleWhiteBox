@@ -5731,12 +5731,12 @@ function TX(e = {}) {
   }
 }
 function Kf(e = [], t = {}) {
-  const n = String(t.fallbackPrefix || "agent-tool").trim() || "agent-tool", r = typeof t.createId == "function" ? t.createId : (i) => `${n}-${Date.now()}-${i + 1}`;
-  return (Array.isArray(e) ? e : []).map((i, s) => ({
-    id: String(i?.id || r(s) || `${n}-${s + 1}`),
-    name: String(i?.name || "").trim(),
-    arguments: TX(i)
-  })).filter((i) => i.name);
+  const n = String(t.fallbackPrefix || "agent-tool").trim() || "agent-tool", r = typeof t.createId == "function" ? t.createId : (s) => `${n}-${Date.now()}-${s + 1}`, i = /* @__PURE__ */ new Set();
+  return (Array.isArray(e) ? e : []).map((s, o) => ({
+    id: String(s?.id || r(o) || `${n}-${o + 1}`),
+    name: String(s?.name || "").trim(),
+    arguments: TX(s)
+  })).filter((s) => s.name).map((s, o) => (i.has(s.id) && (s.id = r(o) || `${n}-${Date.now()}-${o + 1}`), i.add(s.id), s));
 }
 function ep(e = []) {
   return (Array.isArray(e) ? e : []).map((t) => ({
@@ -26043,25 +26043,54 @@ function rj(e = {}, t = {}) {
   return An(e) ? An(t) ? na(Fn(e) || {}, t, "") : Fn(e) : Fn(t);
 }
 function hv(e, t = "") {
-  const n = Array.isArray(e.messages) ? e.messages : [], r = YH(n), i = n.map((o, a) => {
-    const l = ta(o?.tool_calls);
-    if (KH(o, a, r)) {
-      const u = Dm(o);
-      if (JH(u)) return VA({
-        ...u,
-        ...l.length ? { tool_calls: l } : {}
+  const n = Array.isArray(e.messages) ? e.messages : [], r = YH(n), i = n.map((u, d) => {
+    const f = ta(u?.tool_calls);
+    if (KH(u, d, r)) {
+      const O = Dm(u);
+      if (JH(O)) return VA({
+        ...O,
+        ...f.length ? { tool_calls: f } : {}
       }, t);
     }
-    const c = {
-      role: o.role,
-      content: o.content
+    const m = {
+      role: u.role,
+      content: u.content
     };
-    return o.role === "tool" && o.tool_call_id && (c.tool_call_id = o.tool_call_id), o.role === "assistant" && l.length && (c.tool_calls = l), VA(c, t);
+    if (u.role === "tool") {
+      const O = u.tool_call_id || u.toolCallId;
+      O && (m.tool_call_id = O);
+    }
+    return u.role === "assistant" && f.length && (m.tool_calls = f), VA(m, t);
   }), s = String(e.systemPrompt || "").trim();
-  return s && i[0]?.role !== "system" && i.unshift({
+  s && i[0]?.role !== "system" && i.unshift({
     role: "system",
     content: s
-  }), HQ(i, t);
+  });
+  const o = /* @__PURE__ */ new Set();
+  i.forEach((u) => {
+    u.role === "tool" && u.tool_call_id && (o.has(u.tool_call_id) ? u.tool_call_id = `${u.tool_call_id}-histdup-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` : o.add(u.tool_call_id));
+  });
+  const a = /* @__PURE__ */ new Map();
+  for (let u = 0; u < i.length; u++) {
+    const d = i[u];
+    d.role === "assistant" && Array.isArray(d.tool_calls) && (a.clear(), d.tool_calls.forEach((f) => {
+      const m = f?.id;
+      if (m)
+        if (o.has(m)) {
+          const O = `${m}-dedup-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+          a.set(m, O), f.id = O, o.add(O);
+        } else o.add(m);
+    })), d.role === "tool" && d.tool_call_id && a.has(d.tool_call_id) && (d.tool_call_id = a.get(d.tool_call_id));
+  }
+  const l = i.filter((u) => u.role === "tool" && u.tool_call_id).map((u) => u.tool_call_id), c = new Set(l);
+  if (l.length !== c.size) {
+    const u = l.filter((d, f) => l.indexOf(d) !== f);
+    console.error("[buildNativeMessages] CRITICAL: duplicate tool_call_ids remain after dedup:", u), console.error("[buildNativeMessages] all tool messages:", i.filter((d) => d.role === "tool").map((d) => ({
+      tool_call_id: d.tool_call_id,
+      content_preview: String(d.content || "").slice(0, 40)
+    }))), console.error("[buildNativeMessages] all assistant tool_calls:", i.filter((d) => d.role === "assistant" && Array.isArray(d.tool_calls)).map((d) => d.tool_calls.map((f) => f.id)));
+  }
+  return HQ(i, t);
 }
 function DA(e) {
   const t = (e.tools || []).map((n) => [`- ${n.function.name}: ${n.function.description || ""}`.trim(), `  参数 JSON Schema: ${JSON.stringify(n.function.parameters || {})}`].join(`
