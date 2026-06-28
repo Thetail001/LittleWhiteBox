@@ -40746,14 +40746,16 @@ function E1(e, t = "") {
   a && s[0]?.role !== "system" && s.unshift({
     role: "system",
     content: a
+  }), console.log("[buildNativeMessages] RAW source messages count:", n.length), n.forEach((f, p) => {
+    f.role === "assistant" && Array.isArray(f.tool_calls) && console.log(`[buildNativeMessages] RAW [${p}] assistant tool_calls:`, f.tool_calls.map((g) => g.id)), f.role === "tool" && console.log(`[buildNativeMessages] RAW [${p}] tool tool_call_id:`, f.tool_call_id || f.toolCallId, "content:", String(f.content || "").slice(0, 30));
   });
   const o = /* @__PURE__ */ new Set();
   s.forEach((f) => {
     f.role === "tool" && f.tool_call_id && o.add(f.tool_call_id);
-  }), s.forEach((f) => {
+  }), console.log("[buildNativeMessages] Tool IDs found in messages:", Array.from(o)), s.forEach((f, p) => {
     if (f.role === "assistant" && Array.isArray(f.tool_calls)) {
-      const p = f.tool_calls.filter((g) => g?.id && o.has(g.id));
-      p.length !== f.tool_calls.length && (console.warn("[buildNativeMessages] Removed", f.tool_calls.length - p.length, "orphan tool_calls without matching tool messages"), p.length ? f.tool_calls = p : delete f.tool_calls);
+      const g = f.tool_calls.filter((y) => y?.id && o.has(y.id));
+      g.length !== f.tool_calls.length && (console.warn("[buildNativeMessages] Removed", f.tool_calls.length - g.length, "orphan tool_calls at index", p), g.length ? f.tool_calls = g : delete f.tool_calls);
     }
   });
   const l = /* @__PURE__ */ new Set(), i = /* @__PURE__ */ new Set();
@@ -40780,6 +40782,9 @@ function E1(e, t = "") {
       p.tool_call_id = g, l.add(g);
     } else l.add(p.tool_call_id);
   }
+  console.log("[buildNativeMessages] FINAL messages count:", s.length), s.forEach((f, p) => {
+    f.role === "assistant" && Array.isArray(f.tool_calls) && console.log(`[buildNativeMessages] FINAL [${p}] assistant tool_calls:`, f.tool_calls.map((g) => g.id)), f.role === "tool" && console.log(`[buildNativeMessages] FINAL [${p}] tool tool_call_id:`, f.tool_call_id, "content:", String(f.content || "").slice(0, 30));
+  });
   const u = s.filter((f) => f.role === "tool" && f.tool_call_id).map((f) => f.tool_call_id), d = new Set(u);
   if (u.length !== d.size) {
     const f = u.filter((p, g) => u.indexOf(p) !== g);

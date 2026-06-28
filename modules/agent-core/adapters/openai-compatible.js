@@ -501,6 +501,17 @@ export function buildNativeMessages(task, model = '') {
         });
     }
 
+    // DEBUG: Log raw source messages
+    console.log('[buildNativeMessages] RAW source messages count:', sourceMessages.length);
+    sourceMessages.forEach((m, idx) => {
+        if (m.role === 'assistant' && Array.isArray(m.tool_calls)) {
+            console.log(`[buildNativeMessages] RAW [${idx}] assistant tool_calls:`, m.tool_calls.map(tc => tc.id));
+        }
+        if (m.role === 'tool') {
+            console.log(`[buildNativeMessages] RAW [${idx}] tool tool_call_id:`, m.tool_call_id || m.toolCallId, 'content:', String(m.content || '').slice(0, 30));
+        }
+    });
+
     // Repair any incomplete assistant/tool pairs before deduplication.
     // If an assistant has tool_calls that lack corresponding tool messages,
     // remove those orphaned tool_calls to avoid "insufficient tool messages" errors.
@@ -510,11 +521,12 @@ export function buildNativeMessages(task, model = '') {
             toolIdsInMessages.add(message.tool_call_id);
         }
     });
-    normalizedMessages.forEach((message) => {
+    console.log('[buildNativeMessages] Tool IDs found in messages:', Array.from(toolIdsInMessages));
+    normalizedMessages.forEach((message, idx) => {
         if (message.role === 'assistant' && Array.isArray(message.tool_calls)) {
             const validToolCalls = message.tool_calls.filter((tc) => tc?.id && toolIdsInMessages.has(tc.id));
             if (validToolCalls.length !== message.tool_calls.length) {
-                console.warn('[buildNativeMessages] Removed', message.tool_calls.length - validToolCalls.length, 'orphan tool_calls without matching tool messages');
+                console.warn('[buildNativeMessages] Removed', message.tool_calls.length - validToolCalls.length, 'orphan tool_calls at index', idx);
                 if (validToolCalls.length) {
                     message.tool_calls = validToolCalls;
                 } else {
@@ -573,6 +585,17 @@ export function buildNativeMessages(task, model = '') {
             }
         }
     }
+
+    // DEBUG: Log final messages
+    console.log('[buildNativeMessages] FINAL messages count:', normalizedMessages.length);
+    normalizedMessages.forEach((m, idx) => {
+        if (m.role === 'assistant' && Array.isArray(m.tool_calls)) {
+            console.log(`[buildNativeMessages] FINAL [${idx}] assistant tool_calls:`, m.tool_calls.map(tc => tc.id));
+        }
+        if (m.role === 'tool') {
+            console.log(`[buildNativeMessages] FINAL [${idx}] tool tool_call_id:`, m.tool_call_id, 'content:', String(m.content || '').slice(0, 30));
+        }
+    });
 
     // Final safety check: detect any remaining duplicate tool_call_ids
     const finalToolCallIds = normalizedMessages
