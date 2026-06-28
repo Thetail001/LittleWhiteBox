@@ -498,34 +498,53 @@ export function buildNativeMessages(task, model = '') {
         });
     }
 
-    // Global deduplication of tool_call_id across all messages
-    const usedToolCallIds = new Set();
-    const idRemap = new Map(); // oldId -> newId
+    // Global deduplication of tool_call_id across all messages.
+    // We use message-index-scoped remapping so only tool messages that
+    // belong to the remapped assistant get updated.
+    const seenToolCallIds = new Set();
+    const duplicateRemaps = new Map(); // key: `${assistantIndex}:${oldId}` -> newId
 
     // First pass: identify duplicates in assistant tool_calls
-    normalizedMessages.forEach((message) => {
+    normalizedMessages.forEach((message, msgIndex) => {
         if (message.role === 'assistant' && Array.isArray(message.tool_calls)) {
             message.tool_calls.forEach((toolCall) => {
                 const id = toolCall?.id;
                 if (!id) return;
-                if (usedToolCallIds.has(id)) {
+                if (seenToolCallIds.has(id)) {
                     const newId = `${id}-dedup-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-                    idRemap.set(id, newId);
+                    duplicateRemaps.set(`${msgIndex}:${id}`, newId);
                     toolCall.id = newId;
-                    usedToolCallIds.add(newId);
+                    seenToolCallIds.add(newId);
                 } else {
-                    usedToolCallIds.add(id);
+                    seenToolCallIds.add(id);
                 }
             });
         }
     });
 
-    // Second pass: update tool messages to match remapped IDs
-    normalizedMessages.forEach((message) => {
-        if (message.role === 'tool' && message.tool_call_id && idRemap.has(message.tool_call_id)) {
-            message.tool_call_id = idRemap.get(message.tool_call_id);
+    // Second pass: update tool messages to match their specific assistant's remapped IDs.
+    // For each tool message, walk backwards to find the nearest assistant that owns
+    // this tool_call_id, then apply the remap only if that assistant was modified.
+    for (let i = 0; i < normalizedMessages.length; i++) {
+        const message = normalizedMessages[i];
+        if (message.role === 'tool' && message.tool_call_id) {
+            for (let j = i - 1; j >= 0; j--) {
+                const prevMessage = normalizedMessages[j];
+                if (prevMessage?.role === 'assistant' && Array.isArray(prevMessage.tool_calls)) {
+                    const hasMatchingToolCall = prevMessage.tool_calls.some(
+                        (tc) => tc.id === message.tool_call_id
+                    );
+                    if (hasMatchingToolCall) {
+                        const remapKey = `${j}:${message.tool_call_id}`;
+                        if (duplicateRemaps.has(remapKey)) {
+                            message.tool_call_id = duplicateRemaps.get(remapKey);
+                        }
+                        break;
+                    }
+                }
+            }
         }
-    });
+    }
 
     return normalizeFinalClaudeLikeMessageRole(normalizedMessages, model);
 }
