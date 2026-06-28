@@ -91,6 +91,7 @@ const {
     syncWorldbooksForCurrentCharacter,
 } = settings;
 const {
+    clearSelection: clearCharacterSelection,
     refresh: refreshCharacterList,
 } = character;
 
@@ -239,6 +240,7 @@ function openChatAppWorkspace(workspace: ChatQuickWorkspace) {
     activeSettingsWorkspace.value = workspace;
     quickSettingsOpen.value = workspace;
     if (workspace === 'characters') {
+        clearCharacterSelection();
         void refreshCharacterList();
     }
     if (workspace === 'chatPreset') {

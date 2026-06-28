@@ -192,6 +192,7 @@ export interface TavernCharacterContext {
     batchSize: number;
     characterArchiveSyncState: Ref<TavernCharacterArchiveProgress>;
     clearCharacterArchiveSyncState: TavernCommand;
+    clearSelection: TavernCommand;
     characterWorldbookBusy: Ref<boolean>;
     characterWorldbookState: Ref<TavernCharacterWorldbookState | null>;
     characters: TavernReadable<TavernCharacterOption[]>;

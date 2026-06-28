@@ -2133,9 +2133,13 @@ hostBridge.addMessageHandler((data) => drawContext.handleHostMessage(data));
 hostBridge.addMessageHandler(handleInlineImageProgressHostMessage);
 hostBridge.addMessageHandler(handleConfigHostMessage);
 
-function openCharacterSelect() {
+function clearCharacterSelection() {
     pendingCharacterError.value = '';
     selectedCharacterPreviewKey.value = '';
+}
+
+function openCharacterSelect() {
+    clearCharacterSelection();
     openSettingsWorkspace('characters');
 }
 
@@ -4376,6 +4380,7 @@ const characterContext = {
     batchSize: CHARACTER_ARCHIVE_BATCH_SIZE,
     characterArchiveSyncState,
     clearCharacterArchiveSyncState,
+    clearSelection: clearCharacterSelection,
     characterWorldbookBusy,
     characterWorldbookState,
     characters: characterCards,
