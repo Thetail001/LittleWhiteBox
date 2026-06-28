@@ -28,6 +28,7 @@ import type {
     TavernTaskRecord,
 } from '../../shared/session-db';
 import type { TavernDisplaySettings, TavernUserOption } from '../../shared/settings';
+import type { TavernCharacterArchiveProgress } from '../../shared/character-archive-types';
 import type { TavernMapStateDocumentItem } from '../../shared/structured-state';
 import type { TavernDrawContext } from '../features/draw/useTavernDrawController';
 export type { TavernDisplaySettings, TavernUserOption } from '../../shared/settings';
@@ -187,7 +188,9 @@ export interface TavernCharacterWorldbookState {
 
 export interface TavernCharacterContext {
     avatarAvailable: TavernCommand<[avatar?: string], boolean>;
+    backupSelectedCharacterArchive: TavernCommand<[], Promise<void>>;
     batchSize: number;
+    characterArchiveSyncState: Ref<TavernCharacterArchiveProgress>;
     characterWorldbookBusy: Ref<boolean>;
     characterWorldbookState: Ref<TavernCharacterWorldbookState | null>;
     characters: TavernReadable<TavernCharacterOption[]>;
@@ -203,6 +206,7 @@ export interface TavernCharacterContext {
     pendingPreviewCharacterKey: Ref<string>;
     refresh: TavernCommand<[], Promise<void>>;
     rememberBrokenAvatar: TavernCommand<[avatar?: string]>;
+    restoreSelectedCharacterArchive: TavernCommand<[], Promise<void>>;
     searchText: Ref<string>;
     select: TavernCommand<[characterKey: string], Promise<void>>;
     selectFirstVisible: TavernCommand;

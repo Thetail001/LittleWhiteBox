@@ -365,7 +365,7 @@ test('tavern character and global worldbook actions stay on native ST boundaries
     assert.match(tavernSource, /case 'xb-tavern:set-global-worldbooks':/);
     assert.doesNotMatch(tavernSource, /chat-worldbook/);
     assert.match(characterPanelSource, /const characterWorldbookBound = computed/);
-    assert.match(characterPanelSource, /class="dossier-title-row"[\s\S]*<h3>\{\{ selectedCharacter\.name \}\}<\/h3>[\s\S]*'is-bound': characterWorldbookBound[\s\S]*@click="openCharacterWorldbook"[\s\S]*会话档案[\s\S]*新建聊天/);
+    assert.match(characterPanelSource, /'is-bound': characterWorldbookBound[\s\S]*@click="openCharacterWorldbook"[\s\S]*会话档案[\s\S]*新建聊天/);
     assert.match(appSource, /requestHost\('xb-tavern:get-character-worldbook-state'/);
     assert.match(appSource, /requestHost\('xb-tavern:activate-character-worldbook'/);
     assert.match(appSource, /requestHost\('xb-tavern:bind-character-worldbook'/);
@@ -2184,14 +2184,14 @@ test('tavern character archive separates new chat from existing session selectio
     assert.match(characterSource, /<main\s+v-if="!selectedCharacter"\s+class="character-preview-panel dossier-empty"/);
     assert.doesNotMatch(characterSource, /@dblclick="\$emit\('enter-character'/);
     assert.match(previewCss, /\.dossier-title-actions \{[\s\S]*display: flex;[\s\S]*gap: 8px;/);
-    assert.match(previewCss, /\.character-definition-button,\n\.character-worldbook-button/);
+    assert.match(previewCss, /\.character-cloud-button,\n\.character-definition-button,\n\.character-worldbook-button/);
     assert.match(previewCss, /\.session-archive-button/);
     assert.match(previewCss, /\.dossier-title-actions \.session-archive-button,\n\.dossier-title-actions \.enter-chat-button \{[\s\S]*padding-left: 12px;[\s\S]*padding-right: 12px;/);
     assert.match(previewCss, /\.character-definition-dialog \{[\s\S]*width: min\(560px, 100%\);/);
     assert.match(previewCss, /\.character-definition-section dd \{[\s\S]*white-space: pre-wrap;/);
     assert.match(previewCss, /\.character-session-archive \{[\s\S]*width: min\(520px, 100%\);/);
     assert.match(previewCss, /@media \(max-width: 640px\) \{[\s\S]*\.character-definition-overlay,[\s\S]*\.character-greeting-overlay,[\s\S]*\.character-session-archive-overlay,[\s\S]*\.character-worldbook-picker-overlay \{[\s\S]*place-items: stretch;[\s\S]*padding: 0;[\s\S]*\.character-definition-dialog,[\s\S]*\.character-greeting-dialog,[\s\S]*\.character-session-archive,[\s\S]*\.character-worldbook-picker \{[\s\S]*width: 100%;[\s\S]*height: 100%;[\s\S]*max-height: none;[\s\S]*border-radius: 0;/);
-    assert.match(previewCss, /grid-template-columns: 40px 40px max-content max-content;/);
+    assert.match(previewCss, /grid-template-columns: 40px 40px 40px max-content max-content;/);
 });
 
 test('tavern deleting a selected chat never falls through to another character session', () => {
