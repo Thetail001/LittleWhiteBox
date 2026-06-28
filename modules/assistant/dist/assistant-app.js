@@ -26044,23 +26044,23 @@ function rj(e = {}, t = {}) {
 }
 function hv(e, t = "") {
   const n = Array.isArray(e.messages) ? e.messages : [], r = YH(n), i = n.map((d, f) => {
-    const m = ta(d?.tool_calls);
+    const m = ta(d?.tool_calls), O = /* @__PURE__ */ new Set(), y = m.filter((w) => !w?.id || O.has(w.id) ? !1 : (O.add(w.id), !0));
     if (KH(d, f, r)) {
-      const y = Dm(d);
-      if (JH(y)) return VA({
-        ...y,
-        ...m.length ? { tool_calls: m } : {}
+      const w = Dm(d);
+      if (JH(w)) return VA({
+        ...w,
+        ...y.length ? { tool_calls: y } : {}
       }, t);
     }
-    const O = {
+    const S = {
       role: d.role,
       content: d.content
     };
     if (d.role === "tool") {
-      const y = d.tool_call_id || d.toolCallId;
-      y && (O.tool_call_id = y);
+      const w = d.tool_call_id || d.toolCallId;
+      w && (S.tool_call_id = w);
     }
-    return d.role === "assistant" && m.length && (O.tool_calls = m), VA(O, t);
+    return d.role === "assistant" && y.length && (S.tool_calls = y), VA(S, t);
   }), s = String(e.systemPrompt || "").trim();
   s && i[0]?.role !== "system" && i.unshift({
     role: "system",

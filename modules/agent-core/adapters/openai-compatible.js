@@ -464,12 +464,21 @@ export function buildNativeMessages(task, model = '') {
     const lastUserIndex = getLastUserMessageIndex(sourceMessages);
     const normalizedMessages = sourceMessages.map((message, index) => {
         const topLevelToolCalls = normalizeToolCallsForReplay(message?.tool_calls);
+        // Deduplicate: keep only unique tool_call IDs. History may contain
+        // duplicate tool_calls (e.g. from double-persist), which would cause
+        // "insufficient tool messages" because tool messages don't duplicate.
+        const seenToolCallIdsInMsg = new Set();
+        const uniqueTopLevelToolCalls = topLevelToolCalls.filter((tc) => {
+            if (!tc?.id || seenToolCallIdsInMsg.has(tc.id)) return false;
+            seenToolCallIdsInMsg.add(tc.id);
+            return true;
+        });
         if (shouldPreserveAssistantReplayMessage(message, index, lastUserIndex)) {
             const preserved = normalizeOpenAICompatibleMessage(message);
             if (hasValidToolCalls(preserved)) {
                 return ensureReasoningContentForToolCalls({
                     ...preserved,
-                    ...(topLevelToolCalls.length ? { tool_calls: topLevelToolCalls } : {}),
+                    ...(uniqueTopLevelToolCalls.length ? { tool_calls: uniqueTopLevelToolCalls } : {}),
                 }, model);
             }
         }
@@ -486,8 +495,8 @@ export function buildNativeMessages(task, model = '') {
             }
         }
 
-        if (message.role === 'assistant' && topLevelToolCalls.length) {
-            baseMessage.tool_calls = topLevelToolCalls;
+        if (message.role === 'assistant' && uniqueTopLevelToolCalls.length) {
+            baseMessage.tool_calls = uniqueTopLevelToolCalls;
         }
 
         return ensureReasoningContentForToolCalls(baseMessage, model);
