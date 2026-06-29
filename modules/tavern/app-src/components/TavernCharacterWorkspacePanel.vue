@@ -5,7 +5,10 @@ import type { TavernSessionRecord } from '../../shared/session-db';
 
 const {
     avatarAvailable,
+    backupSelectedCharacterArchive,
     batchSize,
+    characterArchiveSyncState,
+    clearCharacterArchiveSyncState,
     characterWorldbookBusy,
     characterWorldbookState,
     characters,
@@ -21,6 +24,7 @@ const {
     pendingPreviewCharacterKey,
     refresh,
     rememberBrokenAvatar,
+    restoreSelectedCharacterArchive,
     searchText,
     select,
     selectFirstVisible,
@@ -42,6 +46,7 @@ const shell = useTavernShellContext();
 
 const listRef = ref<HTMLElement | null>(null);
 const sessionArchiveOpen = ref(false);
+const characterCloudSyncOpen = ref(false);
 const characterDefinitionOpen = ref(false);
 const greetingPickerOpen = ref(false);
 
@@ -92,6 +97,20 @@ const characterWorldbookButtonTitle = computed(() => {
 const characterWorldbookBound = computed(() => (
     characterWorldbookState.value?.boundExists === true
 ));
+const characterArchiveBusy = computed(() => characterArchiveSyncState.value.busy);
+const characterArchivePercent = computed(() => Math.max(0, Math.min(100, Math.round(Number(characterArchiveSyncState.value.percent) || 0))));
+const characterArchiveSizeLabel = computed(() => {
+    const state = characterArchiveSyncState.value;
+    const loaded = formatArchiveBytes(state.loadedBytes);
+    const total = formatArchiveBytes(state.totalBytes);
+    if (state.totalBytes > 0) {return `${loaded} / ${total}`;}
+    return loaded;
+});
+const characterArchivePartLabel = computed(() => {
+    const state = characterArchiveSyncState.value;
+    if (!state.partIndex && !state.partCount) {return '';}
+    return `分卷 ${state.partIndex || 0}${state.partCount ? ` / ${state.partCount}` : ''}`;
+});
 
 function scrollSelectedIntoView() {
     void nextTick(() => {
@@ -150,6 +169,14 @@ function sessionArchiveMeta(session: TavernSessionRecord) {
     return `${formatSessionTime(session.updatedAt || session.createdAt)} · ${sessionFloorLabel(session)}`;
 }
 
+function formatArchiveBytes(value: unknown) {
+    const bytes = Math.max(0, Number(value) || 0);
+    if (bytes >= 1024 * 1024 * 1024) {return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;}
+    if (bytes >= 1024 * 1024) {return `${(bytes / 1024 / 1024).toFixed(1)} MB`;}
+    if (bytes >= 1024) {return `${(bytes / 1024).toFixed(1)} KB`;}
+    return `${Math.round(bytes)} B`;
+}
+
 function openSessionArchive() {
     if (!selectedCharacter.value || pendingCharacterSessionKey.value) {return;}
     sessionArchiveOpen.value = true;
@@ -157,6 +184,29 @@ function openSessionArchive() {
 
 function closeSessionArchive() {
     sessionArchiveOpen.value = false;
+}
+
+function openCharacterCloudSync() {
+    if (!selectedCharacter.value) {return;}
+    const state = characterArchiveSyncState.value;
+    if (!characterArchiveBusy.value && (state.phase || state.percent || state.message || state.error || state.result)) {
+        clearCharacterArchiveSyncState();
+    }
+    characterCloudSyncOpen.value = true;
+}
+
+function closeCharacterCloudSync() {
+    if (characterArchiveBusy.value) {return;}
+    characterCloudSyncOpen.value = false;
+    clearCharacterArchiveSyncState();
+}
+
+async function backupCharacterArchive() {
+    await backupSelectedCharacterArchive();
+}
+
+async function restoreCharacterArchive() {
+    await restoreSelectedCharacterArchive();
 }
 
 function openCharacterDefinition() {
@@ -205,6 +255,7 @@ async function deleteArchivedSession(sessionId: string, event: Event) {
 watch(
     () => selectedCharacter.value?.characterKey,
     (characterKey) => {
+        closeCharacterCloudSync();
         closeCharacterDefinition();
         closeGreetingPicker();
         closeSessionArchive();
@@ -329,8 +380,32 @@ watch(
         <div class="dossier-header">
           <div class="dossier-identity">
             <div class="dossier-title-row">
-              <h3>{{ selectedCharacter.name }}</h3>
+              <span
+                class="dossier-avatar"
+                role="img"
+                :aria-label="selectedCharacter.name"
+                :title="selectedCharacter.name"
+              >
+                <img
+                  v-if="avatarAvailable(selectedCharacter.avatar)"
+                  :src="selectedCharacter.avatar"
+                  loading="lazy"
+                  decoding="async"
+                  alt=""
+                  @error="rememberBrokenAvatar(selectedCharacter.avatar)"
+                >
+                <span v-else>{{ selectedCharacter.name.slice(0, 1) }}</span>
+              </span>
               <div class="dossier-title-actions">
+                <button
+                  type="button"
+                  class="os-system-act-btn character-cloud-button"
+                  title="酒馆服务器"
+                  aria-label="酒馆服务器"
+                  @click="openCharacterCloudSync"
+                >
+                  ☁
+                </button>
                 <button
                   type="button"
                   class="os-system-act-btn character-definition-button"
@@ -445,6 +520,92 @@ watch(
           </dl>
         </div>
       </main>
+
+      <div
+        v-if="characterCloudSyncOpen && selectedCharacter"
+        class="character-cloud-sync-overlay"
+        role="dialog"
+        aria-modal="true"
+        aria-label="将角色卡会话档案从酒馆服务器备份、恢复"
+        @click.self="closeCharacterCloudSync"
+      >
+        <section class="character-cloud-sync-dialog">
+          <header>
+            <div>
+              <strong>将角色卡会话档案从酒馆服务器备份、恢复</strong>
+            </div>
+            <button
+              type="button"
+              class="session-archive-close character-cloud-sync-close"
+              aria-label="关闭角色卡会话档案备份恢复"
+              @click="closeCharacterCloudSync"
+            />
+          </header>
+          <div class="character-cloud-sync-list">
+            <button
+              type="button"
+              class="character-cloud-sync-choice"
+              :disabled="characterArchiveBusy"
+              @click="backupCharacterArchive"
+            >
+              备份到酒馆服务器
+            </button>
+            <button
+              type="button"
+              class="character-cloud-sync-choice"
+              :disabled="characterArchiveBusy"
+              @click="restoreCharacterArchive"
+            >
+              从酒馆服务器恢复
+            </button>
+          </div>
+          <div
+            v-if="characterArchiveSyncState.busy || characterArchiveSyncState.message || characterArchiveSyncState.error || characterArchiveSyncState.result"
+            class="character-cloud-sync-status"
+            :class="{ 'has-error': !!characterArchiveSyncState.error }"
+          >
+            <div class="character-cloud-sync-progress-row">
+              <span>{{ characterArchiveSyncState.phase || '待命' }}</span>
+              <strong>{{ characterArchivePercent }}%</strong>
+            </div>
+            <div class="character-cloud-sync-progress">
+              <span :style="{ width: `${characterArchivePercent}%` }" />
+            </div>
+            <div class="character-cloud-sync-meta">
+              <span v-if="characterArchivePartLabel">{{ characterArchivePartLabel }}</span>
+              <span>{{ characterArchiveSizeLabel }}</span>
+            </div>
+            <p v-if="characterArchiveSyncState.error">
+              {{ characterArchiveSyncState.error }}
+            </p>
+            <p v-else-if="characterArchiveSyncState.message">
+              {{ characterArchiveSyncState.message }}
+            </p>
+            <dl v-if="characterArchiveSyncState.result">
+              <div>
+                <dt>会话</dt>
+                <dd>{{ characterArchiveSyncState.result.counts.sessions }}</dd>
+              </div>
+              <div>
+                <dt>消息</dt>
+                <dd>{{ characterArchiveSyncState.result.counts.messages }}</dd>
+              </div>
+              <div>
+                <dt>记忆</dt>
+                <dd>{{ characterArchiveSyncState.result.counts.memoryFiles }}</dd>
+              </div>
+              <div>
+                <dt>状态</dt>
+                <dd>{{ characterArchiveSyncState.result.counts.stateDocuments }}</dd>
+              </div>
+              <div>
+                <dt>任务</dt>
+                <dd>{{ characterArchiveSyncState.result.counts.tasks }}</dd>
+              </div>
+            </dl>
+          </div>
+        </section>
+      </div>
 
       <div
         v-if="characterDefinitionOpen && selectedCharacter"

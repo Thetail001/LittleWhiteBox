@@ -2,13 +2,14 @@
 import { computed, ref, watch } from 'vue';
 import { useTavernSettingsContext } from '../tavern-app-context';
 import { useTavernMediaQuery } from '../useTavernMediaQuery';
+import TavernSaveStatusIconButton from './TavernSaveStatusIconButton.vue';
 
 const settings = useTavernSettingsContext();
 const {
     activeSettingsWorkspace,
-    applyActiveRegexScript,
     createRegexScript,
     deleteRegexScript,
+    discardRegexChanges,
     expandRegexGroup,
     linesFromList,
     listFromLines,
@@ -21,6 +22,7 @@ const {
     regexPlacementLabel,
     regexScriptRows,
     regexSearchText,
+    regexSaveFeedback,
     regexStatus,
     saveCurrentRegexScript,
     selectedRegexKey,
@@ -70,13 +72,14 @@ function closeRegexEditor() {
 }
 
 function cancelRegexEdit() {
-    applyActiveRegexScript(selectedRegexRow.value);
+    discardRegexChanges();
     closeRegexEditor();
 }
 
 async function saveRegexEdit() {
+    const selectedKeyAtRequest = selectedRegexKey.value;
     await saveCurrentRegexScript();
-    if (!regexDirty.value) {
+    if (selectedRegexKey.value === selectedKeyAtRequest && !regexDirty.value) {
         closeRegexEditor();
     }
 }
@@ -285,18 +288,19 @@ watch(activeSettingsWorkspace, (workspace) => {
               <button
                 type="button"
                 class="regex-editor-secondary"
+                :disabled="regexSaveFeedback.status === 'saving'"
                 @click="cancelRegexEdit"
               >
                 取消
               </button>
-              <button
+              <TavernSaveStatusIconButton
                 type="button"
                 class="regex-editor-primary"
-                :disabled="!regexDraft.scriptName || !regexDirty"
+                :status="regexSaveFeedback.status"
+                :error="regexSaveFeedback.error"
+                :disabled="!regexDraft.scriptName || !regexDirty || regexSaveFeedback.status === 'saving'"
                 @click="saveRegexEdit"
-              >
-                保存
-              </button>
+              />
             </div>
           </div>
           <div class="regex-editor-grid">

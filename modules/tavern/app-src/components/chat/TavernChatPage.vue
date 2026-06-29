@@ -46,15 +46,22 @@ const {
     activeView,
     chatFocus,
     homeThemeDark,
+    rememberBrokenAvatar,
 } = shell;
 const {
     chatAutoScroll,
     chatLayout,
     chatScrollRef,
     currentAuthorNote,
+    displayCharacterName,
+    isRunning,
     saveCurrentAuthorNote,
     messageKey,
+    runtimeActionCheckEvents,
+    runtimeText,
+    runtimeThoughts,
     updateChatScrollButtons,
+    visibleCharacterAvatar,
 } = chat;
 const {
     chatMessageWindow,
@@ -84,6 +91,7 @@ const {
     syncWorldbooksForCurrentCharacter,
 } = settings;
 const {
+    clearSelection: clearCharacterSelection,
     refresh: refreshCharacterList,
 } = character;
 
@@ -98,6 +106,7 @@ type ChatQuickWorkspace =
 
 let pendingChatScrollSnapshot: ElementScrollSnapshot | null = null;
 let pendingManagerScrollSnapshot: ElementScrollSnapshot | null = null;
+let pendingStreamingChatScrollSnapshot: ElementScrollSnapshot | null = null;
 let chatScrollAnchorDirty = true;
 let managerScrollAnchorDirty = true;
 const contractModalOpen = ref(false);
@@ -129,6 +138,27 @@ const managerScrollAnchorSignature = computed(() => [
     managerMessageWindow.value.startIndex,
     managerMessageWindow.value.visibleCount,
     ...visibleManagerChatItems.value.map((item) => `${item.kind}:${item.key}`),
+].join('|'));
+const runtimeThoughtsScrollSignature = computed(() => runtimeThoughts.value
+    .map((thought, index) => `${index}:${String(thought.label || '').length}:${String(thought.text || '').length}`)
+    .join('|'));
+const runtimeActionCheckScrollSignature = computed(() => runtimeActionCheckEvents.value
+    .map((event, index) => [
+        index,
+        event.toolCallId || '',
+        event.stat,
+        event.action,
+        event.roll,
+        event.difficulty,
+        event.outcome || '',
+        event.insertAfterChars,
+        event.success ? 1 : 0,
+    ].join(':'))
+    .join('|'));
+const streamingReadingLockSignature = computed(() => [
+    runtimeText.value,
+    runtimeThoughtsScrollSignature.value,
+    runtimeActionCheckScrollSignature.value,
 ].join('|'));
 
 const authorNotePositionOptions = [
@@ -210,6 +240,7 @@ function openChatAppWorkspace(workspace: ChatQuickWorkspace) {
     activeSettingsWorkspace.value = workspace;
     quickSettingsOpen.value = workspace;
     if (workspace === 'characters') {
+        clearCharacterSelection();
         void refreshCharacterList();
     }
     if (workspace === 'chatPreset') {
@@ -292,6 +323,33 @@ function handleChatAppMenuKeydown(event: KeyboardEvent) {
     closeChatAppMenu();
 }
 
+function captureChatScrollSnapshot() {
+    return captureElementScrollState(chatScrollRef.value, {
+        itemSelector: '.chat-bubble[data-chat-anchor-key], .chat-history-gate[data-chat-anchor-key]',
+        datasetKey: 'chatAnchorKey',
+    });
+}
+
+function restoreChatScrollSnapshot(snapshot: ElementScrollSnapshot | null, options: {
+    forceBottom?: boolean;
+    defaultToBottom?: boolean;
+    preserveScrollTop?: boolean;
+    preserveScrollHeightDelta?: boolean;
+} = {}) {
+    restoreElementScrollState(chatScrollRef.value, snapshot, {
+        itemSelector: '.chat-bubble[data-chat-anchor-key], .chat-history-gate[data-chat-anchor-key]',
+        datasetKey: 'chatAnchorKey',
+    }, options);
+}
+
+function shouldLockStreamingChatScroll() {
+    return (
+        isRunning.value === true
+        && chatAutoScroll.value === false
+        && chatPaneVisible.value
+    );
+}
+
 function toggleContractDraft(key: TavernContractPermissionKey) {
     contractDraft.value = {
         ...contractDraft.value,
@@ -357,6 +415,22 @@ watch(managerScrollAnchorSignature, () => {
     managerScrollAnchorDirty = true;
 }, { flush: 'sync' });
 
+watch(streamingReadingLockSignature, () => {
+    if (!shouldLockStreamingChatScroll()) {return;}
+    pendingStreamingChatScrollSnapshot = captureChatScrollSnapshot();
+}, { flush: 'sync' });
+
+watch(streamingReadingLockSignature, () => {
+    if (!pendingStreamingChatScrollSnapshot) {return;}
+    if (shouldLockStreamingChatScroll()) {
+        restoreChatScrollSnapshot(pendingStreamingChatScrollSnapshot, {
+            preserveScrollTop: true,
+        });
+        updateChatScrollButtons();
+    }
+    pendingStreamingChatScrollSnapshot = null;
+}, { flush: 'post' });
+
 onMounted(() => {
     document.addEventListener('pointerdown', handleChatAppMenuOutsidePointer);
     document.addEventListener('keydown', handleChatAppMenuKeydown);
@@ -371,10 +445,7 @@ onBeforeUpdate(() => {
     pendingChatScrollSnapshot = null;
     pendingManagerScrollSnapshot = null;
     if (chatPaneVisible.value && chatScrollAnchorDirty) {
-        pendingChatScrollSnapshot = captureElementScrollState(chatScrollRef.value, {
-            itemSelector: '.chat-bubble[data-chat-anchor-key], .chat-history-gate[data-chat-anchor-key]',
-            datasetKey: 'chatAnchorKey',
-        });
+        pendingChatScrollSnapshot = captureChatScrollSnapshot();
         return;
     }
     if (managerPaneVisible.value && managerScrollAnchorDirty) {
@@ -389,10 +460,7 @@ onUpdated(() => {
     const shouldAutoScrollChat = chatPaneVisible.value && chatAutoScroll.value !== false;
     const shouldAutoScrollManager = managerPaneVisible.value && managerAutoScroll.value !== false;
     if (pendingChatScrollSnapshot) {
-        restoreElementScrollState(chatScrollRef.value, pendingChatScrollSnapshot, {
-            itemSelector: '.chat-bubble[data-chat-anchor-key], .chat-history-gate[data-chat-anchor-key]',
-            datasetKey: 'chatAnchorKey',
-        }, {
+        restoreChatScrollSnapshot(pendingChatScrollSnapshot, {
             forceBottom: shouldAutoScrollChat,
             defaultToBottom: shouldAutoScrollChat,
             preserveScrollTop: !shouldAutoScrollChat,
@@ -495,7 +563,7 @@ onUpdated(() => {
       </button>
       <button
         type="button"
-        class="home-icon-button chat-app-menu-button"
+        class="home-icon-button chat-app-menu-button chat-app-menu-button-desktop"
         title="酒馆操作菜单"
         aria-label="酒馆操作菜单"
         :aria-expanded="chatAppMenuOpen"
@@ -512,7 +580,7 @@ onUpdated(() => {
       </button>
       <div
         v-if="chatAppMenuOpen"
-        class="chat-app-menu-popover"
+        class="chat-app-menu-popover chat-app-menu-popover-desktop"
         role="menu"
         aria-label="酒馆操作"
       >
@@ -725,6 +793,49 @@ onUpdated(() => {
       aria-label="收起面板"
       @click="closeMobileChatPanel"
     />
+    <aside
+      v-if="!isMobileChatViewport"
+      class="xb-sidebar settings-sidebar chat-character-sidebar"
+    >
+      <div class="panel guide-card chat-character-guide">
+        <button
+          type="button"
+          class="chat-character-card"
+          :class="{ active: quickSettingsOpen === 'characters' }"
+          title="角色卡"
+          aria-label="角色卡"
+          @click="openChatAppWorkspace('characters')"
+        >
+          <span class="chat-character-avatar">
+            <img
+              v-if="visibleCharacterAvatar"
+              :src="visibleCharacterAvatar"
+              alt=""
+              @error="rememberBrokenAvatar(visibleCharacterAvatar)"
+            >
+            <span v-else>{{ String(displayCharacterName || 'C').slice(0, 1) }}</span>
+          </span>
+          <span class="chat-character-card-text">
+            <strong>{{ displayCharacterName }}</strong>
+          </span>
+        </button>
+        <div class="guide-steps chat-character-steps">
+          <button
+            v-for="item in chatAppMenuItems"
+            :key="item.key"
+            type="button"
+            class="guide-step"
+            :class="{ active: quickSettingsOpen === item.key }"
+            @click="openChatAppWorkspace(item.key)"
+          >
+            <strong>
+              <span class="guide-label-full">{{ item.label }}</span>
+              <span class="guide-label-mobile">{{ item.mobileLabel }}</span>
+            </strong>
+          </button>
+        </div>
+      </div>
+    </aside>
     <section
       class="chat-workbench"
       :class="{ 'is-manager': chatFocus === 'manager' }"

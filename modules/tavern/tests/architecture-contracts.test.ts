@@ -88,6 +88,12 @@ function sourceMatches(pattern: RegExp): Array<{ path: string; line: number; tex
     });
 }
 
+test('tavern source does not depend on browser crypto APIs', () => {
+    const browserCryptoReferences = sourceMatches(/globalThis\.crypto|crypto\.subtle|getRandomValues|randomUUID|crypto_subtle_unavailable/);
+
+    assert.deepEqual(browserCryptoReferences, []);
+});
+
 test('tavern source keeps cross-frame messages behind clone-safe wrappers', () => {
     const directPostMessages = sourceMatches(/postMessage\(/);
     assert.deepEqual(
@@ -243,7 +249,16 @@ test('tavern worldbook bridge edits named entries through native save boundary',
     assert.match(hostSource, /let tavernWorldbookStateQueue: Promise<void> = Promise\.resolve\(\);/);
     assert.match(hostSource, /function runTavernWorldbookStateExclusive/);
     assert.match(hostSource, /function isLittleWhiteBoxRuntimeWorldbookSource[\s\S]*sourceType === 'character' \|\| sourceType === 'global'/);
-    assert.match(hostSource, /dedupeSources\(\[\.{3}metaSources, \.{3}legacyMetaSources, \.{3}bookSources\]\)[\s\S]*\.filter\(isLittleWhiteBoxRuntimeWorldbookSource\)/);
+    assert.match(hostSource, /function liveSelectedGlobalWorldbookNames\(\): string\[\][\s\S]*selected_world_info\.map/);
+    assert.match(hostSource, /function liveCharacterWorldbookNames\(context: XbTavernContext = \{\}\): Set<string> \| null[\s\S]*character\.shallow === true \|\| !normalizeText\(character\.json_data\)[\s\S]*nativeWorldInfo\.world_info[\s\S]*entry\.extraBooks/);
+    assert.match(hostSource, /const liveGlobalNames = new Set\(liveSelectedGlobalWorldbookNames\(\)\);/);
+    assert.match(hostSource, /const liveCharacterNames = liveCharacterWorldbookNames\(context\);/);
+    assert.match(hostSource, /const liveGlobalSources = Array\.from\(liveGlobalNames\)\.map/);
+    assert.match(hostSource, /const liveCharacterSources = liveCharacterNames === null[\s\S]*Array\.from\(liveCharacterNames\)[\s\S]*!liveGlobalNames\.has\(name\)/);
+    assert.match(hostSource, /const keepLiveRuntimeSource = \(source: XbTavernNativeWorldInfoSource\): boolean => \([\s\S]*source\.sourceType !== 'global' \|\| liveGlobalNames\.has\(source\.name\)[\s\S]*source\.sourceType !== 'character' \|\| liveCharacterNames === null \|\| liveCharacterNames\.has\(source\.name\)[\s\S]*\);/);
+    assert.match(hostSource, /return dedupeSources\(\s*\[\.{3}liveGlobalSources, \.{3}liveCharacterSources, \.{3}metaSources, \.{3}legacyMetaSources, \.{3}bookSources\][\s\S]*\.filter\(isLittleWhiteBoxRuntimeWorldbookSource\)[\s\S]*\.filter\(keepLiveRuntimeSource\),\s*\);/);
+    assert.doesNotMatch(hostSource, /return dedupeSources\(\s*\[\.{3}metaSources, \.{3}legacyMetaSources, \.{3}bookSources\]\s*\)\s*\.filter/);
+    assert.match(hostSource, /return runTavernWorldbookStateExclusive\(async \(\) => \{[\s\S]*try \{[\s\S]*await hydrateCharacterRecordById\(nativeCharacterId\);[\s\S]*catch \(error\) \{[\s\S]*console\.warn[\s\S]*const sources = collectRuntimeSources\(context\);[\s\S]*const snapshot = captureRuntimeState\(\);/);
     assert.match(hostSource, /return runTavernWorldbookStateExclusive\(async \(\) => \{[\s\S]*await checkWorldInfo\(chatLines, maxContext, false, globalScanData\)[\s\S]*restoreRuntimeState\(snapshot\);/);
     assert.match(hostSource, /export async function saveTavernWorldbookEntry[\s\S]*return runTavernWorldbookStateExclusive\(async \(\) => \{/);
     assert.match(hostSource, /export async function getTavernGlobalWorldbooks[\s\S]*return runTavernWorldbookStateExclusive\(\(\) => readGlobalWorldbooksState\(\)\);/);
@@ -252,9 +267,122 @@ test('tavern worldbook bridge edits named entries through native save boundary',
     assert.doesNotMatch(hostSource, /createWorldInfoEntry/);
     assert.match(hostSource, /export async function setTavernGlobalWorldbooks/);
     assert.match(hostSource, /function applyGlobalWorldbookSelection\(selected: string\[\]\): void/);
-    assert.match(hostSource, /nativeWorldInfo\.updateWorldInfoSettings\(settings, selected\)/);
+    assert.match(hostSource, /nativeWorldInfo\.updateWorldInfoSettings\(settings, selected\);[\s\S]*worldInfo\.globalSelect = \[\.\.\.selected\];[\s\S]*stScript\.saveSettingsDebounced\?\.\(\);[\s\S]*return;/);
     assert.match(hostSource, /replaceSelectedWorldInfo\(selected\);[\s\S]*worldInfo\.globalSelect = \[\.\.\.selected\];[\s\S]*stScript\.saveSettingsDebounced\?\.\(\)/);
     assert.doesNotMatch(hostSource, /setWorldInfoSettings\(settings,/);
+});
+
+test('tavern worldbook runtime filters stale sources before same-name dedupe', () => {
+    const worldbookBuildSource = readRepoFile('modules/tavern/host/worldbooks.js');
+    const sandbox = {} as {
+        runCollect?: (context: Record<string, unknown>, selected: string[], liveCharacter: Record<string, unknown>, charLore?: unknown[]) => unknown;
+    };
+    const snippets = [
+        extractFunctionSource(worldbookBuildSource, 'function normalizeStringList'),
+        extractFunctionSource(worldbookBuildSource, 'function asRecordList'),
+        extractFunctionSource(worldbookBuildSource, 'function addUniqueWorldbookName'),
+        extractFunctionSource(worldbookBuildSource, 'function liveSelectedGlobalWorldbookNames'),
+        extractFunctionSource(worldbookBuildSource, 'function liveCharacterWorldbookNames'),
+        extractFunctionSource(worldbookBuildSource, 'function dedupeSources'),
+        extractFunctionSource(worldbookBuildSource, 'function isLittleWhiteBoxRuntimeWorldbookSource'),
+        extractFunctionSource(worldbookBuildSource, 'function collectRuntimeSources'),
+        extractFunctionSource(worldbookBuildSource, 'function getCharacterRecordById'),
+        extractFunctionSource(worldbookBuildSource, 'function readCharacterData'),
+        extractFunctionSource(worldbookBuildSource, 'function readCharacterBook'),
+        extractFunctionSource(worldbookBuildSource, 'function hasCharacterBookEntries'),
+    ].join('\n\n');
+
+    const vmContext = createContext(sandbox);
+    new Script(`
+        const normalizeText = (value) => String(value ?? '').trim();
+        const normalizeIdText = (value) => value === null || value === undefined ? '' : String(value).trim();
+        const asRecord = (value) => value && typeof value === 'object' ? value : {};
+        const getCharaFilename = (value) => value === '0' ? 'aster.png' : '';
+        const nativeWorldInfo = { world_info: { charLore: [] } };
+        let characters = [];
+        let selected_world_info = [];
+        ${snippets}
+        globalThis.runCollect = (context, selected, liveCharacter, charLore = []) => {
+            characters = [liveCharacter];
+            nativeWorldInfo.world_info.charLore = charLore;
+            selected_world_info = selected;
+            return collectRuntimeSources(context);
+        };
+    `).runInContext(vmContext);
+
+    assert.equal(typeof sandbox.runCollect, 'function');
+    const actual = JSON.parse(JSON.stringify(sandbox.runCollect?.({
+        character: { nativeCharacterId: '0' },
+        sessionMeta: {
+            worldbookSources: [
+                { name: 'A', sourceType: 'global', sourceIndex: 0 },
+                { name: 'StaleCharacter', sourceType: 'character', sourceIndex: 1 },
+            ],
+        },
+        worldBooks: [
+            { name: 'A', worldSourceType: 'character', worldSourceIndex: 7 },
+            { name: 'LiveCharacter', worldSourceType: 'character', worldSourceIndex: 8 },
+        ],
+    }, [], {
+        avatar: 'aster.png',
+        json_data: '{}',
+        data: { extensions: { world: ['A', 'LiveCharacter'] } },
+    })));
+    assert.deepEqual(
+        actual,
+        [
+            { name: 'A', sourceType: 'character', sourceIndex: 0 },
+            { name: 'LiveCharacter', sourceType: 'character', sourceIndex: 1 },
+        ],
+    );
+
+    const shallowFallback = JSON.parse(JSON.stringify(sandbox.runCollect?.({
+        character: { nativeCharacterId: '0' },
+        worldBooks: [
+            { name: 'MaybeLiveCharacter', worldSourceType: 'character', worldSourceIndex: 2 },
+        ],
+    }, [], {
+        avatar: 'aster.png',
+        shallow: true,
+    })));
+    assert.deepEqual(
+        shallowFallback,
+        [
+            { name: 'MaybeLiveCharacter', sourceType: 'character', sourceIndex: 2 },
+        ],
+    );
+
+    const halfHydratedFallback = JSON.parse(JSON.stringify(sandbox.runCollect?.({
+        character: { nativeCharacterId: '0' },
+        worldBooks: [
+            { name: 'MaybeLiveCharacter', worldSourceType: 'character', worldSourceIndex: 2 },
+        ],
+    }, [], {
+        avatar: 'aster.png',
+        shallow: false,
+        json_data: '',
+    })));
+    assert.deepEqual(
+        halfHydratedFallback,
+        [
+            { name: 'MaybeLiveCharacter', sourceType: 'character', sourceIndex: 2 },
+        ],
+    );
+
+    const liveOnly = JSON.parse(JSON.stringify(sandbox.runCollect?.({
+        character: { nativeCharacterId: '0' },
+    }, ['LiveGlobal'], {
+        avatar: 'aster.png',
+        json_data: '{}',
+        data: { extensions: { world: 'LiveCharacter' } },
+    })));
+    assert.deepEqual(
+        liveOnly,
+        [
+            { name: 'LiveGlobal', sourceType: 'global', sourceIndex: 0 },
+            { name: 'LiveCharacter', sourceType: 'character', sourceIndex: 0 },
+        ],
+    );
 });
 
 test('tavern mobile worldbook entry rows stay compact', () => {
@@ -264,7 +392,8 @@ test('tavern mobile worldbook entry rows stay compact', () => {
 
     assert.match(worldbookSource, /function worldbookEntryStateLabel[\s\S]*return '×';[\s\S]*return '🔵';[\s\S]*return '🔗';[\s\S]*return '🟢';/);
     assert.doesNotMatch(worldbookSource, /return '🔵 常驻'|return '🔗 向量'|return '🟢 普通'/);
-    assert.match(worldbookSource, /class="worldbook-entry-editor-actions"[\s\S]*class="worldbook-row-open"[\s\S]*取消[\s\S]*class="primary-action"[\s\S]*保存[\s\S]*<\/div>\s*<\/div>\s*<div class="worldbook-entry-core-grid">/);
+    assert.match(worldbookSource, /import TavernSaveStatusIconButton from '\.\/TavernSaveStatusIconButton\.vue';/);
+    assert.match(worldbookSource, /class="worldbook-entry-editor-actions"[\s\S]*class="worldbook-row-open"[\s\S]*取消[\s\S]*<TavernSaveStatusIconButton[\s\S]*type="submit"[\s\S]*class="primary-action"[\s\S]*:status="worldbookEntrySaveFeedback\.status"[\s\S]*<\/div>\s*<\/div>\s*<div class="worldbook-entry-core-grid">/);
     assert.match(worldbookSource, /class="worldbook-entry-title-row"[\s\S]*>条目名<[\s\S]*class="worldbook-entry-active-toggle"[\s\S]*>启用</);
     assert.doesNotMatch(worldbookCss, /\.worldbook-entry-position\s*\{[^}]*grid-row:\s*2;/);
     assert.doesNotMatch(mobileCss, /\.worldbook-entry-position\s*\{[^}]*grid-row:\s*2;/);
@@ -308,7 +437,14 @@ test('tavern desktop worldbook editor keeps dense readable rows', () => {
     assert.match(worldbookCss, /\.worldbook-entry-editor input\[type="text"\],[\s\S]*\.worldbook-entry-editor input\[type="number"\],[\s\S]*\.worldbook-entry-editor select \{[\s\S]*height: var\(--worldbook-entry-control-height\);[\s\S]*min-height: var\(--worldbook-entry-control-height\);/);
     assert.match(worldbookCss, /\.worldbook-entry-editor input\[type="text"\],[\s\S]*\.worldbook-entry-editor input\[type="number"\],[\s\S]*\.worldbook-entry-editor select \{[\s\S]*appearance: none;[\s\S]*height: var\(--worldbook-entry-control-height\);/);
     assert.match(worldbookCss, /\.worldbook-entry-editor select \{[\s\S]*padding-right: 24px;[\s\S]*background-image:[\s\S]*linear-gradient\(45deg, transparent 50%, var\(--xb-text-muted\) 50%\)/);
-    assert.match(worldbookSource, /class="worldbook-entry-editor-lines worldbook-entry-keywords-field"[\s\S]*<input[\s\S]*type="text"[\s\S]*listFromCommaText\(\(\$event\.target as HTMLInputElement\)\.value\)/);
+    assert.match(worldbookSource, /const worldbookEntryKeywordText = ref\(''\);/);
+    assert.match(worldbookSource, /const worldbookEntrySecondaryKeywordText = ref\(''\);/);
+    assert.match(worldbookSource, /function updateWorldbookEntryKeywordText\(event: Event\)[\s\S]*worldbookEntryKeywordText\.value = text;[\s\S]*updateWorldbookEntryDraftPatch\(\{ key: listFromCommaText\(text\) \}\);/);
+    assert.match(worldbookSource, /function updateWorldbookEntrySecondaryKeywordText\(event: Event\)[\s\S]*keysecondary: values,[\s\S]*secondary_keys: values,/);
+    assert.match(worldbookSource, /<input[\s\S]*:value="worldbookEntryKeywordText"[\s\S]*@input="updateWorldbookEntryKeywordText"/);
+    assert.match(worldbookSource, /<input[\s\S]*:value="worldbookEntrySecondaryKeywordText"[\s\S]*@input="updateWorldbookEntrySecondaryKeywordText"/);
+    assert.doesNotMatch(worldbookSource, /:value="commaTextFromList\(worldbookEntryDraft\.key\)"/);
+    assert.doesNotMatch(worldbookSource, /@input="updateWorldbookEntryDraftPatch\(\{ key: listFromCommaText\(\(\$event\.target as HTMLInputElement\)\.value\) \}\)"/);
     assert.match(worldbookSource, /class="worldbook-entry-editor-lines worldbook-entry-triggers-field"[\s\S]*<input[\s\S]*type="text"[\s\S]*listFromCommaText\(\(\$event\.target as HTMLInputElement\)\.value\)/);
     assert.match(worldbookCss, /@media \(max-width: 560px\) \{[\s\S]*\.worldbook-entry-editor \{[\s\S]*--worldbook-entry-control-height: 34px;/);
     assert.match(worldbookCss, /\.worldbook-entry-preview\[open\] \{[\s\S]*border-left: 3px solid var\(--xb-cyan\);[\s\S]*background:[\s\S]*box-shadow:/);
@@ -364,7 +500,7 @@ test('tavern character and global worldbook actions stay on native ST boundaries
     assert.match(tavernSource, /case 'xb-tavern:set-global-worldbooks':/);
     assert.doesNotMatch(tavernSource, /chat-worldbook/);
     assert.match(characterPanelSource, /const characterWorldbookBound = computed/);
-    assert.match(characterPanelSource, /class="dossier-title-row"[\s\S]*<h3>\{\{ selectedCharacter\.name \}\}<\/h3>[\s\S]*'is-bound': characterWorldbookBound[\s\S]*@click="openCharacterWorldbook"[\s\S]*会话档案[\s\S]*新建聊天/);
+    assert.match(characterPanelSource, /'is-bound': characterWorldbookBound[\s\S]*@click="openCharacterWorldbook"[\s\S]*会话档案[\s\S]*新建聊天/);
     assert.match(appSource, /requestHost\('xb-tavern:get-character-worldbook-state'/);
     assert.match(appSource, /requestHost\('xb-tavern:activate-character-worldbook'/);
     assert.match(appSource, /requestHost\('xb-tavern:bind-character-worldbook'/);
@@ -641,13 +777,15 @@ test('tavern chat exposes local settings modals without leaving the session', ()
     assert.match(chatPageSource, /const quickSettingsOpen = ref<ChatQuickWorkspace \| null>\(null\)/);
     assert.match(chatPageSource, /const chatAppMenuItems:[\s\S]*key: 'characters'[\s\S]*key: 'api'[\s\S]*key: 'chatPreset'[\s\S]*key: 'assistantPreset'[\s\S]*key: 'worldbooks'[\s\S]*key: 'regex'[\s\S]*key: 'base'/);
     assert.match(chatPageSource, /mobileLabel: '角色卡'[\s\S]*mobileLabel: 'API 配置'[\s\S]*mobileLabel: '聊天预设'[\s\S]*mobileLabel: '助手预设'[\s\S]*mobileLabel: '世界书'[\s\S]*mobileLabel: '基础设置'/);
-    assert.match(chatPageSource, /class="home-corner-actions page-corner-actions chat-app-menu-shell"[\s\S]*title="首页"[\s\S]*class="home-icon-button chat-app-menu-button"[\s\S]*title="酒馆操作菜单"/);
+    assert.match(chatPageSource, /clearSelection: clearCharacterSelection,[\s\S]*refresh: refreshCharacterList,/);
+    assert.match(chatPageSource, /class="home-corner-actions page-corner-actions chat-app-menu-shell"[\s\S]*title="首页"[\s\S]*class="home-icon-button chat-app-menu-button chat-app-menu-button-desktop"[\s\S]*title="酒馆操作菜单"/);
+    assert.match(chatPageSource, /class="xb-sidebar settings-sidebar chat-character-sidebar"[\s\S]*class="chat-character-card"[\s\S]*@click="openChatAppWorkspace\('characters'\)"[\s\S]*v-for="item in chatAppMenuItems"[\s\S]*class="guide-step"[\s\S]*@click="openChatAppWorkspace\(item\.key\)"/);
     assert.match(chatPageSource, /class="chat-mobile-action-group"[\s\S]*title="首页"[\s\S]*class="chat-mobile-icon-button chat-mobile-utility-button chat-app-menu-button"[\s\S]*title="酒馆操作菜单"/);
     assert.doesNotMatch(chatPageSource, /class="chat-mobile-icon-button chat-mobile-utility-button"[\s\S]*title="聊天预设"[\s\S]*@click="openChatAppWorkspace\('chatPreset'\)"/);
     assert.doesNotMatch(chatPageSource, /class="chat-mobile-icon-button chat-mobile-utility-button"[\s\S]*title="API 配置"[\s\S]*@click="openChatAppWorkspace\('api'\)"/);
     assert.doesNotMatch(chatPageSource, /class="chat-mobile-icon-button chat-mobile-utility-button"[\s\S]*title="世界书"[\s\S]*@click="openChatAppWorkspace\('worldbooks'\)"/);
     assert.match(chatPageSource, /class="chat-app-menu-popover"[\s\S]*v-for="item in chatAppMenuItems"[\s\S]*class="chat-app-menu-item"[\s\S]*@click="openChatAppWorkspace\(item\.key\)"/);
-    assert.match(chatPageSource, /function openChatAppWorkspace\(workspace: ChatQuickWorkspace\)[\s\S]*closeChatAppMenu\(\);[\s\S]*closeMobileChatPanel\(\);[\s\S]*activeSettingsWorkspace\.value = workspace;[\s\S]*quickSettingsOpen\.value = workspace;[\s\S]*workspace === 'characters'[\s\S]*refreshCharacterList\(\)[\s\S]*workspace === 'chatPreset'[\s\S]*syncChatPresetFromHost\(\)[\s\S]*workspace === 'assistantPreset'[\s\S]*refreshPresets\(\)[\s\S]*workspace === 'worldbooks'[\s\S]*syncWorldbooksForCurrentCharacter\(\)[\s\S]*syncGlobalWorldbooksFromHost\(\)[\s\S]*workspace === 'regex'[\s\S]*refreshRegexFromHost\(\)[\s\S]*workspace === 'base'[\s\S]*loadTavernUsers\(\)/);
+    assert.match(chatPageSource, /function openChatAppWorkspace\(workspace: ChatQuickWorkspace\)[\s\S]*closeChatAppMenu\(\);[\s\S]*closeMobileChatPanel\(\);[\s\S]*activeSettingsWorkspace\.value = workspace;[\s\S]*quickSettingsOpen\.value = workspace;[\s\S]*workspace === 'characters'[\s\S]*clearCharacterSelection\(\);[\s\S]*refreshCharacterList\(\)[\s\S]*workspace === 'chatPreset'[\s\S]*syncChatPresetFromHost\(\)[\s\S]*workspace === 'assistantPreset'[\s\S]*refreshPresets\(\)[\s\S]*workspace === 'worldbooks'[\s\S]*syncWorldbooksForCurrentCharacter\(\)[\s\S]*syncGlobalWorldbooksFromHost\(\)[\s\S]*workspace === 'regex'[\s\S]*refreshRegexFromHost\(\)[\s\S]*workspace === 'base'[\s\S]*loadTavernUsers\(\)/);
     assert.doesNotMatch(chatPageSource, /ref="chatAppMenuRef"|const chatAppMenuRef = ref/);
     assert.match(chatPageSource, /const desktopChatAppMenuRef = ref<HTMLElement \| null>\(null\);[\s\S]*const mobileChatAppMenuRef = ref<HTMLElement \| null>\(null\);/);
     assert.match(chatPageSource, /function handleChatAppMenuOutsidePointer[\s\S]*desktopChatAppMenuRef\.value\?\.contains\(target\)[\s\S]*mobileChatAppMenuRef\.value\?\.contains\(target\)[\s\S]*closeChatAppMenu\(\);/);
@@ -668,6 +806,11 @@ test('tavern chat exposes local settings modals without leaving the session', ()
     assert.match(chatLayoutCss, /\.chat-quick-settings-dialog \{[\s\S]*grid-template-rows: auto minmax\(0, 1fr\);/);
     assert.match(chatPageSource, /class="chat-quick-settings-overlay"[\s\S]*:class="quickSettingsLayoutClass"[\s\S]*class="chat-quick-settings-dialog"[\s\S]*:class="quickSettingsLayoutClass"/);
     assert.match(chatLayoutCss, /@media \(max-width: 760px\) \{[\s\S]*\.tavern-chat\.xb-page \.chat-quick-settings-overlay\.is-characters-workspace \{[\s\S]*align-items: stretch;[\s\S]*padding: 0;[\s\S]*\.tavern-chat\.xb-page \.chat-quick-settings-dialog\.is-characters-workspace \{[\s\S]*height: 100%;[\s\S]*max-height: none;[\s\S]*border-radius: 0;/);
+    assert.match(chatLayoutCss, /\.tavern-chat\.xb-page(?:,[\s\S]*?\.tavern-chat\.xb-page\.chat-focus-manager)? \{[\s\S]*grid-template-columns: 236px minmax\(520px, 0\.98fr\) minmax\(460px, 1\.02fr\);/);
+    assert.match(chatLayoutCss, /\.tavern-chat\.xb-page \.chat-character-sidebar \{[\s\S]*border-right: 1px solid var\(--xb-line\);[\s\S]*background: var\(--xb-chat-sidebar-bg\);/);
+    assert.match(chatLayoutCss, /\.tavern-chat\.xb-page \.chat-character-card \{[\s\S]*grid-template-columns: 58px minmax\(0, 1fr\);[\s\S]*border-radius: 14px;/);
+    assert.match(chatLayoutCss, /\.tavern-chat\.xb-page \.chat-app-menu-button-desktop,[\s\S]*\.tavern-chat\.xb-page \.chat-app-menu-popover-desktop \{[\s\S]*display: none;/);
+    assert.match(chatLayoutCss, /@media \(max-width: 1220px\) \{[\s\S]*\.tavern-chat\.xb-page \.chat-character-sidebar \{[\s\S]*display: none;[\s\S]*\.tavern-chat\.xb-page \.chat-app-menu-button-desktop \{[\s\S]*display: grid;[\s\S]*\.tavern-chat\.xb-page \.chat-app-menu-popover-desktop \{[\s\S]*display: grid;/);
     assert.match(chatLayoutCss, /\.tavern-chat\.xb-page \.chat-app-menu-popover \{[\s\S]*top: calc\(100% \+ 8px\);[\s\S]*right: 0;[\s\S]*display: grid;[\s\S]*width: 132px;/);
     assert.match(chatLayoutCss, /\.tavern-chat\.xb-page \.chat-app-menu-item \{[\s\S]*width: 100%;[\s\S]*min-height: 32px;/);
     assert.match(chatLayoutCss, /@media \(max-width: 760px\) \{[\s\S]*\.tavern-chat\.xb-page \.chat-app-menu-shell-mobile \{[\s\S]*position: relative;[\s\S]*\.tavern-chat\.xb-page \.chat-app-menu-shell-mobile \.chat-app-menu-popover \{[\s\S]*width: 108px;/);
@@ -1566,6 +1709,7 @@ test('tavern live stream rendering is frame-batched without bypassing display re
     const chatRunSource = readRepoFile('modules/tavern/app-src/features/chat-run/useTavernChatRunController.ts');
     const conversationSource = readRepoFile('modules/tavern/app-src/components/chat/TavernConversationPanel.vue');
     const markdownToolsSource = readRepoFile('modules/tavern/app-src/components/chat/useTavernMarkdownTools.ts');
+    const runtimeSource = readRepoFile('modules/tavern/app-src/runtime/run-once.ts');
     const liveEnhanceMatch = markdownToolsSource.match(/function enhanceLiveChatMarkdown\(\) \{[\s\S]*?\n {4}\}/);
 
     assert.ok(liveEnhanceMatch);
@@ -1582,6 +1726,9 @@ test('tavern live stream rendering is frame-batched without bypassing display re
     assert.match(chatRunSource, /let pendingRuntimeStreamSnapshot: TavernRunStreamSnapshot \| null = null;/);
     assert.match(chatRunSource, /function scheduleRuntimeStreamSnapshot\(snapshot: TavernRunStreamSnapshot\)[\s\S]*window\.requestAnimationFrame\(\(\) => \{[\s\S]*flushRuntimeStreamSnapshotNow\(\);/);
     assert.match(chatRunSource, /onStreamProgress: \(snapshot\) => \{[\s\S]*scheduleRuntimeStreamSnapshot\(snapshot\);[\s\S]*\},/);
+    assert.match(chatRunSource, /runtimeStatusLabel: Ref<TavernRunStatusLabel \| ''>/);
+    assert.match(chatRunSource, /state\.runtimeStatusLabel\.value = '整理上下文';/);
+    assert.match(chatRunSource, /onRuntimeStatus: \(snapshot\) => \{[\s\S]*state\.runtimeStatusLabel\.value = snapshot\.label;[\s\S]*\},/);
     assert.doesNotMatch(appSource, /onStreamProgress: \(snapshot\) => \{[\s\S]{0,240}runtimeText\.value = snapshot\.text;/);
     assert.match(appSource, /function displayRuntimeRenderProjection/);
     assert.match(appSource, /scheduleRuntimeDisplayRegexText\('runtime:message', request\);/);
@@ -1594,6 +1741,12 @@ test('tavern live stream rendering is frame-batched without bypassing display re
     assert.match(appSource, /enhanceLiveChatMarkdown,/);
     assert.doesNotMatch(conversationSource, /:key="`live-assistant:\$\{liveAssistantRenderState\.signature\}`"/);
     assert.match(conversationSource, /:data-markdown-signature="liveAssistantRenderState\.signature"/);
+    assert.match(conversationSource, /const liveAssistantStatusLabel = computed\(\(\) => runtimeStatusLabel\.value \|\| '整理上下文'\);/);
+    assert.match(conversationSource, /<small>\{\{ liveAssistantStatusLabel \}\}<\/small>/);
+    assert.doesNotMatch(conversationSource, /生成中/);
+    assert.match(runtimeSource, /export type TavernRunStatusLabel =[\s\S]*'整理上下文'[\s\S]*'构建请求'[\s\S]*'请求就绪'[\s\S]*'连接模型'[\s\S]*'接收流式'[\s\S]*'保存回复'/);
+    assert.match(runtimeSource, /notifyRunStatus\(input\.onRuntimeStatus, '整理上下文'\);[\s\S]*notifyRunStatus\(input\.onRuntimeStatus, '构建请求'\);[\s\S]*notifyRunStatus\(input\.onRuntimeStatus, '请求就绪'\);[\s\S]*notifyRunStatus\(input\.onRuntimeStatus, '连接模型'\);[\s\S]*notifyRunStatus\(input\.onRuntimeStatus, '保存回复'\);/);
+    assert.match(runtimeSource, /if \(!sawStreamProgress\) \{[\s\S]*notifyRunStatus\(input\.onRuntimeStatus, '接收流式'\);/);
 });
 
 test('tavern draw jobs are message-queued and route progress by host request', () => {
@@ -1814,10 +1967,10 @@ test('tavern streaming action-check UI renders from live runtime events and keep
     assert.match(conversationPanelSource, /hasRenderableLiveAssistantMarkdown/);
     assert.match(conversationPanelSource, /runtimeActionCheckEvents/);
     assert.match(contextSource, /runtimeUserMessageVisible: Ref<boolean>/);
-    assert.match(contextSource, /runtimeFinalizedAssistantMessage: Ref<TavernMessageRecord \| null>/);
+    assert.doesNotMatch(contextSource, /runtimeFinalizedAssistantMessage/);
     assert.match(appSource, /const chatRunState = createTavernChatRunState\(\);/);
     assert.match(chatRunSource, /runtimeUserMessageVisible: ref\(false\)/);
-    assert.match(chatRunSource, /runtimeFinalizedAssistantMessage: ref<TavernMessageRecord \| null>\(null\)/);
+    assert.doesNotMatch(chatRunSource, /runtimeFinalizedAssistantMessage/);
     assert.match(markdownToolsSource, /const stakes = String\(event\.stakes \|\| ''\)\.trim\(\);/);
     assert.match(markdownToolsSource, /stakes \? `风险：\$\{stakes\}。` : ''/);
     assert.match(markdownToolsSource, /if \(event\.stakes\) \{[\s\S]*className = 'action-check-card-stakes'[\s\S]*textContent = event\.stakes/);
@@ -1832,7 +1985,7 @@ test('tavern streaming action-check UI renders from live runtime events and keep
     assert.match(sessionSource, /let suppressNextChatWindowLimitReloadPending = false;/);
     assert.match(appSource, /setSuppressNextChatWindowLimitReload: sessionController\.suppressNextChatWindowLimitReload/);
     assert.match(chatRunSource, /const followRunAtBottom = options\.chatAutoScroll\.value !== false;[\s\S]*if \(followRunAtBottom\) \{[\s\S]*options\.resetChatMessageWindowState\(\);[\s\S]*\} else \{[\s\S]*options\.setSuppressNextChatWindowLimitReload\(\);[\s\S]*\}/);
-    assert.match(chatRunSource, /const reusedUserMessageOrder = Number\(runOptions\.reuseUserMessageOrder\);[\s\S]*const isReusedUserMessageRun = Number\.isFinite\(reusedUserMessageOrder\);[\s\S]*resolveDeferredAssistantCommit\(\{[\s\S]*discardFromOrder: isReusedUserMessageRun \? reusedUserMessageOrder \+ 1 : undefined,[\s\S]*\}\);[\s\S]*options\.pruneLoadedSessionMessagesFromOrder\(options\.selectedSessionId\.value, reusedUserMessageOrder \+ 1\);[\s\S]*state\.runtimeUserMessageVisible\.value = true;/);
+    assert.match(chatRunSource, /const reusedUserMessageOrder = Number\(runOptions\.reuseUserMessageOrder\);[\s\S]*const isReusedUserMessageRun = Number\.isFinite\(reusedUserMessageOrder\);[\s\S]*options\.pruneLoadedSessionMessagesFromOrder\(options\.selectedSessionId\.value, reusedUserMessageOrder \+ 1\);[\s\S]*state\.runtimeUserMessageVisible\.value = true;/);
     assert.match(appSource, /watch\(\(\) => chatMessageWindowLimit\.value, \(\) => \{[\s\S]*sessionController\.handleChatMessageWindowLimitChanged\(\);/);
     assert.match(sessionSource, /function handleChatMessageWindowLimitChanged\(\) \{[\s\S]*if \(suppressNextChatWindowLimitReloadPending\) \{[\s\S]*suppressNextChatWindowLimitReloadPending = false;[\s\S]*return;[\s\S]*void loadSelectedSessionMessageWindow\(\);/);
     assert.doesNotMatch(chatRunSource, /options\.selectedSessionId\.value\s*=/);
@@ -1844,19 +1997,23 @@ test('tavern streaming action-check UI renders from live runtime events and keep
     assert.doesNotMatch(userSavedCallback[0], /refreshSessions\(\)/);
     const assistantSavedCallback = chatRunSource.match(/onAssistantMessageSaved: async \(sessionId, message\) => \{[\s\S]*?\n[ ]{16}\},\n[ ]{16}onManagerRunSaved/);
     assert.ok(assistantSavedCallback);
-    assert.match(assistantSavedCallback[0], /flushRuntimeStreamSnapshotNow\(\);[\s\S]*options\.touchSessionLocally\(sessionId, message\.createdAt\);[\s\S]*if \(options\.chatAutoScroll\.value === false\) \{[\s\S]*state\.runtimeFinalizedAssistantMessage\.value = message;[\s\S]*\} else \{[\s\S]*options\.upsertLoadedSessionMessage\(message\);[\s\S]*clearRuntimeAssistantLiveState\(\);/);
+    assert.match(assistantSavedCallback[0], /flushRuntimeStreamSnapshotNow\(\);[\s\S]*options\.touchSessionLocally\(sessionId, message\.createdAt\);[\s\S]*options\.upsertLoadedSessionMessage\(message\);[\s\S]*clearRuntimeAssistantLiveState\(\);/);
+    assert.doesNotMatch(assistantSavedCallback[0], /runtimeFinalizedAssistantMessage|chatAutoScroll\.value === false/);
     assert.doesNotMatch(assistantSavedCallback[0], /refreshSessions\(\)/);
-    assert.match(chatRunSource, /options\.setSelectedSessionId\(result\.sessionId\);[\s\S]*flushRuntimeStreamSnapshotNow\(\);[\s\S]*const deferredAssistantCommit = hasDeferredAssistantCommit\(\);[\s\S]*if \(!deferredAssistantCommit\) \{[\s\S]*clearRuntimeAssistantLiveState\(\);[\s\S]*await options\.refreshSessions\(\);[\s\S]*options\.scrollChatToBottom\(\);/);
-    assert.match(chatRunSource, /function resolveDeferredAssistantCommit\(resolveOptions: TavernDeferredAssistantResolutionOptions = \{\}\) \{[\s\S]*const shouldDiscard = Number\.isFinite\(messageOrder\)[\s\S]*clearRuntimeAssistantLiveState\(\);[\s\S]*options\.upsertLoadedSessionMessage\(message\);[\s\S]*clearRuntimeAssistantLiveState\(\);[\s\S]*return true;/);
-    assert.match(chatRunSource, /function flushDeferredAssistantCommit\(\) \{[\s\S]*return resolveDeferredAssistantCommit\(\);[\s\S]*\}/);
-    assert.match(appSource, /async function saveEditMessage\(message: TavernMessageRecord[\s\S]*await updateTavernMessage[\s\S]*if \(updated && selectedSessionId\.value\) \{[\s\S]*chatRunController\.resolveDeferredAssistantCommit\(\{ sessionId: message\.sessionId \}\);[\s\S]*await loadSelectedSessionMessageWindow/);
-    assert.match(appSource, /async function deleteMessageTurn\(message: TavernMessageRecord\)[\s\S]*await deleteTavernMessages[\s\S]*if \(selectedSessionId\.value\) \{[\s\S]*chatRunController\.resolveDeferredAssistantCommit\(\{[\s\S]*discardOrders: deleted > 0 \? ordersToDelete : \[\],[\s\S]*\}\);[\s\S]*await loadSelectedSessionMessageWindow/);
+    assert.match(chatRunSource, /options\.setSelectedSessionId\(result\.sessionId\);[\s\S]*flushRuntimeStreamSnapshotNow\(\);[\s\S]*clearRuntimeAssistantLiveState\(\);[\s\S]*await options\.refreshSessions\(\);[\s\S]*if \(options\.chatAutoScroll\.value !== false\) \{[\s\S]*options\.scrollChatToBottom\(\);/);
+    assert.doesNotMatch(chatRunSource, /resolveDeferredAssistantCommit|flushDeferredAssistantCommit|hasDeferredAssistantCommit|TavernDeferredAssistantResolutionOptions/);
+    assert.match(appSource, /async function saveEditMessage\(message: TavernMessageRecord[\s\S]*await updateTavernMessage[\s\S]*if \(updated && selectedSessionId\.value\) \{[\s\S]*await loadSelectedSessionMessageWindow/);
+    assert.match(appSource, /async function deleteMessageTurn\(message: TavernMessageRecord\)[\s\S]*await deleteTavernMessages[\s\S]*if \(selectedSessionId\.value\) \{[\s\S]*await loadSelectedSessionMessageWindow/);
     assert.doesNotMatch(chatRunSource, /await options\.refreshSessions\(\);\s*await options\.refreshManagerRecords\(result\.sessionId\);/);
-    assert.match(appSource, /onReturnToBottom: \(\) => flushDeferredChatDomCommits\(\)/);
-    assert.match(appSource, /flushDeferredChatDomCommits = \(\) => \{[\s\S]*chatRunController\.flushDeferredAssistantCommit\(\)/);
-    assert.match(conversationPanelSource, /const liveAssistantCanRender = computed\(\(\) => \([\s\S]*isRunning\.value && runtimeUserMessageVisible\.value[\s\S]*\|\| !!runtimeFinalizedAssistantMessage\.value/);
+    assert.doesNotMatch(appSource, /onReturnToBottom|flushDeferredChatDomCommits|resolveDeferredAssistantCommit/);
+    assert.match(conversationPanelSource, /const liveAssistantCanRender = computed\(\(\) => \([\s\S]*isRunning\.value && runtimeUserMessageVisible\.value[\s\S]*\)\);/);
+    assert.doesNotMatch(conversationPanelSource, /runtimeFinalizedAssistantMessage/);
     assert.match(conversationPanelSource, /v-if="liveAssistantCanRender && liveAssistantVisible"[\s\S]*data-chat-anchor-key="streaming:content"/);
     assert.match(conversationPanelSource, /v-if="liveAssistantCanRender && !liveAssistantVisible"[\s\S]*data-chat-anchor-key="streaming:empty"/);
+    assert.match(chatPageSource, /watch\(streamingReadingLockSignature[\s\S]*restoreChatScrollSnapshot\(pendingStreamingChatScrollSnapshot,\s*\{[\s\S]*preserveScrollTop: true,[\s\S]*\}\);/);
+    assert.doesNotMatch(chatPageSource, /watch\(streamingReadingLockSignature[\s\S]*restoreChatScrollSnapshot\(pendingStreamingChatScrollSnapshot,\s*\{[\s\S]*preserveScrollHeightDelta: true,/);
+    assert.match(appSource, /function restoreDetachedChatScrollAfterMarkdown[\s\S]*restoreElementScrollState\(chatScrollRef\.value, snapshot, chatScrollAnchorConfig,\s*\{[\s\S]*preserveScrollTop: true,[\s\S]*\}\);/);
+    assert.doesNotMatch(appSource, /function restoreDetachedChatScrollAfterMarkdown[\s\S]*preserveScrollHeightDelta: true,/);
     assert.doesNotMatch(conversationPanelSource, /v-if="isRunning && (?:!?)liveAssistantVisible"/);
     assert.match(conversationPanelSource, /useTavernMediaQuery\('\(max-width: 760px\)'\)/);
     assert.match(conversationPanelSource, /@click="handleChatMainClick"/);
@@ -1879,7 +2036,7 @@ test('tavern streaming action-check UI renders from live runtime events and keep
     assert.match(cssSource, /@media \(max-width: 760px\) \{[\s\S]*\.chat-bubble>\.message-actions \{[\s\S]*opacity: 0;[\s\S]*pointer-events: none;[\s\S]*\.chat-bubble\.is-action-tray-open>\.message-actions[\s\S]*opacity: 1;[\s\S]*pointer-events: auto;/);
     assert.doesNotMatch(cssSource, /\.message-actions \{[\s\S]*border-top: 1px solid rgba\(120, 112, 98, 0\.16\);/);
     assert.doesNotMatch(cssSource, /\.message-actions \{[\s\S]*border-bottom: 1px solid rgba\(120, 112, 98, 0\.14\);/);
-    assert.match(cssSource, /\.tavern-chat\.xb-page \.chat-scroll \{[\s\S]*scrollbar-width: none;[\s\S]*-ms-overflow-style: none;/);
+    assert.match(cssSource, /\.tavern-chat\.xb-page \.chat-scroll \{[\s\S]*overflow: auto;[\s\S]*overflow-anchor: none;[\s\S]*scrollbar-width: none;[\s\S]*-ms-overflow-style: none;/);
     assert.match(cssSource, /\.tavern-chat\.xb-page \.chat-scroll \{[\s\S]*background: var\(--xb-chat-scroll-bg\);/);
     assert.doesNotMatch(cssSource, /\.tavern-chat\.xb-page \.chat-scroll \{[\s\S]*repeating-linear-gradient/);
     assert.match(cssSource, /\.tavern-chat\.xb-page \.chat-scroll::-webkit-scrollbar \{[\s\S]*width: 0;[\s\S]*height: 0;/);
@@ -1890,8 +2047,9 @@ test('tavern streaming action-check UI renders from live runtime events and keep
     assert.doesNotMatch(chatPageSource, /TavernChatSidebar|chatSidePanel|shouldMountChatDirectory|openMobileSessionsPanel|mobileChatPanel = ref<'none' \| 'directory'|is-mobile-directory-open/);
     assert.doesNotMatch(appSource, /CHAT_SIDEBAR|chatSidebar|chatSidePanel|ChatSidePanel/);
     assert.doesNotMatch(contextSource, /CHAT_SIDEBAR|chatSidebar|chatSidePanel/);
-    assert.match(layoutCss, /\.tavern-chat\.xb-page,[\s\S]*grid-template-columns: minmax\(520px, 0\.98fr\) minmax\(460px, 1\.02fr\);/);
-    assert.match(layoutCss, /@media \(max-width: 980px\) \{[\s\S]*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 0\.86fr\);/);
+    assert.match(layoutCss, /\.tavern-chat\.xb-page,[\s\S]*grid-template-columns: 236px minmax\(520px, 0\.98fr\) minmax\(460px, 1\.02fr\);/);
+    assert.match(layoutCss, /\.tavern-chat\.xb-page \.chat-character-sidebar \{[\s\S]*overflow: hidden auto;[\s\S]*border-right: 1px solid var\(--xb-line\);/);
+    assert.match(layoutCss, /@media \(max-width: 1220px\) \{[\s\S]*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 0\.86fr\);/);
     assert.doesNotMatch(layoutCss, /@media \(max-width: 980px\) \{[\s\S]*\.chat-head-actions button:last-child \{[\s\S]*display: none;/);
     assert.match(layoutCss, /\.chat-head \{[\s\S]*justify-content: space-between;/);
     assert.match(conversationPanelSource, /<header class="chat-head">[\s\S]*class="chat-head-main"[\s\S]*class="xb-workspace-controller chat-layout-controller"[\s\S]*chatLayout === 'chat'[\s\S]*chatLayout === 'balanced'[\s\S]*chatLayout === 'editor'[\s\S]*class="chat-head-actions"/);
@@ -2089,7 +2247,7 @@ test('tavern worldbook preview keeps summary lean and expanded content ephemeral
     assert.match(worldbookSource, /depth: nextPosition === 4 \? worldbookEntryDraft\.value\?\.depth \?\? 4 : null/);
     assert.match(worldbookSource, /function listFromCommaText/);
     assert.match(worldbookSource, /key: listFromCommaText/);
-    assert.match(worldbookSource, /keysecondary: listFromCommaText/);
+    assert.match(worldbookSource, /keysecondary: values,[\s\S]*secondary_keys: values,/);
     assert.match(worldbookSource, /triggers', listFromCommaText/);
     assert.doesNotMatch(worldbookSource, /key: listFromLines/);
     assert.doesNotMatch(worldbookSource, /keysecondary: listFromLines/);
@@ -2118,10 +2276,12 @@ test('tavern worldbook preview keeps summary lean and expanded content ephemeral
 });
 
 test('tavern character archive separates new chat from existing session selection', () => {
+    const contextSource = readRepoFile('modules/tavern/app-src/components/tavern-app-context.ts');
     const characterSource = readRepoFile('modules/tavern/app-src/components/TavernCharacterWorkspacePanel.vue');
     const appSource = readRepoFile('modules/tavern/app-src/App.vue');
     const sessionSource = readRepoFile('modules/tavern/app-src/features/session/useTavernSessionController.ts');
     const previewCss = readRepoFile('modules/tavern/app-src/styles/characters/preview.css');
+    const shellOverridesCss = readRepoFile('modules/tavern/app-src/styles/shell-overrides.css');
     const sessionDbSource = readRepoFile('modules/tavern/shared/session-db.ts');
     const characterContextObject = extractSourceBetween(appSource, 'const characterContext = {', 'const chatContext = {');
 
@@ -2143,6 +2303,13 @@ test('tavern character archive separates new chat from existing session selectio
     assert.match(characterSource, /sessionFloorLabel,/);
     assert.match(characterSource, /function sessionArchiveMeta\(session: TavernSessionRecord\)[\s\S]*sessionFloorLabel\(session\)/);
     assert.doesNotMatch(characterSource, /sessionArchiveMeta[\s\S]*chatPresetName|sessionArchiveMeta[\s\S]*presetName/);
+    assert.match(appSource, /function clearCharacterArchiveSyncState\(\)[\s\S]*if \(characterArchiveSyncState\.value\.busy\) \{return;\}[\s\S]*createIdleCharacterArchiveSyncState\(\)/);
+    assert.match(appSource, /const restoreSummary = await restoreTavernCharacterArchiveFromRecords[\s\S]*await refreshSessions\(\);[\s\S]*updateCharacterArchiveSyncState\(\{\s*busy: false,\s*phase: '完成'/);
+    assert.doesNotMatch(appSource, /restoreSummary\.selectedSessionId[\s\S]{0,120}selectSession/);
+    assert.match(contextSource, /clearCharacterArchiveSyncState: TavernCommand/);
+    assert.match(characterContextObject, /clearCharacterArchiveSyncState,/);
+    assert.match(characterSource, /function closeCharacterCloudSync\(\)[\s\S]*characterCloudSyncOpen\.value = false;[\s\S]*clearCharacterArchiveSyncState\(\);/);
+    assert.match(characterSource, /function openCharacterCloudSync\(\)[\s\S]*state\.phase \|\| state\.percent \|\| state\.message \|\| state\.error \|\| state\.result[\s\S]*clearCharacterArchiveSyncState\(\);/);
     assert.match(characterSource, /class="dossier-summary"[\s\S]*selectedCharacter\.description[\s\S]*selectedCharacter\.personality[\s\S]*selectedCharacter\.scenario/);
     assert.doesNotMatch(characterSource, /class="data-section-title"/);
     assert.doesNotMatch(characterSource, /class="character-data-list"/);
@@ -2176,14 +2343,16 @@ test('tavern character archive separates new chat from existing session selectio
     assert.match(characterSource, /<main\s+v-if="!selectedCharacter"\s+class="character-preview-panel dossier-empty"/);
     assert.doesNotMatch(characterSource, /@dblclick="\$emit\('enter-character'/);
     assert.match(previewCss, /\.dossier-title-actions \{[\s\S]*display: flex;[\s\S]*gap: 8px;/);
-    assert.match(previewCss, /\.character-definition-button,\n\.character-worldbook-button/);
+    assert.match(previewCss, /\.character-cloud-button,\n\.character-definition-button,\n\.character-worldbook-button/);
     assert.match(previewCss, /\.session-archive-button/);
     assert.match(previewCss, /\.dossier-title-actions \.session-archive-button,\n\.dossier-title-actions \.enter-chat-button \{[\s\S]*padding-left: 12px;[\s\S]*padding-right: 12px;/);
     assert.match(previewCss, /\.character-definition-dialog \{[\s\S]*width: min\(560px, 100%\);/);
     assert.match(previewCss, /\.character-definition-section dd \{[\s\S]*white-space: pre-wrap;/);
     assert.match(previewCss, /\.character-session-archive \{[\s\S]*width: min\(520px, 100%\);/);
+    assert.match(shellOverridesCss, /\.home-corner-actions,[\s\S]*\.page-corner-actions \{[\s\S]*z-index: 90;/);
+    assert.match(previewCss, /\.character-definition-overlay,[\s\S]*\.character-cloud-sync-overlay,[\s\S]*\.character-greeting-overlay,[\s\S]*\.character-session-archive-overlay \{[\s\S]*position: fixed;[\s\S]*z-index: 100100;/);
     assert.match(previewCss, /@media \(max-width: 640px\) \{[\s\S]*\.character-definition-overlay,[\s\S]*\.character-greeting-overlay,[\s\S]*\.character-session-archive-overlay,[\s\S]*\.character-worldbook-picker-overlay \{[\s\S]*place-items: stretch;[\s\S]*padding: 0;[\s\S]*\.character-definition-dialog,[\s\S]*\.character-greeting-dialog,[\s\S]*\.character-session-archive,[\s\S]*\.character-worldbook-picker \{[\s\S]*width: 100%;[\s\S]*height: 100%;[\s\S]*max-height: none;[\s\S]*border-radius: 0;/);
-    assert.match(previewCss, /grid-template-columns: 40px 40px max-content max-content;/);
+    assert.match(previewCss, /grid-template-columns: 40px 40px 40px max-content max-content;/);
 });
 
 test('tavern deleting a selected chat never falls through to another character session', () => {
@@ -2257,6 +2426,7 @@ test('tavern settings and chat pages reset ephemeral expanded DOM on scope chang
     assert.match(regexSource, /const shouldMountRegexEditor = computed/);
     assert.match(regexSource, /v-if="shouldMountRegexEditor"/);
     assert.match(regexSource, /watch\(activeSettingsWorkspace[\s\S]*workspace !== 'regex'[\s\S]*mobileRegexEditorOpen\.value = false/);
+    assert.match(regexSource, /const selectedKeyAtRequest = selectedRegexKey\.value;[\s\S]*await saveCurrentRegexScript\(\);[\s\S]*selectedRegexKey\.value === selectedKeyAtRequest[\s\S]*closeRegexEditor\(\)/);
     assert.match(conversationSource, /watch\(\s*\[\s*activeView,\s*chatFocus,\s*selectedSessionId\s*\][\s\S]*thoughtDisclosure\.reset\(\)/);
     assert.match(managerSource, /watch\(\s*\[\s*activeView,\s*chatFocus\s*\][\s\S]*managerDisclosure\.reset\(\)/);
 });
@@ -2311,7 +2481,7 @@ test('tavern RP display and edit save use native regex phases without slash comm
     assert.match(conversationSource, /v-for="displayThoughts in \[displayMessageThoughtBlocks\(message\)\]"/);
     assert.match(conversationSource, /v-for="\(thought, thoughtIndex\) in displayThoughts"/);
     assert.match(conversationSource, /displayRuntimeRenderProjection\(\s*runtimeText\.value,[\s\S]*runtimeActionCheckEvents\.value/);
-    assert.match(conversationSource, /const liveAssistantThoughtBlocks = computed\(\(\) => runtimeFinalizedAssistantMessage\.value[\s\S]*displayMessageThoughtBlocks\(runtimeFinalizedAssistantMessage\.value\)[\s\S]*displayRuntimeThoughtBlocks\(thoughtBlocks\(runtimeThoughts\.value\)\)/);
+    assert.match(conversationSource, /const liveAssistantThoughtBlocks = computed\(\(\) => displayRuntimeThoughtBlocks\(thoughtBlocks\(runtimeThoughts\.value\)\)\);/);
     assert.match(conversationSource, /v-for="displayRuntimeThoughts in \[liveAssistantThoughtBlocks\]"/);
     assert.doesNotMatch(conversationSource, /displayMessageThoughtBlocks\(message\)\.length/);
     assert.doesNotMatch(conversationSource, /displayRuntimeThoughtBlocks\(runtimeThoughts\)\.length/);
@@ -2386,6 +2556,7 @@ test('tavern host imports preserve SillyTavern 1.14 and 1.18 API parity', () => 
     assert.match(worldbookSource, /function applyGlobalWorldbookSelection\(selected: string\[\]\): void/);
     assert.match(envSource, /export const updateWorldInfoSettings: \(\(settings: Record<string, unknown>, activeWorldInfo\?: string\[\]\) => void\) \| undefined;/);
     assert.match(worldbookSource, /typeof nativeWorldInfo\.updateWorldInfoSettings === 'function'/);
+    assert.match(worldbookSource, /nativeWorldInfo\.updateWorldInfoSettings\(settings, selected\);[\s\S]*worldInfo\.globalSelect = \[\.\.\.selected\];[\s\S]*stScript\.saveSettingsDebounced\?\.\(\);[\s\S]*return;/);
     assert.match(worldbookSource, /replaceSelectedWorldInfo\(selected\);[\s\S]*worldInfo\.globalSelect = \[\.\.\.selected\];[\s\S]*stScript\.saveSettingsDebounced\?\.\(\)/);
     assert.doesNotMatch(worldbookSource, /setWorldInfoSettings\(settings,/);
 });

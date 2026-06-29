@@ -12,7 +12,6 @@ export interface TavernScrollPaneOptions {
     totalItems: () => number;
     defaultLimit?: number | Ref<number>;
     loadBatchSize?: number | Ref<number>;
-    onReturnToBottom?: (options: { collapseWindow: boolean; force: boolean }) => void | boolean;
 }
 
 export interface TavernScrollToBottomOptions {
@@ -91,10 +90,6 @@ export function useTavernScrollPane(options: TavernScrollPaneOptions) {
         return true;
     }
 
-    function notifyReturnToBottom(collapseWindow: boolean, force: boolean) {
-        return options.onReturnToBottom?.({ collapseWindow, force }) === true;
-    }
-
     watch(() => normalizeHiddenOutsideCount(unref(options.defaultLimit), AGENT_MESSAGE_WINDOW_DEFAULT), () => {
         if (autoScroll.value === false) {return;}
         resetWindowState();
@@ -104,21 +99,23 @@ export function useTavernScrollPane(options: TavernScrollPaneOptions) {
         if (!force && !autoScroll.value) {return;}
         if (force) {autoScroll.value = true;}
         void nextTick(() => {
-            const node = scrollRef.value;
-            if (!node) {return;}
             const apply = () => {
+                if (!force && autoScroll.value === false) {return false;}
+                const node = scrollRef.value;
+                if (!node) {return false;}
                 node.scrollTop = node.scrollHeight;
+                lastScrollTop = Number(node.scrollTop || 0);
+                return true;
             };
-            apply();
+            if (!apply()) {return;}
             requestAnimationFrame(() => {
-                apply();
+                if (!apply()) {return;}
                 requestAnimationFrame(() => {
-                    apply();
-                    const changed = notifyReturnToBottom(!!scrollOptions.collapseWindow, force);
-                    if (scrollOptions.collapseWindow || changed) {
+                    if (!apply()) {return;}
+                    if (scrollOptions.collapseWindow) {
                         collapseMessageWindowIfBottom(true);
                         void nextTick(() => {
-                            apply();
+                            if (!apply()) {return;}
                             requestAnimationFrame(apply);
                         });
                     }
@@ -154,10 +151,9 @@ export function useTavernScrollPane(options: TavernScrollPaneOptions) {
         if (nearBottom) {
             if (autoScroll.value !== false || scrollingTowardBottom) {
                 autoScroll.value = true;
-                notifyReturnToBottom(false, false);
                 collapseMessageWindowIfBottom();
             }
-        } else if (currentScrollTop < previousScrollTop) {
+        } else {
             autoScroll.value = false;
         }
         if (scrollTicking) {return;}
@@ -221,12 +217,12 @@ export function useTavernScrollPane(options: TavernScrollPaneOptions) {
         const root = scrollRef.value;
         if (!root) {return;}
         const deltaY = normalizeWheelDeltaY(event, root);
-        if (deltaY < 0) {
-            autoScroll.value = false;
-        }
         if (!deltaY) {return;}
         const target = findWheelScrollTarget(event, root, deltaY);
         if (!target) {return;}
+        if (deltaY < 0 && target === root) {
+            autoScroll.value = false;
+        }
         const previousScrollTop = Number(target.scrollTop || 0);
         requestAnimationFrame(() => {
             if (!target.isConnected) {return;}

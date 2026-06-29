@@ -36,12 +36,12 @@ import type {
     TavernRegexGroupRow,
     TavernRegexScriptDraft,
     TavernRegexScriptRow,
-    TavernPresetSaveFeedback,
     TavernWorldbookEntryDraft,
     TavernWorldbookOptionRow,
     TavernWorldbookPreviewEntryRow,
     TavernWorldbookPreviewRow,
 } from '../tavern-app-context';
+import { useTavernSaveFeedback } from './useTavernSaveFeedback';
 
 export type TavernSettingsWorkspaceKey = 'characters' | 'api' | 'chatPreset' | 'worldbooks' | 'regex' | 'assistantPreset' | 'base';
 
@@ -393,7 +393,6 @@ function normalizeTavernUsersPayload(value: unknown): { users: TavernUserOption[
 
 const API_CONFIG_SAVE_TIMEOUT_MS = 5000;
 const CHAT_PRESET_SAVE_TIMEOUT_MS = 5000;
-const PRESET_SAVE_FEEDBACK_RESET_MS = 1800;
 
 export function readInitialSettingsWorkspace(): TavernSettingsWorkspaceKey {
     const hash = String(window.location.hash || '').replace(/^#\/?/, '');
@@ -414,7 +413,12 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
     const activeChatPreset = ref<TavernChatPromptPresetBundle>(initialChatPreset);
     const chatPresetList = ref<Record<string, unknown>>({});
     const presetStatus = ref('');
-    const presetSaveFeedback = ref<TavernPresetSaveFeedback>({ status: 'idle', error: '' });
+    const {
+        feedback: presetSaveFeedback,
+        resetSaveFeedback: resetPresetSaveFeedback,
+        beginSaveFeedback: beginPresetSaveFeedback,
+        completeSaveFeedback: completePresetSaveFeedback,
+    } = useTavernSaveFeedback();
     const savedPresetJson = ref(JSON.stringify(initialChatPreset));
     const selectedPromptIdentifier = ref('');
     const assistantPreset = ref<TavernAssistantPreset>(initialAssistantPreset);
@@ -422,7 +426,12 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
     const assistantPresets = ref<TavernAssistantPresetRecord[]>([]);
     const activeAssistantPresetId = ref('');
     const assistantPresetStatus = ref('');
-    const assistantPresetSaveFeedback = ref<TavernPresetSaveFeedback>({ status: 'idle', error: '' });
+    const {
+        feedback: assistantPresetSaveFeedback,
+        resetSaveFeedback: resetAssistantPresetSaveFeedback,
+        beginSaveFeedback: beginAssistantPresetSaveFeedback,
+        completeSaveFeedback: completeAssistantPresetSaveFeedback,
+    } = useTavernSaveFeedback();
     const savedAssistantPresetJson = ref(JSON.stringify(initialAssistantPreset));
     const selectedPresetSourceId = ref('');
     const selectedAssistantPresetItemId = ref('statePrompt');
@@ -439,6 +448,12 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
     const savedWorldbookEntryDraftJson = ref('');
     const worldbookEntryEditingKey = ref('');
     const worldbookEntryStatus = ref('');
+    const {
+        feedback: worldbookEntrySaveFeedback,
+        resetSaveFeedback: resetWorldbookEntrySaveFeedback,
+        beginSaveFeedback: beginWorldbookEntrySaveFeedback,
+        completeSaveFeedback: completeWorldbookEntrySaveFeedback,
+    } = useTavernSaveFeedback();
     const chatPresetSourceSearchText = ref('');
     const chatPresetSourceVisibleLimit = ref(CHAT_PRESET_SOURCE_BATCH_SIZE);
     const assistantPresetSearchText = ref('');
@@ -454,6 +469,12 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
     const regexDraft = ref<TavernRegexScriptDraft>({});
     const activeRegexScriptJson = ref(snapshotNativeDraft(regexDraft.value));
     const regexStatus = ref('');
+    const {
+        feedback: regexSaveFeedback,
+        resetSaveFeedback: resetRegexSaveFeedback,
+        beginSaveFeedback: beginRegexSaveFeedback,
+        completeSaveFeedback: completeRegexSaveFeedback,
+    } = useTavernSaveFeedback();
     const tavernUsers = ref<TavernUserOption[]>([]);
     const currentTavernUserId = ref<string | null>(null);
     const baseSettingsStatus = ref('');
@@ -463,14 +484,13 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
     const displaySettings = ref(normalizeTavernDisplaySettings(options.tavernDisplaySettings.value));
     const committedDisplaySettings = ref(clonePromptJson(displaySettings.value) as TavernDisplaySettings);
     let baseSettingsSaveSerial = 0;
-    let presetSaveResetTimer: ReturnType<typeof setTimeout> | null = null;
-    let assistantPresetSaveResetTimer: ReturnType<typeof setTimeout> | null = null;
     let chatPresetSaveRequestSerial = 0;
     let chatPresetSelectRequestSerial = 0;
     let assistantPresetSaveRequestSerial = 0;
     let assistantPresetSelectRequestSerial = 0;
     let worldbookEntryLoadRequestSerial = 0;
     let worldbookEntryLoadRequestKey = '';
+    let worldbookEntrySaveRequestSerial = 0;
     let worldbookSyncRequestSerial = 0;
     let globalWorldbookRequestSerial = 0;
     let globalWorldbookSavingRequestSerial = 0;
@@ -557,7 +577,7 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
         if (!worldbookEntryDraft.value) {return false;}
         return snapshotNativeDraft(worldbookEntryDraft.value) !== savedWorldbookEntryDraftJson.value;
     });
-    const worldbookEntrySaving = computed(() => worldbookEntryStatus.value === '正在保存');
+    const worldbookEntrySaving = computed(() => worldbookEntrySaveFeedback.value.status === 'saving');
     const regexGroups = computed<TavernRegexGroupRow[]>(() => {
         const groups = Array.isArray(regexList.value.groups) ? regexList.value.groups : [];
         return groups.map((group) => {
@@ -904,54 +924,6 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
             tone: 'warning',
         });
     }
-    function resetPresetSaveFeedback() {
-        if (presetSaveResetTimer !== null) {
-            clearTimeout(presetSaveResetTimer);
-            presetSaveResetTimer = null;
-        }
-        presetSaveFeedback.value = { status: 'idle', error: '' };
-    }
-    function resetAssistantPresetSaveFeedback() {
-        if (assistantPresetSaveResetTimer !== null) {
-            clearTimeout(assistantPresetSaveResetTimer);
-            assistantPresetSaveResetTimer = null;
-        }
-        assistantPresetSaveFeedback.value = { status: 'idle', error: '' };
-    }
-    function beginPresetSaveFeedback() {
-        resetPresetSaveFeedback();
-        presetSaveFeedback.value = { status: 'saving', error: '' };
-    }
-    function beginAssistantPresetSaveFeedback() {
-        resetAssistantPresetSaveFeedback();
-        assistantPresetSaveFeedback.value = { status: 'saving', error: '' };
-    }
-    function completePresetSaveFeedback(result: { ok: boolean; error?: string }) {
-        if (presetSaveResetTimer !== null) {
-            clearTimeout(presetSaveResetTimer);
-        }
-        const status = result.ok ? 'success' : 'error';
-        presetSaveFeedback.value = { status, error: result.error || '' };
-        presetSaveResetTimer = setTimeout(() => {
-            if (presetSaveFeedback.value.status !== status) {return;}
-            presetSaveFeedback.value = { status: 'idle', error: '' };
-            presetSaveResetTimer = null;
-        }, PRESET_SAVE_FEEDBACK_RESET_MS);
-        (presetSaveResetTimer as { unref?: () => void }).unref?.();
-    }
-    function completeAssistantPresetSaveFeedback(result: { ok: boolean; error?: string }) {
-        if (assistantPresetSaveResetTimer !== null) {
-            clearTimeout(assistantPresetSaveResetTimer);
-        }
-        const status = result.ok ? 'success' : 'error';
-        assistantPresetSaveFeedback.value = { status, error: result.error || '' };
-        assistantPresetSaveResetTimer = setTimeout(() => {
-            if (assistantPresetSaveFeedback.value.status !== status) {return;}
-            assistantPresetSaveFeedback.value = { status: 'idle', error: '' };
-            assistantPresetSaveResetTimer = null;
-        }, PRESET_SAVE_FEEDBACK_RESET_MS);
-        (assistantPresetSaveResetTimer as { unref?: () => void }).unref?.();
-    }
     async function requestChatPresetSaveFromHost(presetPayload: TavernChatPromptPresetBundle) {
         const controller = typeof AbortController === 'function' ? new AbortController() : null;
         let timeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -975,11 +947,21 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
             }
         }
     }
-    function applyWorldbookEntryDraft(draft: unknown) {
+    function applyWorldbookEntryDraft(draft: unknown, applyOptions: { replaceDraft?: boolean } = {}) {
         const normalized = normalizeWorldbookEntryDraft(draft);
-        worldbookEntryDraft.value = normalized;
         savedWorldbookEntryDraftJson.value = snapshotNativeDraft(normalized);
         worldbookEntryEditingKey.value = worldbookEntryEditKey(normalized);
+        if (applyOptions.replaceDraft !== false) {
+            worldbookEntryDraft.value = normalized;
+        } else if (worldbookEntryDraft.value) {
+            worldbookEntryDraft.value = normalizeWorldbookEntryDraft({
+                ...worldbookEntryDraft.value,
+                uid: normalized.uid,
+                worldbookName: normalized.worldbookName,
+                entryHash: normalized.entryHash,
+                revision: normalized.revision,
+            });
+        }
     }
     async function refreshPresets() {
         if (assistantPresetDirty.value && !await confirmDiscardDraft('助手预设', '刷新')) {
@@ -1229,6 +1211,10 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
         if (worldbookEntryDirty.value && worldbookEntryEditingKey.value !== requestKey && !await confirmDiscardDraft('世界书条目', '切换')) {
             return;
         }
+        if (worldbookEntryEditingKey.value !== requestKey) {
+            worldbookEntrySaveRequestSerial += 1;
+            resetWorldbookEntrySaveFeedback();
+        }
         worldbookEntryEditingKey.value = requestKey;
         worldbookEntryLoadRequestSerial += 1;
         const requestToken = `${requestKey}:${worldbookEntryLoadRequestSerial}`;
@@ -1248,11 +1234,13 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
         }
     }
     function cancelWorldbookEntryEdit() {
+        worldbookEntrySaveRequestSerial += 1;
         worldbookEntryDraft.value = null;
         savedWorldbookEntryDraftJson.value = '';
         worldbookEntryEditingKey.value = '';
         worldbookEntryLoadRequestKey = '';
         worldbookEntryStatus.value = '';
+        resetWorldbookEntrySaveFeedback();
     }
     function updateWorldbookEntryDraftPatch(patch: Partial<TavernWorldbookEntryDraft>) {
         if (!worldbookEntryDraft.value) {return;}
@@ -1269,23 +1257,37 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
         const draft = worldbookEntryDraft.value;
         const targetName = String(selectedWorldbookName.value || draft?.worldbookName || '').trim();
         if (!draft || !targetName || !draft.uid) {return;}
+        if (worldbookEntrySaveFeedback.value.status === 'saving') {return;}
         if (!worldbookEntryDirty.value) {return;}
-        worldbookEntryStatus.value = '正在保存';
+        const draftJsonAtRequest = snapshotNativeDraft(draft);
+        const draftPayload = clonePromptJson(draft) as TavernWorldbookEntryDraft;
+        const editingKeyAtRequest = String(worldbookEntryEditingKey.value || '').trim();
+        const requestSerial = ++worldbookEntrySaveRequestSerial;
+        beginWorldbookEntrySaveFeedback();
+        worldbookEntryStatus.value = '';
         try {
             const result = await options.requestHost('xb-tavern:save-worldbook-entry', {
                 payload: {
                     name: targetName,
-                    uid: draft.uid,
-                    entryHash: draft.entryHash,
-                    draft,
+                    uid: draftPayload.uid,
+                    entryHash: draftPayload.entryHash,
+                    draft: draftPayload,
                 },
             });
-            applyWorldbookEntryDraft(result.result || result);
-            worldbookEntryStatus.value = '已保存';
+            if (requestSerial !== worldbookEntrySaveRequestSerial) {return;}
+            if (String(worldbookEntryEditingKey.value || '').trim() !== editingKeyAtRequest) {return;}
+            applyWorldbookEntryDraft(result.result || result, {
+                replaceDraft: snapshotNativeDraft(worldbookEntryDraft.value) === draftJsonAtRequest,
+            });
+            worldbookEntryStatus.value = '';
+            completeWorldbookEntrySaveFeedback({ ok: true });
             await loadSelectedWorldbookPreview(targetName);
             refreshCurrentHostContext();
         } catch (error) {
-            worldbookEntryStatus.value = error instanceof Error ? error.message : String(error || '保存失败');
+            if (requestSerial !== worldbookEntrySaveRequestSerial) {return;}
+            const message = error instanceof Error ? error.message : String(error || '保存失败');
+            worldbookEntryStatus.value = message;
+            completeWorldbookEntrySaveFeedback({ ok: false, error: message });
         }
     }
     async function refreshRegexFromHost() {
@@ -1315,13 +1317,25 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
         if (regexDirty.value && !await confirmDiscardDraft('正则', '切换')) {
             return false;
         }
+        if (selectedRegexKey.value !== row.key) {
+            regexMutationRequestSerial += 1;
+            resetRegexSaveFeedback();
+        }
         applyActiveRegexScript(row);
         return true;
+    }
+    function discardRegexChanges() {
+        regexMutationRequestSerial += 1;
+        resetRegexSaveFeedback();
+        applyActiveRegexScript(selectedRegexRow.value);
+        regexStatus.value = '';
     }
     async function createRegexScript(group: TavernRegexGroupRow) {
         if (regexDirty.value && !await confirmDiscardDraft('正则', '新建')) {
             return false;
         }
+        regexMutationRequestSerial += 1;
+        resetRegexSaveFeedback();
         const draft = normalizeRegexDraft({
             scriptName: '新正则',
             findRegex: '',
@@ -1359,10 +1373,15 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
     async function saveCurrentRegexScript() {
         const scriptType = selectedRegexRow.value?.scriptType || Number(selectedRegexKey.value.split(':')[0]);
         if (!Number.isFinite(scriptType)) {return;}
+        if (regexSaveFeedback.value.status === 'saving') {return;}
         if (!regexDirty.value) {
             return;
         }
-        regexStatus.value = '正在保存';
+        const regexDraftJsonAtRequest = snapshotNativeDraft(regexDraft.value);
+        const scriptPayload = clonePromptJson(regexDraft.value) as TavernRegexScriptDraft;
+        const selectedRegexKeyAtRequest = String(selectedRegexKey.value || '').trim();
+        beginRegexSaveFeedback();
+        regexStatus.value = '';
         const targetNativeCharacterId = regexDraftNativeCharacterId();
         const mutationSerial = ++regexMutationRequestSerial;
         try {
@@ -1370,25 +1389,44 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
                 payload: {
                     nativeCharacterId: targetNativeCharacterId,
                     scriptType,
-                    script: regexDraft.value,
+                    script: scriptPayload,
                 },
             });
             const payload = (result.result || result) as Record<string, unknown>;
             if (mutationSerial !== regexMutationRequestSerial) {return;}
-            if (await refreshRegexAfterStaleMutation(targetNativeCharacterId)) {return;}
+            if (await refreshRegexAfterStaleMutation(targetNativeCharacterId)) {
+                completeRegexSaveFeedback({ ok: true });
+                return;
+            }
+            if (String(selectedRegexKey.value || '').trim() !== selectedRegexKeyAtRequest) {return;}
             regexLoadedNativeCharacterId.value = targetNativeCharacterId;
             regexList.value = payload;
-            const savedId = String(payload.savedScriptId || regexDraft.value.id || '');
+            const savedId = String(payload.savedScriptId || scriptPayload.id || '');
             const savedType = Number(payload.savedScriptType ?? scriptType);
             const nextRow = regexScriptRows.value.find((row) => row.scriptType === savedType && savedId && row.script.id === savedId)
-                || regexScriptRows.value.find((row) => row.script.scriptName === regexDraft.value.scriptName)
+                || regexScriptRows.value.find((row) => row.script.scriptName === scriptPayload.scriptName)
                 || regexScriptRows.value[0]
                 || null;
-            applyActiveRegexScript(nextRow);
+            if (nextRow) {
+                selectedRegexKey.value = nextRow.key;
+                const normalizedSavedScript = normalizeRegexDraft(nextRow.script);
+                activeRegexScriptJson.value = snapshotNativeDraft(normalizedSavedScript);
+                if (snapshotNativeDraft(regexDraft.value) === regexDraftJsonAtRequest) {
+                    applyActiveRegexScript(nextRow);
+                } else {
+                    regexDraft.value = normalizeRegexDraft({
+                        ...regexDraft.value,
+                        id: normalizedSavedScript.id,
+                    });
+                }
+            }
             regexStatus.value = '';
+            completeRegexSaveFeedback({ ok: true });
         } catch (error) {
             if (mutationSerial !== regexMutationRequestSerial) {return;}
-            regexStatus.value = error instanceof Error ? error.message : String(error || '保存失败');
+            const message = error instanceof Error ? error.message : String(error || '保存失败');
+            regexStatus.value = message;
+            completeRegexSaveFeedback({ ok: false, error: message });
         }
     }
     async function deleteCurrentRegexScript() {
@@ -2145,6 +2183,7 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
         deleteCurrentRegexScript,
         deleteRegexScript,
         deriveAssistantPreset,
+        discardRegexChanges,
         discardAssistantPresetChanges,
         discardPresetChanges,
         expandRegexGroup,
@@ -2191,6 +2230,7 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
         regexPlacementLabel,
         regexScriptRows,
         regexSearchText,
+        regexSaveFeedback,
         regexStatus,
         saveCurrentAssistantPreset,
         saveCurrentPreset,
@@ -2242,6 +2282,7 @@ export function useTavernSettingsController(options: TavernSettingsControllerOpt
         worldbookEntryDirty,
         worldbookEntryDraft,
         worldbookEntryEditingKey,
+        worldbookEntrySaveFeedback,
         worldbookEntrySaving,
         worldbookEntryStatus,
         worldbookOptions,

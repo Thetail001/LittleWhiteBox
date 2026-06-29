@@ -28,13 +28,14 @@ import type {
     TavernTaskRecord,
 } from '../../shared/session-db';
 import type { TavernDisplaySettings, TavernUserOption } from '../../shared/settings';
+import type { TavernCharacterArchiveProgress } from '../../shared/character-archive-types';
 import type { TavernMapStateDocumentItem } from '../../shared/structured-state';
 import type { TavernDrawContext } from '../features/draw/useTavernDrawController';
 export type { TavernDisplaySettings, TavernUserOption } from '../../shared/settings';
 
 export type TavernReadable<T> = Ref<T> | ComputedRef<T>;
 export type TavernCommand<TArgs extends unknown[] = [], TResult = void> = (...args: TArgs) => TResult;
-export interface TavernPresetSaveFeedback {
+export interface TavernSaveFeedback {
     status: 'idle' | 'saving' | 'success' | 'error';
     error: string;
 }
@@ -187,7 +188,11 @@ export interface TavernCharacterWorldbookState {
 
 export interface TavernCharacterContext {
     avatarAvailable: TavernCommand<[avatar?: string], boolean>;
+    backupSelectedCharacterArchive: TavernCommand<[], Promise<void>>;
     batchSize: number;
+    characterArchiveSyncState: Ref<TavernCharacterArchiveProgress>;
+    clearCharacterArchiveSyncState: TavernCommand;
+    clearSelection: TavernCommand;
     characterWorldbookBusy: Ref<boolean>;
     characterWorldbookState: Ref<TavernCharacterWorldbookState | null>;
     characters: TavernReadable<TavernCharacterOption[]>;
@@ -203,6 +208,7 @@ export interface TavernCharacterContext {
     pendingPreviewCharacterKey: Ref<string>;
     refresh: TavernCommand<[], Promise<void>>;
     rememberBrokenAvatar: TavernCommand<[avatar?: string]>;
+    restoreSelectedCharacterArchive: TavernCommand<[], Promise<void>>;
     searchText: Ref<string>;
     select: TavernCommand<[characterKey: string], Promise<void>>;
     selectFirstVisible: TavernCommand;
@@ -364,8 +370,8 @@ export interface TavernChatContext {
     revealOlderChatMessages: TavernCommand<[force?: boolean], boolean>;
     roleLabel: TavernCommand<[role?: string], string>;
     runtimeActionCheckEvents: Ref<TavernActionCheckRuntimeEvent[]>;
-    runtimeFinalizedAssistantMessage: Ref<TavernMessageRecord | null>;
     runtimePendingUserMessage: Ref<string>;
+    runtimeStatusLabel: Ref<string>;
     runtimeText: Ref<string>;
     runtimeThoughts: Ref<Array<{ label?: string; text?: string }>>;
     runtimeUserMessageVisible: Ref<boolean>;
@@ -521,11 +527,12 @@ export interface TavernSettingsContext {
     assistantPresetItems: TavernReadable<TavernAssistantPresetItemRow[]>;
     assistantPresets: Ref<TavernAssistantPresetRecord[]>;
     assistantPresetSearchText: Ref<string>;
-    assistantPresetSaveFeedback: Ref<TavernPresetSaveFeedback>;
+    assistantPresetSaveFeedback: Ref<TavernSaveFeedback>;
     assistantPresetStatus: Ref<string>;
     assistantPresetVisibleLimit: Ref<number>;
     canEditPromptOrder: TavernReadable<boolean>;
     cancelWorldbookEntryEdit: TavernCommand;
+    discardRegexChanges: TavernCommand;
     chatPresetOptions: TavernReadable<TavernChatPresetOptionRow[]>;
     chatPresetSourceSearchText: Ref<string>;
     chatPresetSourceVisibleLimit: Ref<number>;
@@ -561,7 +568,7 @@ export interface TavernSettingsContext {
     preset: Ref<TavernChatPromptPresetBundle>;
     presetDirty: TavernReadable<boolean>;
     presetRows: TavernReadable<Array<{ previewId: string; previewLabel: string; previewPlacement: string; sectionIndex: number; chars: number }>>;
-    presetSaveFeedback: Ref<TavernPresetSaveFeedback>;
+    presetSaveFeedback: Ref<TavernSaveFeedback>;
     presetStatus: Ref<string>;
     presetTotalChars: TavernReadable<number>;
     PROMPT_EDITOR_BATCH_SIZE: number;
@@ -581,6 +588,7 @@ export interface TavernSettingsContext {
     regexPlacementLabel: TavernCommand<[value: number], string>;
     regexScriptRows: TavernReadable<TavernRegexScriptRow[]>;
     regexSearchText: Ref<string>;
+    regexSaveFeedback: Ref<TavernSaveFeedback>;
     regexStatus: Ref<string>;
     saveCurrentAssistantPreset: TavernCommand<[], Promise<void>>;
     saveCurrentPreset: TavernCommand<[], Promise<void>>;
@@ -633,6 +641,7 @@ export interface TavernSettingsContext {
     worldbookEntryDirty: TavernReadable<boolean>;
     worldbookEntryDraft: Ref<TavernWorldbookEntryDraft | null>;
     worldbookEntryEditingKey: Ref<string>;
+    worldbookEntrySaveFeedback: Ref<TavernSaveFeedback>;
     worldbookEntrySaving: TavernReadable<boolean>;
     worldbookEntryStatus: Ref<string>;
     worldbookOptions: TavernReadable<TavernWorldbookOptionRow[]>;

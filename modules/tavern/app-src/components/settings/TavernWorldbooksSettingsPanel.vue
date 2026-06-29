@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { useTavernSettingsContext, type TavernWorldbookEntryDraft } from '../tavern-app-context';
 import { useTavernEphemeralDisclosureScope } from '../useTavernEphemeralDisclosureScope';
+import TavernSaveStatusIconButton from './TavernSaveStatusIconButton.vue';
 
 const settings = useTavernSettingsContext();
 const {
@@ -23,6 +24,8 @@ const {
     WORLDBOOK_PREVIEW_BATCH_SIZE,
     worldbookEntryDirty,
     worldbookEntryDraft,
+    worldbookEntryEditingKey,
+    worldbookEntrySaveFeedback,
     worldbookEntrySaving,
     worldbookEntryStatus,
     worldbookOptions,
@@ -33,6 +36,8 @@ const {
 
 const worldbookDisclosure = useTavernEphemeralDisclosureScope();
 const globalWorldbookPickerOpen = ref(false);
+const worldbookEntryKeywordText = ref('');
+const worldbookEntrySecondaryKeywordText = ref('');
 
 const worldbookPositionOptions = [
     { value: '0:', label: '↑Char', title: '角色定义前' },
@@ -102,6 +107,30 @@ function listFromCommaText(value = '') {
         .split(',')
         .map((item) => item.trim())
         .filter(Boolean);
+}
+
+function syncWorldbookEntryKeywordText() {
+    const draft = worldbookEntryDraft.value;
+    worldbookEntryKeywordText.value = draft ? commaTextFromList(draft.key) : '';
+    worldbookEntrySecondaryKeywordText.value = draft
+        ? commaTextFromList(draft.keysecondary.length ? draft.keysecondary : draft.secondary_keys)
+        : '';
+}
+
+function updateWorldbookEntryKeywordText(event: Event) {
+    const text = (event.target as HTMLInputElement).value;
+    worldbookEntryKeywordText.value = text;
+    updateWorldbookEntryDraftPatch({ key: listFromCommaText(text) });
+}
+
+function updateWorldbookEntrySecondaryKeywordText(event: Event) {
+    const text = (event.target as HTMLInputElement).value;
+    const values = listFromCommaText(text);
+    worldbookEntrySecondaryKeywordText.value = text;
+    updateWorldbookEntryDraftPatch({
+        keysecondary: values,
+        secondary_keys: values,
+    });
 }
 
 function numberInputValue(value: number | null | undefined) {
@@ -245,6 +274,13 @@ watch(
     [activeSettingsWorkspace, selectedWorldbookName, () => worldbookPreview.value?.name],
     () => worldbookDisclosure.reset(),
 );
+
+watch(() => {
+    const draft = worldbookEntryDraft.value;
+    return draft ? `${worldbookEntryEditingKey.value}:${draft.uid}:${draft.entryHash}:${draft.revision}` : '';
+}, () => {
+    syncWorldbookEntryKeywordText();
+}, { immediate: true });
 </script>
 
 <template>
@@ -418,13 +454,13 @@ watch(
                             >
                               取消
                             </button>
-                            <button
+                            <TavernSaveStatusIconButton
                               type="submit"
                               class="primary-action"
+                              :status="worldbookEntrySaveFeedback.status"
+                              :error="worldbookEntrySaveFeedback.error"
                               :disabled="!worldbookEntryDirty || worldbookEntrySaving"
-                            >
-                              保存
-                            </button>
+                            />
                           </div>
                         </div>
                         <div class="worldbook-entry-core-grid">
@@ -529,9 +565,9 @@ watch(
                           <label class="worldbook-entry-editor-lines worldbook-entry-keywords-field">
                             <span>关键词</span>
                             <input
-                              :value="commaTextFromList(worldbookEntryDraft.key)"
+                              :value="worldbookEntryKeywordText"
                               type="text"
-                              @input="updateWorldbookEntryDraftPatch({ key: listFromCommaText(($event.target as HTMLInputElement).value) })"
+                              @input="updateWorldbookEntryKeywordText"
                             >
                           </label>
                           <div class="worldbook-entry-filter-controls">
@@ -557,9 +593,9 @@ watch(
                           <label class="worldbook-entry-editor-lines worldbook-entry-keywords-field">
                             <span>可选过滤</span>
                             <input
-                              :value="commaTextFromList(worldbookEntryDraft.keysecondary.length ? worldbookEntryDraft.keysecondary : worldbookEntryDraft.secondary_keys)"
+                              :value="worldbookEntrySecondaryKeywordText"
                               type="text"
-                              @input="updateWorldbookEntryDraftPatch({ keysecondary: listFromCommaText(($event.target as HTMLInputElement).value) })"
+                              @input="updateWorldbookEntrySecondaryKeywordText"
                             >
                           </label>
                         </div>

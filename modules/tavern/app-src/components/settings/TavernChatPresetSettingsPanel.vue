@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { useTavernSettingsContext } from '../tavern-app-context';
 import { useTavernMediaQuery } from '../useTavernMediaQuery';
+import TavernSaveStatusIconButton from './TavernSaveStatusIconButton.vue';
 
 const settings = useTavernSettingsContext();
 const {
@@ -47,18 +48,6 @@ const shouldMountPromptEditor = computed(() => (
     activeSettingsWorkspace.value === 'chatPreset'
     && (!isMobileSettingsViewport.value || mobileEditorOpen.value)
 ));
-const presetSaveButtonTitle = computed(() => {
-    const status = presetSaveFeedback.value.status;
-    if (status === 'saving') {return '正在保存';}
-    if (status === 'success') {return '已保存';}
-    if (status === 'error') {return presetSaveFeedback.value.error || '保存失败';}
-    return '保存';
-});
-const presetSaveButtonClass = computed(() => ({
-    'is-saving': presetSaveFeedback.value.status === 'saving',
-    'is-success': presetSaveFeedback.value.status === 'success',
-    'is-error': presetSaveFeedback.value.status === 'error',
-}));
 const presetSaveButtonDisabled = computed(() => (
     !canEditPromptOrder.value
     || !presetDirty.value
@@ -143,48 +132,14 @@ watch(activeSettingsWorkspace, (workspace) => {
             <path d="M21 17a8 8 0 0 0-13.7-5.7L3 15" />
           </svg>
         </button>
-        <button
+        <TavernSaveStatusIconButton
           type="button"
           class="settings-icon-tool"
-          :class="presetSaveButtonClass"
-          :title="presetSaveButtonTitle"
-          :aria-label="presetSaveButtonTitle"
+          :status="presetSaveFeedback.status"
+          :error="presetSaveFeedback.error"
           :disabled="presetSaveButtonDisabled"
           @click="saveCurrentPreset"
-        >
-          <svg
-            v-if="presetSaveFeedback.status === 'saving'"
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-          >
-            <path d="M12 3a9 9 0 1 1-8.2 5.3" />
-          </svg>
-          <svg
-            v-else-if="presetSaveFeedback.status === 'success'"
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-          >
-            <path d="M20 6 9 17l-5-5" />
-          </svg>
-          <svg
-            v-else-if="presetSaveFeedback.status === 'error'"
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-          >
-            <path d="M12 9v4" />
-            <path d="M12 17h.01" />
-            <path d="M10.3 4.2 2.8 17a2 2 0 0 0 1.7 3h15a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0Z" />
-          </svg>
-          <svg
-            v-else
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-          >
-            <path d="M5 21h14a1 1 0 0 0 1-1V7.5L16.5 4H5a1 1 0 0 0-1 1v15a1 1 0 0 0 1 1Z" />
-            <path d="M8 21v-7h8v7" />
-            <path d="M8 4v5h7" />
-          </svg>
-        </button>
+        />
       </div>
     </div>
     <div

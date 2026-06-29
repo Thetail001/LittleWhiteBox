@@ -33,6 +33,7 @@ import {
     deleteTavernMessages,
     getLatestTavernUserMessageAtOrBefore,
     getTavernMessage,
+    getTavernSession,
     listTavernManagerMessages,
     listTavernManagerRuns,
     listTavernMessageOrdersFrom,
@@ -58,6 +59,31 @@ import {
 import { getTavernAtlasStateForSession, getTavernMapStateForSession, type TavernMapStateDocumentItem } from '../shared/structured-state';
 import { listTavernTasks } from '../shared/tasks';
 import { saveAcceptedStateSnapshot } from '../shared/accepted-state';
+import {
+    exportTavernCharacterArchive,
+    restoreTavernCharacterArchiveFromRecords,
+} from '../shared/character-archive-db';
+import {
+    parseTavernCharacterArchiveJsonlBatches,
+    sha256Hex,
+    TavernCharacterArchiveWriter,
+    ungzipTavernArchiveBytes,
+} from '../shared/character-archive-jsonl';
+import {
+    buildTavernCharacterArchiveCharacterHash,
+    buildTavernCharacterArchivePartFilename,
+    downloadTavernCharacterArchiveFile,
+    downloadTavernCharacterArchiveManifest,
+    uploadTavernCharacterArchiveFile,
+    uploadTavernCharacterArchiveManifest,
+} from '../shared/character-archive-server-storage';
+import {
+    createEmptyTavernCharacterArchiveCounts,
+    type TavernCharacterArchiveManifest,
+    type TavernCharacterArchiveProgress,
+    type TavernCharacterArchiveRecord,
+} from '../shared/character-archive-types';
+import { resetTavernWorldbookCache } from '../shared/worldbook-cache-reset';
 import {
     normalizeTavernSessionContract,
     type TavernSessionContract,
@@ -196,6 +222,21 @@ const characterWorldbookBusy = ref(false);
 const characterWorldbookStatus = ref('');
 const characterWorldbookSelectionOpen = ref(false);
 const characterWorldbookSelectionOptions = ref<string[]>([]);
+function createIdleCharacterArchiveSyncState(): TavernCharacterArchiveProgress {
+    return {
+        busy: false,
+        mode: '',
+        phase: '',
+        percent: 0,
+        partIndex: 0,
+        partCount: 0,
+        loadedBytes: 0,
+        totalBytes: 0,
+        message: '',
+        error: '',
+    };
+}
+const characterArchiveSyncState = ref<TavernCharacterArchiveProgress>(createIdleCharacterArchiveSyncState());
 const pendingCharacterGreetingIndex = ref(0);
 const pendingCharacterError = ref('');
 const selectedSessionCharacterError = ref('');
@@ -208,10 +249,10 @@ const {
     isRunning,
     runtimeActionCheckEvents,
     runtimeError,
-    runtimeFinalizedAssistantMessage,
     runtimeModel,
     runtimePendingUserMessage,
     runtimeProvider,
+    runtimeStatusLabel,
     runtimeText,
     runtimeThoughts,
     runtimeUserMessageVisible,
@@ -378,12 +419,10 @@ const chatLayout = ref<ChatLayout>('balanced');
 const chatComposeTextareaRef = ref<HTMLTextAreaElement | null>(null);
 const managerComposeTextareaRef = ref<HTMLTextAreaElement | null>(null);
 const managerWorkRef = ref<HTMLElement | null>(null);
-let flushDeferredChatDomCommits = () => false;
 const chatScrollPane = useTavernScrollPane({
     totalItems: () => selectedSessionMessageTotal.value,
     defaultLimit: hiddenOutsideCount,
     loadBatchSize,
-    onReturnToBottom: () => flushDeferredChatDomCommits(),
 });
 const managerScrollPane = useTavernScrollPane({
     totalItems: () => managerChatMessageDisplayItems.value.length,
@@ -2093,9 +2132,13 @@ hostBridge.addMessageHandler((data) => drawContext.handleHostMessage(data));
 hostBridge.addMessageHandler(handleInlineImageProgressHostMessage);
 hostBridge.addMessageHandler(handleConfigHostMessage);
 
-function openCharacterSelect() {
+function clearCharacterSelection() {
     pendingCharacterError.value = '';
     selectedCharacterPreviewKey.value = '';
+}
+
+function openCharacterSelect() {
+    clearCharacterSelection();
     openSettingsWorkspace('characters');
 }
 
@@ -2235,6 +2278,339 @@ async function bindSelectedCharacterWorldbook(name: string) {
         characterWorldbookStatus.value = describeError(error);
     } finally {
         characterWorldbookBusy.value = false;
+    }
+}
+
+function createCharacterArchiveId(): string {
+    return `archive-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function updateCharacterArchiveSyncState(patch: Partial<TavernCharacterArchiveProgress>) {
+    const current = characterArchiveSyncState.value;
+    const nextPercent = 'percent' in patch
+        ? Math.max(Number(current.percent) || 0, Math.max(0, Math.min(100, Number(patch.percent) || 0)))
+        : current.percent;
+    characterArchiveSyncState.value = {
+        ...current,
+        ...patch,
+        percent: nextPercent,
+    };
+}
+
+function startCharacterArchiveSync(mode: 'backup' | 'restore') {
+    characterArchiveSyncState.value = {
+        ...createIdleCharacterArchiveSyncState(),
+        busy: true,
+        mode,
+        phase: mode === 'backup' ? '扫描角色档案' : '读取备份清单',
+        message: mode === 'backup' ? '正在扫描当前角色卡的本地会话档案。' : '正在读取酒馆服务器备份清单。',
+    };
+}
+
+function clearCharacterArchiveSyncState() {
+    if (characterArchiveSyncState.value.busy) {return;}
+    characterArchiveSyncState.value = createIdleCharacterArchiveSyncState();
+}
+
+function isMissingCharacterArchiveBackupError(error: unknown): boolean {
+    const message = describeError(error);
+    return message === 'archive_manifest_missing'
+        || /^archive_download_failed_http_404\b/.test(message);
+}
+
+function describeCharacterArchiveSyncError(error: unknown): string {
+    const message = describeError(error);
+    if (message === 'archive_manifest_missing' || /^archive_download_failed_http_404\b/.test(message)) {
+        return '这张角色卡还没有酒馆服务器备份。请先备份后再恢复。';
+    }
+    if (message === 'archive_manifest_invalid') {
+        return '酒馆服务器上的备份清单不是有效 JSON，无法恢复。';
+    }
+    if (message === 'archive_manifest_mismatch' || message === 'archive_character_mismatch') {
+        return '酒馆服务器上的备份清单不属于当前角色卡，已停止恢复。';
+    }
+    return message;
+}
+
+function failCharacterArchiveSync(error: unknown) {
+    const missingBackup = isMissingCharacterArchiveBackupError(error);
+    const current = characterArchiveSyncState.value;
+    characterArchiveSyncState.value = {
+        ...current,
+        busy: false,
+        phase: missingBackup ? '未找到备份' : '失败',
+        percent: missingBackup ? 0 : current.percent,
+        partIndex: missingBackup ? 0 : current.partIndex,
+        partCount: missingBackup ? 0 : current.partCount,
+        loadedBytes: missingBackup ? 0 : current.loadedBytes,
+        totalBytes: missingBackup ? 0 : current.totalBytes,
+        error: describeCharacterArchiveSyncError(error),
+        message: missingBackup ? '当前角色卡暂无服务器备份。' : '操作失败。',
+    };
+}
+
+async function getTavernArchiveRequestHeaders(): Promise<Record<string, unknown>> {
+    try {
+        const result = await requestHost('xb-tavern:get-host-request-headers');
+        return result.hostRequestHeaders && typeof result.hostRequestHeaders === 'object'
+            ? result.hostRequestHeaders as Record<string, unknown>
+            : hostRequestHeaders.value;
+    } catch {
+        return hostRequestHeaders.value;
+    }
+}
+
+function summarizeArchiveCounts(counts = createEmptyTavernCharacterArchiveCounts()): string {
+    return [
+        `${counts.sessions} 个会话`,
+        `${counts.messages} 条消息`,
+        `${counts.memoryFiles} 份记忆`,
+        `${counts.stateDocuments} 份地图/图鉴`,
+        `${counts.tasks} 个任务`,
+    ].join('，');
+}
+
+async function backupSelectedCharacterArchive() {
+    if (characterArchiveSyncState.value.busy) {return;}
+    const character = selectedCharacterPreview.value;
+    const characterKey = String(character?.characterKey || '').trim();
+    if (!character || !characterKey) {return;}
+    startCharacterArchiveSync('backup');
+    try {
+        const archiveId = createCharacterArchiveId();
+        const characterHash = await buildTavernCharacterArchiveCharacterHash(characterKey);
+        updateCharacterArchiveSyncState({
+            phase: '扫描角色档案',
+            percent: 5,
+            message: `正在扫描「${character.name}」的本地档案。`,
+        });
+        let uploadedBytes = 0;
+        const estimateUploadPercent = (partIndex: number, partLoadedBytes = 0, partTotalBytes = 1): number => {
+            const currentPartProgress = Math.max(0, Math.min(1, partLoadedBytes / Math.max(partTotalBytes, 1)));
+            const optimisticPartCount = Math.max(partIndex + 1, 2);
+            return 55 + Math.min(39, Math.round((((partIndex - 1) + currentPartProgress) / optimisticPartCount) * 39));
+        };
+        const writer = new TavernCharacterArchiveWriter({
+            archiveId,
+            filenameForPart: (index) => buildTavernCharacterArchivePartFilename(characterHash, archiveId, index),
+            uploadPart: async (part) => {
+                updateCharacterArchiveSyncState({
+                    phase: '上传分卷',
+                    partIndex: part.index,
+                    loadedBytes: uploadedBytes,
+                    totalBytes: uploadedBytes + part.bytes.length,
+                    message: `正在上传分卷 ${part.index}。`,
+                    percent: estimateUploadPercent(part.index, 0, part.bytes.length),
+                });
+                await uploadTavernCharacterArchiveFile(part.filename, part.bytes, {
+                    headersProvider: getTavernArchiveRequestHeaders,
+                    onProgress: (progress) => {
+                        updateCharacterArchiveSyncState({
+                            phase: '上传分卷',
+                            partIndex: part.index,
+                            loadedBytes: uploadedBytes + progress.loadedBytes,
+                            totalBytes: uploadedBytes + (progress.totalBytes || part.bytes.length),
+                            percent: estimateUploadPercent(part.index, progress.loadedBytes, progress.totalBytes || part.bytes.length),
+                            message: `正在上传分卷 ${part.index}。`,
+                        });
+                    },
+                });
+                uploadedBytes += part.bytes.length;
+            },
+            onPartFlushed: (part) => {
+                updateCharacterArchiveSyncState({
+                    partIndex: part.index,
+                    partCount: part.index,
+                    loadedBytes: uploadedBytes,
+                    totalBytes: uploadedBytes,
+                    message: `分卷 ${part.index} 已上传。`,
+                });
+            },
+        });
+        const summary = await exportTavernCharacterArchive({
+            archiveId,
+            character: {
+                characterKey,
+                name: String(character.name || ''),
+                avatar: String(character.avatar || ''),
+                nativeCharacterId: String(character.nativeCharacterId || ''),
+            },
+            writer,
+            onProgress: (progress) => {
+                const sessionRatio = progress.sessionCount
+                    ? progress.sessionIndex / Math.max(progress.sessionCount, 1)
+                    : 1;
+                updateCharacterArchiveSyncState({
+                    phase: progress.phase === 'scan' ? '扫描角色档案' : '导出并分卷',
+                    percent: progress.phase === 'scan' ? 10 : 10 + Math.round(sessionRatio * 45),
+                    message: progress.table
+                        ? `正在导出 ${progress.table}。`
+                        : '正在扫描当前角色卡会话。',
+                });
+            },
+        });
+        const writerResult = await writer.close();
+        const manifest: TavernCharacterArchiveManifest = {
+            version: 1,
+            archiveId,
+            complete: true,
+            exportedAt: summary.exportedAt,
+            character: summary.character,
+            counts: summary.counts,
+            parts: writerResult.parts,
+        };
+        updateCharacterArchiveSyncState({
+            phase: '写入备份清单',
+            percent: 96,
+            partCount: manifest.parts.length,
+            loadedBytes: uploadedBytes,
+            totalBytes: uploadedBytes,
+            message: '正在写入备份清单。',
+        });
+        await uploadTavernCharacterArchiveManifest(manifest, characterHash, {
+            headersProvider: getTavernArchiveRequestHeaders,
+        });
+        updateCharacterArchiveSyncState({
+            busy: false,
+            phase: '完成',
+            percent: 100,
+            message: `已备份：${summarizeArchiveCounts(summary.counts)}。`,
+            error: '',
+            result: {
+                counts: summary.counts,
+                exportedAt: summary.exportedAt,
+                size: manifest.parts.reduce((total, part) => total + part.compressedBytes, 0),
+            },
+        });
+    } catch (error) {
+        failCharacterArchiveSync(error);
+    }
+}
+
+async function restoreSelectedCharacterArchive() {
+    if (characterArchiveSyncState.value.busy) {return;}
+    const character = selectedCharacterPreview.value;
+    const characterKey = String(character?.characterKey || '').trim();
+    if (!character || !characterKey) {return;}
+    startCharacterArchiveSync('restore');
+    try {
+        const characterHash = await buildTavernCharacterArchiveCharacterHash(characterKey);
+        const manifest = await downloadTavernCharacterArchiveManifest(characterHash, {
+            headersProvider: getTavernArchiveRequestHeaders,
+            onProgress: (progress) => {
+                updateCharacterArchiveSyncState({
+                    phase: '读取备份清单',
+                    percent: 10,
+                    loadedBytes: progress.loadedBytes,
+                    totalBytes: progress.totalBytes,
+                    message: '正在读取备份清单。',
+                });
+            },
+        });
+        if (manifest.complete !== true || manifest.version !== 1 || String(manifest.character?.characterKey || '').trim() !== characterKey) {
+            throw new Error('archive_manifest_mismatch');
+        }
+        const confirmed = await confirmTavernDialog({
+            title: '确认恢复会话档案',
+            message: `将从酒馆服务器恢复「${character.name}」的会话档案，并覆盖当前本地档案。其他角色不会受影响。`,
+            confirmText: '覆盖恢复',
+            cancelText: '取消',
+            tone: 'warning',
+        });
+        if (!confirmed) {
+            characterArchiveSyncState.value = {
+                ...createIdleCharacterArchiveSyncState(),
+                mode: 'restore',
+                message: '已取消恢复，本地档案未修改。',
+            };
+            return;
+        }
+        const totalCompressedBytes = manifest.parts.reduce((total, part) => total + part.compressedBytes, 0);
+        let downloadedBytes = 0;
+        let verifiedParts = 0;
+        async function* readRestoreRecordBatches(): AsyncIterable<TavernCharacterArchiveRecord[]> {
+            for (const part of manifest.parts) {
+                updateCharacterArchiveSyncState({
+                    phase: '下载分卷',
+                    partIndex: part.index,
+                    partCount: manifest.parts.length,
+                    loadedBytes: downloadedBytes,
+                    totalBytes: totalCompressedBytes,
+                    percent: 10,
+                    message: `正在下载分卷 ${part.index} / ${manifest.parts.length}。`,
+                });
+                const compressed = await downloadTavernCharacterArchiveFile(part.filename, {
+                    headersProvider: getTavernArchiveRequestHeaders,
+                    onProgress: (progress) => {
+                        updateCharacterArchiveSyncState({
+                            phase: '下载分卷',
+                            partIndex: part.index,
+                            partCount: manifest.parts.length,
+                            loadedBytes: downloadedBytes + progress.loadedBytes,
+                            totalBytes: totalCompressedBytes || progress.totalBytes,
+                            percent: 10 + Math.round(((downloadedBytes + progress.loadedBytes) / Math.max(totalCompressedBytes || progress.totalBytes || 1, 1)) * 35),
+                            message: `正在下载分卷 ${part.index} / ${manifest.parts.length}。`,
+                        });
+                    },
+                });
+                downloadedBytes += compressed.length;
+                updateCharacterArchiveSyncState({
+                    phase: '解压校验',
+                    percent: 45 + Math.round((verifiedParts / Math.max(manifest.parts.length, 1)) * 20),
+                    loadedBytes: downloadedBytes,
+                    totalBytes: totalCompressedBytes,
+                    message: `正在校验分卷 ${part.index}。`,
+                });
+                const digest = await sha256Hex(compressed);
+                if (digest !== part.sha256) {
+                    throw new Error(`archive_part_sha256_mismatch:${part.filename}`);
+                }
+                const raw = await ungzipTavernArchiveBytes(compressed);
+                verifiedParts += 1;
+                updateCharacterArchiveSyncState({
+                    phase: '写入临时恢复区',
+                    percent: 65,
+                    message: `正在写入临时恢复区：分卷 ${part.index}。`,
+                });
+                for (const batch of parseTavernCharacterArchiveJsonlBatches(raw, 500)) {
+                    yield batch;
+                }
+            }
+        }
+        const restoreSummary = await restoreTavernCharacterArchiveFromRecords({
+            manifest,
+            characterKey,
+            recordBatches: readRestoreRecordBatches(),
+            onProgress: (progress) => {
+                updateCharacterArchiveSyncState({
+                    phase: progress.phase === 'promote' ? '切换为正式档案' : '写入临时恢复区',
+                    percent: progress.phase === 'promote' ? 95 : 65 + Math.min(20, Math.round((progress.rowCount / Math.max(1, manifest.parts.reduce((total, part) => total + part.rowCount, 0))) * 20)),
+                    message: progress.phase === 'promote'
+                        ? '正在切换为正式档案。'
+                        : `正在写入 ${progress.table || '档案'}。`,
+                });
+            },
+        });
+        updateCharacterArchiveSyncState({
+            phase: '刷新界面',
+            percent: 98,
+            message: '正在刷新角色卡会话列表。',
+        });
+        await refreshSessions();
+        updateCharacterArchiveSyncState({
+            busy: false,
+            phase: '完成',
+            percent: 100,
+            message: `已恢复：${summarizeArchiveCounts(restoreSummary.counts)}。`,
+            error: '',
+            result: {
+                counts: restoreSummary.counts,
+                exportedAt: manifest.exportedAt,
+                size: totalCompressedBytes,
+            },
+        });
+    } catch (error) {
+        failCharacterArchiveSync(error);
     }
 }
 
@@ -3031,7 +3407,6 @@ async function saveEditMessage(message: TavernMessageRecord, options: { rollback
         await restoreAcceptedMemoryAndTaskStateBeforeMessage(message.sessionId, message.order);
     }
     if (updated && selectedSessionId.value) {
-        chatRunController.resolveDeferredAssistantCommit({ sessionId: message.sessionId });
         await loadSelectedSessionMessageWindow({ sessionId: selectedSessionId.value });
         if (shouldRollbackState) {
             await refreshManagerRecords(selectedSessionId.value);
@@ -3104,10 +3479,6 @@ async function deleteMessageTurn(message: TavernMessageRecord) {
         await restoreAcceptedMemoryAndTaskStateBeforeMessage(message.sessionId, fromOrder);
     }
     if (selectedSessionId.value) {
-        chatRunController.resolveDeferredAssistantCommit({
-            sessionId: message.sessionId,
-            discardOrders: deleted > 0 ? ordersToDelete : [],
-        });
         await loadSelectedSessionMessageWindow({ sessionId: selectedSessionId.value });
         await refreshManagerRecords(selectedSessionId.value);
     }
@@ -3338,6 +3709,46 @@ function shouldRunTavernSlashCommand(text: string, options: { reuseUserMessageOr
     return !Number.isFinite(Number(options.reuseUserMessageOrder)) && text.trim().startsWith('/');
 }
 
+function isTavernWorldbookCacheResetCommand(text: string): boolean {
+    return /^\/xbwireset(?:\s|$)/i.test(String(text || '').trim());
+}
+
+async function runManualTavernWorldbookCacheReset(): Promise<void> {
+    const sessionId = String(selectedSessionId.value || '').trim();
+    if (!sessionId) {
+        throw new Error('当前没有可清理的会话。');
+    }
+    const result = await resetTavernWorldbookCache({
+        sessionId,
+        mode: 'manual',
+    });
+    const cleanedSession = await getTavernSession(sessionId);
+    if (cleanedSession) {
+        sessionController.updateSessionRecord(cleanedSession);
+        applySessionSnapshotContext(cleanedSession);
+    }
+    await loadSelectedSessionMessageWindow({ reset: true, sessionId });
+    let syncError: unknown = null;
+    if (result.sessions) {
+        try {
+            await syncSessionCharacterContext({ sessionId, force: true });
+        } catch (error) {
+            syncError = error;
+            setSelectedSessionCharacterError(error, sessionId);
+        }
+    }
+    currentUserMessage.value = '';
+    await nextTick(() => resetTextareaHeight(chatComposeTextareaRef.value));
+    showTavernToast(
+        !result.sessions
+            ? '未找到当前会话，未清理任何内容。'
+            : syncError
+                ? `已清理当前会话的世界书运行缓存；重新读取 ST 当前状态失败：${describeError(syncError)}`
+                : '已清理当前会话的世界书运行缓存，并重新读取 ST 当前状态。',
+        { tone: syncError ? 'warning' : 'info', durationMs: syncError ? 4200 : 2600 },
+    );
+}
+
 function normalizeSlashPipeForMessage(value: unknown): string {
     if (value === undefined || value === null) {return '';}
     if (typeof value === 'string') {return value.trim();}
@@ -3354,6 +3765,10 @@ function normalizeSlashPipeForMessage(value: unknown): string {
 async function resolveSlashCommandMessageText(messageText: string, options: { reuseUserMessageOrder?: number } = {}): Promise<string> {
     if (!shouldRunTavernSlashCommand(messageText, options)) {
         return messageText;
+    }
+    if (isTavernWorldbookCacheResetCommand(messageText)) {
+        await runManualTavernWorldbookCacheReset();
+        return '';
     }
     const response = await requestHost('xb-tavern:run-slash-command', {
         payload: { command: messageText },
@@ -3453,17 +3868,6 @@ const chatRunController = useTavernChatRunController({
     upsertLoadedSessionMessage,
     cancelDrawJobsForMessageRange: drawContext.cancelJobsForMessageRange,
 });
-
-flushDeferredChatDomCommits = () => {
-    const changed = chatRunController.flushDeferredAssistantCommit();
-    if (changed) {
-        void nextTick(() => {
-            enhanceChatMarkdown();
-            updateChatScrollButtons();
-        });
-    }
-    return changed;
-};
 
 function cancelActiveRun() {
     chatRunController.cancelActiveRun();
@@ -3863,7 +4267,6 @@ watch([
     () => chatMessageWindow.value.startIndex,
     () => visibleChatMarkdownSignature.value,
     () => runtimeText.value,
-    () => `${runtimeFinalizedAssistantMessage.value?.sessionId || ''}:${runtimeFinalizedAssistantMessage.value?.order ?? ''}:${String(runtimeFinalizedAssistantMessage.value?.content || '').length}`,
     () => runtimePendingUserMessage.value,
     () => runtimeThoughtsSignature.value,
     () => runtimeActionCheckSignature.value,
@@ -3999,7 +4402,11 @@ const sessionContext = {
 
 const characterContext = {
     avatarAvailable,
+    backupSelectedCharacterArchive,
     batchSize: CHARACTER_ARCHIVE_BATCH_SIZE,
+    characterArchiveSyncState,
+    clearCharacterArchiveSyncState,
+    clearSelection: clearCharacterSelection,
     characterWorldbookBusy,
     characterWorldbookState,
     characters: characterCards,
@@ -4015,6 +4422,7 @@ const characterContext = {
     pendingPreviewCharacterKey: pendingCharacterPreviewKey,
     refresh: refreshCharacterList,
     rememberBrokenAvatar,
+    restoreSelectedCharacterArchive,
     searchText: characterSearchText,
     select: selectCharacterForPreview,
     selectFirstVisible: selectFirstVisibleCharacter,
@@ -4074,7 +4482,7 @@ const chatContext = {
     runtimeText,
     runtimeThoughts,
     runtimeActionCheckEvents,
-    runtimeFinalizedAssistantMessage,
+    runtimeStatusLabel,
     runtimeUserMessageVisible,
     runtimePendingUserMessage,
     saveEditMessage,
@@ -4228,6 +4636,13 @@ const appUiContext = {
 provide(TAVERN_APP_UI_CONTEXT, appUiContext);
 
 async function runPostReadyStartupTasks() {
+    reportStartupProgress(91, 'worldbookCacheReset');
+    try {
+        await resetTavernWorldbookCache({ mode: 'migration' });
+    } catch (error) {
+        console.warn('[LittleWhiteBox/tavern] Failed to reset stale worldbook cache', error);
+        statusText.value = describeError(error);
+    }
     reportStartupProgress(92, 'refreshPresets');
     const startupResults = await Promise.allSettled([
         refreshPresets(),
