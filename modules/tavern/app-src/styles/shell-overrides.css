@@ -32,7 +32,7 @@
     background: transparent;
     box-shadow: none;
     backdrop-filter: none;
-    color: var(--xb-ink-soft);
+    color: var(--xb-control-icon);
 }
 
 .xb-os-shell.theme-dark .home-corner-actions .home-icon-button,
@@ -40,13 +40,13 @@
     border-color: transparent;
     background: transparent;
     box-shadow: none;
-    color: var(--xb-ink-soft);
+    color: var(--xb-control-icon);
 }
 
 .xb-os-shell.theme-dark.is-home-view .home-corner-actions .home-icon-button {
     border-color: rgba(184, 178, 166, 0.18);
     background: rgba(12, 11, 10, 0.34);
-    color: var(--xb-ink);
+    color: var(--xb-control-icon);
     backdrop-filter: blur(10px);
 }
 
@@ -66,7 +66,7 @@
 .page-corner-actions .page-worldbooks-button {
     width: 30px;
     min-width: 30px;
-    color: var(--xb-ink-soft);
+    color: var(--xb-control-icon);
     padding: 0;
 }
 
