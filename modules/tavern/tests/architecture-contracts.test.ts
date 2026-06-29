@@ -1726,9 +1726,14 @@ test('tavern live stream rendering is frame-batched without bypassing display re
     assert.match(chatRunSource, /let pendingRuntimeStreamSnapshot: TavernRunStreamSnapshot \| null = null;/);
     assert.match(chatRunSource, /function scheduleRuntimeStreamSnapshot\(snapshot: TavernRunStreamSnapshot\)[\s\S]*window\.requestAnimationFrame\(\(\) => \{[\s\S]*flushRuntimeStreamSnapshotNow\(\);/);
     assert.match(chatRunSource, /onStreamProgress: \(snapshot\) => \{[\s\S]*scheduleRuntimeStreamSnapshot\(snapshot\);[\s\S]*\},/);
-    assert.match(chatRunSource, /runtimeStatusLabel: Ref<TavernRunStatusLabel \| ''>/);
-    assert.match(chatRunSource, /state\.runtimeStatusLabel\.value = '整理上下文';/);
-    assert.match(chatRunSource, /onRuntimeStatus: \(snapshot\) => \{[\s\S]*state\.runtimeStatusLabel\.value = snapshot\.label;[\s\S]*\},/);
+    assert.match(chatRunSource, /runtimeStatusStartedAt: Ref<number>/);
+    assert.match(chatRunSource, /runtimeStatusElapsedSeconds: Ref<number>/);
+    assert.match(chatRunSource, /function setRuntimeStatusLabel\(label: TavernRunStatusLabel \| ''\)/);
+    assert.match(chatRunSource, /if \(label && state\.runtimeStatusLabel\.value === label && state\.runtimeStatusStartedAt\.value\) \{[\s\S]*refreshRuntimeStatusElapsedSeconds\(\);[\s\S]*startRuntimeStatusTimer\(\);[\s\S]*return;/);
+    assert.match(chatRunSource, /state\.runtimeStatusStartedAt\.value = Date\.now\(\);[\s\S]*state\.runtimeStatusElapsedSeconds\.value = 0;[\s\S]*startRuntimeStatusTimer\(\);/);
+    assert.match(chatRunSource, /window\.setInterval\(\(\) => \{[\s\S]*refreshRuntimeStatusElapsedSeconds\(\);[\s\S]*\}, 1000\)/);
+    assert.match(chatRunSource, /setRuntimeStatusLabel\('同步状态'\);/);
+    assert.match(chatRunSource, /onRuntimeStatus: \(snapshot\) => \{[\s\S]*setRuntimeStatusLabel\(snapshot\.label\);[\s\S]*\},/);
     assert.doesNotMatch(appSource, /onStreamProgress: \(snapshot\) => \{[\s\S]{0,240}runtimeText\.value = snapshot\.text;/);
     assert.match(appSource, /function displayRuntimeRenderProjection/);
     assert.match(appSource, /scheduleRuntimeDisplayRegexText\('runtime:message', request\);/);
@@ -1741,12 +1746,13 @@ test('tavern live stream rendering is frame-batched without bypassing display re
     assert.match(appSource, /enhanceLiveChatMarkdown,/);
     assert.doesNotMatch(conversationSource, /:key="`live-assistant:\$\{liveAssistantRenderState\.signature\}`"/);
     assert.match(conversationSource, /:data-markdown-signature="liveAssistantRenderState\.signature"/);
-    assert.match(conversationSource, /const liveAssistantStatusLabel = computed\(\(\) => runtimeStatusLabel\.value \|\| '整理上下文'\);/);
+    assert.match(conversationSource, /const liveAssistantStatusLabel = computed\(\(\) => \{[\s\S]*const label = runtimeStatusLabel\.value \|\| '同步状态';[\s\S]*const elapsedSeconds = Math\.max\(0, Math\.floor\(Number\(runtimeStatusElapsedSeconds\.value\) \|\| 0\)\);[\s\S]*return `\$\{label\} \$\{elapsedSeconds\}s`;/);
     assert.match(conversationSource, /<small>\{\{ liveAssistantStatusLabel \}\}<\/small>/);
     assert.doesNotMatch(conversationSource, /生成中/);
-    assert.match(runtimeSource, /export type TavernRunStatusLabel =[\s\S]*'整理上下文'[\s\S]*'构建请求'[\s\S]*'请求就绪'[\s\S]*'连接模型'[\s\S]*'接收流式'[\s\S]*'保存回复'/);
-    assert.match(runtimeSource, /notifyRunStatus\(input\.onRuntimeStatus, '整理上下文'\);[\s\S]*notifyRunStatus\(input\.onRuntimeStatus, '构建请求'\);[\s\S]*notifyRunStatus\(input\.onRuntimeStatus, '请求就绪'\);[\s\S]*notifyRunStatus\(input\.onRuntimeStatus, '连接模型'\);[\s\S]*notifyRunStatus\(input\.onRuntimeStatus, '保存回复'\);/);
-    assert.match(runtimeSource, /if \(!sawStreamProgress\) \{[\s\S]*notifyRunStatus\(input\.onRuntimeStatus, '接收流式'\);/);
+    assert.match(runtimeSource, /export type TavernRunStatusLabel =[\s\S]*'同步状态'[\s\S]*'整理历史'[\s\S]*'构建请求'[\s\S]*'请求模型'[\s\S]*'接收回复'[\s\S]*'保存回复'/);
+    assert.match(runtimeSource, /notifyRunStatus\(input\.onRuntimeStatus, '同步状态'\);[\s\S]*notifyRunStatus\(input\.onRuntimeStatus, '整理历史'\);[\s\S]*notifyRunStatus\(input\.onRuntimeStatus, '构建请求'\);[\s\S]*notifyRunStatus\(input\.onRuntimeStatus, '请求模型'\);[\s\S]*notifyRunStatus\(input\.onRuntimeStatus, '保存回复'\);/);
+    assert.match(runtimeSource, /if \(!sawStreamProgress\) \{[\s\S]*notifyRunStatus\(input\.onRuntimeStatus, '接收回复'\);/);
+    assert.doesNotMatch(runtimeSource, /整理上下文|请求就绪|连接模型|接收流式/);
 });
 
 test('tavern draw jobs are message-queued and route progress by host request', () => {

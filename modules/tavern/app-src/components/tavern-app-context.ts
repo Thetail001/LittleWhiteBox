@@ -371,7 +371,9 @@ export interface TavernChatContext {
     roleLabel: TavernCommand<[role?: string], string>;
     runtimeActionCheckEvents: Ref<TavernActionCheckRuntimeEvent[]>;
     runtimePendingUserMessage: Ref<string>;
+    runtimeStatusElapsedSeconds: Ref<number>;
     runtimeStatusLabel: Ref<string>;
+    runtimeStatusStartedAt: Ref<number>;
     runtimeText: Ref<string>;
     runtimeThoughts: Ref<Array<{ label?: string; text?: string }>>;
     runtimeUserMessageVisible: Ref<boolean>;

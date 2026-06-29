@@ -500,11 +500,11 @@ export interface TavernRunStreamSnapshot {
 }
 
 export type TavernRunStatusLabel =
-    | '整理上下文'
+    | '同步状态'
+    | '整理历史'
     | '构建请求'
-    | '请求就绪'
-    | '连接模型'
-    | '接收流式'
+    | '请求模型'
+    | '接收回复'
     | '保存回复';
 
 export interface TavernRunStatusSnapshot {
@@ -2133,7 +2133,7 @@ export async function waitForPendingAcceptedTurnManagers(sessionId = ''): Promis
 }
 
 export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTavernRunResult> {
-    notifyRunStatus(input.onRuntimeStatus, '整理上下文');
+    notifyRunStatus(input.onRuntimeStatus, '同步状态');
     const chatPreset = resolveInputChatPreset(input);
     if (!input.sessionId) {
         assertUsableTavernContext(input.contextSnapshot || {});
@@ -2176,6 +2176,7 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
         }
         await saveAcceptedStateSnapshot(baseSession.id);
     }
+    notifyRunStatus(input.onRuntimeStatus, '整理历史');
     const rebuildHistoryMessages = reusedUserMessage
         ? await listAllTavernMessagesInRangePaged(baseSession.id, 0, reusedUserMessage.order - 1)
         : null;
@@ -2397,7 +2398,7 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
     const handleStreamProgress = (snapshot: TavernRunStreamSnapshot) => {
         if (!sawStreamProgress) {
             sawStreamProgress = true;
-            notifyRunStatus(input.onRuntimeStatus, '接收流式');
+            notifyRunStatus(input.onRuntimeStatus, '接收回复');
         }
         if (typeof snapshot.text === 'string') {latestStreamText = snapshot.text;}
         input.onStreamProgress?.(snapshot);
@@ -2418,7 +2419,6 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
             requestKind: 'actual',
             regexApplications,
         })).requestSnapshot;
-        notifyRunStatus(input.onRuntimeStatus, '请求就绪');
     } catch {
         requestSnapshot = buildTavernRequestSnapshot(input.agentConfig, buildResult.messages, {
             requestKind: 'fallback',
@@ -2430,7 +2430,6 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
                 toolChoice: actionCheckCapabilities.toolChoice,
             },
         });
-        notifyRunStatus(input.onRuntimeStatus, '请求就绪');
     }
     const presetId = String(chatPreset.id || session.chatPresetId || session.presetId || '');
     const presetName = String(chatPreset.name || session.chatPresetName || session.presetName || '');
@@ -2456,7 +2455,7 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
 
     try {
         const executeRunOnce = input.executeRunOnce || createDefaultTavernRunOnceExecutor(input.agentConfig);
-        notifyRunStatus(input.onRuntimeStatus, '连接模型');
+        notifyRunStatus(input.onRuntimeStatus, '请求模型');
         const result = sessionContractRuntime.includeActionChecks
             ? await runTavernActionCheckLoop({
                 agentConfig: input.agentConfig,
