@@ -30,6 +30,7 @@ import type {
 import type { TavernDisplaySettings, TavernUserOption } from '../../shared/settings';
 import type { TavernCharacterArchiveProgress } from '../../shared/character-archive-types';
 import type { TavernMapStateDocumentItem } from '../../shared/structured-state';
+import type { TavernStatusFieldDeltaMap } from '../../shared/status-state';
 import type { TavernDrawContext } from '../features/draw/useTavernDrawController';
 export type { TavernDisplaySettings, TavernUserOption } from '../../shared/settings';
 
@@ -371,7 +372,9 @@ export interface TavernChatContext {
     roleLabel: TavernCommand<[role?: string], string>;
     runtimeActionCheckEvents: Ref<TavernActionCheckRuntimeEvent[]>;
     runtimePendingUserMessage: Ref<string>;
+    runtimeStatusElapsedSeconds: Ref<number>;
     runtimeStatusLabel: Ref<string>;
+    runtimeStatusStartedAt: Ref<number>;
     runtimeText: Ref<string>;
     runtimeThoughts: Ref<Array<{ label?: string; text?: string }>>;
     runtimeUserMessageVisible: Ref<boolean>;
@@ -430,6 +433,7 @@ export interface TavernManagerContext {
     managerInputDraft: Ref<string>;
     managerInputStatus: Ref<string>;
     managerMessageWindow: TavernReadable<TavernMessageWindowState>;
+    managerPendingUserMessage: TavernReadable<TavernManagerMessageRecord | null>;
     managerRuns: Ref<TavernManagerRunRecord[]>;
     managerRunTone: TavernCommand<[runOrStatus: TavernManagerRunRecord | string], string>;
     managerScrollControlsActive: Ref<boolean>;
@@ -493,17 +497,24 @@ export interface TavernMemoryContext {
     stateMemoryFile: Ref<TavernMemoryFileRecord | null>;
 }
 
+export type TavernChatWorkspacePanelKey = 'map' | 'status' | 'memory' | 'event';
+
 export interface TavernWorkspaceContext {
     activeMemoryFiles: TavernReadable<TavernMemoryIndexFileEntry[]>;
     activeMapDocId: Ref<string>;
     atlasActiveLocationKey: Ref<string>;
     atlasStateDocument: Ref<TavernStructuredStateDocumentRecord | null>;
     atlasStatePatches: Ref<TavernStructuredStatePatchRecord[]>;
-    chatWorkspacePanel: Ref<string>;
+    chatWorkspacePanel: Ref<TavernChatWorkspacePanelKey>;
     displayUserName: TavernReadable<string>;
     mapStateDocuments: Ref<TavernMapStateDocumentItem[]>;
     mapStateDocument: Ref<TavernStructuredStateDocumentRecord | null>;
     mapStatePatches: Ref<TavernStructuredStatePatchRecord[]>;
+    materialSymbolFontReady: TavernReadable<boolean>;
+    materialSymbolFontStatus: TavernReadable<'idle' | 'loading' | 'ready' | 'failed'>;
+    statusFieldDeltas: Ref<TavernStatusFieldDeltaMap>;
+    statusStateDocument: Ref<TavernStructuredStateDocumentRecord | null>;
+    statusStatePatches: Ref<TavernStructuredStatePatchRecord[]>;
     saveSessionContract: TavernCommand<[nextContract?: Partial<TavernSessionContract>], Promise<TavernSessionRecord | null>>;
     sessionContract: TavernReadable<TavernSessionContract>;
     stateMemoryFile: Ref<TavernMemoryFileRecord | null>;

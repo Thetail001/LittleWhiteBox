@@ -70,6 +70,7 @@ const {
     roleLabel,
     runtimeActionCheckEvents,
     runtimePendingUserMessage,
+    runtimeStatusElapsedSeconds,
     runtimeStatusLabel,
     runtimeText,
     runtimeThoughts,
@@ -188,7 +189,11 @@ const liveAssistantMarkdownVisible = computed(() => hasRenderableLiveAssistantMa
     actionCheckEvents: runtimeActionCheckEvents.value,
 }));
 const liveAssistantThoughtBlocks = computed(() => displayRuntimeThoughtBlocks(thoughtBlocks(runtimeThoughts.value)));
-const liveAssistantStatusLabel = computed(() => runtimeStatusLabel.value || '整理上下文');
+const liveAssistantStatusLabel = computed(() => {
+    const label = runtimeStatusLabel.value || '同步状态';
+    const elapsedSeconds = Math.max(0, Math.floor(Number(runtimeStatusElapsedSeconds.value) || 0));
+    return `${label} ${elapsedSeconds}s`;
+});
 const pendingUserVisible = computed(() => isRunning.value && !runtimeUserMessageVisible.value && !!runtimePendingUserMessage.value.trim());
 const pendingUserRenderState = computed(() => {
     const text = runtimePendingUserMessage.value.trim();

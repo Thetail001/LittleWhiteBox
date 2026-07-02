@@ -697,6 +697,13 @@
         z-index: 86;
     }
 
+    .tavern-chat.xb-page .chat-app-menu-shell-mobile .chat-app-menu-return-home {
+        margin-top: 4px;
+        border-top: 1px solid var(--xb-rule);
+        border-radius: 0 0 7px 7px;
+        padding-top: 8px;
+    }
+
     .tavern-chat.xb-page .chat-mobile-icon-button {
         width: 30px;
         min-width: 30px;
@@ -707,7 +714,7 @@
         border: 1px solid var(--xb-rule);
         border-radius: 999px;
         background: var(--xb-chat-pop-bg);
-        color: var(--xb-ink-soft);
+        color: var(--xb-control-icon);
         padding: 0;
         box-shadow: 0 3px 12px rgba(26, 26, 26, 0.035);
         font: 700 12px/1 var(--xb-font-ui);
@@ -726,6 +733,11 @@
     .tavern-chat.xb-page .chat-mobile-icon-button .chat-mobile-svg {
         width: 16px;
         height: 16px;
+    }
+
+    .tavern-chat.xb-page .chat-mobile-icon-button .chat-mobile-emoji {
+        font-size: 16px;
+        line-height: 1;
     }
 
     .tavern-chat.xb-page .chat-mobile-icon-button.chat-app-menu-button .chat-mobile-svg {
@@ -753,7 +765,7 @@
     }
 
     .tavern-chat.xb-page .chat-mobile-utility-button {
-        color: var(--xb-ink-faint);
+        color: var(--xb-control-icon);
     }
 
     .tavern-chat.xb-page .chat-mobile-icon-button:hover:not(:disabled),

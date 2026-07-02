@@ -66,6 +66,7 @@ import {
     runXbTavernManagerAfterTurn,
     runPendingAcceptedTurnManager,
 } from '../app-src/runtime/manager';
+import { rollbackImpactLines } from '../app-src/features/accepted-rollback/accepted-rollback';
 import {
     buildDefaultTavernCharacterMemoryContent,
     buildDefaultTavernMemoryStateContent,
@@ -102,6 +103,12 @@ import {
     type TavernAtlasDocument,
     type TavernMapDocument,
 } from '../shared/structured-state';
+import { resolveMapElementIconName } from '../shared/map-material-symbols';
+import {
+    TAVERN_STATUS_TOOL_NAMES,
+    executeTavernStatusTool,
+    listTavernStatusSnapshots,
+} from '../shared/status-state';
 import {
     abandonStaleTavernTasks,
     describeTavernTaskRestoreImpact,
@@ -609,6 +616,7 @@ test('replaceTavernSessionState preserves stored contract when runtime rebuild o
             contract: {
                 memoryArchiving: false,
                 cartographyEngine: false,
+                statusPanel: true,
                 actionChecks: true,
                 randomEncounters: true,
                 questOrchestration: false,
@@ -634,6 +642,7 @@ test('replaceTavernSessionState preserves stored contract when runtime rebuild o
         contract: {
             memoryArchiving: false,
             cartographyEngine: false,
+            statusPanel: true,
             actionChecks: true,
             randomEncounters: true,
             questOrchestration: false,
@@ -1432,12 +1441,32 @@ test('MapInspect tool schema documents summary-first and mode semantics', () => 
 test('MapPatch tool schema documents canonical ops and camera semantics', () => {
     const patchTool = getTavernStateToolDefinitions()
         .find((tool) => tool.function.name === 'MapPatch');
-    const parameters = patchTool?.function.parameters as {
-        properties?: Record<string, { description?: string; items?: { properties?: Record<string, { description?: string; properties?: Record<string, { description?: string; enum?: string[] }> }> } }>;
+    type SchemaNode = {
+        description?: string;
+        enum?: string[];
+        properties?: Record<string, SchemaNode>;
+        items?: SchemaNode;
+        anyOf?: SchemaNode[];
+        required?: string[];
     };
-    const opsProperties = parameters.properties?.ops?.items?.properties || {};
-    const elementProperties = opsProperties.element?.properties || {};
-    const setProperties = opsProperties.set?.properties || {};
+    const parameters = patchTool?.function.parameters as {
+        properties?: Record<string, SchemaNode>;
+        required?: string[];
+    };
+    const opSchemas = parameters.properties?.ops?.items?.anyOf || [];
+    const findOpSchema = (op: string) => {
+        const schema = opSchemas.find((candidate) => candidate.properties?.op?.enum?.includes(op));
+        assert.ok(schema, `missing MapPatch op schema for ${op}`);
+        return schema;
+    };
+    const metaOpProperties = findOpSchema('meta').properties || {};
+    const addOpProperties = findOpSchema('add').properties || {};
+    const modifyOpProperties = findOpSchema('modify').properties || {};
+    const atlasLocationOpProperties = findOpSchema('upsert-location').properties || {};
+    const elementProperties = addOpProperties.element?.properties || {};
+    const metaSetProperties = metaOpProperties.set?.properties || {};
+    const elementSetProperties = modifyOpProperties.set?.properties || {};
+    const atlasLocationSetProperties = atlasLocationOpProperties.set?.properties || {};
 
     assert.match(patchTool?.function.description || '', /For `tavern\.map`, canonical ops are `meta`, `add`, `modify`, and `remove`/);
     assert.match(patchTool?.function.description || '', /For `tavern\.atlas\/main`/);
@@ -1454,16 +1483,21 @@ test('MapPatch tool schema documents canonical ops and camera semantics', () => 
     assert.match(patchTool?.function.description || '', /Do not use floor, ground, surface, deck, platform, base, area, region, subtype, opacity/i);
     assert.match(patchTool?.function.description || '', /visual scale/i);
     assert.match(patchTool?.function.description || '', /splits the text into a system label element automatically/i);
-    assert.match(patchTool?.function.description || '', /Do not put house\/castle\/village\/forest\/temple\/shop icons inside a scene map/i);
+    assert.match(patchTool?.function.description || '', /`kind` drives map logic such as exits/i);
     assert.match(parameters.properties?.docId?.description || '', /atlas always uses `main`/i);
     assert.match(parameters.properties?.activate?.description || '', /With `ops:\[\]`, this only switches the active map/i);
-    assert.equal(Array.isArray((parameters as { required?: string[] }).required) && (parameters as { required?: string[] }).required.includes('ops'), false);
+    assert.equal(Array.isArray(parameters.required) && parameters.required.includes('ops'), false);
     assert.match(parameters.properties?.ops?.description || '', /Required unless `activate:true`/i);
-    assert.match(opsProperties.op?.description || '', /Map ops and atlas ops are selected by docType/i);
-    assert.match(opsProperties.set?.description || '', /For map `meta`\/`modify`/i);
-    assert.match(opsProperties.element?.description || '', /Full element object for `add`/i);
-    assert.match(opsProperties.element?.description || '', /never send empty `path:\[\]`/i);
-    assert.match(elementProperties.icon?.description || '', /Do not put place icons/i);
+    assert.equal(opSchemas.length, 9);
+    assert.match(metaOpProperties.set?.description || '', /For map `meta`/i);
+    assert.match(modifyOpProperties.set?.description || '', /For map `modify`/i);
+    assert.match(atlasLocationOpProperties.set?.description || '', /For atlas `upsert-location`/i);
+    assert.match(addOpProperties.element?.description || '', /Full element object for `add`/i);
+    assert.match(addOpProperties.element?.description || '', /never send empty `path:\[\]`/i);
+    assert.match(elementProperties.kind?.description || '', /closed system semantic/i);
+    assert.deepEqual(elementProperties.shape?.enum, ['icon']);
+    assert.match(elementProperties.shape?.description || '', /Explicit icon geometry/i);
+    assert.match(elementProperties.icon?.description || '', /Material Symbols official/i);
     assert.match(elementProperties.path?.description || '', /do not send an empty array/i);
     assert.match(elementProperties.curve?.description || '', /do not send an empty array/i);
     assert.deepEqual(elementProperties.material?.enum, [
@@ -1491,12 +1525,21 @@ test('MapPatch tool schema documents canonical ops and camera semantics', () => 
     assert.deepEqual(elementProperties.certainty?.enum, ['confirmed', 'inferred', 'unknown']);
     assert.equal(elementProperties.fill, undefined);
     assert.equal(elementProperties.style, undefined);
-    assert.equal(setProperties.fill, undefined);
-    assert.equal(setProperties.style, undefined);
-    assert.equal(setProperties.opacity, undefined);
-    assert.equal(setProperties.zIndex, undefined);
-    assert.deepEqual(setProperties.scale?.enum, ['city', 'district', 'building', 'floor', 'room', 'outdoor']);
-    assert.deepEqual(setProperties.material?.enum, [
+    assert.equal(metaSetProperties.at, undefined);
+    assert.equal(metaSetProperties.shape, undefined);
+    assert.equal(metaSetProperties.icon, undefined);
+    assert.deepEqual(metaSetProperties.status?.enum, ['uninitialized', 'active']);
+    assert.deepEqual(metaSetProperties.mood?.enum, ['neutral', 'warm', 'cold', 'dark', 'mystic', 'danger', 'calm']);
+    assert.equal(elementSetProperties.fill, undefined);
+    assert.equal(elementSetProperties.style, undefined);
+    assert.equal(elementSetProperties.opacity, undefined);
+    assert.equal(elementSetProperties.zIndex, undefined);
+    assert.equal(elementSetProperties.name, undefined);
+    assert.equal(elementSetProperties.viewBox, undefined);
+    assert.equal(elementSetProperties.status, undefined);
+    assert.deepEqual(elementSetProperties.shape?.enum, ['icon']);
+    assert.match(elementSetProperties.icon?.description || '', /does not change geometry/i);
+    assert.deepEqual(elementSetProperties.material?.enum, [
         'unknown',
         'wood',
         'stone',
@@ -1518,10 +1561,22 @@ test('MapPatch tool schema documents canonical ops and camera semantics', () => 
         'cold-light',
         'shadow',
     ]);
-    assert.deepEqual(setProperties.certainty?.enum, ['confirmed', 'inferred', 'unknown']);
+    assert.deepEqual(elementSetProperties.certainty?.enum, ['confirmed', 'inferred', 'unknown']);
+    assert.deepEqual(atlasLocationSetProperties.scale?.enum, ['city', 'district', 'building', 'floor', 'room', 'outdoor']);
+    assert.deepEqual(atlasLocationSetProperties.status?.enum, ['mentioned', 'visited']);
+    assert.equal(atlasLocationSetProperties.shape, undefined);
+    assert.equal(atlasLocationSetProperties.icon, undefined);
+    assert.equal(atlasLocationSetProperties.rect, undefined);
+    assert.equal(atlasLocationSetProperties.circle, undefined);
+    assert.equal(atlasLocationSetProperties.path, undefined);
+    assert.equal(atlasLocationSetProperties.curve, undefined);
+    assert.equal(atlasLocationSetProperties.at, undefined);
+    assert.equal(atlasLocationSetProperties.cat, undefined);
+    assert.equal(atlasLocationSetProperties.material, undefined);
+    assert.equal(atlasLocationSetProperties.certainty, undefined);
 });
 
-test('State tools support tavern atlas without entering map element semantics', async () => {
+test('Map tools support tavern atlas without entering map element semantics', async () => {
     await db.delete();
     await db.open();
 
@@ -1670,9 +1725,9 @@ test('Map activate does not move atlas and spatial digest uses atlas active map'
         ops: [
             { op: 'meta', set: { name: '办公室', viewBox: [0, 0, 400, 300], status: 'active', mood: 'cold' } },
             { op: 'add', element: { id: 'desk', cat: 'furniture', at: [90, 90], rect: [120, 60], text: '办公桌', material: 'metal' } },
-            { op: 'add', element: { id: 'door', cat: 'door', at: [200, 260], icon: 'o', text: '门' } },
-            { op: 'add', element: { id: 'player-office', cat: 'actor', actorKey: 'player', at: [200, 180], icon: 'o', text: '玛雅' } },
-            { op: 'add', element: { id: 'generic-user', cat: 'actor', actorKey: 'user', at: [240, 180], icon: 'o', text: '玩家' } },
+            { op: 'add', element: { id: 'door', cat: 'door', kind: 'door', at: [200, 260], shape: 'icon', icon: 'door_open', text: '门' } },
+            { op: 'add', element: { id: 'player-office', cat: 'actor', kind: 'player', actorKey: 'player', at: [200, 180], shape: 'icon', icon: 'person_pin_circle', text: '玛雅' } },
+            { op: 'add', element: { id: 'generic-user', cat: 'actor', actorKey: 'user', at: [240, 180], shape: 'icon', icon: 'person', text: '玩家' } },
         ],
     });
     await executeTavernStateTool(session.id, 'MapPatch', {
@@ -1725,7 +1780,7 @@ test('Map activate does not move atlas and spatial digest uses atlas active map'
         currentUserMessage: '看看四周。',
         memoryContext,
     });
-    assert.match(build.meta.rawMessagesJson, /空间状态/);
+    assert.match(build.meta.rawMessagesJson, /空间地图状态/);
     assert.match(build.meta.rawMessagesJson, /当前场景：办公室/);
     assert.match(build.meta.rawMessagesJson, /可互动：办公桌/);
     assert.doesNotMatch(build.meta.rawMessagesJson, /氛围：|材质：/);
@@ -1733,7 +1788,7 @@ test('Map activate does not move atlas and spatial digest uses atlas active map'
     assert.doesNotMatch(build.meta.rawMessagesJson, /地图：家/);
 });
 
-test('StatePatch creates and updates tavern map documents with semantic ops', async () => {
+test('MapPatch creates and updates tavern map documents with semantic ops', async () => {
     await db.delete();
     await db.open();
 
@@ -1813,7 +1868,7 @@ test('StatePatch creates and updates tavern map documents with semantic ops', as
     assert.equal(Array.isArray(removed?.[0]?.curve), true);
 });
 
-test('StatePatch rejects quoted ops, revision conflicts, invalid ids, and keeps atomic state', async () => {
+test('MapPatch rejects quoted ops, revision conflicts, invalid ids, and keeps atomic state', async () => {
     await db.delete();
     await db.open();
 
@@ -1847,7 +1902,7 @@ test('StatePatch rejects quoted ops, revision conflicts, invalid ids, and keeps 
     assert.equal(elements.some((element) => element.id === 'valid-later'), false);
 });
 
-test('StatePatch rejects map elements without drawable geometry', async () => {
+test('MapPatch rejects map elements without drawable geometry', async () => {
     await db.delete();
     await db.open();
 
@@ -1867,31 +1922,52 @@ test('StatePatch rejects map elements without drawable geometry', async () => {
     assert.equal(seed?.revision, 0);
     assert.equal((seed?.data as { meta?: { status?: string } })?.meta?.status, 'uninitialized');
 
-    const placeScaleIcon = await executeTavernStateTool(session.id, 'MapPatch', {
+    const iconOnly = await executeTavernStateTool(session.id, 'MapPatch', {
         ops: [
-            { op: 'add', element: { id: 'wrong-house-icon', type: 'icon', cat: 'marker', pos: [80, 40], icon: 'house' } },
+            { op: 'add', element: { id: 'bare-visual-icon', cat: 'marker', at: [80, 40], icon: 'location_on' } },
         ],
     });
-    assert.equal(placeScaleIcon.ok, false);
-    assert.equal(placeScaleIcon.changed, false);
-    assert.match(JSON.stringify(placeScaleIcon.details), /map_element_icon_place_scale:wrong-house-icon:house/);
+    assert.equal(iconOnly.ok, false);
+    assert.equal(iconOnly.changed, false);
+    assert.match(JSON.stringify(iconOnly.details), /map_element_shape_required:bare-visual-icon/);
+    const afterIconOnly = await getTavernStructuredStateDocument(session.id, 'tavern.map', 'main');
+    assert.equal(afterIconOnly?.revision, 0);
+
+    const fallbackIcon = await executeTavernStateTool(session.id, 'MapPatch', {
+        ops: [
+            { op: 'add', element: { id: 'invalid-visual-icon', type: 'icon', cat: 'marker', pos: [80, 40], icon: 'sword_icon' } },
+        ],
+    });
+    assert.equal(fallbackIcon.ok, true);
+    assert.equal(fallbackIcon.changed, true);
+    assert.match(JSON.stringify(fallbackIcon.warnings), /invalid Material Symbols icon/i);
+    let document = await getTavernStructuredStateDocument(session.id, 'tavern.map', 'main');
+    let elements = (document?.data as { elements?: Array<Record<string, unknown>> })?.elements || [];
+    const invalidVisualIcon = elements.find((element) => element.id === 'invalid-visual-icon');
+    assert.equal(invalidVisualIcon?.shape, 'icon');
+    assert.equal(invalidVisualIcon?.icon, undefined);
+    assert.equal(resolveMapElementIconName(invalidVisualIcon?.icon, {
+        kind: invalidVisualIcon?.kind,
+        cat: invalidVisualIcon?.cat,
+        actorKey: invalidVisualIcon?.actorKey,
+    }), 'location_on');
 
     const valid = await executeTavernStateTool(session.id, 'MapPatch', {
         ops: [
-            { op: 'add', element: { id: 'current-position', type: 'icon', cat: 'marker', pos: [60, 35], icon: 'o' } },
-            { op: 'add', element: { id: 'private-note', type: 'icon', cat: 'marker', pos: [72, 35], icon: 'heart' } },
+            { op: 'add', element: { id: 'current-position', type: 'icon', cat: 'marker', pos: [60, 35], icon: 'location_on' } },
+            { op: 'add', element: { id: 'private-note', type: 'icon', cat: 'marker', pos: [72, 35], icon: 'favorite' } },
             { op: 'add', element: { id: 'room-label', type: 'text', cat: 'label', pos: [60, 65], content: 'Forest clearing' } },
         ],
     });
 
     assert.equal(valid.ok, true);
     assert.equal(valid.appliedCount, 3);
-    const document = await getTavernStructuredStateDocument(session.id, 'tavern.map', 'main');
-    const elements = (document?.data as { elements?: Array<Record<string, unknown>> })?.elements || [];
-    assert.equal(elements.find((element) => element.id === 'private-note')?.icon, 'heart');
+    document = await getTavernStructuredStateDocument(session.id, 'tavern.map', 'main');
+    elements = (document?.data as { elements?: Array<Record<string, unknown>> })?.elements || [];
+    assert.equal(elements.find((element) => element.id === 'private-note')?.icon, 'favorite');
 });
 
-test('StatePatch accepts common map geometry aliases and explains failures', async () => {
+test('MapPatch accepts common map geometry aliases and explains failures', async () => {
     await db.delete();
     await db.open();
 
@@ -1952,7 +2028,7 @@ function createStoredMapRecord(
     };
 }
 
-test('StatePatch repairs stored map duplicate ids while keeping model input strict', async () => {
+test('MapPatch repairs stored map duplicate ids while keeping model input strict', async () => {
     await db.delete();
     await db.open();
 
@@ -1985,7 +2061,7 @@ test('StatePatch repairs stored map duplicate ids while keeping model input stri
     assert.match(duplicateInput.summary, /strict is duplicated/i);
 });
 
-test('StatePatch repairs stored geometry text collisions with derived labels', async () => {
+test('MapPatch repairs stored geometry text collisions with derived labels', async () => {
     await db.delete();
     await db.open();
 
@@ -2000,7 +2076,7 @@ test('StatePatch repairs stored geometry text collisions with derived labels', a
     assert.equal(atlas.ok, true);
     await putTavernStructuredStateDocument(createStoredMapRecord(session.id, [
         { id: '__label__player_actor', at: [1, 1], text: '玛雅', cat: 'label' },
-        { id: 'player_actor', at: [80, 90], icon: 'o', cat: 'actor', actorKey: 'player', text: '玛雅（压制）' },
+        { id: 'player_actor', at: [80, 90], icon: 'person_pin_circle', kind: 'player', cat: 'actor', actorKey: 'player', text: '玛雅（压制）' },
     ]));
 
     const spatial = await buildTavernSpatialStateDigest(session.id);
@@ -2012,12 +2088,12 @@ test('StatePatch repairs stored geometry text collisions with derived labels', a
     const actor = elements.find((element) => element.id === 'player_actor');
     const labels = elements.filter((element) => element.id === '__label__player_actor');
     assert.equal(actor?.text, undefined);
-    assert.equal(actor?.icon, 'o');
+    assert.equal(actor?.icon, 'person_pin_circle');
     assert.equal(labels.length, 1);
     assert.equal(labels[0]?.text, '玛雅（压制）');
 });
 
-test('StatePatch repairs stale derived labels when later stored geometry wins', async () => {
+test('MapPatch repairs stale derived labels when later stored geometry wins', async () => {
     await db.delete();
     await db.open();
 
@@ -2045,7 +2121,7 @@ test('StatePatch repairs stale derived labels when later stored geometry wins', 
     assert.equal(explicitElements.find((element) => element.id === '__label__dup')?.text, 'EXPLICIT');
 });
 
-test('StatePatch keeps system-derived label ids readable while rejecting reserved ids from model input', async () => {
+test('MapPatch keeps system-derived label ids readable while rejecting reserved ids from model input', async () => {
     await db.delete();
     await db.open();
 
@@ -2075,7 +2151,7 @@ test('StatePatch keeps system-derived label ids readable while rejecting reserve
     assert.match(reserved.summary, /reserved `__label__` prefix/i);
 });
 
-test('StatePatch stores map material mood certainty and treats repeated semantic patches as no-op', async () => {
+test('MapPatch stores map material mood certainty and treats repeated semantic patches as no-op', async () => {
     await db.delete();
     await db.open();
 
@@ -2085,7 +2161,7 @@ test('StatePatch stores map material mood certainty and treats repeated semantic
             { op: 'meta', set: { name: 'Old Hound Inn', viewBox: [0, 0, 400, 300], status: 'active', mood: 'warm' } },
             { op: 'add', element: { id: 'floor', at: [20, 20], rect: [360, 260], cat: 'terrain', material: 'wood' } },
             { op: 'add', element: { id: 'firelight', at: [60, 60], circle: 90, cat: 'light', material: 'warm-light' } },
-            { op: 'add', element: { id: 'uncertain-door', at: [190, 270], icon: 'o', cat: 'door', certainty: 'inferred' } },
+            { op: 'add', element: { id: 'uncertain-door', at: [190, 270], shape: 'icon', icon: 'door_open', kind: 'door', cat: 'door', certainty: 'inferred' } },
         ],
     });
     assert.equal(write.ok, true);
@@ -2110,7 +2186,7 @@ test('StatePatch stores map material mood certainty and treats repeated semantic
     assert.equal(data.elements.find((element) => element.id === 'uncertain-door')?.certainty, 'inferred');
 });
 
-test('StatePatch rejects material styling escape hatches and invalid enum churn', async () => {
+test('MapPatch rejects material styling escape hatches and invalid enum churn', async () => {
     await db.delete();
     await db.open();
 
@@ -2118,7 +2194,7 @@ test('StatePatch rejects material styling escape hatches and invalid enum churn'
     const write = await executeTavernStateTool(session.id, 'MapPatch', {
         ops: [
             { op: 'add', element: { id: 'rug', at: [40, 40], rect: [80, 50], cat: 'furniture', material: 'carpet', fill: '#ff0000' } },
-            { op: 'add', element: { id: 'ghost', at: [120, 80], icon: 'o', cat: 'actor', actorKey: 'ghost', material: 'shadow' } },
+            { op: 'add', element: { id: 'ghost', at: [120, 80], shape: 'icon', icon: 'person', cat: 'actor', actorKey: 'ghost', material: 'shadow' } },
             { op: 'add', element: { id: 'old-fill', at: [12, 12], rect: [24, 24], cat: 'terrain', fill: '#00ff00' } },
         ],
     });
@@ -2166,14 +2242,14 @@ test('StatePatch rejects material styling escape hatches and invalid enum churn'
     assert.equal(invalid.warnings?.some((warning) => /invalid map certainty.*maybe/i.test(warning)), true);
 });
 
-test('StatePatch replay preserves canonical field deletions', async () => {
+test('MapPatch replay preserves canonical field deletions', async () => {
     await db.delete();
     await db.open();
 
     const session = await createTavernSession({ title: 'Map replay canonical deletions' });
     const write = await executeTavernStateTool(session.id, 'MapPatch', {
         ops: [
-            { op: 'add', element: { id: 'door', at: [20, 20], icon: 'o', cat: 'door', certainty: 'inferred' } },
+            { op: 'add', element: { id: 'door', at: [20, 20], shape: 'icon', icon: 'door_open', kind: 'door', cat: 'door', certainty: 'inferred' } },
             { op: 'add', element: { id: 'floor', at: [0, 0], rect: [80, 60], cat: 'terrain', material: 'wood' } },
         ],
     });
@@ -2204,7 +2280,7 @@ test('StatePatch replay preserves canonical field deletions', async () => {
     assert.deepEqual(effectiveClearOps?.find((op) => op.op === 'modify' && op.id === 'floor')?.set, { material: null });
 });
 
-test('StatePatch label lifecycle skips terrain and light and clears stale derived labels', async () => {
+test('MapPatch label lifecycle skips terrain and light and clears stale derived labels', async () => {
     await db.delete();
     await db.open();
 
@@ -2247,7 +2323,7 @@ test('StatePatch label lifecycle skips terrain and light and clears stale derive
     assert.equal(elements.find((element) => element.id === 'rug')?.text, undefined);
 });
 
-test('StatePatch canonicalizes modify text on geometry into a derived label upsert', async () => {
+test('MapPatch canonicalizes modify text on geometry into a derived label upsert', async () => {
     await db.delete();
     await db.open();
 
@@ -2255,7 +2331,7 @@ test('StatePatch canonicalizes modify text on geometry into a derived label upse
     const add = await executeTavernStateTool(session.id, 'MapPatch', {
         ops: [{
             op: 'add',
-            element: { id: 'player_actor', at: [80, 90], icon: 'o', cat: 'actor', actorKey: 'player' },
+            element: { id: 'player_actor', at: [80, 90], shape: 'icon', icon: 'person_pin_circle', kind: 'player', cat: 'actor', actorKey: 'player' },
         }],
     });
     assert.equal(add.ok, true);
@@ -2276,7 +2352,7 @@ test('StatePatch canonicalizes modify text on geometry into a derived label upse
     const actor = storedElements.find((element) => element.id === 'player_actor');
     const labelElement = storedElements.find((element) => element.id === '__label__player_actor');
     assert.equal(actor?.text, undefined);
-    assert.equal(actor?.icon, 'o');
+    assert.equal(actor?.icon, 'person_pin_circle');
     assert.equal(actor?.actorKey, 'player');
     assert.equal(labelElement?.text, '玛雅（压制）');
 
@@ -2287,7 +2363,7 @@ test('StatePatch canonicalizes modify text on geometry into a derived label upse
     assert.equal(ids.filter((id) => id === '__label__player_actor').length, 1);
 });
 
-test('StatePatch canonicalizes modify shape plus text after candidate merge', async () => {
+test('MapPatch canonicalizes modify shape plus text after candidate merge', async () => {
     await db.delete();
     await db.open();
 
@@ -2319,13 +2395,57 @@ test('StatePatch canonicalizes modify shape plus text after candidate merge', as
     assert.equal(label?.text, '储物间');
 });
 
-test('StatePatch label upsert patch replays over bad derived labels canonically', async () => {
+test('MapPatch modify visual icon does not replace non-icon geometry', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Map visual icon boundary' });
+    const add = await executeTavernStateTool(session.id, 'MapPatch', {
+        ops: [
+            { op: 'add', element: { id: 'room', at: [20, 20], rect: [100, 100], cat: 'wall' } },
+            { op: 'add', element: { id: 'exit', at: [140, 20], shape: 'icon', icon: 'door_open', kind: 'door', cat: 'door' } },
+        ],
+    });
+    assert.equal(add.ok, true);
+
+    const clear = await executeTavernStateTool(session.id, 'MapPatch', {
+        ops: [{ op: 'modify', id: 'room', set: { icon: null } }],
+    });
+    const invalid = await executeTavernStateTool(session.id, 'MapPatch', {
+        ops: [
+            { op: 'modify', id: 'room', set: { icon: 'sword_icon' } },
+            { op: 'modify', id: 'exit', set: { icon: 'sword_icon' } },
+        ],
+    });
+    const convert = await executeTavernStateTool(session.id, 'MapPatch', {
+        ops: [{ op: 'modify', id: 'room', set: { shape: 'icon', kind: 'portal' } }],
+    });
+    const record = await getTavernStructuredStateDocument(session.id, 'tavern.map', 'main');
+    const elements = ((record?.data as { elements?: Array<Record<string, unknown>> })?.elements || []);
+    const room = elements.find((element) => element.id === 'room');
+    const exit = elements.find((element) => element.id === 'exit');
+
+    assert.equal(clear.ok, true);
+    assert.equal(clear.changed, false);
+    assert.equal(invalid.ok, true);
+    assert.equal(invalid.changed, false);
+    assert.match((invalid.warnings || []).join('\n'), /invalid Material Symbols icon/i);
+    assert.equal(exit?.shape, 'icon');
+    assert.equal(exit?.icon, 'door_open');
+    assert.equal(convert.ok, true);
+    assert.equal(room?.shape, 'icon');
+    assert.equal(room?.rect, undefined);
+    assert.equal(room?.icon, undefined);
+    assert.equal(resolveMapElementIconName(room?.icon, { kind: room?.kind, cat: room?.cat }), 'captive_portal');
+});
+
+test('MapPatch label upsert patch replays over bad derived labels canonically', async () => {
     await db.delete();
     await db.open();
 
     const session = await createTavernSession({ title: 'Map bad label replay' });
     const badDocument = createStoredMapRecord(session.id, [
-        { id: 'player_actor', at: [80, 90], icon: 'o', cat: 'actor', actorKey: 'player' },
+        { id: 'player_actor', at: [80, 90], icon: 'person_pin_circle', kind: 'player', cat: 'actor', actorKey: 'player' },
         { id: '__label__player_actor', at: [98, 72], rect: [30, 12], cat: 'marker', actorKey: 'bad-label-actor' },
     ]);
     await putTavernStructuredStateDocument(badDocument);
@@ -2356,7 +2476,7 @@ test('StatePatch label upsert patch replays over bad derived labels canonically'
     assert.equal(replayedLabel?.actorKey, undefined);
 });
 
-test('StatePatch keeps direct derived label modify canonical even with geometry input', async () => {
+test('MapPatch keeps direct derived label modify canonical even with geometry input', async () => {
     await db.delete();
     await db.open();
 
@@ -2364,7 +2484,7 @@ test('StatePatch keeps direct derived label modify canonical even with geometry 
     const add = await executeTavernStateTool(session.id, 'MapPatch', {
         ops: [{
             op: 'add',
-            element: { id: 'player_actor', at: [80, 90], icon: 'o', cat: 'actor', actorKey: 'player', text: '玛雅' },
+            element: { id: 'player_actor', at: [80, 90], shape: 'icon', icon: 'person_pin_circle', kind: 'player', cat: 'actor', actorKey: 'player', text: '玛雅' },
         }],
     });
     assert.equal(add.ok, true);
@@ -2396,7 +2516,7 @@ test('StatePatch keeps direct derived label modify canonical even with geometry 
     assert.equal(replayed.elements.some((element) => element.id === '__label____label__player_actor'), false);
 });
 
-test('StatePatch direct derived label style changes replay canonically', async () => {
+test('MapPatch direct derived label style changes replay canonically', async () => {
     await db.delete();
     await db.open();
 
@@ -2404,7 +2524,7 @@ test('StatePatch direct derived label style changes replay canonically', async (
     const add = await executeTavernStateTool(session.id, 'MapPatch', {
         ops: [{
             op: 'add',
-            element: { id: 'player_actor', at: [80, 90], icon: 'o', cat: 'actor', actorKey: 'player', text: '玛雅' },
+            element: { id: 'player_actor', at: [80, 90], shape: 'icon', icon: 'person_pin_circle', kind: 'player', cat: 'actor', actorKey: 'player', text: '玛雅' },
         }],
     });
     assert.equal(add.ok, true);
@@ -2458,7 +2578,7 @@ test('StatePatch direct derived label style changes replay canonically', async (
     assert.equal(replayedClearedLabel?.style, undefined);
 });
 
-test('StatePatch infers path anchors without at and keeps at optional in the public schema', async () => {
+test('MapPatch infers path anchors without at and keeps at optional in the public schema', async () => {
     await db.delete();
     await db.open();
 
@@ -2476,13 +2596,21 @@ test('StatePatch infers path anchors without at and keeps at optional in the pub
     assert.deepEqual(road?.at, [20, 160]);
     assert.deepEqual(road?.path, [[0, 0], [240, 0]]);
 
-    const statePatch = getTavernStateToolDefinitions().find((tool) => tool.function.name === 'MapPatch');
-    const required = (((statePatch?.function.parameters as { properties?: { ops?: { items?: { properties?: { element?: { required?: string[] } } } } } })
-        ?.properties?.ops?.items?.properties?.element?.required) || []);
+    const mapPatch = getTavernStateToolDefinitions().find((tool) => tool.function.name === 'MapPatch');
+    type SchemaNode = {
+        enum?: string[];
+        properties?: Record<string, SchemaNode>;
+        items?: SchemaNode;
+        anyOf?: SchemaNode[];
+        required?: string[];
+    };
+    const parameters = mapPatch?.function.parameters as { properties?: Record<string, SchemaNode> };
+    const addSchema = parameters.properties?.ops?.items?.anyOf?.find((candidate) => candidate.properties?.op?.enum?.includes('add'));
+    const required = addSchema?.properties?.element?.required || [];
     assert.equal(required.includes('at'), false);
 });
 
-test('StatePatch ignores model soft remove flags and still reports missing targets', async () => {
+test('MapPatch ignores model soft remove flags and still reports missing targets', async () => {
     await db.delete();
     await db.open();
 
@@ -2496,7 +2624,7 @@ test('StatePatch ignores model soft remove flags and still reports missing targe
     assert.match(result.summary, /missing does not exist/i);
 });
 
-test('StatePatch keeps weak maps uninitialized until they have spatial content', async () => {
+test('MapPatch keeps weak maps uninitialized until they have spatial content', async () => {
     await db.delete();
     await db.open();
 
@@ -2525,7 +2653,7 @@ test('StatePatch keeps weak maps uninitialized until they have spatial content',
     assert.equal(strongRead.meta?.status, 'active');
 });
 
-test('StatePatch accepts large initial map patches without the old low op ceiling', async () => {
+test('MapPatch accepts large initial map patches without the old low op ceiling', async () => {
     await db.delete();
     await db.open();
 
@@ -2549,7 +2677,7 @@ test('StatePatch accepts large initial map patches without the old low op ceilin
     assert.equal(((doc?.data as { elements?: unknown[] })?.elements || []).length, 120);
 });
 
-test('StatePatch dryRun keeps revision stable and legacy reset/init inputs are still absorbed atomically', async () => {
+test('MapPatch dryRun keeps revision stable and legacy reset/init inputs are still absorbed atomically', async () => {
     await db.delete();
     await db.open();
 
@@ -2596,7 +2724,7 @@ test('StatePatch dryRun keeps revision stable and legacy reset/init inputs are s
     assert.deepEqual(ids, ['new-room']);
 });
 
-test('StatePatch manager map writes are not rolled back by message rollback', async () => {
+test('MapPatch manager map writes are not rolled back by message rollback', async () => {
     await db.delete();
     await db.open();
 
@@ -2630,7 +2758,7 @@ test('StatePatch manager map writes are not rolled back by message rollback', as
     assert.equal((await listTavernStructuredStatePatches({ sessionId: session.id, includeRolledBack: true }))[0]?.status, 'active');
 });
 
-test('StatePatch serializes concurrent map writes without losing elements', async () => {
+test('MapPatch serializes concurrent map writes without losing elements', async () => {
     await db.delete();
     await db.open();
 
@@ -2654,7 +2782,7 @@ test('StatePatch serializes concurrent map writes without losing elements', asyn
     assert.deepEqual((await listTavernStructuredStatePatches({ sessionId: session.id })).map((patch) => patch.revision), [1, 2]);
 });
 
-test('StatePatch supports explicit active map switching without replacing other maps', async () => {
+test('MapPatch supports explicit active map switching without replacing other maps', async () => {
     await db.delete();
     await db.open();
 
@@ -2977,17 +3105,43 @@ test('MapSceneEdit edits the same named scene without relying on active map', as
         scene: '地下走廊',
         elements: [
             { id: 'corridor', cat: 'road', shape: 'path', geo: { points: [[0, 50], [260, 50]] }, label: '地下走廊' },
-            { id: 'door-east', cat: 'door', shape: 'icon', geo: { at: [260, 50], icon: 'door' }, label: '东门' },
+            { id: 'door-east', cat: 'door', kind: 'door', shape: 'icon', geo: { at: [260, 50] }, label: '东门' },
+        ],
+    });
+    const secondScene = await executeTavernStateTool(session.id, 'MapSceneRead', { scene: '地下走廊', mode: 'document' });
+    const secondDocument = secondScene.document as TavernMapDocument;
+    const doorBeforeKindChange = secondDocument.elements.find((element) => element.id === 'door-east');
+    const third = await executeTavernStateTool(session.id, 'MapSceneEdit', {
+        scene: '地下走廊',
+        elements: [
+            { id: 'door-east', cat: 'door', kind: 'portal', shape: 'icon', geo: { at: [260, 50] }, label: '传送门' },
         ],
     });
     const scene = await executeTavernStateTool(session.id, 'MapSceneRead', { scene: '地下走廊', mode: 'document' });
     const document = scene.document as TavernMapDocument;
+    const doorAfterKindChange = document.elements.find((element) => element.id === 'door-east');
 
     assert.equal(first.ok, true);
     assert.equal(second.ok, true);
+    assert.equal(third.ok, true);
     assert.equal(first.docId, second.docId);
+    assert.equal(second.docId, third.docId);
     assert.deepEqual(document.elements.find((element) => element.id === 'corridor')?.path, [[0, 0], [260, 0]]);
-    assert.equal(document.elements.some((element) => element.id === 'door-east'), true);
+    assert.equal(doorBeforeKindChange?.shape, 'icon');
+    assert.equal(doorBeforeKindChange?.icon, undefined);
+    assert.equal(resolveMapElementIconName(doorBeforeKindChange?.icon, {
+        kind: doorBeforeKindChange?.kind,
+        cat: doorBeforeKindChange?.cat,
+        actorKey: doorBeforeKindChange?.actorKey,
+    }), 'door_open');
+    assert.equal(doorAfterKindChange?.shape, 'icon');
+    assert.equal(doorAfterKindChange?.icon, undefined);
+    assert.equal(doorAfterKindChange?.kind, 'portal');
+    assert.equal(resolveMapElementIconName(doorAfterKindChange?.icon, {
+        kind: doorAfterKindChange?.kind,
+        cat: doorAfterKindChange?.cat,
+        actorKey: doorAfterKindChange?.actorKey,
+    }), 'captive_portal');
 });
 
 test('MapSceneEdit skips one bad element while saving clean canonical ops for the rest', async () => {
@@ -3078,7 +3232,8 @@ test('MapSceneEdit honors explicit shape when geo contains unrelated empty shape
                 id: 'front-door',
                 cat: 'door',
                 shape: 'icon',
-                geo: { at: [160, 190], icon: 'door', rect: [0, 0], radius: 0, path: [], curve: [] },
+                kind: 'door',
+                geo: { at: [160, 190], icon: 'door_open', rect: [0, 0], radius: 0, path: [], curve: [] },
                 label: '正门',
             },
             {
@@ -3104,7 +3259,8 @@ test('MapSceneEdit honors explicit shape when geo contains unrelated empty shape
 
     assert.equal(result.ok, true);
     assert.equal(result.skipped?.length, 0);
-    assert.equal(document.elements.find((element) => element.id === 'front-door')?.icon, 'door');
+    assert.equal(document.elements.find((element) => element.id === 'front-door')?.icon, 'door_open');
+    assert.equal(document.elements.find((element) => element.id === 'front-door')?.kind, 'door');
     assert.equal(document.elements.find((element) => element.id === 'round-table')?.circle, 18);
     assert.equal(document.elements.find((element) => element.id === 'hearth-light')?.circle, 45);
     assert.equal(savedOpsJson.includes('"rect":[0,0]'), false);
@@ -3124,7 +3280,8 @@ test('MapSceneEdit infers drawable shapes despite zero and empty geo pollution',
             {
                 id: 'front-door',
                 cat: 'door',
-                geo: { at: [180, 210], icon: 'door', rect: [0, 0], radius: 0, path: [], curve: [] },
+                kind: 'door',
+                geo: { at: [180, 210], icon: 'door_open', rect: [0, 0], radius: 0, path: [], curve: [] },
                 label: '正门',
             },
             {
@@ -3152,7 +3309,8 @@ test('MapSceneEdit infers drawable shapes despite zero and empty geo pollution',
 
     assert.equal(result.ok, true);
     assert.equal(result.skipped?.length, 0);
-    assert.equal(document.elements.find((element) => element.id === 'front-door')?.icon, 'door');
+    assert.equal(document.elements.find((element) => element.id === 'front-door')?.icon, 'door_open');
+    assert.equal(document.elements.find((element) => element.id === 'front-door')?.kind, 'door');
     assert.equal(document.elements.find((element) => element.id === 'round-table')?.circle, 22);
     assert.equal(document.elements.find((element) => element.id === 'hearth-light')?.circle, 54);
     assert.deepEqual(document.elements.find((element) => element.id === 'main-path')?.path, [[0, 0], [150, 10], [300, 0]]);
@@ -3172,11 +3330,11 @@ test('MapSceneEdit saves a complete tavern first map from common filled-geo mode
             { id: 'hall-floor', cat: 'terrain', shape: 'rect', geo: { center: [210, 149], size: [340, 226], rect: [0, 0], path: [], curve: [] }, material: 'wood' },
             { id: 'outer-wall', cat: 'wall', shape: 'rect', geo: { center: [210, 149], size: [340, 226], radius: 0, points: [], curve: [] }, material: 'stone', label: '测试小酒馆' },
             { id: 'bar-counter', cat: 'furniture', shape: 'rect', geo: { center: [118, 75], size: [104, 34], circle: 0, path: [] }, material: 'wood', label: '吧台' },
-            { id: 'front-door', cat: 'door', shape: 'icon', geo: { at: [210, 262], icon: 'door', rect: [0, 0], radius: 0, path: [], curve: [] }, label: '正门' },
+            { id: 'front-door', cat: 'door', kind: 'door', shape: 'icon', geo: { at: [210, 262], icon: 'door_open', rect: [0, 0], radius: 0, path: [], curve: [] }, label: '正门' },
             { id: 'round-table-a', cat: 'furniture', shape: 'circle', geo: { at: [250, 125], radius: 23, rect: [0, 0], path: [], curve: [] }, label: '圆桌' },
             { id: 'round-table-b', cat: 'furniture', shape: 'circle', geo: { at: [315, 178], radius: 20, rect: [0, 0], path: [], curve: [] }, label: '圆桌' },
             { id: 'hearth-light', cat: 'light', shape: 'circle', geo: { at: [333, 62], radius: 62, rect: [0, 0], path: [], curve: [] }, material: 'warm-light' },
-            { id: 'player-view', cat: 'actor', actorKey: 'player', shape: 'icon', geo: { at: [204, 205], icon: 'o', rect: [0, 0], radius: 0, path: [], curve: [] }, label: '玩家' },
+            { id: 'player-view', cat: 'actor', kind: 'player', actorKey: 'player', shape: 'icon', geo: { at: [204, 205], icon: 'person_pin_circle', rect: [0, 0], radius: 0, path: [], curve: [] }, label: '玩家' },
         ],
     });
     const scene = await executeTavernStateTool(session.id, 'MapSceneRead', { scene: '测试小酒馆', mode: 'document' });
@@ -3191,7 +3349,8 @@ test('MapSceneEdit saves a complete tavern first map from common filled-geo mode
     assert.deepEqual(document.elements.find((element) => element.id === 'hall-floor')?.at, [40, 36]);
     assert.deepEqual(document.elements.find((element) => element.id === 'outer-wall')?.at, [40, 36]);
     assert.deepEqual(document.elements.find((element) => element.id === 'bar-counter')?.at, [66, 58]);
-    assert.equal(document.elements.find((element) => element.id === 'front-door')?.icon, 'door');
+    assert.equal(document.elements.find((element) => element.id === 'front-door')?.icon, 'door_open');
+    assert.equal(document.elements.find((element) => element.id === 'front-door')?.kind, 'door');
     assert.equal(document.elements.find((element) => element.id === 'round-table-a')?.circle, 23);
     assert.equal(document.elements.find((element) => element.id === 'round-table-b')?.circle, 20);
     assert.equal(document.elements.find((element) => element.id === 'hearth-light')?.circle, 62);
@@ -3213,10 +3372,10 @@ test('MapSceneEdit treats rect at as center so model-centered layouts stay align
         theme: 'parchment',
         elements: [
             { id: 'floor-main', cat: 'terrain', shape: 'rect', geo: { at: [0, 0], size: [220, 140] }, material: 'wood' },
-            { id: 'table-west', cat: 'furniture', shape: 'icon', geo: { at: [-70, -35], icon: 'table' }, material: 'wood', label: '西侧桌' },
-            { id: 'table-east', cat: 'furniture', shape: 'icon', geo: { at: [45, -25], icon: 'table' }, material: 'wood', label: '东侧桌' },
-            { id: 'door-south', cat: 'door', shape: 'icon', geo: { at: [0, 70], icon: 'door' }, material: 'wood', label: '南门' },
-            { id: 'actor-player', cat: 'actor', actorKey: 'player', shape: 'icon', geo: { at: [0, 25], icon: 'o' }, material: 'unknown', label: '你' },
+            { id: 'table-west', cat: 'furniture', shape: 'icon', geo: { at: [-70, -35], icon: 'table_bar' }, material: 'wood', label: '西侧桌' },
+            { id: 'table-east', cat: 'furniture', shape: 'icon', geo: { at: [45, -25], icon: 'table_bar' }, material: 'wood', label: '东侧桌' },
+            { id: 'door-south', cat: 'door', kind: 'door', shape: 'icon', geo: { at: [0, 70], icon: 'door_open' }, material: 'wood', label: '南门' },
+            { id: 'actor-player', cat: 'actor', kind: 'player', actorKey: 'player', shape: 'icon', geo: { at: [0, 25], icon: 'person_pin_circle' }, material: 'unknown', label: '你' },
         ],
     });
     const scene = await executeTavernStateTool(session.id, 'MapSceneRead', { scene: '测试酒馆', mode: 'document' });
@@ -3317,7 +3476,7 @@ test('MapSceneEdit clears an existing derived label when label is empty', async 
     assert.equal(savedOps.some((op) => op.op === 'remove' && op.id === '__label__room'), true);
 });
 
-test('StatePatch dedupes actors by actorKey across map documents', async () => {
+test('MapPatch dedupes actors by actorKey across map documents', async () => {
     await db.delete();
     await db.open();
 
@@ -3337,7 +3496,7 @@ test('StatePatch dedupes actors by actorKey across map documents', async () => {
         activate: true,
         ops: [
             { op: 'meta', set: { name: '办公室' } },
-            { op: 'add', element: { id: 'player-office', at: [20, 20], icon: 'o', cat: 'actor', actorKey: 'player', text: '玩家' } },
+            { op: 'add', element: { id: 'player-office', at: [20, 20], shape: 'icon', icon: 'person_pin_circle', kind: 'player', cat: 'actor', actorKey: 'player', text: '玩家' } },
         ],
     });
     await executeTavernStateTool(session.id, 'MapPatch', {
@@ -3345,7 +3504,7 @@ test('StatePatch dedupes actors by actorKey across map documents', async () => {
         activate: true,
         ops: [
             { op: 'meta', set: { name: '家' } },
-            { op: 'add', element: { id: 'player-home', at: [80, 60], icon: 'o', cat: 'actor', actorKey: 'player', text: '玩家' } },
+            { op: 'add', element: { id: 'player-home', at: [80, 60], shape: 'icon', icon: 'person_pin_circle', kind: 'player', cat: 'actor', actorKey: 'player', text: '玩家' } },
         ],
     }, {
         managerRunId: run.id,
@@ -3379,7 +3538,7 @@ test('StatePatch dedupes actors by actorKey across map documents', async () => {
     assert.deepEqual(homeActors.map((element) => element.id), ['player-home']);
 });
 
-test('StatePatch actor dedupe keeps same-document patch replay equivalent', async () => {
+test('MapPatch actor dedupe keeps same-document patch replay equivalent', async () => {
     await db.delete();
     await db.open();
 
@@ -3388,8 +3547,8 @@ test('StatePatch actor dedupe keeps same-document patch replay equivalent', asyn
         docId: 'office',
         ops: [
             { op: 'meta', set: { name: '办公室' } },
-            { op: 'add', element: { id: 'player-east', at: [20, 20], icon: 'o', cat: 'actor', actorKey: 'player', text: '玩家东侧' } },
-            { op: 'add', element: { id: 'player-west', at: [80, 60], icon: 'o', cat: 'actor', actorKey: 'player', text: '玩家西侧' } },
+            { op: 'add', element: { id: 'player-east', at: [20, 20], shape: 'icon', icon: 'person_pin_circle', kind: 'player', cat: 'actor', actorKey: 'player', text: '玩家东侧' } },
+            { op: 'add', element: { id: 'player-west', at: [80, 60], shape: 'icon', icon: 'person_pin_circle', kind: 'player', cat: 'actor', actorKey: 'player', text: '玩家西侧' } },
         ],
     });
 
@@ -3415,18 +3574,18 @@ test('StatePatch actor dedupe keeps same-document patch replay equivalent', asyn
     assert.deepEqual(replayed, office?.data);
 });
 
-test('StatePatch actor dedupe falls back to actor id when actorKey is missing', async () => {
+test('MapPatch actor dedupe falls back to actor id when actorKey is missing', async () => {
     await db.delete();
     await db.open();
 
     const session = await createTavernSession({ title: 'Actor id fallback' });
     await executeTavernStateTool(session.id, 'MapPatch', {
         docId: 'street',
-        ops: [{ op: 'add', element: { id: 'npc-kai', at: [10, 10], icon: 'o', cat: 'actor', text: '凯恩' } }],
+        ops: [{ op: 'add', element: { id: 'npc-kai', at: [10, 10], shape: 'icon', icon: 'person', cat: 'actor', text: '凯恩' } }],
     });
     await executeTavernStateTool(session.id, 'MapPatch', {
         docId: 'bar',
-        ops: [{ op: 'add', element: { id: 'npc-kai', at: [30, 30], icon: 'o', cat: 'actor', text: '凯恩' } }],
+        ops: [{ op: 'add', element: { id: 'npc-kai', at: [30, 30], shape: 'icon', icon: 'person', cat: 'actor', text: '凯恩' } }],
     });
 
     const street = await getTavernStructuredStateDocument(session.id, 'tavern.map', 'street');
@@ -3473,7 +3632,7 @@ test('manager range cancellation does not roll back map-only writes', async () =
     assert.equal((await listTavernManagerRuns(session.id))[0]?.status, 'cancelled');
 });
 
-test('State tools are in the unified manager tool schema', () => {
+test('Map tools are in the unified manager tool schema', () => {
     const names = getTavernManagerToolDefinitions().map((tool) => tool.function.name);
     assert.deepEqual(names.filter((name) => ['LS', 'Grep', 'Read', 'Edit', 'Write', 'MapDocs', 'MapInspect', 'MapPatch', 'MapAtlasRead', 'MapSceneRead', 'MapSceneEdit', 'EventInspect', 'EventPatch'].includes(name)).sort(), [
         'Edit',
@@ -3498,11 +3657,11 @@ test('State tools are in the unified manager tool schema', () => {
     assert.equal(names.includes('StatePatch'), false);
     assert.equal(names.includes('TaskPatch'), false);
 
-    const statePatch = getTavernStateToolDefinitions().find((tool) => tool.function.name === 'MapPatch');
-    assert.match(statePatch?.function.description || '', /Canonical ops are .*meta.*add.*modify.*remove/i);
-    assert.match(statePatch?.function.description || '', /one atomic transaction/);
-    assert.match(statePatch?.function.description || '', /at:\[x,y\]/);
-    assert.match(statePatch?.function.description || '', /Legacy .*init.*reset.*replace.*still absorbed/i);
+    const mapPatch = getTavernStateToolDefinitions().find((tool) => tool.function.name === 'MapPatch');
+    assert.match(mapPatch?.function.description || '', /Canonical ops are .*meta.*add.*modify.*remove/i);
+    assert.match(mapPatch?.function.description || '', /one atomic transaction/);
+    assert.match(mapPatch?.function.description || '', /at:\[x,y\]/);
+    assert.match(mapPatch?.function.description || '', /Legacy .*init.*reset.*replace.*still absorbed/i);
 
     const eventInspect = getTavernManagerToolDefinitions().find((tool) => tool.function.name === 'EventInspect');
     const eventInspectSchema = JSON.stringify(eventInspect?.function.parameters || {});
@@ -3900,7 +4059,7 @@ test('event snapshots restore covering event pool and trim future snapshots', as
     assert.deepEqual((await listTavernTaskSnapshots(session.id)).map((snapshot) => snapshot.floor), [5]);
 });
 
-test('accepted state snapshot saves memory and tasks on the same floor', async () => {
+test('accepted state snapshot saves memory, tasks, and status on the same floor', async () => {
     await db.delete();
     await db.open();
 
@@ -3917,13 +4076,34 @@ test('accepted state snapshot saves memory and tasks on the same floor', async (
         doneWhen: '角色当场说出答案。',
         hookForModel: '同楼层软句。',
     }, { sourceAssistantOrder: 1 });
+    await executeTavernStatusTool(session.id, TAVERN_STATUS_TOOL_NAMES.INIT, {
+        document: {
+            meta: { activeSubject: 'user' },
+            subjects: [{
+                id: 'user',
+                name: '测试角色',
+                tabs: [{
+                    id: 'overview',
+                    label: '概览',
+                    blocks: [{
+                        id: 'stats',
+                        title: '属性',
+                        form: 'gauge',
+                        fields: [{ id: 'san', name: '理智', value: 50, max: 100 }],
+                    }],
+                }],
+            }],
+        },
+    }, { sourceAssistantOrder: 1 });
 
     const saved = await saveAcceptedStateSnapshot(session.id);
     assert.equal(saved.floor, 1);
     assert.equal(saved.memorySnapshotSaved, true);
     assert.equal(saved.taskSnapshotSaved, true);
+    assert.equal(saved.statusSnapshotSaved, true);
     assert.equal((await listTavernMemorySnapshots(session.id))[0]?.floor, 1);
     assert.equal((await listTavernTaskSnapshots(session.id))[0]?.floor, 1);
+    assert.equal((await listTavernStatusSnapshots(session.id))[0]?.floor, 1);
 });
 
 test('accepted state snapshot can explicitly anchor user-confirmed memory edits to the latest user order', async () => {
@@ -4004,6 +4184,66 @@ test('accepted state snapshot can anchor user-initiated manager chat changes to 
     assert.deepEqual(result.changedFiles, ['memory/state.md']);
     assert.equal(saved.floor, userMessage.order);
     assert.deepEqual((await listTavernMemorySnapshots(session.id)).map((snapshot) => snapshot.floor), [userMessage.order]);
+});
+
+test('accepted state snapshots use floor-aware dedupe for memory, tasks, and status', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Floor-aware accepted snapshots' });
+    await appendTavernMessage(session.id, { role: 'user', content: '第一轮。' });
+    const assistant1 = await appendTavernMessage(session.id, { role: 'assistant', content: '第一轮回复。' });
+    const user2 = await appendTavernMessage(session.id, { role: 'user', content: '请按我的修正更新。' });
+    const assistant2 = await appendTavernMessage(session.id, { role: 'assistant', content: '已更新。' });
+
+    await writeTavernMemoryFile(session.id, 'memory/state.md', '# 会话记忆\n\n旧状态。', { source: 'manager' });
+    await executeTavernStatusTool(session.id, TAVERN_STATUS_TOOL_NAMES.INIT, {
+        document: {
+            meta: { activeSubject: 'user' },
+            subjects: [{
+                id: 'user',
+                name: '测试角色',
+                tabs: [{
+                    id: 'overview',
+                    label: '概览',
+                    blocks: [{
+                        id: 'stats',
+                        title: '属性',
+                        form: 'gauge',
+                        fields: [{ id: 'san', name: '理智', value: 40, max: 100 }],
+                    }],
+                }],
+            }],
+        },
+    }, { sourceAssistantOrder: assistant1.order });
+    await saveAcceptedStateSnapshot(session.id, assistant1.order);
+
+    await writeTavernMemoryFile(session.id, 'memory/state.md', '# 会话记忆\n\n用户确认的新状态。', { source: 'user' });
+    await executeTavernTaskTool(session.id, 'EventPatch', {
+        op: 'upsert-event',
+        eventId: 'user-anchor-task',
+        title: '用户锚点事件',
+        horizon: '用户锚点远景',
+        current: '用户锚点当前',
+        doneWhen: '用户锚点完成。',
+        hookForModel: '用户锚点软句。',
+    }, { sourceAssistantOrder: assistant2.order });
+    await executeTavernStatusTool(session.id, TAVERN_STATUS_TOOL_NAMES.PATCH, {
+        ops: [
+            { op: 'set', subjectId: 'user', tabId: 'overview', blockId: 'stats', fieldId: 'san', value: 80 },
+        ],
+    }, { caller: 'chat' });
+
+    await saveAcceptedStateSnapshot(session.id, assistant2.order);
+    const userAnchor = await saveAcceptedStateSnapshot(session.id, user2.order);
+
+    assert.equal(userAnchor.floor, user2.order);
+    assert.equal(userAnchor.memorySnapshotSaved, true);
+    assert.equal(userAnchor.taskSnapshotSaved, true);
+    assert.equal(userAnchor.statusSnapshotSaved, true);
+    assert.deepEqual((await listTavernMemorySnapshots(session.id)).map((snapshot) => snapshot.floor), [assistant1.order, user2.order, assistant2.order]);
+    assert.deepEqual((await listTavernTaskSnapshots(session.id)).map((snapshot) => snapshot.floor), [assistant1.order, user2.order, assistant2.order]);
+    assert.deepEqual((await listTavernStatusSnapshots(session.id)).map((snapshot) => snapshot.floor), [assistant1.order, user2.order, assistant2.order]);
 });
 
 test('accepted state snapshot preserves user memory edits against later rollback', async () => {
@@ -4438,11 +4678,11 @@ test('tavern auto manager prompt omits unauthorized module instructions from bot
     });
     assert.match(mapPrompt, /MapAtlasRead/);
     assert.match(mapPrompt, /MapSceneEdit/);
-    assert.match(mapPrompt, /Scene-map construction order/i);
+    assert.match(mapPrompt, /Construction order/i);
     assert.match(mapPrompt, /Closed or contained scenes usually need both a filled main surface/i);
-    assert.match(mapPrompt, /Use `cat:\\"terrain\\"` for the main continuous scene surface or filled base area/i);
-    assert.match(mapPrompt, /Open scenes are the exception/i);
-    assert.match(mapPrompt, /This contract authorizes only the map system\. Do not write memory Markdown\./i);
+    assert.match(mapPrompt, /`cat:\\"terrain\\"` for the main continuous surface or filled base area/i);
+    assert.match(mapPrompt, /Open scenes .* may use a main surface/i);
+    assert.match(mapPrompt, /Each domain owns its own records: map is spatial records, status panel is UI state/i);
     assert.doesNotMatch(mapPrompt, /Edit and Write/);
     assert.doesNotMatch(mapPrompt, /memory\/session\.md/);
     assert.doesNotMatch(mapPrompt, /建议流水路径：/);
@@ -4482,7 +4722,7 @@ test('tavern auto manager prompt omits unauthorized module instructions from bot
     assert.match(questPrompt, /last advanced floor: 5/);
     assert.match(questPrompt, /Active count: 1\/3/);
     assert.doesNotMatch(questPrompt, /user hook|fingerprint|莉娜绕开旧码头名字/);
-    assert.doesNotMatch(questPrompt, /\[Resident Memory Files\]/);
+    assert.doesNotMatch(questPrompt, /\[Global memory state\.md\]/);
 });
 
 test('tavern auto manager denies unauthorized Write without side effects', async () => {
@@ -4564,7 +4804,7 @@ test('tavern auto manager denies unauthorized MapPatch without side effects', as
                     arguments: {
                         ops: [{
                             op: 'add',
-                            element: { id: 'marker', at: [80, 60], icon: 'o', cat: 'marker' },
+                            element: { id: 'marker', at: [80, 60], shape: 'icon', icon: 'location_on', cat: 'marker' },
                         }],
                     },
                 }],
@@ -5236,7 +5476,8 @@ test('accepted-turn tavern manager prompts for global and character memory witho
     const session = await createTavernSession({ title: 'State and character memory' });
     const currentUser = await appendTavernMessage(session.id, { role: 'user', content: '第三轮。' });
     const currentAssistant = await appendTavernMessage(session.id, { role: 'assistant', content: '第三轮回复。' });
-    let managerPrompt = '';
+    let managerSystemPrompt = '';
+    let managerUserPrompt = '';
 
     const result = await runXbTavernManagerAfterTurn({
         sessionId: session.id,
@@ -5245,18 +5486,21 @@ test('accepted-turn tavern manager prompts for global and character memory witho
         assistantMessage: currentAssistant,
         turn: 3,
         executeManagerOnce: async (options) => {
-            managerPrompt = String(options.messages?.[1]?.content || '');
+            managerSystemPrompt = String(options.messages?.[0]?.content || '');
+            managerUserPrompt = String(options.messages?.[1]?.content || '');
             return { text: '已检查小记覆盖。' };
         },
     });
 
     assert.equal(result.ok, true);
-    assert.match(managerPrompt, /memory\/state\.md/);
-    assert.match(managerPrompt, /memory\/characters\/<角色名>\.md/);
-    assert.match(managerPrompt, /only if this accepted assistant reply changed durable memory/i);
-    assert.doesNotMatch(managerPrompt, /楼层小记覆盖/);
-    assert.doesNotMatch(managerPrompt, /建议流水路径/);
-    assert.doesNotMatch(managerPrompt, /memory\/turns/);
+    assert.match(managerSystemPrompt, /memory\/state\.md/);
+    assert.match(managerSystemPrompt, /memory\/characters\/<name>\.md/);
+    assert.match(managerSystemPrompt, /accepted reply actually establishes a new long-term fact/i);
+    assert.match(managerUserPrompt, /\[Global memory state\.md\]/);
+    assert.match(managerUserPrompt, /\[Character memory filename list\]/);
+    assert.doesNotMatch(managerSystemPrompt + managerUserPrompt, /楼层小记覆盖/);
+    assert.doesNotMatch(managerSystemPrompt + managerUserPrompt, /建议流水路径/);
+    assert.doesNotMatch(managerSystemPrompt + managerUserPrompt, /memory\/turns/);
 });
 
 test('tavern manager accepts arbitrary state markdown without schema parsing', async () => {
@@ -5874,6 +6118,65 @@ test('rollback impact ignores old manager writes once current memory and tasks a
     assert.equal(managerImpact.writtenTaskRuns, 1);
 });
 
+test('rollback impact reports status-only manager writes as state rollback', async () => {
+    await db.delete();
+    await db.open();
+
+    const session = await createTavernSession({ title: 'Status rollback impact' });
+    const userMessage = await appendTavernMessage(session.id, { role: 'user', content: '第一轮。' });
+    const assistantMessage = await appendTavernMessage(session.id, { role: 'assistant', content: '第一轮回复。' });
+    const run = await createTavernManagerRun({
+        sessionId: session.id,
+        turn: 1,
+        userOrder: userMessage.order,
+        assistantOrder: assistantMessage.order,
+        trigger: 'after_turn',
+        status: 'completed',
+    });
+
+    const write = await executeTavernStatusTool(session.id, TAVERN_STATUS_TOOL_NAMES.INIT, {
+        document: {
+            meta: { activeSubject: 'user' },
+            subjects: [{
+                id: 'user',
+                name: '测试角色',
+                tabs: [{
+                    id: 'overview',
+                    label: '概览',
+                    blocks: [{
+                        id: 'stats',
+                        title: '属性',
+                        form: 'gauge',
+                        fields: [{ id: 'san', name: '理智', value: 50, max: 100 }],
+                    }],
+                }],
+            }],
+        },
+    }, {
+        caller: 'auto',
+        managerRunId: run.id,
+        sourceUserOrder: userMessage.order,
+        sourceAssistantOrder: assistantMessage.order,
+    });
+    assert.equal(write.ok, true);
+
+    const managerImpact = await describeXbTavernManagerRollbackImpactForMessageRange(session.id, assistantMessage.order);
+
+    assert.equal(managerImpact.hasWrittenState, true);
+    assert.equal(managerImpact.writtenMemoryFiles, 0);
+    assert.equal(managerImpact.writtenTaskRuns, 0);
+    assert.equal(managerImpact.writtenStatusPatches, 1);
+    assert.deepEqual(rollbackImpactLines({
+        targetFloor: assistantMessage.order - 1,
+        memory: { changed: false, currentFileCount: 0, targetFileCount: 0, changedPaths: [] },
+        tasks: { changed: false, currentTaskCount: 0, targetTaskCount: 0 },
+        status: { changed: true, currentExists: true, targetExists: false },
+        managers: managerImpact,
+        willRollbackState: true,
+        willCancelWork: false,
+    }), [`状态栏会恢复到第 ${assistantMessage.order} 楼后的状态。`]);
+});
+
 test('tavern manager memory rollback is idempotent', async () => {
     await db.delete();
     await db.open();
@@ -6076,7 +6379,7 @@ test('tavern manager chat carries persisted manager history and can read RP raw 
     assert.equal(result.ok, true);
     const firstMessages = JSON.parse(firstRoundMessages) as Array<{ role?: string; content?: string }>;
     assert.equal(firstMessages[0]?.role, 'system');
-    assert.match(firstMessages[0]?.content || '', /小白酒馆后台管理员/);
+    assert.match(firstMessages[0]?.content || '', /# Backstage Manager — LittleWhiteTavern/);
     assert.match(firstRoundMessages, /先前问：这段关系现在到哪了/);
     assert.match(firstRoundMessages, /先前答：还在试探阶段/);
     assert.match(firstRoundMessages, /继续看原文，帮我判断/);

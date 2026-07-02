@@ -15,6 +15,8 @@
     --xb-accent-rgb: 192, 109, 99;
     --xb-theme-split-bg: rgba(27, 25, 22, 0.74);
     --xb-control-bg: rgba(184, 178, 166, 0.045);
+    --xb-control-icon: var(--xb-text-body);
+    --xb-control-icon-muted: var(--xb-text-muted);
     --xb-bg-deep: #151311;
     --xb-bg-editor: #1b1916;
     --xb-bg-agent: #1f1d19;
@@ -61,6 +63,8 @@
     --xb-accent-rgb: 192, 109, 99;
     --xb-theme-split-bg: rgba(27, 25, 22, 0.74);
     --xb-control-bg: rgba(184, 178, 166, 0.045);
+    --xb-control-icon: var(--xb-text-body);
+    --xb-control-icon-muted: var(--xb-text-muted);
     --xb-machine: #11100e;
     --xb-machine-panel: #171511;
     --xb-machine-line: rgba(184, 178, 166, 0.14);
@@ -106,6 +110,8 @@
     --xb-accent-rgb: 140, 42, 42;
     --xb-theme-split-bg: rgba(234, 232, 223, 0.72);
     --xb-control-bg: rgba(255, 255, 255, 0.38);
+    --xb-control-icon: var(--xb-ink-soft);
+    --xb-control-icon-muted: var(--xb-ink-faint);
     --xb-machine: #141414;
     --xb-machine-panel: #1d1d1b;
     --xb-machine-line: #34322d;

@@ -232,7 +232,7 @@ export function useTavernMarkdownTools(options: TavernMarkdownToolsOptions) {
         const raw = renderOptions.roleplay
             ? preprocessTavernRoleplayMarkdown(text, renderOptions)
             : String(text || '');
-        const markdownOptions = renderOptions.roleplay ? { htmlFenceMode: 'code', protectRawHtmlBoundaries: false } : {};
+        const markdownOptions = renderOptions.roleplay ? { htmlFenceMode: 'code' } : {};
         const canCache = !/(^|\n)(`{3,}|~{3,})[ \t]*(html|htm|xhtml|xml|svg|vue|svelte)?\b/i.test(raw)
             && !renderOptions.roleplay;
         const cacheKey = markdownSignature(raw);
@@ -961,13 +961,40 @@ export function useTavernMarkdownTools(options: TavernMarkdownToolsOptions) {
         return event.success ? 'is-success' : 'is-failure';
     }
 
+    function actionCheckDifficultyLabel(event: TavernActionCheckRuntimeEvent) {
+        if (event.difficultyLabel === 'easy') {return '简单';}
+        if (event.difficultyLabel === 'ordinary') {return '普通';}
+        if (event.difficultyLabel === 'hard') {return '困难';}
+        if (event.difficultyLabel === 'very_hard') {return '极难';}
+        if (event.difficultyLabel === 'nearly_impossible') {return '几乎不可能';}
+        return String(event.difficulty || '普通');
+    }
+
+    function actionCheckNumberLabel(value: unknown): string {
+        const number = Number(value);
+        if (!Number.isFinite(number)) {return '';}
+        return Number.isInteger(number) ? String(number) : number.toFixed(1).replace(/\.0$/, '');
+    }
+
+    function actionCheckTitle(event: TavernActionCheckRuntimeEvent) {
+        const character = String(event.character || '').trim();
+        const stat = String(event.stat || '').trim();
+        const statValue = event.mode === 'statusGauge' ? actionCheckNumberLabel(event.statValue) : '';
+        const statLabel = statValue ? `${stat} ${statValue}` : stat;
+        return character ? `${character} ${statLabel}` : statLabel;
+    }
+
     function buildActionCheckAriaLabel(event: TavernActionCheckRuntimeEvent) {
         const outcome = actionCheckOutcomeLabel(event);
         const action = String(event.action || '').trim();
         const stakes = String(event.stakes || '').trim();
+        const isStatusGauge = event.mode === 'statusGauge';
+        const title = actionCheckTitle(event);
         return [
-            `行动判定：${event.stat}。`,
-            `掷骰 ${event.roll} 对抗难度 ${event.difficulty}。`,
+            `行动判定：${title}。`,
+            isStatusGauge
+                ? `掷骰 ${event.roll}，难度${actionCheckDifficultyLabel(event)}。`
+                : `掷骰 ${event.roll} 对抗难度 ${event.difficulty}。`,
             `${outcome}。`,
             action ? `行动意图：${action}。` : '',
             stakes ? `风险：${stakes}。` : '',
@@ -984,7 +1011,7 @@ export function useTavernMarkdownTools(options: TavernMarkdownToolsOptions) {
         head.className = 'action-check-card-head';
 
         const title = document.createElement('strong');
-        title.textContent = event.stat;
+        title.textContent = actionCheckTitle(event);
         head.append(title);
 
         const outcome = document.createElement('span');
@@ -994,6 +1021,7 @@ export function useTavernMarkdownTools(options: TavernMarkdownToolsOptions) {
 
         const grid = document.createElement('span');
         grid.className = 'action-check-card-grid';
+        const isStatusGauge = event.mode === 'statusGauge';
         [{
             className: 'action-check-card-roll',
             label: '掷骰',
@@ -1001,7 +1029,7 @@ export function useTavernMarkdownTools(options: TavernMarkdownToolsOptions) {
         }, {
             className: 'action-check-card-dc',
             label: '难度',
-            value: String(event.difficulty),
+            value: isStatusGauge ? actionCheckDifficultyLabel(event) : String(event.difficulty),
         }].forEach((item) => {
             const cell = document.createElement('span');
             cell.className = item.className;

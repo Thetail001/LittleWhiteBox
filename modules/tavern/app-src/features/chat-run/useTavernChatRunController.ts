@@ -35,7 +35,9 @@ export interface TavernChatRunState {
     runtimeModel: Ref<string>;
     runtimePendingUserMessage: Ref<string>;
     runtimeProvider: Ref<string>;
+    runtimeStatusElapsedSeconds: Ref<number>;
     runtimeStatusLabel: Ref<TavernRunStatusLabel | ''>;
+    runtimeStatusStartedAt: Ref<number>;
     runtimeText: Ref<string>;
     runtimeThoughts: Ref<Array<{ label?: string; text?: string }>>;
     runtimeUserMessageVisible: Ref<boolean>;
@@ -99,7 +101,9 @@ export function createTavernChatRunState(): TavernChatRunState {
         runtimeModel: ref(''),
         runtimePendingUserMessage: ref(''),
         runtimeProvider: ref(''),
+        runtimeStatusElapsedSeconds: ref(0),
         runtimeStatusLabel: ref<TavernRunStatusLabel | ''>(''),
+        runtimeStatusStartedAt: ref(0),
         runtimeText: ref(''),
         runtimeThoughts: ref<Array<{ label?: string; text?: string }>>([]),
         runtimeUserMessageVisible: ref(false),
@@ -110,7 +114,49 @@ export function useTavernChatRunController(options: TavernChatRunControllerOptio
     const state = options.state;
     const activeRunController = ref<AbortController | null>(null);
     let runtimeStreamFrame = 0;
+    let runtimeStatusTimer = 0;
     let pendingRuntimeStreamSnapshot: TavernRunStreamSnapshot | null = null;
+
+    function clearRuntimeStatusTimer() {
+        if (!runtimeStatusTimer) {return;}
+        if (typeof window !== 'undefined' && typeof window.clearInterval === 'function') {
+            window.clearInterval(runtimeStatusTimer);
+        }
+        runtimeStatusTimer = 0;
+    }
+
+    function refreshRuntimeStatusElapsedSeconds() {
+        const startedAt = Number(state.runtimeStatusStartedAt.value) || 0;
+        state.runtimeStatusElapsedSeconds.value = startedAt
+            ? Math.max(0, Math.floor((Date.now() - startedAt) / 1000))
+            : 0;
+    }
+
+    function startRuntimeStatusTimer() {
+        if (runtimeStatusTimer) {return;}
+        if (typeof window === 'undefined' || typeof window.setInterval !== 'function') {return;}
+        runtimeStatusTimer = window.setInterval(() => {
+            refreshRuntimeStatusElapsedSeconds();
+        }, 1000);
+    }
+
+    function setRuntimeStatusLabel(label: TavernRunStatusLabel | '') {
+        if (label && state.runtimeStatusLabel.value === label && state.runtimeStatusStartedAt.value) {
+            refreshRuntimeStatusElapsedSeconds();
+            startRuntimeStatusTimer();
+            return;
+        }
+        state.runtimeStatusLabel.value = label;
+        if (!label) {
+            clearRuntimeStatusTimer();
+            state.runtimeStatusStartedAt.value = 0;
+            state.runtimeStatusElapsedSeconds.value = 0;
+            return;
+        }
+        state.runtimeStatusStartedAt.value = Date.now();
+        state.runtimeStatusElapsedSeconds.value = 0;
+        startRuntimeStatusTimer();
+    }
 
     function applyRuntimeStreamSnapshot(snapshot: TavernRunStreamSnapshot) {
         if (typeof snapshot.text === 'string') {state.runtimeText.value = snapshot.text;}
@@ -163,7 +209,7 @@ export function useTavernChatRunController(options: TavernChatRunControllerOptio
         state.runtimeText.value = '';
         state.runtimeThoughts.value = [];
         state.runtimeActionCheckEvents.value = [];
-        state.runtimeStatusLabel.value = '';
+        setRuntimeStatusLabel('');
         state.runtimeUserMessageVisible.value = false;
         state.runtimePendingUserMessage.value = '';
     }
@@ -173,7 +219,7 @@ export function useTavernChatRunController(options: TavernChatRunControllerOptio
         state.runtimeError.value = '';
         state.runtimeProvider.value = '';
         state.runtimeModel.value = '';
-        state.runtimeStatusLabel.value = '';
+        setRuntimeStatusLabel('');
         clearRuntimeAssistantLiveState();
     }
 
@@ -237,7 +283,7 @@ export function useTavernChatRunController(options: TavernChatRunControllerOptio
         state.runtimePendingUserMessage.value = '';
         state.runtimeProvider.value = '';
         state.runtimeModel.value = '';
-        state.runtimeStatusLabel.value = '整理上下文';
+        setRuntimeStatusLabel('同步状态');
         const followRunAtBottom = options.chatAutoScroll.value !== false;
         if (followRunAtBottom) {
             options.chatAutoScroll.value = true;
@@ -336,7 +382,7 @@ export function useTavernChatRunController(options: TavernChatRunControllerOptio
                     scheduleRuntimeStreamSnapshot(snapshot);
                 },
                 onRuntimeStatus: (snapshot) => {
-                    state.runtimeStatusLabel.value = snapshot.label;
+                    setRuntimeStatusLabel(snapshot.label);
                 },
                 onUserMessageSaved: async (sessionId, message) => {
                     options.setSelectedSessionId(sessionId);

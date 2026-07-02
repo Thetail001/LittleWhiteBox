@@ -10,6 +10,7 @@ import {
     useTavernSettingsContext,
     useTavernShellContext,
     useTavernWorkspaceContext,
+    type TavernChatWorkspacePanelKey,
 } from '../tavern-app-context';
 import TavernCharacterWorkspacePanel from '../TavernCharacterWorkspacePanel.vue';
 import TavernAssistantPresetSettingsPanel from '../settings/TavernAssistantPresetSettingsPanel.vue';
@@ -146,10 +147,16 @@ const runtimeActionCheckScrollSignature = computed(() => runtimeActionCheckEvent
     .map((event, index) => [
         index,
         event.toolCallId || '',
+        event.character || '',
         event.stat,
         event.action,
         event.roll,
         event.difficulty,
+        event.difficultyLabel || '',
+        event.mode || '',
+        event.threshold ?? '',
+        event.statValue ?? '',
+        event.statMax ?? '',
         event.outcome || '',
         event.insertAfterChars,
         event.success ? 1 : 0,
@@ -187,7 +194,7 @@ function closeMobileChatPanel() {
     memoryDirectoryOpen.value = false;
 }
 
-function toggleMobileWorkspacePanel(panel: 'state' | 'memory' | 'event') {
+function toggleMobileWorkspacePanel(panel: TavernChatWorkspacePanelKey) {
     closeChatAppMenu();
     const sameOpenPanel = mobileChatPanel.value === 'workspace' && chatWorkspacePanel.value === panel;
     chatWorkspacePanel.value = panel;
@@ -635,6 +642,18 @@ onUpdated(() => {
           <button
             type="button"
             class="chat-mobile-icon-button chat-mobile-utility-button"
+            title="契约"
+            aria-label="契约"
+            @click="closeMobileChatPanel(); openContractModal()"
+          >
+            <span
+              class="chat-mobile-emoji"
+              aria-hidden="true"
+            >📜</span>
+          </button>
+          <button
+            type="button"
+            class="chat-mobile-icon-button chat-mobile-utility-button"
             :title="homeThemeDark ? '切换到白天' : '切换到夜间'"
             :aria-label="homeThemeDark ? '切换到白天' : '切换到夜间'"
             @click="homeThemeDark = !homeThemeDark"
@@ -678,28 +697,6 @@ onUpdated(() => {
               <path d="M20.2 14.5A7.3 7.3 0 0 1 9.5 3.8 8.7 8.7 0 1 0 20.2 14.5Z" />
             </svg>
           </button>
-          <button
-            type="button"
-            class="chat-mobile-icon-button chat-mobile-utility-button"
-            title="首页"
-            aria-label="首页"
-            @click="activeView = 'home'; closeMobileChatPanel()"
-          >
-            <svg
-              class="chat-mobile-svg"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M3 11.5 12 4l9 7.5" />
-              <path d="M5.5 10.5V20h13v-9.5" />
-              <path d="M9.5 20v-5.5h5V20" />
-            </svg>
-          </button>
           <div
             ref="mobileChatAppMenuRef"
             class="chat-app-menu-shell chat-app-menu-shell-mobile"
@@ -739,6 +736,15 @@ onUpdated(() => {
                 <span class="chat-app-menu-label-full">{{ item.label }}</span>
                 <span class="chat-app-menu-label-mobile">{{ item.mobileLabel }}</span>
               </button>
+              <button
+                type="button"
+                class="chat-app-menu-item chat-app-menu-return-home"
+                role="menuitem"
+                @click="activeView = 'home'; closeMobileChatPanel()"
+              >
+                <span class="chat-app-menu-label-full">返回首页</span>
+                <span class="chat-app-menu-label-mobile">返回首页</span>
+              </button>
             </div>
           </div>
         </div>
@@ -747,10 +753,10 @@ onUpdated(() => {
         <button
           type="button"
           class="chat-mobile-context-button"
-          :class="{ 'is-active': mobileChatPanel === 'workspace' && chatWorkspacePanel === 'state' }"
+          :class="{ 'is-active': mobileChatPanel === 'workspace' && chatWorkspacePanel === 'map' }"
           title="地图"
           aria-label="地图"
-          @click="toggleMobileWorkspacePanel('state')"
+          @click="toggleMobileWorkspacePanel('map')"
         >
           地图
         </button>
@@ -762,7 +768,7 @@ onUpdated(() => {
           aria-label="记忆"
           @click="toggleMobileWorkspacePanel('memory')"
         >
-          记忆
+          📓 记忆
         </button>
         <button
           type="button"
@@ -772,16 +778,17 @@ onUpdated(() => {
           aria-label="事件"
           @click="toggleMobileWorkspacePanel('event')"
         >
-          事件
+          🧭 事件
         </button>
         <button
           type="button"
           class="chat-mobile-context-button"
-          title="契约"
-          aria-label="契约"
-          @click="closeMobileChatPanel(); openContractModal()"
+          :class="{ 'is-active': mobileChatPanel === 'workspace' && chatWorkspacePanel === 'status' }"
+          title="档案"
+          aria-label="档案"
+          @click="toggleMobileWorkspacePanel('status')"
         >
-          契约
+          📋 档案
         </button>
       </div>
     </header>

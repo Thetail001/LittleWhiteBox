@@ -104,6 +104,8 @@ import {
     buildXbTavernMemoryQuery,
     retrieveXbTavernMemoryContext,
 } from '../../shared/memory-retrieval';
+import { getTavernStatusStateForSession, type TavernStatusDocument } from '../../shared/status-state';
+import { buildTavernStatusPanelYaml } from '../../shared/status-prompt';
 import { createXbTavernAgentRuntime } from './agent-runtime';
 import {
     cancelAndRollbackXbTavernManagersForMessageRange,
@@ -372,8 +374,8 @@ function buildChanceEncounterDepthEntries(event: TavernChanceEncounterRuntimeEve
 
 function buildMemoryPromptContent(memoryContext: XbTavernMemoryContext = {}): string {
     const memoryFiles = Array.isArray(memoryContext.memoryFiles) ? memoryContext.memoryFiles : [];
-    const structuredStates = Array.isArray(memoryContext.structuredStates) ? memoryContext.structuredStates : [];
     const spatialState = String(memoryContext.spatialState || '').trim();
+    const statusPanelYaml = String(memoryContext.statusPanelYaml || '').trim();
     const questHooks = Array.isArray(memoryContext.questHooks)
         ? memoryContext.questHooks.map((hook) => String(hook || '').trim()).filter(Boolean)
         : [];
@@ -399,14 +401,11 @@ function buildMemoryPromptContent(memoryContext: XbTavernMemoryContext = {}): st
     if (characterLines.length) {
         sections.push(`## 相关人物记忆\n${characterLines.join('\n\n')}`);
     }
-    const stateLines = spatialState ? [] : structuredStates
-        .map((state) => String(state.digest || '').trim())
-        .filter(Boolean);
-    if (stateLines.length) {
-        sections.push(`## 状态摘要\n${stateLines.join('\n\n')}`);
+    if (statusPanelYaml) {
+        sections.push(`## 状态栏\n${statusPanelYaml}`);
     }
     if (spatialState) {
-        sections.push(`## 空间状态\n${spatialState}`);
+        sections.push(`## 空间地图状态\n${spatialState}`);
     }
     return sections.join('\n\n');
 }
@@ -500,11 +499,11 @@ export interface TavernRunStreamSnapshot {
 }
 
 export type TavernRunStatusLabel =
-    | '整理上下文'
+    | '同步状态'
+    | '整理历史'
     | '构建请求'
-    | '请求就绪'
-    | '连接模型'
-    | '接收流式'
+    | '请求模型'
+    | '接收回复'
     | '保存回复';
 
 export interface TavernRunStatusSnapshot {
@@ -632,6 +631,7 @@ export interface XbTavernRunTurnInput {
     randomEncounterRoll?: () => number;
     rerollRuntimeEvents?: boolean;
     actionCheckRoll?: () => number;
+    actionCheckPercentRoll?: () => number;
 }
 
 export interface XbTavernRunResult {
@@ -883,7 +883,7 @@ function filterMemoryContextByRuntime(
     runtime: TavernSessionContractRuntime,
 ): XbTavernMemoryContext | undefined {
     if (!memoryContext) {return memoryContext;}
-    if (!runtime.includeMemoryFiles && !runtime.includeStructuredStates && !runtime.includeQuestOrchestration) {
+    if (!runtime.includeMemoryFiles && !runtime.includeStructuredStates && !runtime.includeStatusStates && !runtime.includeQuestOrchestration) {
         return {};
     }
     const filtered: XbTavernMemoryContext = {};
@@ -896,10 +896,27 @@ function filterMemoryContextByRuntime(
     if (runtime.includeStructuredStates && memoryContext.spatialState) {
         filtered.spatialState = memoryContext.spatialState;
     }
+    if (runtime.includeStatusStates && memoryContext.statusPanelYaml) {
+        filtered.statusPanelYaml = memoryContext.statusPanelYaml;
+    }
     if (runtime.includeQuestOrchestration && Array.isArray(memoryContext.questHooks)) {
         filtered.questHooks = memoryContext.questHooks;
     }
     return filtered;
+}
+
+async function buildStatusPanelPromptContext(sessionId = '', runtime: TavernSessionContractRuntime): Promise<{
+    statusPanelYaml: string;
+    statusDocument?: TavernStatusDocument;
+}> {
+    const id = String(sessionId || '').trim();
+    if (!id || !runtime.includeStatusStates) {return { statusPanelYaml: '' };}
+    const state = await getTavernStatusStateForSession(id);
+    if (!state.document) {return { statusPanelYaml: '' };}
+    return {
+        statusPanelYaml: buildTavernStatusPanelYaml(state.status),
+        statusDocument: state.status,
+    };
 }
 
 function addRegexSummary(target: TavernRegexApplicationSummary, source?: TavernRegexApplicationSummary): void {
@@ -1792,10 +1809,15 @@ export async function simulateXbTavernRequest(input: XbTavernSimulateRequestInpu
     const simulateQuestHooks = session && sessionContractRuntime.includeQuestOrchestration
         ? await runTavernStage('simulate_quest_hook_retrieval', () => getLatestQuestHooksForPrompt(session.id, 1))
         : [];
-    const memoryContext: XbTavernMemoryContext | undefined = retrievedMemoryContext || simulateQuestHooks.length
+    const statusPromptContext = session
+        ? await runTavernStage('simulate_status_panel_prompt', () => buildStatusPanelPromptContext(session.id, sessionContractRuntime))
+        : { statusPanelYaml: '' };
+    const statusPanelYaml = statusPromptContext.statusPanelYaml;
+    const memoryContext: XbTavernMemoryContext | undefined = retrievedMemoryContext || simulateQuestHooks.length || statusPanelYaml
         ? {
             ...(retrievedMemoryContext || {}),
             ...(simulateQuestHooks.length ? { questHooks: simulateQuestHooks } : {}),
+            ...(statusPanelYaml ? { statusPanelYaml } : {}),
         }
         : undefined;
     const filteredMemoryContext = filterMemoryContextByRuntime(memoryContext, sessionContractRuntime);
@@ -1920,6 +1942,8 @@ async function runTavernActionCheckLoop(input: {
     onStreamProgress?: TavernRunOnceOptions['onStreamProgress'];
     executeRunOnce: TavernRunOnceExecutor;
     actionCheckRoll?: () => number;
+    actionCheckPercentRoll?: () => number;
+    statusDocument?: TavernStatusDocument;
 }): Promise<TavernRunOnceResult & { runtimeEvents: TavernActionCheckRuntimeEvent[] }> {
     const tools = getActionCheckToolDefinitions();
     const protocolMessages = [...input.messages];
@@ -2032,15 +2056,25 @@ async function runTavernActionCheckLoop(input: {
         toolCalls.forEach((toolCall) => {
             const args = safeJsonParse(toolCall.arguments, {});
             const toolResult = toolCall.name === ACTION_CHECK_TOOL_NAME
-                ? executeTavernActionCheck(args, { rollDie: input.actionCheckRoll })
+                ? executeTavernActionCheck(args, {
+                    rollDie: input.actionCheckRoll,
+                    rollPercent: input.actionCheckPercentRoll,
+                    statusDocument: input.statusDocument,
+                })
                 : buildDeniedActionCheckToolResult(toolCall.name);
             if (toolResult.ok) {
                 const eventInsertAfterChars = resolveActionCheckInsertAfterChars(finalText, toolResult, insertAfterChars);
                 runtimeEvents.push(createActionCheckEvent({
                     action: toolResult.action,
+                    character: toolResult.character,
                     stat: toolResult.stat,
                     difficulty: toolResult.difficulty,
+                    difficultyLabel: toolResult.difficultyLabel,
+                    mode: toolResult.mode,
                     roll: toolResult.roll,
+                    threshold: toolResult.threshold,
+                    statValue: toolResult.statValue,
+                    statMax: toolResult.statMax,
                     success: toolResult.success,
                     outcome: toolResult.outcome,
                     insertAfterChars: eventInsertAfterChars,
@@ -2134,7 +2168,7 @@ export async function waitForPendingAcceptedTurnManagers(sessionId = ''): Promis
 }
 
 export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTavernRunResult> {
-    notifyRunStatus(input.onRuntimeStatus, '整理上下文');
+    notifyRunStatus(input.onRuntimeStatus, '同步状态');
     const chatPreset = resolveInputChatPreset(input);
     if (!input.sessionId) {
         assertUsableTavernContext(input.contextSnapshot || {});
@@ -2177,6 +2211,7 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
         }
         await saveAcceptedStateSnapshot(baseSession.id);
     }
+    notifyRunStatus(input.onRuntimeStatus, '整理历史');
     const rebuildHistoryMessages = reusedUserMessage
         ? await listAllTavernMessagesInRangePaged(baseSession.id, 0, reusedUserMessage.order - 1)
         : null;
@@ -2306,10 +2341,13 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
         // RP gets only the freshest one. The event panel may show more, but prompt hooks should stay soft and sparse.
         ? await runTavernStage('turn_quest_hook_retrieval', () => getLatestQuestHooksForPrompt(baseSession.id, 1))
         : [];
-    const memoryContext: XbTavernMemoryContext | undefined = retrievedMemoryContext || questHooks.length
+    const statusPromptContext = await runTavernStage('turn_status_panel_prompt', () => buildStatusPanelPromptContext(baseSession.id, sessionContractRuntime));
+    const statusPanelYaml = statusPromptContext.statusPanelYaml;
+    const memoryContext: XbTavernMemoryContext | undefined = retrievedMemoryContext || questHooks.length || statusPanelYaml
         ? {
             ...(retrievedMemoryContext || {}),
             ...(questHooks.length ? { questHooks } : {}),
+            ...(statusPanelYaml ? { statusPanelYaml } : {}),
         }
         : undefined;
     const filteredMemoryContext = filterMemoryContextByRuntime(memoryContext, sessionContractRuntime);
@@ -2398,7 +2436,7 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
     const handleStreamProgress = (snapshot: TavernRunStreamSnapshot) => {
         if (!sawStreamProgress) {
             sawStreamProgress = true;
-            notifyRunStatus(input.onRuntimeStatus, '接收流式');
+            notifyRunStatus(input.onRuntimeStatus, '接收回复');
         }
         if (typeof snapshot.text === 'string') {latestStreamText = snapshot.text;}
         input.onStreamProgress?.(snapshot);
@@ -2419,7 +2457,6 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
             requestKind: 'actual',
             regexApplications,
         })).requestSnapshot;
-        notifyRunStatus(input.onRuntimeStatus, '请求就绪');
     } catch {
         requestSnapshot = buildTavernRequestSnapshot(input.agentConfig, buildResult.messages, {
             requestKind: 'fallback',
@@ -2431,7 +2468,6 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
                 toolChoice: actionCheckCapabilities.toolChoice,
             },
         });
-        notifyRunStatus(input.onRuntimeStatus, '请求就绪');
     }
     const presetId = String(chatPreset.id || session.chatPresetId || session.presetId || '');
     const presetName = String(chatPreset.name || session.chatPresetName || session.presetName || '');
@@ -2457,7 +2493,7 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
 
     try {
         const executeRunOnce = input.executeRunOnce || createDefaultTavernRunOnceExecutor(input.agentConfig);
-        notifyRunStatus(input.onRuntimeStatus, '连接模型');
+        notifyRunStatus(input.onRuntimeStatus, '请求模型');
         const result = sessionContractRuntime.includeActionChecks
             ? await runTavernActionCheckLoop({
                 agentConfig: input.agentConfig,
@@ -2468,6 +2504,8 @@ export async function runXbTavernTurn(input: XbTavernRunTurnInput): Promise<XbTa
                 onStreamProgress: handleStreamProgress,
                 executeRunOnce,
                 actionCheckRoll: input.actionCheckRoll,
+                actionCheckPercentRoll: input.actionCheckPercentRoll,
+                statusDocument: statusPromptContext.statusDocument,
             })
             : await executeRunOnce({
                 agentConfig: input.agentConfig,

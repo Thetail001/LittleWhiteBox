@@ -430,6 +430,7 @@ export interface XbTavernMemoryContext {
     memoryFiles?: XbTavernMemoryFileSummary[];
     structuredStates?: XbTavernStructuredStateSummary[];
     spatialState?: string;
+    statusPanelYaml?: string;
     questHooks?: string[];
 }
 
@@ -577,6 +578,7 @@ export interface XbTavernMessageBuildResult {
         worldEntryStateUpdates: Record<string, XbTavernWorldEntryState>;
         structuredStates?: XbTavernStructuredStateSummary[];
         spatialState?: string;
+        statusPanelYaml?: string;
     };
 }
 
@@ -614,6 +616,7 @@ export interface XbTavernBuildSnapshot {
         digestChars: number;
     }>;
     spatialStateChars?: number;
+    statusPanelChars?: number;
     worldBudget: XbTavernMessageBuildResult['meta']['worldBudget'];
     worldPositionCounts: Record<string, number>;
     scanTextChars: number;
@@ -1706,8 +1709,8 @@ function buildSingleCharacterFieldBlock(title: string, content: unknown): string
 
 function buildMemoryBlock(memoryContext: XbTavernMemoryContext = {}): string {
     const memoryFiles = Array.isArray(memoryContext.memoryFiles) ? memoryContext.memoryFiles : [];
-    const structuredStates = Array.isArray(memoryContext.structuredStates) ? memoryContext.structuredStates : [];
     const spatialState = normalizeText(memoryContext.spatialState);
+    const statusPanelYaml = normalizeText(memoryContext.statusPanelYaml);
     const questHooks = Array.isArray(memoryContext.questHooks)
         ? memoryContext.questHooks.map((hook) => normalizeText(hook)).filter(Boolean)
         : [];
@@ -1734,17 +1737,12 @@ function buildMemoryBlock(memoryContext: XbTavernMemoryContext = {}): string {
         sections.push(`## 相关人物记忆\n${characterLines.join('\n\n')}`);
     }
 
-    const stateLines = spatialState ? [] : structuredStates
-        .map((state) => {
-            const digest = normalizeText(state.digest);
-            return digest;
-        })
-        .filter(Boolean);
-    if (stateLines.length) {
-        sections.push(`## 状态摘要\n${stateLines.join('\n\n')}`);
+    if (statusPanelYaml) {
+        sections.push(`## 状态栏\n${statusPanelYaml}`);
     }
+
     if (spatialState) {
-        sections.push(`## 空间状态\n${spatialState}`);
+        sections.push(`## 空间地图状态\n${spatialState}`);
     }
 
     return sections.join('\n\n');
@@ -2378,6 +2376,7 @@ function buildXbTavernMessagesFromPrepared(
             ...(regexApplications ? { regexApplications } : {}),
             ...(memoryContext.structuredStates?.length ? { structuredStates: memoryContext.structuredStates } : {}),
             ...(memoryContext.spatialState ? { spatialState: memoryContext.spatialState } : {}),
+            ...(memoryContext.statusPanelYaml ? { statusPanelYaml: memoryContext.statusPanelYaml } : {}),
             worldBudget: {
                 enabled: budgetDebug.enabled,
                 limit: budgetDebug.limit,
@@ -2532,6 +2531,7 @@ export function createXbTavernBuildSnapshot(
             })),
         } : {}),
         ...(result.meta.spatialState ? { spatialStateChars: normalizeText(result.meta.spatialState).length } : {}),
+        ...(result.meta.statusPanelYaml ? { statusPanelChars: normalizeText(result.meta.statusPanelYaml).length } : {}),
         worldBudget: result.meta.worldBudget,
         worldPositionCounts: result.meta.worldPositionCounts,
         scanTextChars: result.meta.scanTextChars,

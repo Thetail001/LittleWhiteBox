@@ -8,6 +8,9 @@ const root = resolve(import.meta.dirname, '../../..');
 const tavernRoot = resolve(root, 'modules/tavern');
 const sourceExtensions = new Set(['.ts', '.vue']);
 const ignoredPathParts = new Set(['dist', 'tests']);
+const repositoryTextExtensions = new Set(['.js', '.mjs', '.cjs', '.ts', '.tsx', '.vue', '.html', '.css', '.json', '.md', '.txt']);
+const repositoryIgnoredDirNames = new Set(['.git', 'node_modules', 'coverage']);
+const externalGoogleFontEndpointPattern = /fonts\.(?:googleapis|gstatic)/i;
 
 function collectSourceFiles(dir: string): string[] {
     return readdirSync(dir)
@@ -19,6 +22,23 @@ function collectSourceFiles(dir: string): string[] {
             }
             return sourceExtensions.has(path.slice(path.lastIndexOf('.'))) ? [path] : [];
         });
+}
+
+function collectRepositoryTextFiles(dir: string = root, files: string[] = []): string[] {
+    for (const name of readdirSync(dir)) {
+        const path = join(dir, name);
+        const stat = statSync(path);
+        if (stat.isDirectory()) {
+            if (!repositoryIgnoredDirNames.has(name)) {
+                collectRepositoryTextFiles(path, files);
+            }
+            continue;
+        }
+        const extension = path.slice(path.lastIndexOf('.')).toLowerCase();
+        if (name.endsWith('.min.js') || !repositoryTextExtensions.has(extension)) {continue;}
+        files.push(path);
+    }
+    return files;
 }
 
 function readRepoFile(path: string): string {
@@ -92,6 +112,21 @@ test('tavern source does not depend on browser crypto APIs', () => {
     const browserCryptoReferences = sourceMatches(/globalThis\.crypto|crypto\.subtle|getRandomValues|randomUUID|crypto_subtle_unavailable/);
 
     assert.deepEqual(browserCryptoReferences, []);
+});
+
+test('plugin text resources do not reference Google-hosted font endpoints', () => {
+    const matches = collectRepositoryTextFiles()
+        .flatMap((path) => {
+            const text = readFileSync(path, 'utf8');
+            if (!externalGoogleFontEndpointPattern.test(text)) {return [];}
+            return text.split(/\r?\n/).flatMap((line, index) => (
+                externalGoogleFontEndpointPattern.test(line)
+                    ? [{ path: relative(root, path).replace(/\\/g, '/'), line: index + 1, text: line.trim() }]
+                    : []
+            ));
+        });
+
+    assert.deepEqual(matches, []);
 });
 
 test('tavern source keeps cross-frame messages behind clone-safe wrappers', () => {
@@ -192,6 +227,26 @@ test('tavern startup posts frame-ready before heavy app tasks and prewarms host 
     assert.match(hostSource, /case 'xb-tavern:frame-ready':[\s\S]*postStartupProgress\(\{ percent: Math\.max\(latestStartupProgress\.percent, 20\), action: 'frameReady' \}\);[\s\S]*void sendInitialConfigToFrame\(\)\.catch\(\(error\) => \{[\s\S]*failed to send initial config[\s\S]*\}\)\.finally\(flushPendingMessages\);/);
 });
 
+test('tavern Material Symbols load from local vendor font only', () => {
+    const agentConfigSource = readRepoFile('modules/tavern/host/agent-config.ts');
+    const fontLoaderSource = readRepoFile('modules/tavern/app-src/features/material-symbol-font.ts');
+    const statusPanelSource = readRepoFile('modules/tavern/app-src/components/TavernStatusPanel.vue');
+    const statusCss = readRepoFile('modules/tavern/app-src/styles/chat/status-panel.css');
+    const mapCss = readRepoFile('modules/tavern/app-src/styles/chat/map.css');
+
+    assert.match(agentConfigSource, /extensionBasePath: `\/\$\{extensionFolderPath\}`/);
+    assert.match(fontLoaderSource, /new FontFace\(MATERIAL_SYMBOL_FONT_FAMILY[\s\S]*display: 'block'[\s\S]*weight: '300'/);
+    assert.match(fontLoaderSource, /libs\/material-symbols\/material-symbols-rounded\.woff2/);
+    assert.match(statusPanelSource, /resolveStatusIconName/);
+    assert.match(statusPanelSource, /if \(!props\.materialSymbolsReady\) \{return props\.materialSymbolsStatus === 'failed' \? '!' : '';\}/);
+    assert.doesNotMatch(statusCss, /fonts\.googleapis|fonts\.gstatic/);
+    assert.match(statusCss, /font-variation-settings: "FILL" 0, "wght" 300/);
+    assert.match(statusCss, /\.tavern-status-panel\.is-symbol-font-failed \.material-symbols-rounded/);
+    assert.doesNotMatch(mapCss, /fonts\.googleapis|fonts\.gstatic/);
+    assert.match(mapCss, /font-variation-settings: "FILL" 0, "wght" 300/);
+    assert.match(mapCss, /\.tavern-map-panel\.is-symbol-font-failed \.map-material-symbol/);
+});
+
 test('tavern mobile overlay viewport updates are frame-throttled', () => {
     const hostSource = readRepoFile('modules/tavern/tavern.ts');
 
@@ -216,14 +271,15 @@ test('tavern mobile overlay viewport updates are frame-throttled', () => {
     assert.match(appSource, /document\.removeEventListener\('focusin', handleKeyboardViewportFocus, true\);[\s\S]*document\.removeEventListener\('focusout', handleKeyboardViewportFocus, true\);/);
 });
 
-test('tavern assistant preset settings expose state and character memory rules', () => {
+test('tavern assistant preset settings expose state, character memory, and status rules', () => {
     const controllerSource = readRepoFile('modules/tavern/app-src/components/settings/useTavernSettingsController.ts');
     const sectionMatch = controllerSource.match(/const assistantPresetSections:[\s\S]*?];/);
     assert.ok(sectionMatch);
     const sectionSource = sectionMatch[0];
     assert.match(sectionSource, /key: 'statePrompt'/);
     assert.match(sectionSource, /key: 'characterPrompt'/);
-    assert.equal((sectionSource.match(/key:/g) || []).length, 2);
+    assert.match(sectionSource, /key: 'statusPrompt'/);
+    assert.equal((sectionSource.match(/key:/g) || []).length, 3);
 });
 
 test('tavern worldbook bridge edits named entries through native save boundary', () => {
@@ -576,37 +632,44 @@ test('tavern runtime chat preset uses ST-confirmed active preset, never unsaved 
     assert.match(nativeSource, /throw new Error\('聊天预设未同步：缺少 prompt_order。'\)/);
 });
 
-test('tavern map game icon animation does not override SVG transform attributes', () => {
+test('tavern map material symbols use shared font and keep visual icons separate from semantics', () => {
     const mapPanel = readRepoFile('modules/tavern/app-src/components/TavernMapPanel.vue');
     const mapCss = readRepoFile('modules/tavern/app-src/styles/chat/map.css');
-    const glyphSource = readRepoFile('modules/tavern/app-src/map-glyphs.ts');
+    const mapSymbols = readRepoFile('modules/tavern/shared/map-material-symbols.ts');
+    const stateSource = readRepoFile('modules/tavern/shared/structured-state.ts');
     const fillInKeyframes = extractCssBlock(mapCss, '@keyframes tavern-map-fill-in');
     const removeKeyframes = extractCssBlock(mapCss, '@keyframes tavern-map-remove');
-    assert.match(mapPanel, /glyphTransform\?: string/);
-    assert.match(mapPanel, /glyphScaleTransform\?: string/);
-    assert.match(mapPanel, /if \(gameIcon\) \{[\s\S]*const \[glyphX, glyphY\] = projectMapPoint\(element\.at\)[\s\S]*transform: '',\s*glyphTransform: gameIconTranslateTransform\(glyphX, glyphY\),\s*glyphScaleTransform: gameIconScaleTransform\(\)/);
-    assert.match(mapPanel, /const regularLineItems = computed\(\(\) => lineItems\.value\.filter\(\(item\) => !item\.gameIcon\)\)/);
+
+    assert.match(stateSource, /icon\?: MaterialSymbolName;/);
+    assert.match(stateSource, /kind\?: TavernMapElementKind;/);
+    assert.match(stateSource, /TAVERN_MAP_ELEMENT_KINDS/);
+    assert.match(stateSource, /shape:\s*\{\s*type: 'string',\s*enum: \['icon'\]/);
+    assert.match(stateSource, /icon:\s*\{\s*type: 'string',\s*description: 'Visual Material Symbols official name[\s\S]*does not change geometry by itself/);
+    assert.doesNotMatch(stateSource, /MAP_ICON_NAMES|TAVERN_MAP_ICON_NAMES|SCENE_MAP_PLACE_SCALE_ICONS|assertSceneMapIconAllowed/);
+    assert.match(mapSymbols, /export const TAVERN_MAP_ELEMENT_KINDS = \[/);
+    assert.match(mapSymbols, /door: 'door_open'/);
+    assert.match(mapSymbols, /export function isMapExitSemantic/);
+    assert.match(mapPanel, /symbolIcon\?: string/);
+    assert.match(mapPanel, /resolveMapElementIconName\(element\.icon/);
+    assert.match(mapPanel, /text: symbolIcon,[\s\S]*x: symbolX,[\s\S]*y: symbolY,[\s\S]*symbolIcon,/);
+    assert.match(mapPanel, /const regularLineItems = computed\(\(\) => lineItems\.value\.filter\(\(item\) => !item\.symbolIcon\)\)/);
     assert.match(mapPanel, /const regularLineCasingItems = computed\(\(\) => regularLineItems\.value\.filter\(\(item\) => item\.role === 'line-casing'\)\)/);
     assert.match(mapPanel, /const regularLineCoreItems = computed\(\(\) => regularLineItems\.value\.filter\(\(item\) => item\.role !== 'line-casing'\)\)/);
-    assert.match(mapPanel, /const gameIconLineItems = computed\(\(\) => lineItems\.value\.filter\(\(item\) => item\.gameIcon\)\)/);
-    assert.match(mapPanel, /const regularRemovedLineItems = computed\(\(\) => removedLineItems\.value\.filter\(\(item\) => !item\.gameIcon\)\)/);
-    assert.match(mapPanel, /const gameIconRemovedLineItems = computed\(\(\) => removedLineItems\.value\.filter\(\(item\) => item\.gameIcon\)\)/);
+    assert.match(mapPanel, /const symbolLineItems = computed\(\(\) => lineItems\.value\.filter\(\(item\) => item\.symbolIcon\)\)/);
+    assert.match(mapPanel, /const regularRemovedLineItems = computed\(\(\) => removedLineItems\.value\.filter\(\(item\) => !item\.symbolIcon\)\)/);
+    assert.match(mapPanel, /const symbolRemovedLineItems = computed\(\(\) => removedLineItems\.value\.filter\(\(item\) => item\.symbolIcon\)\)/);
     assert.match(mapPanel, /v-for="item in regularLineCasingItems"[\s\S]*v-for="item in regularLineCoreItems"[\s\S]*:transform="item\.transform"/);
-    assert.match(mapPanel, /v-for="item in gameIconLineItems"[\s\S]*:transform="item\.glyphTransform"[\s\S]*:transform="item\.glyphScaleTransform"[\s\S]*transform="translate\(-256, -256\)"[\s\S]*class="map-game-icon-path"/);
+    assert.match(mapPanel, /v-for="item in symbolLineItems"[\s\S]*materialSymbolGlyphText\(item\.symbolIcon\)/);
     assert.match(mapPanel, /v-for="item in regularRemovedLineItems"[\s\S]*:transform="item\.transform"/);
-    assert.match(mapPanel, /v-for="item in gameIconRemovedLineItems"[\s\S]*:transform="item\.glyphTransform"[\s\S]*:transform="item\.glyphScaleTransform"[\s\S]*transform="translate\(-256, -256\)"[\s\S]*class="map-game-icon-path"/);
+    assert.match(mapPanel, /v-for="item in symbolRemovedLineItems"[\s\S]*materialSymbolGlyphText\(item\.symbolIcon\)/);
     assert.doesNotMatch(mapPanel, /<path\s+v-for="item in lineItems"/);
     assert.doesNotMatch(mapPanel, /<path\s+v-for="item in removedLineItems"/);
-    assert.match(mapCss, /\.tavern-chat\.xb-page \.map-game-icon\.is-animated \{[\s\S]*tavern-map-fill-in/);
-    assert.doesNotMatch(mapCss, /\.map-line\.is-game-icon\.is-animated/);
+    assert.match(mapCss, /\.tavern-chat\.xb-page \.map-material-symbol \{[\s\S]*font-family: "Material Symbols Rounded"[\s\S]*font-variation-settings: "FILL" 0, "wght" 300/);
+    assert.match(mapCss, /\.tavern-chat\.xb-page \.map-material-symbol\.is-animated \{[\s\S]*tavern-map-fill-in/);
+    assert.doesNotMatch(mapCss, new RegExp(['map-game-' + 'icon', 'map-game-' + 'icon-path'].join('|')));
     assert.doesNotMatch(fillInKeyframes, /transform:/);
     assert.doesNotMatch(removeKeyframes, /transform:/);
-    assert.match(glyphSource, /function gameIconTranslateTransform\(x: number, y: number\): string/);
-    assert.match(glyphSource, /function gameIconScaleTransform\(size = TAVERN_MAP_GAME_ICON_SIZE\): string/);
-    assert.match(glyphSource, /return `matrix\(\$\{Number\(scale\.toFixed\(5\)\)\}, 0, 0, \$\{Number\(scale\.toFixed\(5\)\)\}, \$\{left\}, \$\{top\}\)`/);
-    const stateSource = readRepoFile('modules/tavern/shared/structured-state.ts');
-    assert.match(stateSource, /SCENE_MAP_PLACE_SCALE_ICONS/);
-    assert.match(stateSource, /assertSceneMapIconAllowed\(icon, id\)/);
+    assert.doesNotMatch(mapPanel, new RegExp(['gameIcon', 'glyphTransform', 'glyphScaleTransform', 'map-' + 'glyphs'].join('|')));
 });
 
 test('tavern request log is sourced from runtime request snapshots', () => {
@@ -780,7 +843,9 @@ test('tavern chat exposes local settings modals without leaving the session', ()
     assert.match(chatPageSource, /clearSelection: clearCharacterSelection,[\s\S]*refresh: refreshCharacterList,/);
     assert.match(chatPageSource, /class="home-corner-actions page-corner-actions chat-app-menu-shell"[\s\S]*title="首页"[\s\S]*class="home-icon-button chat-app-menu-button chat-app-menu-button-desktop"[\s\S]*title="酒馆操作菜单"/);
     assert.match(chatPageSource, /class="xb-sidebar settings-sidebar chat-character-sidebar"[\s\S]*class="chat-character-card"[\s\S]*@click="openChatAppWorkspace\('characters'\)"[\s\S]*v-for="item in chatAppMenuItems"[\s\S]*class="guide-step"[\s\S]*@click="openChatAppWorkspace\(item\.key\)"/);
-    assert.match(chatPageSource, /class="chat-mobile-action-group"[\s\S]*title="首页"[\s\S]*class="chat-mobile-icon-button chat-mobile-utility-button chat-app-menu-button"[\s\S]*title="酒馆操作菜单"/);
+    assert.match(chatPageSource, /class="chat-mobile-action-group"[\s\S]*title="契约"[\s\S]*📜[\s\S]*class="chat-mobile-icon-button chat-mobile-utility-button chat-app-menu-button"[\s\S]*title="酒馆操作菜单"/);
+    assert.match(chatPageSource, /class="chat-app-menu-item chat-app-menu-return-home"[\s\S]*返回首页/);
+    assert.doesNotMatch(chatPageSource, /class="chat-mobile-action-group"[\s\S]*title="首页"/);
     assert.doesNotMatch(chatPageSource, /class="chat-mobile-icon-button chat-mobile-utility-button"[\s\S]*title="聊天预设"[\s\S]*@click="openChatAppWorkspace\('chatPreset'\)"/);
     assert.doesNotMatch(chatPageSource, /class="chat-mobile-icon-button chat-mobile-utility-button"[\s\S]*title="API 配置"[\s\S]*@click="openChatAppWorkspace\('api'\)"/);
     assert.doesNotMatch(chatPageSource, /class="chat-mobile-icon-button chat-mobile-utility-button"[\s\S]*title="世界书"[\s\S]*@click="openChatAppWorkspace\('worldbooks'\)"/);
@@ -928,12 +993,12 @@ test('tavern map update badge stays collapsed until requested', () => {
     assert.doesNotMatch(mapPanelSource, /id="(?:tavern-mat-texture|mat-metal|mood-cold|map-vignette-radial)"|filter="url\(#tavern-mat-texture\)"|filter="url\(#tavern-map-sketch\)"|filter="url\(#tavern-map-shadow\)"/);
     assert.doesNotMatch(mapPanelSource, /<g\s+class="map-fill-layer"[\s\S]{0,120}filter="url\(#tavern-mat-texture\)"/);
     assert.match(mapPanelSource, /class="map-line-layer"[\s\S]*:filter="svgUrl\('tavern-map-sketch'\)"[\s\S]*v-for="item in regularLineCasingItems"/);
-    assert.match(mapPanelSource, /<g :filter="svgUrl\('tavern-map-shadow'\)">[\s\S]*v-for="item in gameIconLineItems"/);
+    assert.match(mapPanelSource, /<g :filter="svgUrl\('tavern-map-shadow'\)">[\s\S]*v-for="item in symbolLineItems"/);
     assert.match(mapPanelSource, /class="map-avatar-layer"[\s\S]*:filter="svgUrl\('tavern-map-shadow'\)"/);
     assert.match(mapPanelSource, /class="tavern-map-redraw-button"[\s\S]*title="重绘地图渲染层"[\s\S]*@click="redrawMapRenderLayer"/);
     assert.match(mapPanelSource, /class="tavern-map-zoom-controls"[\s\S]*@click="zoomMapBy\(-0\.25\)"[\s\S]*{{ mapZoomLabel }}[\s\S]*@click="zoomMapBy\(0\.25\)"/);
     assert.match(mapPanelSource, /@pointerdown="handleMapPointerDown"[\s\S]*@pointermove="handleMapPointerMove"[\s\S]*@pointerup="handleMapPointerEnd"[\s\S]*@pointercancel="handleMapPointerEnd"[\s\S]*@wheel="handleMapWheel"/);
-    assert.match(mapPanelSource, /function pickPenAnimationItem[\s\S]*!item\.gameIcon[\s\S]*item\.layer !== 'label'[\s\S]*!!item\.path/);
+    assert.match(mapPanelSource, /function pickPenAnimationItem[\s\S]*!item\.symbolIcon[\s\S]*item\.layer !== 'label'[\s\S]*!!item\.path/);
     assert.match(mapPanelSource, /const animated = pickPenAnimationItem\(animatedItems\.value\)/);
     assert.doesNotMatch(mapPanelSource, /tavern-map-active-button|设为当前|activate-document/);
     assert.doesNotMatch(appSource, /activateMapDocument/);
@@ -972,7 +1037,7 @@ test('tavern scene map player marker uses current user identity instead of gener
     assert.match(mapPanelSource, /dash: '3 2'/);
     assert.match(mapPanelSource, /id: `\$\{element\.id\}-avatar`,[\s\S]*layer: 'avatar',[\s\S]*fill: 'none'[\s\S]*avatarClipId,/);
     assert.match(mapPanelSource, /id: `\$\{element\.id\}-player-outline`,[\s\S]*layer: 'avatar',[\s\S]*dash: '3 2'/);
-    assert.match(mapPanelSource, /id: `\$\{element\.id\}-glyph`,[\s\S]*layer: 'line',[\s\S]*gameIcon: true/);
+    assert.match(mapPanelSource, /id: `\$\{element\.id\}-symbol`,[\s\S]*layer: 'line',[\s\S]*symbolIcon,/);
     assert.match(mapPanelSource, /const avatarImageItems = computed<MapAvatarImageItem\[\]>/);
     assert.match(mapPanelSource, /<clipPath[\s\S]*v-for="item in avatarImageItems"[\s\S]*:id="svgDefId\(item\.avatarClipId\)"[\s\S]*<circle[\s\S]*:r="item\.avatarSize \/ 2"/);
     assert.match(mapPanelSource, /<image[\s\S]*v-for="item in avatarImageItems"[\s\S]*:clip-path="scopeSvgUrl\(`url\(#\$\{item\.avatarClipId\}\)`\)"[\s\S]*preserveAspectRatio="xMidYMid slice"/);
@@ -983,14 +1048,16 @@ test('tavern scene map player marker uses current user identity instead of gener
     assert.doesNotMatch(mapPanelSource, /#4ea1ff/);
 });
 
-test('tavern map glyph attribution keeps runtime license metadata', () => {
-    const glyphSource = readRepoFile('modules/tavern/app-src/map-glyphs.ts');
+test('tavern map icons use Material Symbols vendor licensing instead of runtime legacy attribution', () => {
+    const mapPanelSource = readRepoFile('modules/tavern/app-src/components/TavernMapPanel.vue');
+    const atlasPanelSource = readRepoFile('modules/tavern/app-src/components/TavernAtlasPanel.vue');
+    const noticeSource = readRepoFile('docs/NOTICE');
+    const licenseSource = readRepoFile('docs/LICENSE.md');
 
-    assert.match(glyphSource, /export const TAVERN_MAP_ICON_LICENSE = \{/);
-    assert.match(glyphSource, /name: 'CC BY 3\.0'/);
-    assert.match(glyphSource, /url: 'https:\/\/creativecommons\.org\/licenses\/by\/3\.0\/'/);
-    assert.match(glyphSource, /source: 'https:\/\/game-icons\.net'/);
-    assert.match(glyphSource, /TAVERN_MAP_ICON_ATTRIBUTION = TAVERN_MAP_ICON_LICENSE\.attribution/);
+    assert.doesNotMatch(mapPanelSource, new RegExp(['TAVERN_MAP_ICON_' + 'ATTRIBUTION', 'map-' + 'glyphs'].join('|')));
+    assert.doesNotMatch(atlasPanelSource, new RegExp(['TAVERN_MAP_ICON_' + 'ATTRIBUTION', 'map-' + 'glyphs'].join('|')));
+    assert.match(noticeSource, /Material Symbols[\s\S]*Local license copy: libs\/material-symbols\/LICENSE/);
+    assert.match(licenseSource, /libs\/\*/);
 });
 
 test('tavern atlas only opens scene maps that actually exist', () => {
@@ -1027,24 +1094,26 @@ test('tavern edit and delete route accepted rollback through its feature boundar
     assert.match(appSource, /describeAcceptedStateRollbackImpact\(message\.sessionId, message\.order\)/);
     assert.match(appSource, /rollbackImpactLines\(impact\)/);
     assert.match(appSource, /cancelAcceptedRollbackManagersBeforeMessage\(message\.sessionId, message\.order\)/);
-    assert.match(appSource, /restoreAcceptedMemoryAndTaskStateBeforeMessage\(message\.sessionId, message\.order\)/);
+    assert.match(appSource, /restoreAcceptedStateBeforeMessage\(message\.sessionId, message\.order\)/);
     assert.match(appSource, /cancelAcceptedRollbackManagersBeforeMessage\(message\.sessionId, fromOrder\)/);
-    assert.match(appSource, /restoreAcceptedMemoryAndTaskStateBeforeMessage\(message\.sessionId, fromOrder\)/);
-    assert.match(appSource, /drawContext\.cancelJobsForMessageRange\(message\.sessionId, fromOrder\);[\s\S]*await cancelAcceptedRollbackManagersBeforeMessage\(message\.sessionId, fromOrder\);[\s\S]*const deleted = await deleteTavernMessages\(message\.sessionId, ordersToDelete\);[\s\S]*if \(deleted > 0\) \{[\s\S]*await restoreAcceptedMemoryAndTaskStateBeforeMessage\(message\.sessionId, fromOrder\);[\s\S]*\}/);
-    assert.doesNotMatch(appSource, /async function restoreAcceptedStateBeforeMessage/);
+    assert.match(appSource, /restoreAcceptedStateBeforeMessage\(message\.sessionId, fromOrder\)/);
+    assert.match(appSource, /drawContext\.cancelJobsForMessageRange\(message\.sessionId, fromOrder\);[\s\S]*await cancelAcceptedRollbackManagersBeforeMessage\(message\.sessionId, fromOrder\);[\s\S]*const deleted = await deleteTavernMessages\(message\.sessionId, ordersToDelete\);[\s\S]*if \(deleted > 0\) \{[\s\S]*await restoreAcceptedStateBeforeMessage\(message\.sessionId, fromOrder\);[\s\S]*\}/);
     assert.doesNotMatch(appSource, /async function describeAcceptedStateRollbackImpact/);
     assert.doesNotMatch(appSource, /function rollbackImpactLines\(impact: AcceptedStateRollbackImpact\)/);
     assert.doesNotMatch(appSource, /describeTavernMemoryRestoreImpact|restoreTavernMemoryToFloor|trimTavernMemorySnapshotsFromFloor/);
     assert.doesNotMatch(appSource, /describeTavernTaskRestoreImpact|restoreTavernTasksToFloor|trimTavernTaskSnapshotsFromFloor/);
     assert.doesNotMatch(appSource, /describeXbTavernManagerRollbackImpactForMessageRange/);
     assert.match(rollbackSource, /export async function cancelAcceptedRollbackManagersBeforeMessage/);
-    assert.match(rollbackSource, /export async function restoreAcceptedMemoryAndTaskStateBeforeMessage/);
+    assert.match(rollbackSource, /export async function restoreAcceptedStateBeforeMessage/);
     assert.match(rollbackSource, /export async function describeAcceptedStateRollbackImpact/);
     assert.match(rollbackSource, /export function rollbackImpactLines/);
-    assert.match(rollbackSource, /memory:[\s\S]*tasks:[\s\S]*managers:/);
+    assert.match(rollbackSource, /memory:[\s\S]*tasks:[\s\S]*status:[\s\S]*managers:/);
+    assert.match(rollbackSource, /describeTavernStatusRestoreImpact/);
+    assert.match(rollbackSource, /restoreTavernStatusToFloor/);
+    assert.match(rollbackSource, /trimTavernStatusSnapshotsFromFloor/);
     assert.match(rollbackSource, /willRollbackState:[\s\S]*willCancelWork:/);
     assert.doesNotMatch(rollbackSource, /export async function rollbackAcceptedStateBeforeMessage/);
-    assert.doesNotMatch(rollbackSource, /export async function restoreAcceptedStateBeforeMessage/);
+    assert.doesNotMatch(rollbackSource, /export async function restoreAcceptedMemoryAndTaskStateBeforeMessage/);
     assert.doesNotMatch(appSource, /acceptedStateRollbackNoticeForFloor|会话记忆、人物记忆和事件线索会回滚/);
     assert.doesNotMatch(appSource, /restoreMemoryStateBeforeMessage|memoryRollbackNoticeForFloor/);
 });
@@ -1656,7 +1725,7 @@ test('tavern roleplay html previews use stable code anchors and a local iframe b
     assert.match(markdownSource, /const htmlFenceMode = options\.htmlFenceMode === 'code' \? 'code' : 'placeholder';/);
     assert.match(markdownSource, /const protectRawHtmlBoundaries = options\.protectRawHtmlBoundaries !== false;/);
     assert.match(markdownSource, /shouldFoldAsHtml && htmlFenceMode !== 'code'/);
-    assert.match(markdownToolsSource, /renderOptions\.roleplay \? \{ htmlFenceMode: 'code', protectRawHtmlBoundaries: false \} : \{\}/);
+    assert.match(markdownToolsSource, /renderOptions\.roleplay \? \{ htmlFenceMode: 'code' \} : \{\}/);
     assert.match(markdownToolsSource, /const TAVERN_HTML_CODE_LANGUAGES = new Set\(\['html', 'htm', 'xhtml', 'xml', 'svg', 'vue', 'svelte'\]\);/);
     assert.match(markdownToolsSource, /function enhanceTavernHtmlCodeBlocks\(root: HTMLElement\)/);
     assert.match(markdownToolsSource, /function isTavernHtmlCodeLanguage\(codeBlock: HTMLElement\)[\s\S]*TAVERN_HTML_CODE_LANGUAGES\.has\(normalized\);/);
@@ -1726,9 +1795,14 @@ test('tavern live stream rendering is frame-batched without bypassing display re
     assert.match(chatRunSource, /let pendingRuntimeStreamSnapshot: TavernRunStreamSnapshot \| null = null;/);
     assert.match(chatRunSource, /function scheduleRuntimeStreamSnapshot\(snapshot: TavernRunStreamSnapshot\)[\s\S]*window\.requestAnimationFrame\(\(\) => \{[\s\S]*flushRuntimeStreamSnapshotNow\(\);/);
     assert.match(chatRunSource, /onStreamProgress: \(snapshot\) => \{[\s\S]*scheduleRuntimeStreamSnapshot\(snapshot\);[\s\S]*\},/);
-    assert.match(chatRunSource, /runtimeStatusLabel: Ref<TavernRunStatusLabel \| ''>/);
-    assert.match(chatRunSource, /state\.runtimeStatusLabel\.value = '整理上下文';/);
-    assert.match(chatRunSource, /onRuntimeStatus: \(snapshot\) => \{[\s\S]*state\.runtimeStatusLabel\.value = snapshot\.label;[\s\S]*\},/);
+    assert.match(chatRunSource, /runtimeStatusStartedAt: Ref<number>/);
+    assert.match(chatRunSource, /runtimeStatusElapsedSeconds: Ref<number>/);
+    assert.match(chatRunSource, /function setRuntimeStatusLabel\(label: TavernRunStatusLabel \| ''\)/);
+    assert.match(chatRunSource, /if \(label && state\.runtimeStatusLabel\.value === label && state\.runtimeStatusStartedAt\.value\) \{[\s\S]*refreshRuntimeStatusElapsedSeconds\(\);[\s\S]*startRuntimeStatusTimer\(\);[\s\S]*return;/);
+    assert.match(chatRunSource, /state\.runtimeStatusStartedAt\.value = Date\.now\(\);[\s\S]*state\.runtimeStatusElapsedSeconds\.value = 0;[\s\S]*startRuntimeStatusTimer\(\);/);
+    assert.match(chatRunSource, /window\.setInterval\(\(\) => \{[\s\S]*refreshRuntimeStatusElapsedSeconds\(\);[\s\S]*\}, 1000\)/);
+    assert.match(chatRunSource, /setRuntimeStatusLabel\('同步状态'\);/);
+    assert.match(chatRunSource, /onRuntimeStatus: \(snapshot\) => \{[\s\S]*setRuntimeStatusLabel\(snapshot\.label\);[\s\S]*\},/);
     assert.doesNotMatch(appSource, /onStreamProgress: \(snapshot\) => \{[\s\S]{0,240}runtimeText\.value = snapshot\.text;/);
     assert.match(appSource, /function displayRuntimeRenderProjection/);
     assert.match(appSource, /scheduleRuntimeDisplayRegexText\('runtime:message', request\);/);
@@ -1741,12 +1815,13 @@ test('tavern live stream rendering is frame-batched without bypassing display re
     assert.match(appSource, /enhanceLiveChatMarkdown,/);
     assert.doesNotMatch(conversationSource, /:key="`live-assistant:\$\{liveAssistantRenderState\.signature\}`"/);
     assert.match(conversationSource, /:data-markdown-signature="liveAssistantRenderState\.signature"/);
-    assert.match(conversationSource, /const liveAssistantStatusLabel = computed\(\(\) => runtimeStatusLabel\.value \|\| '整理上下文'\);/);
+    assert.match(conversationSource, /const liveAssistantStatusLabel = computed\(\(\) => \{[\s\S]*const label = runtimeStatusLabel\.value \|\| '同步状态';[\s\S]*const elapsedSeconds = Math\.max\(0, Math\.floor\(Number\(runtimeStatusElapsedSeconds\.value\) \|\| 0\)\);[\s\S]*return `\$\{label\} \$\{elapsedSeconds\}s`;/);
     assert.match(conversationSource, /<small>\{\{ liveAssistantStatusLabel \}\}<\/small>/);
     assert.doesNotMatch(conversationSource, /生成中/);
-    assert.match(runtimeSource, /export type TavernRunStatusLabel =[\s\S]*'整理上下文'[\s\S]*'构建请求'[\s\S]*'请求就绪'[\s\S]*'连接模型'[\s\S]*'接收流式'[\s\S]*'保存回复'/);
-    assert.match(runtimeSource, /notifyRunStatus\(input\.onRuntimeStatus, '整理上下文'\);[\s\S]*notifyRunStatus\(input\.onRuntimeStatus, '构建请求'\);[\s\S]*notifyRunStatus\(input\.onRuntimeStatus, '请求就绪'\);[\s\S]*notifyRunStatus\(input\.onRuntimeStatus, '连接模型'\);[\s\S]*notifyRunStatus\(input\.onRuntimeStatus, '保存回复'\);/);
-    assert.match(runtimeSource, /if \(!sawStreamProgress\) \{[\s\S]*notifyRunStatus\(input\.onRuntimeStatus, '接收流式'\);/);
+    assert.match(runtimeSource, /export type TavernRunStatusLabel =[\s\S]*'同步状态'[\s\S]*'整理历史'[\s\S]*'构建请求'[\s\S]*'请求模型'[\s\S]*'接收回复'[\s\S]*'保存回复'/);
+    assert.match(runtimeSource, /notifyRunStatus\(input\.onRuntimeStatus, '同步状态'\);[\s\S]*notifyRunStatus\(input\.onRuntimeStatus, '整理历史'\);[\s\S]*notifyRunStatus\(input\.onRuntimeStatus, '构建请求'\);[\s\S]*notifyRunStatus\(input\.onRuntimeStatus, '请求模型'\);[\s\S]*notifyRunStatus\(input\.onRuntimeStatus, '保存回复'\);/);
+    assert.match(runtimeSource, /if \(!sawStreamProgress\) \{[\s\S]*notifyRunStatus\(input\.onRuntimeStatus, '接收回复'\);/);
+    assert.doesNotMatch(runtimeSource, /整理上下文|请求就绪|连接模型|接收流式/);
 });
 
 test('tavern draw jobs are message-queued and route progress by host request', () => {
@@ -1938,9 +2013,8 @@ test('tavern memory editor actions live outside the app controller', () => {
     assert.match(appSource, /async function commitUserAcceptedState\(sessionId = selectedSessionId\.value, userOrder\?: number\) \{[\s\S]*const explicitOrder = Number\(userOrder\);[\s\S]*getLatestTavernUserMessageAtOrBefore\(id, Number\.POSITIVE_INFINITY\)[\s\S]*await saveAcceptedStateSnapshot\(id, latestUserOrder \?\? -1\);[\s\S]*\}/);
     assert.match(appSource, /commitAcceptedState,/);
     assert.match(appSource, /commitUserAcceptedState,/);
-    assert.match(appSource, /const userAcceptedAnchorOrder = \(await getLatestTavernUserMessageAtOrBefore\(managerSessionId, Number\.POSITIVE_INFINITY\)\)\?\.order \?\? -1;/);
-    assert.match(appSource, /if \(\(result\.changedFiles \|\| \[\]\)\.length \|\| \(result\.changedTasks \|\| \[\]\)\.length\) \{[\s\S]*await commitUserAcceptedState\(managerSessionId, userAcceptedAnchorOrder\);[\s\S]*\}[\s\S]*await refreshManagerRecords\(managerSessionId\);/);
-    assert.doesNotMatch(appSource, /changedStates[\s\S]{0,120}commitUserAcceptedState/);
+    assert.match(appSource, /let userAcceptedAnchorOrder = -1;[\s\S]*try \{[\s\S]*userAcceptedAnchorOrder = \(await getLatestTavernUserMessageAtOrBefore\(managerSessionId, Number\.POSITIVE_INFINITY\)\)\?\.order \?\? -1;[\s\S]*const budget = await ensureTavernManagerChatBudget/);
+    assert.match(appSource, /if \(\(result\.changedFiles \|\| \[\]\)\.length \|\| \(result\.changedStates \|\| \[\]\)\.length \|\| \(result\.changedTasks \|\| \[\]\)\.length\) \{[\s\S]*await commitUserAcceptedState\(managerSessionId, userAcceptedAnchorOrder\);[\s\S]*\}[\s\S]*await refreshManagerRecords\(managerSessionId\);/);
 });
 
 test('tavern streaming action-check UI renders from live runtime events and keeps dark card styling aligned', () => {
@@ -1971,8 +2045,15 @@ test('tavern streaming action-check UI renders from live runtime events and keep
     assert.match(appSource, /const chatRunState = createTavernChatRunState\(\);/);
     assert.match(chatRunSource, /runtimeUserMessageVisible: ref\(false\)/);
     assert.doesNotMatch(chatRunSource, /runtimeFinalizedAssistantMessage/);
+    assert.match(appSource, /const runtimeActionCheckSignature = computed\(\(\) => runtimeActionCheckEvents\.value[\s\S]*event\.character \|\| ''[\s\S]*event\.stat/);
+    assert.match(appSource, /function actionCheckEventsCacheSignature\(events: TavernActionCheckRuntimeEvent\[\] = \[\]\): string \{[\s\S]*event\.character \|\| ''[\s\S]*event\.stat/);
+    assert.match(chatPageSource, /const runtimeActionCheckScrollSignature = computed\(\(\) => runtimeActionCheckEvents\.value[\s\S]*event\.character \|\| ''[\s\S]*event\.stat/);
     assert.match(markdownToolsSource, /const stakes = String\(event\.stakes \|\| ''\)\.trim\(\);/);
     assert.match(markdownToolsSource, /stakes \? `风险：\$\{stakes\}。` : ''/);
+    assert.match(markdownToolsSource, /function actionCheckDifficultyLabel\(event: TavernActionCheckRuntimeEvent\)[\s\S]*event\.difficultyLabel === 'hard'[\s\S]*return '困难';/);
+    assert.match(markdownToolsSource, /function actionCheckTitle\(event: TavernActionCheckRuntimeEvent\)[\s\S]*const character = String\(event\.character \|\| ''\)\.trim\(\)[\s\S]*event\.mode === 'statusGauge'[\s\S]*`\$\{stat\} \$\{statValue\}`[\s\S]*return character \? `\$\{character\} \$\{statLabel\}` : statLabel/);
+    assert.match(markdownToolsSource, /label: '难度',[\s\S]*value: isStatusGauge \? actionCheckDifficultyLabel\(event\) : String\(event\.difficulty\)/);
+    assert.doesNotMatch(markdownToolsSource, /label: hasThreshold \? '阈值' : '难度'/);
     assert.match(markdownToolsSource, /if \(event\.stakes\) \{[\s\S]*className = 'action-check-card-stakes'[\s\S]*textContent = event\.stakes/);
     assert.match(chatRunSource, /function clearRuntimeAssistantLiveState\(\) \{[\s\S]*state\.runtimeText\.value = '';[\s\S]*state\.runtimeThoughts\.value = \[\];[\s\S]*state\.runtimeActionCheckEvents\.value = \[\];[\s\S]*state\.runtimeUserMessageVisible\.value = false;/);
     assert.match(chatRunSource, /state\.runtimeUserMessageVisible\.value = false;[\s\S]*state\.runtimeProvider\.value = ''/);
@@ -2053,14 +2134,17 @@ test('tavern streaming action-check UI renders from live runtime events and keep
     assert.doesNotMatch(layoutCss, /@media \(max-width: 980px\) \{[\s\S]*\.chat-head-actions button:last-child \{[\s\S]*display: none;/);
     assert.match(layoutCss, /\.chat-head \{[\s\S]*justify-content: space-between;/);
     assert.match(conversationPanelSource, /<header class="chat-head">[\s\S]*class="chat-head-main"[\s\S]*class="xb-workspace-controller chat-layout-controller"[\s\S]*chatLayout === 'chat'[\s\S]*chatLayout === 'balanced'[\s\S]*chatLayout === 'editor'[\s\S]*class="chat-head-actions"/);
-    assert.match(chatPageSource, /class="chat-mobile-context-row"[\s\S]*title="地图"[\s\S]*title="记忆"[\s\S]*title="事件"[\s\S]*title="契约"/);
+    assert.match(chatPageSource, /class="chat-mobile-context-row"[\s\S]*title="地图"[\s\S]*title="记忆"[\s\S]*📓 记忆[\s\S]*title="事件"[\s\S]*🧭 事件[\s\S]*title="档案"[\s\S]*📋 档案/);
     assert.doesNotMatch(conversationPanelSource, /title="事件"/);
-    assert.match(contractModalSource, /契约[\s\S]*玩家 — 代理人誓约[\s\S]*故事开始之前，定义你的代理人被允许做什么。/);
+    assert.match(contractModalSource, /契约[\s\S]*玩家 — 代理人誓约[\s\S]*在故事里，定义你的代理人被允许做什么。[\s\S]*别忘记添加可执行工具的分身模型。/);
     assert.match(contractModalSource, /封印中\.\.\.[\s\S]*封存誓约[\s\S]*项授权已启用/);
     assert.doesNotMatch(chatPageSource, /class="chat-mobile-context-row"[\s\S]*title="请求日志"/);
     assert.doesNotMatch(chatPageSource, /class="chat-mobile-context-row"[\s\S]*>\s*会话\s*</);
-    assert.match(chatPageSource, /:class="\{ 'is-active': mobileChatPanel === 'workspace' && chatWorkspacePanel === 'state' \}"/);
+    assert.match(contextSource, /export type TavernChatWorkspacePanelKey = 'map' \| 'status' \| 'memory' \| 'event';/);
+    assert.match(appSource, /const chatWorkspacePanel = ref<TavernChatWorkspacePanelKey>\('map'\);/);
+    assert.match(chatPageSource, /:class="\{ 'is-active': mobileChatPanel === 'workspace' && chatWorkspacePanel === 'map' \}"/);
     assert.match(chatPageSource, /:class="\{ 'is-active': mobileChatPanel === 'workspace' && chatWorkspacePanel === 'memory' \}"/);
+    assert.match(chatPageSource, /:class="\{ 'is-active': mobileChatPanel === 'workspace' && chatWorkspacePanel === 'status' \}"/);
     assert.match(conversationPanelSource, /createNewChatSession,[\s\S]*const composeMenuOpen = ref\(false\)/);
     assert.match(conversationPanelSource, /const sessionArchiveOpen = ref\(false\)/);
     assert.doesNotMatch(conversationPanelSource, /open-session-archive/);
@@ -2105,9 +2189,11 @@ test('tavern streaming action-check UI renders from live runtime events and keep
     assert.doesNotMatch(conversationPanelSource, /useTavernCharacterContext|selectedCharacterSessions/);
     assert.match(conversationPanelSource, /v-if="sessionArchiveOpen"[\s\S]*class="character-session-archive-overlay chat-session-archive-overlay"[\s\S]*v-for="archivedSession in currentChatCharacterSessions"[\s\S]*@click="openArchivedSession\(archivedSession\.id\)"/);
     assert.match(managerPanelSource, /v-model="managerInputDraft"[\s\S]*rows="1"/);
-    assert.match(workspacePanelSource, /<button[\s\S]*chatWorkspacePanel === 'state'[\s\S]*>\s*地图\s*<\/button>/);
-    assert.match(workspacePanelSource, /class="tavern-state-viewport"[\s\S]*class="tavern-state-inline-switcher"[\s\S]*场景图[\s\S]*世界图/);
-    assert.match(workspacePanelSource, /class="tavern-state-viewport"[\s\S]*<TavernAtlasPanel[\s\S]*display-mode="graph"/);
+    assert.match(workspacePanelSource, /<button[\s\S]*chatWorkspacePanel === 'map'[\s\S]*>\s*地图\s*<\/button>/);
+    assert.match(workspacePanelSource, /chatWorkspacePanel === 'map'[\s\S]*>\s*地图\s*<\/button>[\s\S]*chatWorkspacePanel === 'status'[\s\S]*>\s*状态\s*<\/button>[\s\S]*chatWorkspacePanel === 'memory'[\s\S]*>\s*记忆\s*<\/button>[\s\S]*chatWorkspacePanel === 'event'[\s\S]*>\s*事件\s*<\/button>/);
+    assert.match(workspacePanelSource, /<TavernStatusPanel[\s\S]*:document="statusStateDocument"[\s\S]*:field-deltas="statusFieldDeltas"[\s\S]*:enabled="sessionContract\.statusPanel"/);
+    assert.match(workspacePanelSource, /class="tavern-map-viewport"[\s\S]*class="tavern-map-inline-switcher"[\s\S]*场景图[\s\S]*世界图/);
+    assert.match(workspacePanelSource, /class="tavern-map-viewport"[\s\S]*<TavernAtlasPanel[\s\S]*display-mode="graph"/);
     assert.match(workspacePanelSource, /class="tavern-map-info"[\s\S]*<TavernAtlasPanel[\s\S]*display-mode="detail"/);
     assert.doesNotMatch(workspacePanelSource, /class="tavern-state-view-tabs"/);
     assert.doesNotMatch(workspacePanelSource, /回到当前位置|tavern-state-follow-button/);
@@ -2399,7 +2485,9 @@ test('tavern heavy disclosure details bind to ephemeral state instead of keeping
     assert.match(managerSource, /class="manager-work-band"[\s\S]*class="chat-scroll-shell manager-scroll-shell"/);
     assert.match(managerSource, /v-for="item in managerChatMessageItems"/);
     assert.match(managerSource, /class="manager-work-section manager-work-live-draft"/);
-    assert.match(managerSource, /isManagerAssistantRunning && !liveManagerChatMessageItems\.length/);
+    assert.match(managerSource, /v-if="managerPendingUserMessage"[\s\S]*data-manager-anchor-key="pending:user"/);
+    assert.match(managerSource, /isManagerAssistantRunning && !managerPendingUserMessage && !liveManagerChatMessageItems\.length/);
+    assert.match(appSource, /managerPendingUserMessage: visibleManagerPendingUserMessage/);
     assert.match(managerSource, /function handleManagerWorkBandToggle[\s\S]*enhanceManagerMarkdown\(\)[\s\S]*updateManagerScrollButtons\(\)/);
     assert.match(appSource, /totalItems:\s*\(\) => managerChatMessageDisplayItems\.value\.length/);
     assert.match(appSource, /getMessageWindow\(\{[\s\S]*\}, managerChatMessageDisplayItems\.value\.length/);
@@ -2457,7 +2545,7 @@ test('tavern edited RP messages use native macro substitution before saving', ()
     assert.match(appSource, /const substitutedContent = await substituteEditedMessageContent\(message, content\);[\s\S]*const regexedContent = await applyEditRegexToMessageContent\(message, substitutedContent\);[\s\S]*updateTavernMessage\(message\.sessionId, message\.order, \{\s*content: regexedContent,/);
     assert.doesNotMatch(appSource, /\.\.\.\(shouldClearRuntimeEvents \? \{ runtimeEvents: \[\] \} : \{\}\),/);
     assert.doesNotMatch(appSource, /\.\.\.\(message\.role === 'user' \? \{ runtimeEvents: \[\] \} : \{\}\)/);
-    assert.match(appSource, /if \(updated && shouldRollbackState\) \{[\s\S]*await cancelAcceptedRollbackManagersBeforeMessage\(message\.sessionId, message\.order\);[\s\S]*await restoreAcceptedMemoryAndTaskStateBeforeMessage\(message\.sessionId, message\.order\);[\s\S]*\}/);
+    assert.match(appSource, /if \(updated && shouldRollbackState\) \{[\s\S]*await cancelAcceptedRollbackManagersBeforeMessage\(message\.sessionId, message\.order\);[\s\S]*await restoreAcceptedStateBeforeMessage\(message\.sessionId, message\.order\);[\s\S]*\}/);
     assert.match(appSource, /if \(shouldRollbackState\) \{[\s\S]*await refreshManagerRecords\(selectedSessionId\.value\);[\s\S]*\}/);
     assert.match(appSource, /if \(updated && shouldRollbackState\) \{[\s\S]*await rebuildSelectedSessionRuntimeState\(\);[\s\S]*\}/);
 });

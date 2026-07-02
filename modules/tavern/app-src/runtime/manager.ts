@@ -38,14 +38,23 @@ import {
     type TavernManagerRunRecord,
     type TavernMessageRecord,
 } from '../../shared/session-db';
-import { executeTavernStateTool, TAVERN_STATE_TOOL_NAMES, type TavernStateToolResult } from '../../shared/structured-state';
+import { executeTavernStateTool, getTavernAtlasStateForSession, TAVERN_STATE_TOOL_NAMES, type TavernStateToolResult } from '../../shared/structured-state';
+import {
+    describeStatusStateRollbackImpactForMessageRange,
+    executeTavernStatusTool,
+    getTavernStatusStateForSession,
+    isTavernStatusToolName,
+    rollbackStatusStateForManagerRun,
+    rollbackStatusStateForMessageRange,
+    TAVERN_STATUS_TOOL_NAMES,
+    type TavernStatusToolResult,
+} from '../../shared/status-state';
 import {
     abandonStaleTavernTasks,
     buildTavernTaskPoolPromptBlock,
     executeTavernTaskTool,
     listTavernManagerTaskSnapshots,
     rollbackManagerRunTaskWrites,
-    TAVERN_TASK_MIN_GENERATION_FLOOR,
     TAVERN_TASK_TOOL_NAMES,
     type TavernTaskToolResult,
 } from '../../shared/tasks';
@@ -217,6 +226,12 @@ function getManagerToolArgumentSchemaHint(toolName = ''): string {
     if (toolName === TAVERN_STATE_TOOL_NAMES.PATCH) {
         return 'MapPatch is advanced/internal. Prefer MapSceneEdit with scene + elements using shape/geo/label. If you must use MapPatch, arguments must be a valid JSON object with an ops array.';
     }
+    if (toolName === TAVERN_STATUS_TOOL_NAMES.INIT) {
+        return 'Expected StatusInit arguments: {"document":{"meta":{"activeSubject":"user"},"subjects":[{"id":"user","name":"角色","tabs":[{"id":"overview","label":"概览","blocks":[{"id":"stats","title":"属性","form":"gauge","fields":[{"id":"san","name":"理智","value":62,"max":99}]}]}]}]}}.';
+    }
+    if (toolName === TAVERN_STATUS_TOOL_NAMES.PATCH) {
+        return 'Expected StatusPatch arguments: {"ops":[{"op":"delta","subjectId":"user","tabId":"overview","blockId":"stats","fieldId":"san","delta":-5}]}. Patch may only set/delta/push/remove fields inside existing blocks.';
+    }
     if (toolName === 'Edit') {
         return 'Expected Edit arguments: {"filePath":"memory/state.md","edits":[{"oldString":"...","newString":"..."}]} or line-range edits with startLine/endLine/newString.';
     }
@@ -274,7 +289,13 @@ function parseManagerToolArguments(toolCall: { name?: string; arguments?: unknow
 
 function buildManagerSystemPrompt(
     assistantPreset: TavernAssistantPreset | undefined,
-    options: { includeMemory?: boolean; includeCartography?: boolean; includeQuestOrchestration?: boolean } = {},
+    options: {
+        includeMemory?: boolean;
+        includeCartography?: boolean;
+        includeStatus?: boolean;
+        includeQuestOrchestration?: boolean;
+        workMode?: 'accepted-turn' | 'manual-chat';
+    } = {},
 ): string {
     return buildTavernManagerSystemPrompt(assistantPreset, options).trim();
 }
@@ -286,24 +307,37 @@ function resolveSessionContractRuntime(contract?: Partial<TavernSessionContract>
 function buildResidentMemoryBlock(memoryFiles: Array<{ path: string; status: string; updatedAt: number; content: string }>): string {
     const stateFile = memoryFiles.find((file) => file.path === 'memory/state.md');
     const blocks = [
-        stateFile ? ['[memory/state.md]', stateFile.content].join('\n') : '',
+        stateFile ? ['[Global memory state.md]', stateFile.content].join('\n') : '[Global memory state.md]\nNo state.md file.',
     ].filter(Boolean);
-    return ['[Resident Memory Files]', ...blocks].join('\n\n');
+    return blocks.join('\n\n');
 }
 
-function normalizeManagerPlayerName(context?: XbTavernContext): string {
-    return normalizeText(context?.user?.name, 80).replace(/[\r\n`]/g, ' ').replace(/\s+/g, ' ').trim();
-}
-
-function buildManagerPlayerIdentityBlock(playerName = ''): string {
-    const name = normalizeText(playerName, 80);
+function buildCharacterMemoryFilenameListBlock(memoryFiles: Array<{ path: string; status: string }>): string {
+    const filenames = memoryFiles
+        .filter((file) => String(file.status || 'active') !== 'stale')
+        .map((file) => String(file.path || '').replace(/\\/g, '/').trim())
+        .filter((path) => /^memory\/characters\/[^/]+\.md$/.test(path))
+        .map((path) => path.replace(/^memory\/characters\//, ''))
+        .sort((left, right) => left.localeCompare(right, 'zh-Hans-CN'));
     return [
-        '[玩家身份]',
-        name ? `当前玩家用户名：${name}` : '当前玩家用户名：未提供',
-        name
-            ? `用户档案不由后台 manager 维护；不要创建或维护 \`memory/characters/${name}.md\`，也不要把消息作者写成角色档案。`
-            : '用户档案不由后台 manager 维护；不要把消息作者写成角色档案。',
+        '[Character memory filename list]',
+        filenames.length ? filenames.map((filename) => `- ${filename}`).join('\n') : 'none',
     ].join('\n');
+}
+
+function buildAtlasWorldBlock(atlasDocument: unknown): string {
+    return [
+        '[Map atlas world]',
+        safeJson(atlasDocument || null),
+    ].join('\n');
+}
+
+function buildStatusPanelBlock(statusDocument: unknown, exists = false): string {
+    return [
+        '[Status panel full document]',
+        exists ? safeJson(statusDocument || null) : 'No status panel exists yet.',
+        !exists ? safeJson(statusDocument || null) : '',
+    ].filter(Boolean).join('\n');
 }
 
 function buildAutoManagerUserPrompt(input: {
@@ -311,58 +345,27 @@ function buildAutoManagerUserPrompt(input: {
     userMessage: TavernMessageRecord;
     assistantMessage: TavernMessageRecord;
     memoryFiles: Array<{ path: string; status: string; updatedAt: number; content: string }>;
+    atlasWorldBlock?: string;
+    statusPanelBlock?: string;
     taskPoolBlock?: string;
     runtime: TavernSessionContractRuntime;
-    playerName?: string;
 }): string {
     const allowMemory = input.runtime.managerPromptOptions.includeMemory;
     const allowMap = input.runtime.managerPromptOptions.includeCartography;
+    const allowStatus = input.runtime.managerPromptOptions.includeStatus;
     const allowQuest = input.runtime.managerPromptOptions.includeQuestOrchestration;
-    const playerName = normalizeText(input.playerName, 80);
-    const requirements: string[] = [];
-    let step = 1;
-    if (allowMemory) {
-        requirements.push(`${step}. Read \`memory/state.md\` and relevant \`memory/characters/<角色名>.md\` files as needed, then update memory only if this accepted assistant reply changed durable memory.`);
-        step += 1;
-        requirements.push(`${step}. Do not create or maintain user/player character files such as \`memory/characters/User.md\`, \`Player.md\`, \`用户.md\`, or \`玩家.md\`${playerName ? `, and do not create or maintain \`memory/characters/${playerName}.md\` for the current player username 「${playerName}」` : ''}. The user profile is not maintained by the backstage manager; keep player-side durable state in \`memory/state.md\` only when it matters to RP continuity. Treat user messages as source evidence, not as a user persona sheet; ignore status-bar/UI/meta text unless the assistant reply establishes it inside RP.`);
-        step += 1;
-    }
-    if (allowMap) {
-        requirements.push(`${step}. Spatial maintenance uses map files: read \`world\` with MapAtlasRead, then edit an explicit scene name with MapSceneEdit. Move the player in \`world\` only when the story reaches a new named or trackable place; small movement inside the same place belongs in that scene map actor coordinates.`);
-        step += 1;
-    }
-    if (allowMemory && allowMap) {
-        requirements.push(`${step}. Maintain \`memory/state.md\` for global memory and \`memory/characters/<角色名>.md\` for character memory. The map does not replace written memory.`);
-        step += 1;
-    } else if (allowMemory) {
-        requirements.push(`${step}. Maintain \`memory/state.md\` for global memory and \`memory/characters/<角色名>.md\` for character memory.`);
-        step += 1;
-    } else if (allowMap) {
-        requirements.push(`${step}. This contract authorizes only the map system. Do not write memory Markdown.`);
-        step += 1;
-    } else if (!allowQuest) {
-        requirements.push(`${step}. This contract authorizes neither background memory nor map maintenance. Do not write memory or map records; clearly say that you skipped it.`);
-        step += 1;
-    }
-    if (allowQuest) {
-        requirements.push(`${step}. 事件：先看当前方向池；信息不足时再用 EventInspect。如果上一条回复真的推动或了结了某个活跃方向，advance 或 complete 它。如果活跃方向只剩 0-1 个且已过第 ${TAVERN_TASK_MIN_GENERATION_FLOOR} 楼，并且你想到一个有野心、对味的新方向，就 upsert 一个新的。想不到好的就别造；过期方向系统自动清，不用手动删。什么算好方向按事件引擎规则，字段按工具说明。`);
-        step += 1;
-    }
-    requirements.push(`${step}. Close with a short result: say what you wrote, skipped, or left pending.`);
 
     const blocks = [
         ...(allowMemory ? [buildResidentMemoryBlock(input.memoryFiles), ''] : []),
+        ...(allowMap ? [String(input.atlasWorldBlock || '[Map atlas world]\nnull').trim(), ''] : []),
+        ...(allowStatus ? [String(input.statusPanelBlock || '[Status panel full document]\nnull').trim(), ''] : []),
         ...(allowQuest ? [String(input.taskPoolBlock || '[Current Event Pool]\nActive directions: unknown.').trim(), ''] : []),
-        ...(allowMemory ? [buildManagerPlayerIdentityBlock(playerName), ''] : []),
-        '[本轮 RP 原文]',
-        '[用户消息]',
+        ...(allowMemory ? [buildCharacterMemoryFilenameListBlock(input.memoryFiles), ''] : []),
+        '[Current turn user message]',
         cleanSourceTextForManager(input.userMessage.content),
         '',
-        '[角色回复]',
+        '[Current turn assistant reply]',
         cleanSourceTextForManager(input.assistantMessage.content),
-        '',
-        '[本轮要求]',
-        ...requirements,
     ];
     return blocks.join('\n');
 }
@@ -374,7 +377,7 @@ function buildChatManagerUserPrompt(input: {
     return [
         buildResidentMemoryBlock(input.memoryFiles),
         '',
-        '[当前问题]',
+        '[Current manager-chat question]',
         input.question,
     ].join('\n');
 }
@@ -439,7 +442,7 @@ function summarizeToolArguments(args: Record<string, unknown> = {}): string {
         .join('; ');
 }
 
-function summarizeToolResult(result: TavernMemoryToolResult | TavernStateToolResult | TavernTaskToolResult): string {
+function summarizeToolResult(result: TavernMemoryToolResult | TavernStateToolResult | TavernStatusToolResult | TavernTaskToolResult): string {
     const summary = normalizeText(result.summary || result.error || '', 360);
     if (result.ok !== false) {return summary;}
     const details = (result as { details?: unknown }).details;
@@ -461,6 +464,10 @@ function isStateToolName(name = ''): boolean {
 
 function isTaskToolName(name = ''): boolean {
     return Object.values(TAVERN_TASK_TOOL_NAMES).includes(name as typeof TAVERN_TASK_TOOL_NAMES[keyof typeof TAVERN_TASK_TOOL_NAMES]);
+}
+
+function isStatusToolName(name = ''): boolean {
+    return isTavernStatusToolName(name);
 }
 
 function isSourceFileToolName(name = ''): boolean {
@@ -515,7 +522,9 @@ async function rollbackManagerRunIfWroteMemory(managerRunId = ''): Promise<{
     ]);
     const hasMemoryWrites = memorySnapshots.some((snapshot) => String(snapshot.afterHash || '').trim());
     const hasTaskWrites = taskSnapshots.some((snapshot) => String(snapshot.afterHash || '').trim());
-    if (!hasMemoryWrites && !hasTaskWrites) {
+    const statusResult = await rollbackStatusStateForManagerRun(managerRunId);
+    const hasStatusWrites = statusResult.rolledBack > 0 || statusResult.skipped > 0 || statusResult.conflicts.length > 0;
+    if (!hasMemoryWrites && !hasTaskWrites && !hasStatusWrites) {
         return null;
     }
     const memoryResult = hasMemoryWrites
@@ -524,11 +533,16 @@ async function rollbackManagerRunIfWroteMemory(managerRunId = ''): Promise<{
     const taskResult = hasTaskWrites
         ? await rollbackManagerRunTaskWrites(managerRunId)
         : { rolledBack: 0, conflicts: [], skipped: 0 };
-    const conflicts = [...memoryResult.conflicts, ...taskResult.conflicts];
+    const conflicts = [...memoryResult.conflicts, ...taskResult.conflicts, ...statusResult.conflicts];
     const run = await updateTavernManagerRun(managerRunId, {});
     if (run && conflicts.length) {
         await updateTavernManagerRun(managerRunId, {
             error: mergeRollbackRunError(run.error, conflicts),
+        });
+    } else if (run && hasStatusWrites && !hasMemoryWrites && !hasTaskWrites) {
+        await updateTavernManagerRun(managerRunId, {
+            status: 'rolled_back',
+            error: '',
         });
     }
     return {
@@ -828,7 +842,7 @@ async function runManagerAgentWithTools(input: {
             };
             toolTrace.push(traceEntry);
             await persistRunningManagerToolTrace(input.managerRunId, toolTrace);
-            let toolResult: TavernMemoryToolResult | TavernStateToolResult | TavernTaskToolResult;
+            let toolResult: TavernMemoryToolResult | TavernStateToolResult | TavernStatusToolResult | TavernTaskToolResult;
             if (!parsedArguments.ok) {
                 toolResult = parsedArguments.result!;
             } else if (input.caller === 'auto' && !isAutoManagerToolAllowed(toolCall.name, input.sessionContract)) {
@@ -845,6 +859,14 @@ async function runManagerAgentWithTools(input: {
                 });
             } else if (isStateToolName(toolCall.name)) {
                 toolResult = await executeTavernStateTool(input.sessionId, toolCall.name, args, {
+                    caller: input.caller,
+                    managerRunId: input.managerRunId,
+                    sourceUserOrder: input.userOrder,
+                    sourceAssistantOrder: input.assistantOrder,
+                    beforeWriteGuard: input.beforeWriteGuard,
+                });
+            } else if (isStatusToolName(toolCall.name)) {
+                toolResult = await executeTavernStatusTool(input.sessionId, toolCall.name, args, {
                     caller: input.caller,
                     managerRunId: input.managerRunId,
                     sourceUserOrder: input.userOrder,
@@ -1069,14 +1091,22 @@ async function buildAutoManagerMessages(input: XbTavernManagerRunInput, sourceMe
     const memoryFiles = contractRuntime.includeMemoryFiles
         ? await listTavernMemoryFiles(input.sessionId, { includeStale: true })
         : [];
+    const atlasState = contractRuntime.includeStructuredStates
+        ? await getTavernAtlasStateForSession(input.sessionId)
+        : null;
+    const statusState = contractRuntime.includeStatusStates
+        ? await getTavernStatusStateForSession(input.sessionId)
+        : null;
     const taskPoolBlock = contractRuntime.includeQuestOrchestration
         ? await buildTavernTaskPoolPromptBlock(input.sessionId)
         : '';
-    const contextSnapshot = input.contextSnapshot || sourceMessages.assistantMessage.contextSnapshot || sourceMessages.userMessage.contextSnapshot;
     return [
         {
             role: 'system',
-            content: buildManagerSystemPrompt(input.assistantPreset, contractRuntime.managerPromptOptions),
+            content: buildManagerSystemPrompt(input.assistantPreset, {
+                ...contractRuntime.managerPromptOptions,
+                workMode: 'accepted-turn',
+            }),
         },
         {
             role: 'user',
@@ -1085,9 +1115,10 @@ async function buildAutoManagerMessages(input: XbTavernManagerRunInput, sourceMe
                 userMessage: sourceMessages.userMessage,
                 assistantMessage: sourceMessages.assistantMessage,
                 memoryFiles,
+                atlasWorldBlock: atlasState ? buildAtlasWorldBlock(atlasState.document?.data || null) : '',
+                statusPanelBlock: statusState ? buildStatusPanelBlock(statusState.status, !!statusState.document) : '',
                 taskPoolBlock,
                 runtime: contractRuntime,
-                playerName: normalizeManagerPlayerName(contextSnapshot),
             }),
         },
     ];
@@ -1102,7 +1133,7 @@ async function buildChatManagerMessages(input: {
     await ensureTavernMemoryDefaults(input.sessionId);
     const memoryFiles = await listTavernMemoryFiles(input.sessionId, { includeStale: true });
     const history = Array.isArray(input.history) ? input.history : await listTavernManagerMessages(input.sessionId);
-    const messages: XbTavernMessage[] = [{ role: 'system', content: buildManagerSystemPrompt(input.assistantPreset) }];
+    const messages: XbTavernMessage[] = [{ role: 'system', content: buildManagerSystemPrompt(input.assistantPreset, { workMode: 'manual-chat' }) }];
     history.forEach((message) => {
         const canReplayToolCalls = message.role === 'assistant'
             && message.error !== true
@@ -1814,16 +1845,18 @@ export async function describeXbTavernManagerRollbackImpactForMessageRange(sessi
     pendingRuns: number;
     writtenMemoryFiles: number;
     writtenTaskRuns: number;
+    writtenStatusPatches: number;
     hasWrittenState: boolean;
 }> {
     const id = String(sessionId || '').trim();
     const order = Number(fromOrder);
     if (!id || !Number.isFinite(order)) {
-        return { affectedRuns: 0, pendingRuns: 0, writtenMemoryFiles: 0, writtenTaskRuns: 0, hasWrittenState: false };
+        return { affectedRuns: 0, pendingRuns: 0, writtenMemoryFiles: 0, writtenTaskRuns: 0, writtenStatusPatches: 0, hasWrittenState: false };
     }
     const runs = (await listTavernManagerRuns(id))
         .filter((run) => ['accepted_turn', 'after_turn'].includes(run.trigger)
             && (Number(run.userOrder) >= order || Number(run.assistantOrder) >= order));
+    const statusImpact = await describeStatusStateRollbackImpactForMessageRange(id, order);
     let pendingRuns = 0;
     let writtenMemoryFiles = 0;
     let writtenTaskRuns = 0;
@@ -1843,7 +1876,8 @@ export async function describeXbTavernManagerRollbackImpactForMessageRange(sessi
         pendingRuns,
         writtenMemoryFiles,
         writtenTaskRuns,
-        hasWrittenState: writtenMemoryFiles > 0 || writtenTaskRuns > 0,
+        writtenStatusPatches: statusImpact.writtenStatusPatches,
+        hasWrittenState: writtenMemoryFiles > 0 || writtenTaskRuns > 0 || statusImpact.changed,
     };
 }
 
@@ -1865,6 +1899,7 @@ export async function cancelAndRollbackXbTavernManagersForMessageRange(sessionId
         }
     });
     const memory = await rollbackManagerRunsForMessageRange(id, order);
+    const status = await rollbackStatusStateForMessageRange(id, order);
     let taskRolledBack = 0;
     let taskSkipped = 0;
     const taskConflicts: string[] = [];
@@ -1877,9 +1912,9 @@ export async function cancelAndRollbackXbTavernManagersForMessageRange(sessionId
         taskConflicts.push(...result.conflicts);
     }
     return {
-        runIds: [...new Set([...memory.runIds])],
-        rolledBack: memory.rolledBack + taskRolledBack,
-        conflicts: [...memory.conflicts, ...taskConflicts],
-        skipped: memory.skipped + taskSkipped,
+        runIds: [...new Set([...memory.runIds, ...status.runIds])],
+        rolledBack: memory.rolledBack + taskRolledBack + status.rolledBack,
+        conflicts: [...memory.conflicts, ...taskConflicts, ...status.conflicts],
+        skipped: memory.skipped + taskSkipped + status.skipped,
     };
 }

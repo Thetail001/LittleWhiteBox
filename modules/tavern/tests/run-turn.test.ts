@@ -51,6 +51,7 @@ import {
     type TavernRunOnceOptions,
 } from '../app-src/runtime/run-once';
 import { executeTavernTaskTool } from '../shared/tasks';
+import { executeTavernStatusTool, TAVERN_STATUS_TOOL_NAMES } from '../shared/status-state';
 import { createXbTavernAgentRuntime, EMPTY_XB_TAVERN_CAPABILITY_REGISTRY } from '../app-src/runtime/agent-runtime';
 import { resolveXbTavernProviderConfig } from '../app-src/runtime/provider';
 import type { TavernApplyRegexItem } from '../shared/regex';
@@ -69,6 +70,52 @@ function makeContextWindowMessage(order: number, role: string, content = `messag
         role,
         content,
         createdAt: order + 1,
+    };
+}
+
+function createPromptStatusDocument() {
+    return {
+        meta: { revision: 0, activeSubject: 'user' },
+        subjects: [{
+            id: 'user',
+            name: '阿瑟',
+            subtitle: '私家侦探',
+            icon: 'person',
+            tabs: [{
+                id: 'overview',
+                label: '概览',
+                blocks: [{
+                    id: 'stats',
+                    title: '核心值',
+                    form: 'gauge',
+                    fields: [
+                        { id: 'san', name: '理智', value: 62, min: 0, max: 99, step: 1, display: 'bar', accent: true },
+                    ],
+                }, {
+                    id: 'conditions',
+                    title: '状态',
+                    form: 'tag',
+                    fields: [
+                        { id: 'wet', label: '衣物湿透', kind: 'state' },
+                    ],
+                }, {
+                    id: 'items',
+                    title: '持有物',
+                    form: 'item',
+                    layout: 'grid',
+                    fields: [
+                        { id: 'lamp', name: '煤油灯', qty: 1, key: true, slot: '右手', lore: '灯芯还剩一半。', icon: 'local_fire_department' },
+                    ],
+                }, {
+                    id: 'scene',
+                    title: '当前情境',
+                    form: 'text',
+                    fields: [
+                        { id: 'now', name: '位置', value: '站在档案室门口。' },
+                    ],
+                }],
+            }],
+        }],
     };
 }
 
@@ -309,12 +356,16 @@ test('xb tavern run turn sends the same ST-native prompt shape used by simulatio
         state: {
             contract: mergeTavernSessionContract(undefined, {
                 memoryArchiving: true,
+                statusPanel: true,
                 actionChecks: true,
                 randomEncounters: true,
             }),
         },
     });
     await writeTavernMemoryFile(session.id, 'memory/state.md', '# 会话记忆\n\nNATIVE_MEMORY_NOTE', { source: 'user' });
+    await executeTavernStatusTool(session.id, TAVERN_STATUS_TOOL_NAMES.INIT, {
+        document: createPromptStatusDocument(),
+    });
     let nativeInput: { chatPreset?: unknown; memoryPrompt?: string; chancePrompt?: string; actionCheckPrompt?: string } | null = null;
     let sentMessages: Array<{ role?: string; content?: string }> = [];
 
@@ -353,6 +404,11 @@ test('xb tavern run turn sends the same ST-native prompt shape used by simulatio
     assert.equal(result.requestSnapshot.rawRequestJson.includes('NATIVE_MESSAGE \\n'), false);
     assert.equal((nativeInput?.chatPreset as { name?: string } | undefined)?.name, preset.name);
     assert.match(nativeInput?.memoryPrompt || '', /NATIVE_MEMORY_NOTE/);
+    assert.match(nativeInput?.memoryPrompt || '', /## 状态栏/);
+    assert.match(nativeInput?.memoryPrompt || '', /status_panel:/);
+    assert.match(nativeInput?.memoryPrompt || '', /name: 理智/);
+    assert.match(nativeInput?.memoryPrompt || '', /value: 62/);
+    assert.doesNotMatch(nativeInput?.memoryPrompt || '', /\bid:|revision|docType|docId|icon|display|accent|layout/);
     assert.match(nativeInput?.chancePrompt || '', /Chance Encounter Triggered/);
     assert.match(nativeInput?.actionCheckPrompt || '', /Runtime Protocol: Action Checks/);
     assert.equal(getChanceEncounterEvent(result.userMessage.runtimeEvents)?.label, CHANCE_ENCOUNTER_LABEL);
@@ -977,12 +1033,176 @@ test('xb tavern run turn injects action-check protocol after current user and ex
     assert.ok(afterHistoryIndex > protocolIndex);
     const protocolContent = requestMessages[protocolIndex]?.content || '';
     assert.match(protocolContent, /overwhelming advantage/);
-    assert.match(protocolContent, /Do not roll for intimate or everyday interactions/);
-    assert.match(protocolContent, /bare D20 with no stat bonus/);
-    assert.match(protocolContent, /DC 1-5 is easy, 6-10 is ordinary, 11-15 is hard, 16-20 is very hard, and 21 is nearly impossible/);
-    assert.match(protocolContent, /Natural 1 is a critical failure/);
-    assert.match(protocolContent, /Natural 20 is a critical success/);
+    assert.match(protocolContent, /Consensual or natural intimacy/);
+    assert.match(protocolContent, /How to call the tool \(Before the roll\):/);
+    assert.match(protocolContent, /before narrating any consequence or assuming the outcome/);
+    assert.match(protocolContent, /How to narrate the outcome \(After the roll\):/);
+    assert.match(protocolContent, /If Critical Failure: make things dramatically worse/);
+    assert.match(protocolContent, /If Critical Success: describe an overpowering triumph/);
+    assert.doesNotMatch(protocolContent, /How to narrate:/);
+    assert.doesNotMatch(protocolContent, /Choose the stat that best fits the action from the status panel/);
+    assert.doesNotMatch(protocolContent, /Difficulty levels: `easy`, `ordinary`, `hard`, `very_hard`, `nearly_impossible`/);
     assert.deepEqual(exposedToolNames, [ACTION_CHECK_TOOL_NAME]);
+});
+
+test('xb tavern run turn injects status panel yaml without exposing status tools to RP', async () => {
+    await resetDb();
+    const preset = createDefaultXbTavernPreset();
+    const session = await createTavernSession({
+        title: 'Status prompt',
+        characterKey: 'char-status',
+        characterName: 'Aster',
+        contextSnapshot: {
+            character: { characterKey: 'char-status', name: 'Aster' },
+        },
+        state: {
+            contract: mergeTavernSessionContract(undefined, {
+                statusPanel: true,
+                actionChecks: true,
+                randomEncounters: false,
+            }),
+        },
+    });
+    await executeTavernStatusTool(session.id, TAVERN_STATUS_TOOL_NAMES.INIT, {
+        document: createPromptStatusDocument(),
+    });
+
+    let rawMessages = '';
+    let exposedToolNames: string[] = [];
+    await runXbTavernTurn({
+        sessionId: session.id,
+        agentConfig: { provider: 'fake-provider', model: 'fake-model' },
+        contextSnapshot: session.contextSnapshot || {},
+        preset,
+        currentUserMessage: '我看看自己的状态。',
+        executeRunOnce: async (options: TavernRunOnceOptions) => {
+            rawMessages = JSON.stringify(options.messages);
+            exposedToolNames = (Array.isArray(options.tools) ? options.tools : [])
+                .map((tool) => String((tool as { function?: { name?: string } })?.function?.name || ''))
+                .filter(Boolean);
+            return {
+                text: '你短暂确认了一下自己的状态。',
+                requestSnapshot: buildTavernRequestSnapshot(options.agentConfig, options.messages, {
+                    requestTask: {
+                        messages: options.messages,
+                        tools: options.tools,
+                        toolChoice: options.toolChoice,
+                    },
+                }),
+            };
+        },
+    });
+
+    assert.match(rawMessages, /## 状态栏/);
+    assert.match(rawMessages, /status_panel/);
+    assert.match(rawMessages, /name: 阿瑟/);
+    assert.match(rawMessages, /subtitle: 私家侦探/);
+    assert.match(rawMessages, /title: 核心值/);
+    assert.match(rawMessages, /form: gauge/);
+    assert.match(rawMessages, /name: 理智/);
+    assert.match(rawMessages, /value: 62/);
+    assert.match(rawMessages, /label: 衣物湿透/);
+    assert.match(rawMessages, /name: 煤油灯/);
+    assert.match(rawMessages, /lore: 灯芯还剩一半。/);
+    assert.match(rawMessages, /value: 站在档案室门口。/);
+    assert.doesNotMatch(rawMessages, /\bid:|revision|docType|docId|icon|display|accent|layout|activeSubject/);
+    assert.deepEqual(exposedToolNames, [ACTION_CHECK_TOOL_NAME]);
+});
+
+test('xb tavern action check uses status panel gauge when stat matches', async () => {
+    await resetDb();
+    const preset = createDefaultXbTavernPreset();
+    const session = await createTavernSession({
+        title: 'Status action check',
+        characterKey: 'char-status-check',
+        characterName: 'Aster',
+        contextSnapshot: {
+            character: { characterKey: 'char-status-check', name: 'Aster' },
+        },
+        state: {
+            contract: mergeTavernSessionContract(undefined, {
+                statusPanel: true,
+                actionChecks: true,
+                randomEncounters: false,
+            }),
+        },
+    });
+    await executeTavernStatusTool(session.id, TAVERN_STATUS_TOOL_NAMES.INIT, {
+        document: createPromptStatusDocument(),
+    });
+
+    let requestCount = 0;
+    let exposedToolNames: string[] = [];
+    const executeRunOnce = Object.assign(async (options: TavernRunOnceOptions) => {
+        requestCount += 1;
+        if (requestCount === 1) {
+            exposedToolNames = (Array.isArray(options.tools) ? options.tools : [])
+                .map((tool) => String((tool as { function?: { name?: string } })?.function?.name || ''))
+                .filter(Boolean);
+            return {
+                text: '阿瑟屏住呼吸，逼自己盯住门缝里的冷光。 ',
+                toolCalls: [{
+                    id: 'status-check-1',
+                    name: ACTION_CHECK_TOOL_NAME,
+                    arguments: JSON.stringify({
+                        action: '稳住心神观察冷光',
+                        stat: '理智',
+                        difficulty: 'hard',
+                    }),
+                }],
+                requestSnapshot: buildTavernRequestSnapshot(options.agentConfig, options.messages, {
+                    requestTask: {
+                        messages: options.messages,
+                        tools: options.tools,
+                        toolChoice: options.toolChoice,
+                    },
+                }),
+            };
+        }
+        const response = options.toolResponses?.[0]?.response as Record<string, unknown> | undefined;
+        assert.equal(response?.mode, 'statusGauge');
+        assert.equal(response?.difficultyLabel, 'hard');
+        assert.equal(response?.difficulty, 15);
+        assert.equal(response?.roll, 43);
+        assert.equal(response?.threshold, 43);
+        assert.equal(response?.statValue, 62);
+        assert.equal(response?.statMax, 99);
+        assert.equal(response?.success, true);
+        return {
+            text: '他稳住了，没有被那点冷光牵着走。',
+            requestSnapshot: buildTavernRequestSnapshot(options.agentConfig, options.messages, {
+                requestTask: {
+                    messages: options.messages,
+                    toolResponses: options.toolResponses,
+                },
+            }),
+        };
+    }, { supportsSessionToolLoop: true }) as Parameters<typeof runXbTavernTurn>[0]['executeRunOnce'];
+
+    await runXbTavernTurn({
+        sessionId: session.id,
+        agentConfig: { provider: 'fake-provider', model: 'fake-model' },
+        contextSnapshot: session.contextSnapshot || {},
+        preset,
+        currentUserMessage: '我盯着门缝里的光。',
+        actionCheckRoll: () => 1,
+        actionCheckPercentRoll: () => 43,
+        executeRunOnce,
+    });
+
+    const messages = await listTavernMessages(session.id);
+    const assistantEvents = getActionCheckEvents(messages[1]?.runtimeEvents);
+    assert.deepEqual(exposedToolNames, [ACTION_CHECK_TOOL_NAME]);
+    assert.equal(assistantEvents.length, 1);
+    assert.equal(assistantEvents[0]?.mode, 'statusGauge');
+    assert.equal(assistantEvents[0]?.difficultyLabel, 'hard');
+    assert.equal(assistantEvents[0]?.difficulty, 15);
+    assert.equal(assistantEvents[0]?.roll, 43);
+    assert.equal(assistantEvents[0]?.threshold, 43);
+    assert.equal(assistantEvents[0]?.statValue, 62);
+    assert.equal(assistantEvents[0]?.statMax, 99);
+    assert.equal(assistantEvents[0]?.success, true);
+    assert.equal(assistantEvents[0]?.outcome, 'success');
 });
 
 test('xb tavern run turn executes multiple action checks and persists assistant runtime events', async () => {
@@ -1951,45 +2171,45 @@ test('xb tavern run turn starts accepted-turn manager work on the next user send
     assert.equal(sawRunningStatusBeforeRpCompleted, true);
     assert.equal(managerCalls, 2);
     assert.equal(managerProvider, 'sillytavern-openai-compatible');
-    assert.match(managerPrompt, /小白酒馆后台管理员/);
-    assert.match(managerPrompt, /running inside the user's SillyTavern instance/i);
+    assert.match(managerPrompt, /# Backstage Manager — LittleWhiteTavern/);
     assert.match(managerPrompt, /main chat handles immersive roleplay/i);
-    assert.match(managerPrompt, /## Scope & Truth/);
-    assert.match(managerPrompt, /## Work Loop/);
-    assert.match(managerPrompt, /## Tool Use Guide/);
-    assert.match(managerPrompt, /## Map Records/);
+    assert.match(managerPrompt, /## Who You Are/);
+    assert.match(managerPrompt, /## What You Already Have/);
+    assert.match(managerPrompt, /## Your Tools/);
+    assert.match(managerPrompt, /## General Rules/);
+    assert.match(managerPrompt, /## Map/);
     assert.match(managerPrompt, /memory\/state\.md/);
-    assert.match(managerPrompt, /that reply actually establishes a fact or state/i);
+    assert.match(managerPrompt, /accepted reply actually establishes a new long-term fact/i);
     assert.doesNotMatch(managerPrompt, /建议流水路径/);
     assert.doesNotMatch(managerPrompt, /suggested turn note/i);
     assert.match(managerPrompt, /Spatial records are files/i);
-    assert.match(managerPrompt, /read `world` with MapAtlasRead/i);
-    assert.match(managerPrompt, /edit one explicit scene file with MapSceneEdit/i);
-    assert.match(managerPrompt, /Never rely on `main`, current map, active map, docType\/docId, activate, or ops/i);
-    assert.match(managerPrompt, /player location lives in `world\.actors\.player\.locationKey`/i);
-    assert.match(managerPrompt, /MapSceneEdit creates a missing scene file automatically/i);
-    assert.match(managerPrompt, /Element syntax is small/i);
+    assert.match(managerPrompt, /MapAtlasRead to read `world`/i);
+    assert.match(managerPrompt, /MapSceneEdit to edit by explicit scene name/i);
+    assert.match(managerPrompt, /Do not rely on `main`, current map, active map, docType\/docId, activate, or ops/i);
+    assert.match(managerPrompt, /Player position lives at `world\.actors\.player\.locationKey`/i);
+    assert.match(managerPrompt, /MapSceneEdit.*auto-creates if missing/i);
+    assert.match(managerPrompt, /Element syntax:/i);
     assert.match(managerPrompt, /Do not fill unused geo keys/i);
-    assert.match(managerPrompt, /Use `playerHere:true` only when/i);
+    assert.match(managerPrompt, /set `playerHere:true` only when/i);
     assert.match(managerPrompt, /First-map rule/i);
     assert.match(managerPrompt, /retry only the skipped element/i);
-    assert.match(managerPrompt, /Only update atlas when a place is confirmed/i);
-    assert.match(managerPrompt, /keep editing the same explicit scene name/i);
-    assert.match(managerPrompt, /separate explicit scene name/i);
+    assert.match(managerPrompt, /Update the atlas only when a place is confirmed/i);
+    assert.match(managerPrompt, /Keep editing the same scene name/i);
+    assert.match(managerPrompt, /separate scene name/i);
     assert.match(managerPrompt, /Actors use .*actorKey/i);
     assert.match(managerPrompt, /Indoor, vehicle, structure, cave, platform, rooftop/i);
-    assert.match(managerPrompt, /Scene-map construction order/i);
+    assert.match(managerPrompt, /Construction order/i);
     assert.match(managerPrompt, /Closed or contained scenes usually need both a filled main surface/i);
-    assert.match(managerPrompt, /Use `cat:\\?"terrain\\?"` for the main continuous scene surface or filled base area/i);
-    assert.match(managerPrompt, /Open scenes are the exception/i);
-    assert.match(managerPrompt, /Let the scene pressure shape composition/i);
+    assert.match(managerPrompt, /`cat:\\?"terrain\\?"` for the main continuous surface or filled base area/i);
+    assert.match(managerPrompt, /Open scenes .* may use a main surface/i);
+    assert.match(managerPrompt, /Let scene pressure shape composition/i);
     assert.match(managerPrompt, /Translate place names into local geometry/i);
-    assert.match(managerPrompt, /`viewBox` is the camera/i);
+    assert.match(managerPrompt, /viewBox is the camera/i);
     assert.doesNotMatch(managerPrompt, /meta \+ add|initialize it with one MapPatch/i);
-    assert.match(managerPrompt, /Place text labels 15-25 units beside what they describe/i);
-    assert.match(managerPrompt, /Reply with a short, clear, user-facing operation summary/i);
+    assert.match(managerPrompt, /Place text labels 15–25 units beside what they describe/i);
+    assert.match(managerPrompt, /Reply with a short, user-facing summary/i);
     assert.doesNotMatch(managerPrompt, /电纸书|ebook file-operation/i);
-    assert.match(managerPrompt, /Evidence routing: Grep with .*memory\/.*asks whether a fact is already stored/is);
+    assert.match(managerPrompt, /Grep with `path:\\?"memory\/\\?"` to check whether a fact is already stored/is);
     assert.doesNotMatch(managerPrompt, /可派生格式/);
     assert.doesNotMatch(managerPrompt, /messages userOrder\/assistantOrder/);
     assert.doesNotMatch(managerPrompt, /ChatHistory recent 读取最新消息/);
@@ -2010,12 +2230,14 @@ test('tavern manager prompt strips unauthorized module rules cleanly', () => {
         includeMemory: true,
         includeCartography: false,
     });
-    assert.match(memoryOnly, /Edit\/Write save memory only/);
-    assert.match(memoryOnly, /Maintain the current session's global long-term memory in `memory\/state\.md`/);
-    assert.match(memoryOnly, /Maintain current-session character long-term memory in `memory\/characters\/<角色名>\.md`/);
-    assert.match(memoryOnly, /user-editable preset only defines the file's internal format, content scope, and selection rules/);
+    assert.match(memoryOnly, /## Memory/);
+    assert.match(memoryOnly, /Global facts → `memory\/state\.md`/);
+    assert.match(memoryOnly, /Character files → `memory\/characters\/<name>\.md`/);
+    assert.match(memoryOnly, /the tags only govern internal format/);
+    assert.match(memoryOnly, /<全局记忆设定>/);
+    assert.match(memoryOnly, /<人物记忆设定>/);
     assert.doesNotMatch(memoryOnly, /## Structured State/);
-    assert.doesNotMatch(memoryOnly, /## Map Records/);
+    assert.doesNotMatch(memoryOnly, /## Map/);
     assert.doesNotMatch(memoryOnly, /StateRead/);
     assert.doesNotMatch(memoryOnly, /inspect or change the map/i);
     assert.doesNotMatch(memoryOnly, /spatial relation view/i);
@@ -2025,7 +2247,7 @@ test('tavern manager prompt strips unauthorized module rules cleanly', () => {
         includeMemory: false,
         includeCartography: true,
     });
-    assert.match(mapOnly, /## Map Records/);
+    assert.match(mapOnly, /## Map/);
     assert.match(mapOnly, /MapAtlasRead/);
     assert.match(mapOnly, /MapSceneEdit/);
     assert.doesNotMatch(mapOnly, /MemoryWrite/);
@@ -2037,15 +2259,15 @@ test('tavern manager prompt strips unauthorized module rules cleanly', () => {
         includeCartography: false,
         includeQuestOrchestration: true,
     });
-    assert.match(questOnly, /事件引擎/);
-    assert.match(questOnly, /有野心、对味、有第一步/);
-    assert.match(questOnly, /好，我去做/);
-    assert.match(questOnly, /当前故事和用户口味/);
-    assert.match(questOnly, /想不到足够好的方向就保持空白/);
+    assert.match(questOnly, /## Events/);
+    assert.match(questOnly, /playable future directions/);
+    assert.match(questOnly, /Ambitious, tonally fitting, with a clear first step/);
+    assert.match(questOnly, /yes, let me go do that/);
+    assert.match(questOnly, /If no sufficiently good direction comes to mind, leave the pool empty/);
     assert.doesNotMatch(questOnly, /"op":"upsert-event"|hookForModel|doneWhen.*objective completion condition/);
     assert.doesNotMatch(questOnly, /MemoryWrite/);
     assert.doesNotMatch(questOnly, /## Structured State/);
-    assert.doesNotMatch(questOnly, /## Map Records/);
+    assert.doesNotMatch(questOnly, /## Map/);
 });
 
 test('xb tavern pending accepted-turn manager failure does not block the next RP send', async () => {
@@ -3377,7 +3599,7 @@ test('xb tavern world entry substitution skips null worldbook records', async ()
     assert.doesNotMatch(result.buildSnapshot.rawMessagesJson, /null/);
 });
 
-test('xb tavern simulated request injects only the active map digest without full map JSON', async () => {
+test('xb tavern simulated request keeps active map digest in snapshot without injecting legacy prompt fallback', async () => {
     await resetDb();
     const preset = createDefaultXbTavernPreset();
     const session = await createTavernSession({
@@ -3434,10 +3656,11 @@ test('xb tavern simulated request injects only the active map digest without ful
         currentUserMessage: '我看向地窖。',
     });
 
-    assert.match(result.buildSnapshot.rawMessagesJson, /状态摘要/);
-    assert.match(result.buildSnapshot.rawMessagesJson, /Office/);
-    assert.match(result.buildSnapshot.rawMessagesJson, /Desk/);
-    assert.match(result.buildSnapshot.rawMessagesJson, /可互动/);
+    assert.doesNotMatch(result.buildSnapshot.rawMessagesJson, /状态摘要/);
+    assert.doesNotMatch(result.buildSnapshot.rawMessagesJson, /空间地图状态/);
+    assert.doesNotMatch(result.buildSnapshot.rawMessagesJson, /Office/);
+    assert.doesNotMatch(result.buildSnapshot.rawMessagesJson, /Desk/);
+    assert.doesNotMatch(result.buildSnapshot.rawMessagesJson, /可互动/);
     assert.doesNotMatch(result.buildSnapshot.rawMessagesJson, /氛围：|材质：|cold|metal/);
     assert.doesNotMatch(result.buildSnapshot.rawMessagesJson, /Hidden Cellar/);
     assert.doesNotMatch(result.buildSnapshot.rawMessagesJson, /revision 1|tavern\.map\/office|tavern\.map\/main|docId|docType/);
@@ -3448,7 +3671,7 @@ test('xb tavern simulated request injects only the active map digest without ful
     assert.ok(Number(result.buildSnapshot.structuredStates?.[0]?.digestChars) > 0);
 });
 
-test('xb tavern simulated request falls back to main map digest when active map id is orphaned', async () => {
+test('xb tavern simulated request keeps main map digest in snapshot when active map id is orphaned', async () => {
     await resetDb();
     const preset = createDefaultXbTavernPreset();
     const session = await createTavernSession({
@@ -3504,8 +3727,9 @@ test('xb tavern simulated request falls back to main map digest when active map 
         currentUserMessage: '我回到广场。',
     });
 
-    assert.match(result.buildSnapshot.rawMessagesJson, /Main Square/);
-    assert.match(result.buildSnapshot.rawMessagesJson, /Square/);
+    assert.doesNotMatch(result.buildSnapshot.rawMessagesJson, /状态摘要/);
+    assert.doesNotMatch(result.buildSnapshot.rawMessagesJson, /Main Square/);
+    assert.doesNotMatch(result.buildSnapshot.rawMessagesJson, /Square/);
     assert.doesNotMatch(result.buildSnapshot.rawMessagesJson, /Office/);
     assert.equal(result.buildSnapshot.structuredStates?.[0]?.docId, 'main');
 });
@@ -3569,7 +3793,7 @@ test('xb tavern simulated request injects only memory files when cartography is 
     assert.equal(result.buildSnapshot.structuredStates, undefined);
 });
 
-test('xb tavern simulated request injects only structured state when memory archiving is disabled', async () => {
+test('xb tavern simulated request does not inject legacy structured state prompt when memory archiving is disabled', async () => {
     await resetDb();
     const preset = createDefaultXbTavernPreset();
     const session = await createTavernSession({
@@ -3623,8 +3847,8 @@ test('xb tavern simulated request injects only structured state when memory arch
         currentUserMessage: '前面有什么路？',
     });
 
-    assert.match(result.buildSnapshot.rawMessagesJson, /状态摘要/);
-    assert.match(result.buildSnapshot.rawMessagesJson, /River Road/);
+    assert.doesNotMatch(result.buildSnapshot.rawMessagesJson, /状态摘要/);
+    assert.doesNotMatch(result.buildSnapshot.rawMessagesJson, /River Road/);
     assert.doesNotMatch(result.buildSnapshot.rawMessagesJson, /SECRET_MEMORY_NOTE/);
     assert.doesNotMatch(result.buildSnapshot.rawMessagesJson, /记忆|memory\/session\.md|tavern\.map\/main|revision/);
     assert.equal(result.buildSnapshot.structuredStates?.[0]?.docId, 'main');
@@ -4283,6 +4507,7 @@ test('xb tavern rerun preserves contract and skips automatic manager work when d
             contract: mergeTavernSessionContract(undefined, {
                 memoryArchiving: false,
                 cartographyEngine: false,
+                statusPanel: false,
             }),
         },
         runManager: true,

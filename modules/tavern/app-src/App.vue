@@ -57,6 +57,7 @@ import {
     type TavernTaskRecord,
 } from '../shared/session-db';
 import { getTavernAtlasStateForSession, getTavernMapStateForSession, type TavernMapStateDocumentItem } from '../shared/structured-state';
+import { getTavernStatusStateForSession, type TavernStatusFieldDeltaMap } from '../shared/status-state';
 import { listTavernTasks } from '../shared/tasks';
 import { saveAcceptedStateSnapshot } from '../shared/accepted-state';
 import {
@@ -122,11 +123,12 @@ import {
     cancelAcceptedRollbackManagersBeforeMessage,
     describeAcceptedStateRollbackImpact,
     rollbackImpactLines,
-    restoreAcceptedMemoryAndTaskStateBeforeMessage,
+    restoreAcceptedStateBeforeMessage,
 } from './features/accepted-rollback/accepted-rollback';
 import { createTavernChatRunState, useTavernChatRunController } from './features/chat-run/useTavernChatRunController';
 import { useTavernDrawController } from './features/draw/useTavernDrawController';
 import { useTavernHostBridge, type TavernHostMessageData } from './features/host-bridge/useTavernHostBridge';
+import { useMaterialSymbolFont } from './features/material-symbol-font';
 import { createTavernSessionState, useTavernSessionController } from './features/session/useTavernSessionController';
 import TavernAboutPage from './components/TavernAboutPage.vue';
 import TavernHomePage from './components/TavernHomePage.vue';
@@ -151,6 +153,7 @@ import {
     type TavernManagerContext,
     type TavernMemoryContext,
     type TavernSessionContext,
+    type TavernChatWorkspacePanelKey,
     type TavernShellContext,
     type TavernWorkspaceContext,
 } from './components/tavern-app-context';
@@ -210,6 +213,9 @@ const htmlRenderEnabled = ref(true);
 const hiddenOutsideCount = computed(() => normalizeHiddenOutsideCount(tavernDisplaySettings.value.hiddenOutsideCount));
 const loadBatchSize = computed(() => normalizeMessageLoadBatchSize(tavernDisplaySettings.value.loadBatchSize));
 const hostRequestHeaders = ref<Record<string, unknown>>({});
+const materialSymbolFont = useMaterialSymbolFont();
+const materialSymbolFontReady = materialSymbolFont.ready;
+const materialSymbolFontStatus = materialSymbolFont.status;
 const hostMainFontSizePx = ref('15px');
 const hostProseLineHeightPx = ref('23px');
 const availableCharacters = ref<TavernCharacterOption[]>([]);
@@ -252,7 +258,9 @@ const {
     runtimeModel,
     runtimePendingUserMessage,
     runtimeProvider,
+    runtimeStatusElapsedSeconds,
     runtimeStatusLabel,
+    runtimeStatusStartedAt,
     runtimeText,
     runtimeThoughts,
     runtimeUserMessageVisible,
@@ -290,7 +298,7 @@ const memoryEditorLoadedPath = ref('');
 const memoryEditorBaseContent = ref('');
 const memoryEditorMode = ref<'preview' | 'edit'>('preview');
 const memoryEditorStatus = ref('');
-const chatWorkspacePanel = ref<'state' | 'memory' | 'event'>('state');
+const chatWorkspacePanel = ref<TavernChatWorkspacePanelKey>('map');
 const mapStateDocuments = ref<TavernMapStateDocumentItem[]>([]);
 const activeMapDocId = ref('main');
 const mapStateDocument = ref<TavernStructuredStateDocumentRecord | null>(null);
@@ -298,11 +306,15 @@ const mapStatePatches = ref<TavernStructuredStatePatchRecord[]>([]);
 const atlasStateDocument = ref<TavernStructuredStateDocumentRecord | null>(null);
 const atlasStatePatches = ref<TavernStructuredStatePatchRecord[]>([]);
 const atlasActiveLocationKey = ref('');
+const statusStateDocument = ref<TavernStructuredStateDocumentRecord | null>(null);
+const statusStatePatches = ref<TavernStructuredStatePatchRecord[]>([]);
+const statusFieldDeltas = ref<TavernStatusFieldDeltaMap>({});
 const managerActionStatus = ref('');
 const retryingManagerRunId = ref('');
 const managerInputDraft = ref('');
 const managerInputStatus = ref('');
 const managerChatMessages = ref<TavernManagerMessageRecord[]>([]);
+const managerPendingUserMessage = ref<TavernManagerMessageRecord | null>(null);
 const isManagerAssistantRunning = ref(false);
 const isManagerAssistantCancelling = ref(false);
 interface TavernManagerLiveProtocolState {
@@ -1218,10 +1230,16 @@ const runtimeActionCheckSignature = computed(() => runtimeActionCheckEvents.valu
     .map((event, index) => [
         index,
         event.toolCallId || '',
+        event.character || '',
         event.stat,
         event.action,
         event.roll,
         event.difficulty,
+        event.difficultyLabel || '',
+        event.mode || '',
+        event.threshold ?? '',
+        event.statValue ?? '',
+        event.statMax ?? '',
         event.outcome || '',
         event.insertAfterChars,
         event.success ? 1 : 0,
@@ -1236,6 +1254,11 @@ const liveManagerProtocolMessages = computed(() => {
     return liveState.draft ? [...liveState.messages, liveState.draft] : liveState.messages;
 });
 const liveManagerChatDisplayItems = computed(() => buildManagerChatDisplayItems(liveManagerProtocolMessages.value));
+const visibleManagerPendingUserMessage = computed(() => {
+    const pending = managerPendingUserMessage.value;
+    if (!pending || pending.sessionId !== selectedSessionId.value) {return null;}
+    return pending;
+});
 const managerMessageWindow = computed(() => getMessageWindow({
     uiMessageWindowLimit: managerMessageWindowLimit.value,
 }, managerChatMessageDisplayItems.value.length, { defaultLimit: hiddenOutsideCount.value }));
@@ -1257,6 +1280,11 @@ const liveManagerMarkdownSignature = computed(() => liveManagerChatDisplayItems.
     .concat(htmlRenderEnabled.value ? 'html-render:on' : 'html-render:off')
     .concat(homeThemeDark.value ? 'theme:dark' : 'theme:light')
     .join('|'));
+const managerPendingUserMarkdownSignature = computed(() => {
+    const pending = visibleManagerPendingUserMessage.value;
+    if (!pending) {return '';}
+    return `${pending.sessionId}:${pending.createdAt}:${markdownSignature(pending.content)}`;
+});
 const managerWorkMarkdownSignature = computed(() => managerRuns.value
     .flatMap((run) => {
         const trace = Array.isArray(run.toolTrace) ? run.toolTrace : [];
@@ -1524,10 +1552,16 @@ function actionCheckEventsCacheSignature(events: TavernActionCheckRuntimeEvent[]
             index,
             event.toolCallId || '',
             event.createdAt || '',
+            event.character || '',
             event.stat,
             event.action,
             event.roll,
             event.difficulty,
+            event.difficultyLabel || '',
+            event.mode || '',
+            event.threshold ?? '',
+            event.statValue ?? '',
+            event.statMax ?? '',
             event.outcome || '',
             event.insertAfterChars,
             event.success ? 1 : 0,
@@ -2058,6 +2092,9 @@ function applyHostPayload(payload: Record<string, unknown>) {
     }
     if ('htmlRenderEnabled' in payload) {
         htmlRenderEnabled.value = payload.htmlRenderEnabled !== false;
+    }
+    if ('extensionBasePath' in payload) {
+        void materialSymbolFont.load(payload.extensionBasePath);
     }
     applyHostChatPreset(payload);
     availableCharacters.value = payload.availableCharacters as TavernCharacterOption[] || availableCharacters.value;
@@ -2710,16 +2747,20 @@ async function refreshManagerRecords(sessionId = selectedSessionId.value) {
         atlasStateDocument.value = null;
         atlasStatePatches.value = [];
         atlasActiveLocationKey.value = '';
+        statusStateDocument.value = null;
+        statusStatePatches.value = [];
+        statusFieldDeltas.value = {};
         selectedMemoryFilePath.value = '';
         return;
     }
-    const [managerMessages, runs, tasks, rawIndex, mapState, atlasState, nextStateFile] = await Promise.all([
+    const [managerMessages, runs, tasks, rawIndex, mapState, atlasState, statusState, nextStateFile] = await Promise.all([
         listTavernManagerMessages(id),
         listTavernManagerRuns(id, { limit: 18 }),
         listTavernTasks(id, { includeCompleted: true }),
         getTavernMemoryIndex(id),
         getTavernMapStateForSession(id),
         getTavernAtlasStateForSession(id),
+        getTavernStatusStateForSession(id),
         getTavernMemoryFile(id, 'memory/state.md'),
     ]);
     const index = rawIndex && rawIndex.status === 'ready' && Array.isArray(rawIndex.files)
@@ -2750,6 +2791,9 @@ async function refreshManagerRecords(sessionId = selectedSessionId.value) {
     atlasStateDocument.value = atlasState.document;
     atlasStatePatches.value = atlasState.patches;
     atlasActiveLocationKey.value = atlasState.activeLocationKey;
+    statusStateDocument.value = statusState.document;
+    statusStatePatches.value = statusState.patches;
+    statusFieldDeltas.value = statusState.fieldDeltas;
     if (!memoryFiles.value.some((file) => file.path === selectedMemoryFilePath.value)) {
         if (memoryEditorDirty.value && selectedMemoryFilePath.value) {
             memoryEditorStatus.value = '当前档案已变化，草稿仍保留';
@@ -3404,7 +3448,7 @@ async function saveEditMessage(message: TavernMessageRecord, options: { rollback
     });
     if (updated && shouldRollbackState) {
         await cancelAcceptedRollbackManagersBeforeMessage(message.sessionId, message.order);
-        await restoreAcceptedMemoryAndTaskStateBeforeMessage(message.sessionId, message.order);
+        await restoreAcceptedStateBeforeMessage(message.sessionId, message.order);
     }
     if (updated && selectedSessionId.value) {
         await loadSelectedSessionMessageWindow({ sessionId: selectedSessionId.value });
@@ -3476,7 +3520,7 @@ async function deleteMessageTurn(message: TavernMessageRecord) {
     await cancelAcceptedRollbackManagersBeforeMessage(message.sessionId, fromOrder);
     const deleted = await deleteTavernMessages(message.sessionId, ordersToDelete);
     if (deleted > 0) {
-        await restoreAcceptedMemoryAndTaskStateBeforeMessage(message.sessionId, fromOrder);
+        await restoreAcceptedStateBeforeMessage(message.sessionId, fromOrder);
     }
     if (selectedSessionId.value) {
         await loadSelectedSessionMessageWindow({ sessionId: selectedSessionId.value });
@@ -3703,6 +3747,31 @@ function createLiveManagerMessage(
         toolName: patch.toolName,
         toolDisplay: patch.toolDisplay,
     };
+}
+
+function setManagerPendingUserMessage(sessionId: string, content: string) {
+    const id = String(sessionId || '').trim();
+    const text = String(content || '').trim();
+    if (!id || !text) {
+        managerPendingUserMessage.value = null;
+        return;
+    }
+    const now = Date.now();
+    managerPendingUserMessage.value = {
+        sessionId: id,
+        order: LIVE_MANAGER_PROTOCOL_ORDER_BASE - 1,
+        role: 'user',
+        content: text,
+        createdAt: now,
+        updatedAt: now,
+    };
+}
+
+function clearManagerPendingUserMessage(sessionId = '') {
+    const id = String(sessionId || '').trim();
+    if (!id || managerPendingUserMessage.value?.sessionId === id) {
+        managerPendingUserMessage.value = null;
+    }
 }
 
 function shouldRunTavernSlashCommand(text: string, options: { reuseUserMessageOrder?: number } = {}) {
@@ -4068,8 +4137,10 @@ async function sendManagerQuestion(
     managerAutoScroll.value = true;
     resetManagerMessageWindowState();
     const managerStreamToolDraftState = createManagerStreamToolDraftState();
-    const userAcceptedAnchorOrder = (await getLatestTavernUserMessageAtOrBefore(managerSessionId, Number.POSITIVE_INFINITY))?.order ?? -1;
+    let userAcceptedAnchorOrder = -1;
+    let userMessageAppended = false;
     try {
+        userAcceptedAnchorOrder = (await getLatestTavernUserMessageAtOrBefore(managerSessionId, Number.POSITIVE_INFINITY))?.order ?? -1;
         const budget = await ensureTavernManagerChatBudget({
             sessionId: managerSessionId,
             agentConfig: agentConfig.value,
@@ -4125,6 +4196,8 @@ async function sendManagerQuestion(
             role: 'user',
             content: question,
         });
+        userMessageAppended = true;
+        clearManagerPendingUserMessage(managerSessionId);
         if (selectedSessionId.value === managerSessionId) {
             managerChatMessages.value = [...managerChatMessages.value, userMessage]
                 .sort((left, right) => left.order - right.order);
@@ -4194,13 +4267,22 @@ async function sendManagerQuestion(
         if (selectedSessionId.value === managerSessionId) {
             managerChatMessages.value = await listTavernManagerMessages(managerSessionId);
         }
-        if ((result.changedFiles || []).length || (result.changedTasks || []).length) {
+        if ((result.changedFiles || []).length || (result.changedStates || []).length || (result.changedTasks || []).length) {
             await commitUserAcceptedState(managerSessionId, userAcceptedAnchorOrder);
         }
         await refreshManagerRecords(managerSessionId);
         managerInputStatus.value = '';
     } catch (error) {
         clearManagerLiveProtocolState(managerSessionId);
+        clearManagerPendingUserMessage(managerSessionId);
+        if (!userMessageAppended && selectedSessionId.value === managerSessionId && !managerInputDraft.value.trim()) {
+            managerInputDraft.value = question;
+            void nextTick(() => resetTextareaHeight(managerComposeTextareaRef.value));
+        }
+        if (!userMessageAppended) {
+            managerInputStatus.value = controller.signal.aborted ? '' : '失败';
+            return;
+        }
         if (controller.signal.aborted) {
             await appendTavernManagerMessage(managerSessionId, {
                 role: 'assistant',
@@ -4248,17 +4330,10 @@ async function handleManagerSubmit() {
     const managerSessionId = selectedSessionId.value;
     managerInputDraft.value = '';
     void nextTick(() => resetTextareaHeight(managerComposeTextareaRef.value));
+    setManagerPendingUserMessage(managerSessionId, text);
     isManagerAssistantRunning.value = true;
     isManagerAssistantCancelling.value = false;
     managerInputStatus.value = '准备中';
-    if (isManagerAssistantCancelling.value) {
-        isManagerAssistantRunning.value = false;
-        isManagerAssistantCancelling.value = false;
-        managerInputDraft.value = text;
-        managerInputStatus.value = '';
-        return;
-    }
-    isManagerAssistantRunning.value = false;
     await sendManagerQuestion(managerSessionId, text);
 }
 
@@ -4292,6 +4367,7 @@ watch([
     () => visibleManagerChatMessages.value.length,
     () => managerMessageWindow.value.startIndex,
     () => visibleManagerMarkdownSignature.value,
+    () => managerPendingUserMarkdownSignature.value,
     () => liveManagerMarkdownSignature.value,
     () => managerWorkMarkdownSignature.value,
     () => isManagerAssistantRunning.value,
@@ -4482,7 +4558,9 @@ const chatContext = {
     runtimeText,
     runtimeThoughts,
     runtimeActionCheckEvents,
+    runtimeStatusElapsedSeconds,
     runtimeStatusLabel,
+    runtimeStatusStartedAt,
     runtimeUserMessageVisible,
     runtimePendingUserMessage,
     saveEditMessage,
@@ -4540,6 +4618,7 @@ const managerContext = {
     managerInputDraft,
     managerInputStatus,
     managerMessageWindow,
+    managerPendingUserMessage: visibleManagerPendingUserMessage,
     managerRuns,
     managerRunTone,
     managerScrollControlsActive,
@@ -4614,6 +4693,11 @@ const workspaceContext = {
     mapStateDocuments,
     mapStateDocument,
     mapStatePatches,
+    materialSymbolFontReady,
+    materialSymbolFontStatus,
+    statusFieldDeltas,
+    statusStateDocument,
+    statusStatePatches,
     saveSessionContract,
     sessionContract,
     stateMemoryFile,

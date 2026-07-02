@@ -4,9 +4,11 @@ import TavernAtlasPanel from '../TavernAtlasPanel.vue';
 import TavernEventPanel from '../TavernEventPanel.vue';
 import TavernMapPanel from '../TavernMapPanel.vue';
 import TavernMemoryEditor from '../TavernMemoryEditor.vue';
-import { useTavernMemoryContext, useTavernSessionContext, useTavernWorkspaceContext } from '../tavern-app-context';
+import TavernStatusPanel from '../TavernStatusPanel.vue';
+import { useTavernMemoryContext, useTavernSessionContext, useTavernShellContext, useTavernWorkspaceContext } from '../tavern-app-context';
 import { useMobileSheetDrag } from './useMobileSheetDrag';
 import { buildSeedLabelId, createSeedMapDocument, isSeedLabelId } from '../../../shared/map-state-seed';
+import { isMapExitSemantic } from '../../../shared/map-material-symbols';
 import type { TavernAtlasDocument, TavernMapDocument, TavernMapElement, TavernMapElementCategory } from '../../../shared/structured-state';
 
 defineProps<{
@@ -20,12 +22,16 @@ const emit = defineEmits<{
 
 const memory = useTavernMemoryContext();
 const session = useTavernSessionContext();
+const shell = useTavernShellContext();
 const workspace = useTavernWorkspaceContext();
 const {
     chatWorkspacePanel,
     displayUserName,
     visibleUserAvatar,
 } = workspace;
+const {
+    rememberBrokenAvatar,
+} = shell;
 const {
     activeMemoryFiles,
     discardMemoryDraft,
@@ -61,14 +67,18 @@ const {
     mapStateDocuments,
     mapStateDocument,
     mapStatePatches,
+    materialSymbolFontReady,
+    materialSymbolFontStatus,
     sessionContract,
+    statusFieldDeltas,
+    statusStateDocument,
     tavernTasks,
 } = workspace;
 const {
     currentAssistantFloor,
 } = session;
 
-const stateWorkspaceView = ref<'scene' | 'world'>('scene');
+const mapWorkspaceView = ref<'scene' | 'world'>('scene');
 const mapPreviewDocId = ref('');
 const mapPreviewPinned = ref(false);
 const atlasDocument = computed<TavernAtlasDocument>(() => {
@@ -131,7 +141,6 @@ type MapInfoLine = {
     values: string[];
 };
 const MAP_LABEL_PREFIX_LENGTH = buildSeedLabelId('').length;
-const MAP_EXIT_ICONS = new Set(['door', 'stairs', 'portal', 'arrow-n', 'arrow-s', 'arrow-e', 'arrow-w']);
 
 function normalizeMapInfoText(value: unknown, limit = 48): string {
     return String(value || '').normalize('NFKC').replace(/\s+/g, ' ').trim().slice(0, limit);
@@ -202,10 +211,10 @@ function mapNamesForCategories(categories: TavernMapElementCategory[], limit = 1
 const mapExitNames = computed(() => {
     const labelsByBaseId = mapLabelsByBaseId.value;
     return uniqueMapInfoValues(selectedMapElements.value
-        .filter((element) => element.cat === 'door' || MAP_EXIT_ICONS.has(String(element.icon || '').trim()))
+        .filter((element) => isMapExitSemantic(element.cat, element.kind))
         .map((element) => mapElementDisplayName(element, labelsByBaseId)), 8);
 });
-const mapInteractiveNames = computed(() => mapNamesForCategories(['furniture', 'danger', 'secret', 'magic', 'marker'], 12));
+const mapInteractiveNames = computed(() => mapNamesForCategories(['furniture', 'decoration', 'danger', 'secret', 'magic', 'marker'], 12));
 const mapAreaNames = computed(() => mapNamesForCategories(['wall', 'terrain', 'road', 'water'], 8));
 const mapStandaloneLabelNames = computed(() => uniqueMapInfoValues(selectedMapElements.value
     .filter((element) => element.cat === 'label' && !isSeedLabelId(element.id))
@@ -223,7 +232,7 @@ const mapInfoStats = computed(() => {
     return [
         { label: '元素', value: String(elements.length) },
         { label: '出场', value: String(countByCat('actor')) },
-        { label: '出入口', value: String(countByCat('door')) },
+        { label: '出入口', value: String(elements.filter((element) => isMapExitSemantic(element.cat, element.kind)).length) },
         { label: '标注', value: String(countByCat('label') + countByCat('marker')) },
     ];
 });
@@ -274,8 +283,8 @@ function selectDirectoryMemoryFile(path: string) {
       type="button"
       class="chat-mobile-sheet-handle"
       :class="{ 'is-dragging': sheetHandleDragging }"
-      title="收起记忆面板"
-      aria-label="收起记忆面板"
+      title="收起面板"
+      aria-label="收起面板"
       @click="closeMobileChatPanel"
       @pointercancel="handleSheetHandlePointerCancel"
       @pointerdown="handleSheetHandlePointerDown"
@@ -285,10 +294,17 @@ function selectDirectoryMemoryFile(path: string) {
     <div class="tavern-workspace-tabs">
       <button
         type="button"
-        :class="{ active: chatWorkspacePanel === 'state' }"
-        @click="chatWorkspacePanel = 'state'"
+        :class="{ active: chatWorkspacePanel === 'map' }"
+        @click="chatWorkspacePanel = 'map'"
       >
         地图
+      </button>
+      <button
+        type="button"
+        :class="{ active: chatWorkspacePanel === 'status' }"
+        @click="chatWorkspacePanel = 'status'"
+      >
+        状态
       </button>
       <button
         type="button"
@@ -306,39 +322,39 @@ function selectDirectoryMemoryFile(path: string) {
       </button>
     </div>
     <section
-      v-if="chatWorkspacePanel === 'state'"
-      class="tavern-state-panel"
+      v-if="chatWorkspacePanel === 'map'"
+      class="tavern-map-workspace"
     >
       <div
-        class="tavern-state-viewport"
-        :class="`is-${stateWorkspaceView}`"
+        class="tavern-map-viewport"
+        :class="`is-${mapWorkspaceView}`"
       >
         <div
-          class="tavern-state-inline-switcher"
+          class="tavern-map-inline-switcher"
           role="tablist"
           aria-label="地图视图"
         >
           <button
             type="button"
             role="tab"
-            :aria-selected="stateWorkspaceView === 'scene'"
-            :class="{ active: stateWorkspaceView === 'scene' }"
-            @click="stateWorkspaceView = 'scene'"
+            :aria-selected="mapWorkspaceView === 'scene'"
+            :class="{ active: mapWorkspaceView === 'scene' }"
+            @click="mapWorkspaceView = 'scene'"
           >
             场景图
           </button>
           <button
             type="button"
             role="tab"
-            :aria-selected="stateWorkspaceView === 'world'"
-            :class="{ active: stateWorkspaceView === 'world' }"
-            @click="stateWorkspaceView = 'world'"
+            :aria-selected="mapWorkspaceView === 'world'"
+            :class="{ active: mapWorkspaceView === 'world' }"
+            @click="mapWorkspaceView = 'world'"
           >
             世界图
           </button>
         </div>
         <TavernMapPanel
-          v-if="stateWorkspaceView === 'scene' && selectedMapRecord"
+          v-if="mapWorkspaceView === 'scene' && selectedMapRecord"
           v-model:selected-doc-id="selectedMapDocId"
           compact
           :documents="mapStateDocuments"
@@ -347,9 +363,11 @@ function selectDirectoryMemoryFile(path: string) {
           :patches="selectedMapPatches"
           :player-display-name="displayUserName"
           :player-avatar-url="visibleUserAvatar"
+          :material-symbols-ready="materialSymbolFontReady"
+          :material-symbols-status="materialSymbolFontStatus"
         />
         <TavernAtlasPanel
-          v-else-if="stateWorkspaceView === 'world'"
+          v-else-if="mapWorkspaceView === 'world'"
           display-mode="graph"
           :document="atlasStateDocument"
           :patches="atlasStatePatches"
@@ -357,6 +375,8 @@ function selectDirectoryMemoryFile(path: string) {
           :active-map-doc-id="activeMapDocId"
           :preview-map-doc-id="selectedMapDocId"
           :map-documents="mapStateDocuments"
+          :material-symbols-ready="materialSymbolFontReady"
+          :material-symbols-status="materialSymbolFontStatus"
         />
         <div
           v-else
@@ -368,10 +388,10 @@ function selectDirectoryMemoryFile(path: string) {
       </div>
       <article
         class="tavern-map-info"
-        :class="{ 'is-world': stateWorkspaceView === 'world' }"
+        :class="{ 'is-world': mapWorkspaceView === 'world' }"
       >
         <TavernAtlasPanel
-          v-if="stateWorkspaceView === 'world'"
+          v-if="mapWorkspaceView === 'world'"
           display-mode="detail"
           :document="atlasStateDocument"
           :patches="atlasStatePatches"
@@ -379,6 +399,8 @@ function selectDirectoryMemoryFile(path: string) {
           :active-map-doc-id="activeMapDocId"
           :preview-map-doc-id="selectedMapDocId"
           :map-documents="mapStateDocuments"
+          :material-symbols-ready="materialSymbolFontReady"
+          :material-symbols-status="materialSymbolFontStatus"
         />
         <div
           v-else-if="selectedMapRecord"
@@ -418,6 +440,20 @@ function selectDirectoryMemoryFile(path: string) {
           暂无地图信息。
         </div>
       </article>
+    </section>
+    <section
+      v-else-if="chatWorkspacePanel === 'status'"
+      class="tavern-status-workspace"
+    >
+      <TavernStatusPanel
+        :document="statusStateDocument"
+        :field-deltas="statusFieldDeltas"
+        :enabled="sessionContract.statusPanel"
+        :material-symbols-ready="materialSymbolFontReady"
+        :material-symbols-status="materialSymbolFontStatus"
+        :user-avatar-url="visibleUserAvatar"
+        @user-avatar-error="rememberBrokenAvatar"
+      />
     </section>
     <section
       v-else-if="chatWorkspacePanel === 'memory'"
@@ -517,7 +553,7 @@ function selectDirectoryMemoryFile(path: string) {
       />
     </section>
     <TavernEventPanel
-      v-else
+      v-else-if="chatWorkspacePanel === 'event'"
       :tasks="tavernTasks"
       :enabled="sessionContract.questOrchestration"
       :assistant-floor="currentAssistantFloor"
