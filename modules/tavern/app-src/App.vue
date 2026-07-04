@@ -26,9 +26,10 @@ import {
     rebuildTavernMemoryDerivedIndex,
 } from '../shared/memory-files';
 import {
-    createTavernSession,
     appendTavernMessage,
     appendTavernManagerMessage,
+    branchTavernSession,
+    createTavernSession,
     deleteTavernManagerMessages,
     deleteTavernMessages,
     getLatestTavernUserMessageAtOrBefore,
@@ -2937,6 +2938,49 @@ async function createNewChatSession() {
     await createSessionAndOpenChat({ contextSnapshot: snapshotContext });
 }
 
+function getChatSessionBranchBlockedReason(): string {
+    if (!selectedSessionId.value) {return '当前没有会话。';}
+    if (isRunning.value || isCancellingRun.value) {return '正在生成回复，稍后再开启对话分支。';}
+    if (managerBusy.value || isManagerAssistantRunning.value || isManagerAssistantCancelling.value || retryingManagerRunId.value) {
+        return '助手/管理器正在维护档案，稍后再开启对话分支。';
+    }
+    return '';
+}
+
+async function branchCurrentChatSession() {
+    const blockedBeforeConfirm = getChatSessionBranchBlockedReason();
+    if (blockedBeforeConfirm) {
+        showTavernToast(blockedBeforeConfirm, { tone: 'warning', durationMs: 2600 });
+        return;
+    }
+    const sourceSessionId = String(selectedSessionId.value || '').trim();
+    const confirmed = await confirmTavernDialog({
+        title: '开启对话分支',
+        message: '会复制当前会话档案，生成一份独立分支。当前聊天不会切换，你可以稍后在会话档案中打开它。',
+        cancelText: '取消',
+        confirmText: '开启分支',
+    });
+    if (!confirmed) {return;}
+    const blockedAfterConfirm = getChatSessionBranchBlockedReason();
+    if (blockedAfterConfirm || selectedSessionId.value !== sourceSessionId) {
+        showTavernToast(blockedAfterConfirm || '当前会话已切换，未开启对话分支。', { tone: 'warning', durationMs: 2600 });
+        return;
+    }
+    try {
+        const branch = await branchTavernSession(sourceSessionId);
+        if (!branch) {throw new Error('branch_session_missing');}
+        await refreshSessions();
+        showTavernToast('已创建对话分支', { tone: 'info', durationMs: 2200 });
+    } catch (error) {
+        await alertTavernDialog({
+            title: '开启对话分支失败',
+            message: describeError(error),
+            confirmText: '知道了',
+            tone: 'warning',
+        });
+    }
+}
+
 async function handleHomePrimaryAction() {
     if (canResumeSelectedSession.value) {
         openChatView();
@@ -3223,20 +3267,22 @@ function canEditManagerMessage(message: TavernManagerMessageRecord) {
 
 function canRerunMessage(message: TavernMessageRecord) {
     if (isRunning.value) {return false;}
+    if (!['user', 'assistant'].includes(message.role)) {return false;}
     const latest = latestSessionMessage.value;
-    if (!latest || latest.sessionId !== message.sessionId || latest.order !== message.order) {return false;}
-    if (message.role === 'user') {return true;}
-    if (message.role !== 'assistant') {return false;}
-    return true;
+    return !!latest
+        && latest.sessionId === message.sessionId
+        && ['user', 'assistant'].includes(latest.role);
 }
 
 function canRerunManagerMessage(message: TavernManagerMessageRecord) {
     if (isManagerAssistantRunning.value) {return false;}
-    if (message.role === 'user') {return true;}
+    if (!['user', 'assistant'].includes(message.role)) {return false;}
     const sorted = [...managerChatMessages.value].sort((left, right) => left.order - right.order);
-    const index = sorted.findIndex((item) => item.order === message.order);
-    if (index < 0) {return false;}
-    return sorted.slice(0, index + 1).some((item) => item.role === 'user');
+    const latest = sorted[sorted.length - 1];
+    return !!latest
+        && latest.sessionId === message.sessionId
+        && ['user', 'assistant'].includes(latest.role)
+        && sorted.some((item) => item.role === 'user' && item.order <= latest.order);
 }
 
 function isEditingMessage(message: TavernMessageRecord) {
@@ -3540,9 +3586,12 @@ async function rerunFromMessage(message: TavernMessageRecord) {
         flashMessageAction(message, 'rerun', false);
         return;
     }
-    const userMessage = message.role === 'user'
-        ? message
-        : await getLatestTavernUserMessageAtOrBefore(message.sessionId, message.order);
+    const latest = latestSessionMessage.value;
+    const userMessage = latest?.role === 'user'
+        ? latest
+        : latest
+            ? await getLatestTavernUserMessageAtOrBefore(latest.sessionId, latest.order)
+            : null;
     if (!userMessage) {
         flashMessageAction(message, 'rerun', false);
         return;
@@ -3612,10 +3661,10 @@ async function rerunFromManagerMessage(message: TavernManagerMessageRecord) {
         return;
     }
     const sorted = [...managerChatMessages.value].sort((left, right) => left.order - right.order);
-    const index = sorted.findIndex((item) => item.order === message.order);
-    const userMessage = message.role === 'user'
-        ? message
-        : [...sorted.slice(0, Math.max(0, index + 1))].reverse().find((item) => item.role === 'user');
+    const latest = sorted[sorted.length - 1];
+    const userMessage = latest?.role === 'user'
+        ? latest
+        : [...sorted].reverse().find((item) => item.role === 'user' && item.order <= (latest?.order ?? -1));
     if (!userMessage || !selectedSessionId.value) {
         flashManagerMessageAction(message, 'rerun', false);
         return;
@@ -3923,6 +3972,7 @@ const chatRunController = useTavernChatRunController({
     refreshManagerRecords,
     refreshRuntimeChatPresetFromHost,
     refreshSessions,
+    preserveDetachedChatScroll: preserveDetachedChatScrollDuringMarkdown,
     resetChatMessageWindowState,
     resetTextareaHeight,
     resolveRuntimeContextForSession,
@@ -4461,6 +4511,7 @@ const shellContext = {
 } satisfies TavernShellContext;
 
 const sessionContext = {
+    branchCurrentChatSession,
     chatMessages,
     chatMessageWindow,
     createNewChatSession,

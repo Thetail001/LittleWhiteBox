@@ -170,15 +170,17 @@ test('tavern event panel renders title-based directions without user hooks', () 
     const eventPanelCss = readRepoFile('modules/tavern/app-src/styles/chat/memory-editor.css');
 
     assert.match(eventPanelSource, /function eventTitle\(task: TavernTaskRecord\)/);
-    assert.match(eventPanelSource, /String\(task\.title \|\| task\.current \|\| '未命名方向'\)/);
+    assert.match(eventPanelSource, /String\(task\.title \|\| task\.vision \|\| '未命名野望'\)/);
     assert.match(eventPanelSource, /const completedPreviewTasks = computed\(\(\) => completedTasks\.value\.slice\(0, 3\)\)/);
-    assert.match(eventPanelSource, /当前方向/);
-    assert.match(eventPanelSource, /class="tavern-event-current-entry"/);
+    assert.match(eventPanelSource, /野望调色盘/);
+    assert.match(eventPanelSource, /class="tavern-event-vision-entry"/);
+    assert.match(eventPanelSource, /task\.vision/);
     assert.match(eventPanelSource, /class="tavern-event-done-token"/);
     assert.match(eventPanelSource, /v-for="task in completedPreviewTasks"/);
     assert.doesNotMatch(eventPanelSource, /hookForUser/);
+    assert.doesNotMatch(eventPanelSource, /task\.current|task\.horizon|tavern-event-current-text|tavern-event-horizon/);
     assert.doesNotMatch(eventPanelCss, /tavern-event-hook/);
-    assert.match(eventPanelCss, /\.tavern-chat\.xb-page \.tavern-event-current-entry/);
+    assert.match(eventPanelCss, /\.tavern-chat\.xb-page \.tavern-event-vision-entry/);
     assert.match(eventPanelCss, /\.tavern-chat\.xb-page \.tavern-event-done-token/);
     assert.match(eventPanelCss, /\.tavern-chat\.xb-page \.tavern-event-completed-more/);
 });
@@ -679,8 +681,20 @@ test('tavern request log is sourced from runtime request snapshots', () => {
     const hostSource = readRepoFile('modules/tavern/tavern.ts');
     const nativePromptSource = readRepoFile('modules/tavern/host/native-prompt.ts');
     const conversationSource = readRepoFile('modules/tavern/app-src/components/chat/TavernConversationPanel.vue');
+    const requestLogModalSource = readRepoFile('modules/tavern/app-src/components/TavernRequestLogModal.vue');
+    const requestLogPreviewSource = readRepoFile('modules/tavern/app-src/utils/request-log-preview.ts');
     assert.match(appSource, /lastRequestSnapshot\.value\?\.rawRequestJson \|\| lastRequestSnapshot\.value\?\.rawMessagesJson/);
     assert.match(appSource, /simulateRequestJson\.value = result\.requestSnapshot\.rawRequestJson \|\| result\.requestSnapshot\.rawMessagesJson/);
+    assert.match(requestLogModalSource, /buildRequestLogPreview/);
+    assert.match(requestLogModalSource, /美化显示/);
+    assert.match(requestLogModalSource, /原始 JSON/);
+    assert.match(requestLogModalSource, /class="prompt-log-search"/);
+    assert.match(requestLogModalSource, /class="prompt-preview-parameter-panel"/);
+    assert.match(requestLogModalSource, /prompt-search-mark/);
+    assert.doesNotMatch(requestLogModalSource, /v-html/);
+    assert.doesNotMatch(requestLogModalSource, /prompt-inspector-summary/);
+    assert.match(requestLogPreviewSource, /export function buildRequestLogPreview/);
+    assert.match(requestLogPreviewSource, /\['request', 'body', 'messages'\]/);
     assert.match(appSource, /simulateXbTavernRequest\(\{[\s\S]*chatPreset: runtimePreset/);
     assert.match(chatRunSource, /runXbTavernTurn\(\{[\s\S]*chatPreset: runtimePreset/);
     assert.doesNotMatch(appSource, /simulateXbTavernRequest\(\{[\s\S]*chatPreset: activeChatPreset\.value/);
@@ -733,7 +747,8 @@ test('tavern chat hot paths use message windows instead of full session scans', 
     assert.doesNotMatch(appSource, /async function refreshSessions[\s\S]{0,520}listTavernMessages\(/);
     assert.doesNotMatch(appSource, /async function deleteMessageTurn[\s\S]{0,900}listTavernMessages\(/);
     assert.match(appSource, /listTavernMessageOrdersFrom\(message\.sessionId, message\.order\)/);
-    assert.match(appSource, /getLatestTavernUserMessageAtOrBefore\(message\.sessionId, message\.order\)/);
+    assert.match(appSource, /async function rerunFromMessage\(message: TavernMessageRecord\)[\s\S]*const latest = latestSessionMessage\.value;[\s\S]*getLatestTavernUserMessageAtOrBefore\(latest\.sessionId, latest\.order\)/);
+    assert.doesNotMatch(appSource, /getLatestTavernUserMessageAtOrBefore\(message\.sessionId, message\.order\)/);
     assert.doesNotMatch(simulateBody, /listTavernMessages\(/);
     assert.match(simulateBody, /loadTavernPromptHistoryWindow\(/);
     assert.doesNotMatch(runTurnBody, /listTavernMessages\(/);
@@ -1114,7 +1129,7 @@ test('tavern edit and delete route accepted rollback through its feature boundar
     assert.match(rollbackSource, /willRollbackState:[\s\S]*willCancelWork:/);
     assert.doesNotMatch(rollbackSource, /export async function rollbackAcceptedStateBeforeMessage/);
     assert.doesNotMatch(rollbackSource, /export async function restoreAcceptedMemoryAndTaskStateBeforeMessage/);
-    assert.doesNotMatch(appSource, /acceptedStateRollbackNoticeForFloor|会话记忆、人物记忆和事件线索会回滚/);
+    assert.doesNotMatch(appSource, /acceptedStateRollbackNoticeForFloor/);
     assert.doesNotMatch(appSource, /restoreMemoryStateBeforeMessage|memoryRollbackNoticeForFloor/);
 });
 
@@ -1580,7 +1595,7 @@ test('tavern markdown enhancement lives outside the app controller', () => {
     assert.match(appSource, /liveManagerMarkdownSignature[\s\S]*homeThemeDark\.value \? 'theme:dark' : 'theme:light'/);
     assert.match(appSource, /watch\(\[[\s\S]*\(\) => htmlRenderEnabled\.value,[\s\S]*\(\) => homeThemeDark\.value,[\s\S]*enhanceChatMarkdown\(\);/);
     assert.match(appSource, /watch\(\[[\s\S]*\(\) => liveManagerMarkdownSignature\.value,[\s\S]*\(\) => homeThemeDark\.value,[\s\S]*enhanceManagerMarkdown\(\);/);
-    assert.match(markdownToolsSource, /htmlBlockMode: options\.htmlRenderEnabled\.value \? 'preview' : 'code'/);
+    assert.match(markdownToolsSource, /htmlBlockMode: optionsOverride\.live[\s\S]*\? 'code'[\s\S]*: options\.htmlRenderEnabled\.value \? 'preview' : 'code'/);
     assert.match(markdownToolsSource, /htmlBlockMode: options\.htmlRenderEnabled\.value \? undefined : 'code'/);
     assert.match(markdownToolsSource, /window\.addEventListener\(TAVERN_INLINE_IMAGE_PROGRESS_EVENT/);
     assert.match(markdownToolsSource, /window\.removeEventListener\(TAVERN_INLINE_IMAGE_PROGRESS_EVENT/);
@@ -1782,11 +1797,12 @@ test('tavern live stream rendering is frame-batched without bypassing display re
     const liveEnhanceMatch = markdownToolsSource.match(/function enhanceLiveChatMarkdown\(\) \{[\s\S]*?\n {4}\}/);
 
     assert.ok(liveEnhanceMatch);
-    assert.match(markdownToolsSource, /function hidePendingTavernHtmlPreviews\(root: HTMLElement\)[\s\S]*pre\.dataset\.xbTavernHtmlPending = 'true';/);
+    assert.match(markdownToolsSource, /function markPendingTavernHtmlPreviews\(root: HTMLElement\)[\s\S]*pre\.dataset\.xbTavernHtmlPending = 'true';/);
     assert.match(markdownToolsSource, /function cleanupTavernHtmlPre\(pre: HTMLPreElement\)[\s\S]*delete pre\.dataset\.xbTavernHtmlPending;/);
     assert.match(markdownToolsSource, /function renderTavernHtmlPre\(pre: HTMLPreElement, html = '', hash = ''\)[\s\S]*delete pre\.dataset\.xbTavernHtmlPending;/);
-    assert.match(liveEnhanceMatch[0], /hidePendingTavernHtmlPreviews\(node\);/);
-    assert.match(liveEnhanceMatch[0], /enhanceActionCheckMarkers\(node\);/);
+    assert.match(markdownToolsSource, /function enhanceStableMarkdownNode\(node: HTMLElement[\s\S]*if \(optionsOverride\.live\) \{[\s\S]*markPendingTavernHtmlPreviews\(node\);[\s\S]*\} else \{[\s\S]*enhanceTavernHtmlCodeBlocks\(node\);/);
+    assert.match(markdownToolsSource, /function enhanceStableMarkdownNode\(node: HTMLElement[\s\S]*enhanceActionCheckMarkers\(node\);/);
+    assert.match(liveEnhanceMatch[0], /enhanceStableMarkdownNode\(node, \{ live: true \}\);/);
     assert.doesNotMatch(liveEnhanceMatch[0], /enhanceTavernHtmlCodeBlocks/);
 
     assert.doesNotMatch(appSource, /let runtimeStreamFrame = 0;/);
@@ -2027,6 +2043,7 @@ test('tavern streaming action-check UI renders from live runtime events and keep
     const markdownToolsSource = readRepoFile('modules/tavern/app-src/components/chat/useTavernMarkdownTools.ts');
     const workspacePanelSource = readRepoFile('modules/tavern/app-src/components/chat/TavernWorkspacePanel.vue');
     const contractModalSource = readRepoFile('modules/tavern/app-src/components/chat/TavernContractModal.vue');
+    const sessionContractSource = readRepoFile('modules/tavern/shared/session-contract.ts');
     const contextSource = readRepoFile('modules/tavern/app-src/components/tavern-app-context.ts');
     const cssSource = readRepoFile('modules/tavern/app-src/styles/chat/messages.css');
     const appBaseCss = readRepoFile('modules/tavern/app-src/styles/base.css');
@@ -2134,9 +2151,14 @@ test('tavern streaming action-check UI renders from live runtime events and keep
     assert.doesNotMatch(layoutCss, /@media \(max-width: 980px\) \{[\s\S]*\.chat-head-actions button:last-child \{[\s\S]*display: none;/);
     assert.match(layoutCss, /\.chat-head \{[\s\S]*justify-content: space-between;/);
     assert.match(conversationPanelSource, /<header class="chat-head">[\s\S]*class="chat-head-main"[\s\S]*class="xb-workspace-controller chat-layout-controller"[\s\S]*chatLayout === 'chat'[\s\S]*chatLayout === 'balanced'[\s\S]*chatLayout === 'editor'[\s\S]*class="chat-head-actions"/);
-    assert.match(chatPageSource, /class="chat-mobile-context-row"[\s\S]*title="地图"[\s\S]*title="记忆"[\s\S]*📓 记忆[\s\S]*title="事件"[\s\S]*🧭 事件[\s\S]*title="档案"[\s\S]*📋 档案/);
+    assert.match(chatPageSource, /class="chat-mobile-context-row"[\s\S]*title="地图"[\s\S]*>\s*地图\s*<\/button>[\s\S]*title="记忆"[\s\S]*>\s*记忆\s*<\/button>[\s\S]*title="事件"[\s\S]*>\s*事件\s*<\/button>[\s\S]*title="档案"[\s\S]*>\s*档案\s*<\/button>/);
+    assert.doesNotMatch(chatPageSource, /📓 记忆|🧭 事件|📋 档案/);
     assert.doesNotMatch(conversationPanelSource, /title="事件"/);
     assert.match(contractModalSource, /契约[\s\S]*玩家 — 代理人誓约[\s\S]*在故事里，定义你的代理人被允许做什么。[\s\S]*别忘记添加可执行工具的分身模型。/);
+    assert.match(sessionContractSource, /key: 'memoryArchiving'[\s\S]*icon: '📓'[\s\S]*title: '记忆存档'/);
+    assert.match(sessionContractSource, /key: 'statusPanel'[\s\S]*icon: '📋'[\s\S]*title: '角色档案'/);
+    assert.match(sessionContractSource, /key: 'questOrchestration'[\s\S]*icon: '🧭'[\s\S]*title: '织线者'/);
+    assert.doesNotMatch(sessionContractSource, /key: 'memoryArchiving'[\s\S]*icon: '🧠'|key: 'statusPanel'[\s\S]*icon: '档'/);
     assert.match(contractModalSource, /封印中\.\.\.[\s\S]*封存誓约[\s\S]*项授权已启用/);
     assert.doesNotMatch(chatPageSource, /class="chat-mobile-context-row"[\s\S]*title="请求日志"/);
     assert.doesNotMatch(chatPageSource, /class="chat-mobile-context-row"[\s\S]*>\s*会话\s*</);

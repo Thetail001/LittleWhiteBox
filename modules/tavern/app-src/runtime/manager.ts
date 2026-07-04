@@ -7,6 +7,7 @@ import {
     hasVisibleText,
     resolveResultToolCalls,
 } from '../../../agent-core/runtime/protocol.js';
+import { isTavilyConfigured, runTavilySearchTool, TAVILY_TOOL_NAME } from '../../../agent-core/tavily-search.js';
 import type { XbTavernContext, XbTavernMessage } from '../../shared/message-assembler';
 import { buildTavernManagerSystemPrompt, type TavernAssistantPreset } from '../../shared/assistant-presets';
 import {
@@ -294,10 +295,15 @@ function buildManagerSystemPrompt(
         includeCartography?: boolean;
         includeStatus?: boolean;
         includeQuestOrchestration?: boolean;
+        includeWebSearch?: boolean;
         workMode?: 'accepted-turn' | 'manual-chat';
     } = {},
 ): string {
     return buildTavernManagerSystemPrompt(assistantPreset, options).trim();
+}
+
+function isManagerWebSearchEnabled(agentConfig: Record<string, unknown> = {}): boolean {
+    return isTavilyConfigured(agentConfig);
 }
 
 function resolveSessionContractRuntime(contract?: Partial<TavernSessionContract> | null): TavernSessionContractRuntime {
@@ -359,7 +365,7 @@ function buildAutoManagerUserPrompt(input: {
         ...(allowMemory ? [buildResidentMemoryBlock(input.memoryFiles), ''] : []),
         ...(allowMap ? [String(input.atlasWorldBlock || '[Map atlas world]\nnull').trim(), ''] : []),
         ...(allowStatus ? [String(input.statusPanelBlock || '[Status panel full document]\nnull').trim(), ''] : []),
-        ...(allowQuest ? [String(input.taskPoolBlock || '[Current Event Pool]\nActive directions: unknown.').trim(), ''] : []),
+        ...(allowQuest ? [String(input.taskPoolBlock || '[Current Ambition Palette]\nActive ambitions: unknown.').trim(), ''] : []),
         ...(allowMemory ? [buildCharacterMemoryFilenameListBlock(input.memoryFiles), ''] : []),
         '[Current turn user message]',
         cleanSourceTextForManager(input.userMessage.content),
@@ -433,7 +439,7 @@ async function runManagerOnceWithAdapter(
 }
 
 function summarizeToolArguments(args: Record<string, unknown> = {}): string {
-    return ['filePath', 'path', 'pattern', 'mode', 'docType', 'docId', 'elementId', 'startOrder', 'endOrder']
+    return ['filePath', 'path', 'pattern', 'query', 'mode', 'docType', 'docId', 'elementId', 'startOrder', 'endOrder']
         .map((key) => {
             const value = normalizeText(args[key], 160);
             return value ? `${key}: ${value}` : '';
@@ -472,6 +478,10 @@ function isStatusToolName(name = ''): boolean {
 
 function isSourceFileToolName(name = ''): boolean {
     return Object.values(TAVERN_SOURCE_FILE_TOOL_NAMES).includes(name as typeof TAVERN_SOURCE_FILE_TOOL_NAMES[keyof typeof TAVERN_SOURCE_FILE_TOOL_NAMES]);
+}
+
+function isWebSearchToolName(name = ''): boolean {
+    return String(name || '') === TAVILY_TOOL_NAME;
 }
 
 function normalizeManagerThoughtBlocks(value: unknown): Array<{ label?: string; text?: string }> {
@@ -670,9 +680,12 @@ async function runManagerAgentWithTools(input: {
         || ((options: XbTavernManagerOnceOptions) => runManagerOnceWithAdapter(defaultAdapter!, providerConfig, options));
     const supportsSessionToolLoop = !!defaultAdapter?.supportsSessionToolLoop
         || (input.executeManagerOnce as { supportsSessionToolLoop?: boolean } | undefined)?.supportsSessionToolLoop === true;
+    const managerToolDefinitions = getTavernManagerToolDefinitions({
+        webSearchEnabled: isManagerWebSearchEnabled(input.agentConfig),
+    });
     const tools = input.caller === 'auto'
-        ? filterAutoManagerToolDefinitions(getTavernManagerToolDefinitions(), input.sessionContract)
-        : getTavernManagerToolDefinitions();
+        ? filterAutoManagerToolDefinitions(managerToolDefinitions, input.sessionContract)
+        : managerToolDefinitions;
     const toolTrace: Array<Record<string, unknown>> = [];
     const protocolMessages: XbTavernMessage[] = [];
     const changedFiles = new Set<string>();
@@ -881,6 +894,11 @@ async function runManagerAgentWithTools(input: {
                     sourceAssistantOrder: input.assistantOrder,
                     beforeWriteGuard: input.beforeWriteGuard,
                 });
+            } else if (isWebSearchToolName(toolCall.name)) {
+                toolResult = await runTavilySearchTool(input.agentConfig, args, {
+                    signal: input.signal,
+                    isAbortError: (error: unknown) => error instanceof Error && error.name === 'AbortError',
+                }) as unknown as TavernMemoryToolResult;
             } else {
                 toolResult = {
                     ok: false,
@@ -1106,6 +1124,7 @@ async function buildAutoManagerMessages(input: XbTavernManagerRunInput, sourceMe
             content: buildManagerSystemPrompt(input.assistantPreset, {
                 ...contractRuntime.managerPromptOptions,
                 workMode: 'accepted-turn',
+                includeWebSearch: isManagerWebSearchEnabled(input.agentConfig),
             }),
         },
         {
@@ -1127,13 +1146,20 @@ async function buildAutoManagerMessages(input: XbTavernManagerRunInput, sourceMe
 async function buildChatManagerMessages(input: {
     sessionId: string;
     question: string;
+    agentConfig?: Record<string, unknown>;
     assistantPreset?: TavernAssistantPreset;
     history?: TavernManagerMessageRecord[];
 }): Promise<XbTavernMessage[]> {
     await ensureTavernMemoryDefaults(input.sessionId);
     const memoryFiles = await listTavernMemoryFiles(input.sessionId, { includeStale: true });
     const history = Array.isArray(input.history) ? input.history : await listTavernManagerMessages(input.sessionId);
-    const messages: XbTavernMessage[] = [{ role: 'system', content: buildManagerSystemPrompt(input.assistantPreset, { workMode: 'manual-chat' }) }];
+    const messages: XbTavernMessage[] = [{
+        role: 'system',
+        content: buildManagerSystemPrompt(input.assistantPreset, {
+            workMode: 'manual-chat',
+            includeWebSearch: isManagerWebSearchEnabled(input.agentConfig || {}),
+        }),
+    }];
     history.forEach((message) => {
         const canReplayToolCalls = message.role === 'assistant'
             && message.error !== true
@@ -1263,7 +1289,7 @@ async function runManagerTask(input: {
         await rebuildTavernMemoryDerivedIndexForLiveSession(input.sessionId);
         const changedCount = changedFiles.length + changedStates.length + changedTasks.length;
         const defaultOutput = changedCount
-            ? `已维护 ${changedFiles.length} 个记忆文件、${changedStates.length} 份结构化状态、${changedTasks.length} 条事件线索。`
+            ? `已维护 ${changedFiles.length} 个记忆文件、${changedStates.length} 份结构化状态、${changedTasks.length} 条野望。`
             : '已检查并回复。';
         const completed = await finalizeManagerRun(managerRun, {
             status: 'completed',
@@ -1397,7 +1423,9 @@ async function estimateManagerChatTokens(input: {
     const messages = await buildChatManagerMessages(input);
     return await resolveConversationTokens({
         messages,
-        tools: getTavernManagerToolDefinitions(),
+        tools: getTavernManagerToolDefinitions({
+            webSearchEnabled: isManagerWebSearchEnabled(input.agentConfig),
+        }),
         providerConfig,
     });
 }
@@ -1615,7 +1643,7 @@ export async function runXbTavernManagerAfterTurn(input: XbTavernManagerRunInput
                     ...changedTasks,
                     ...abandonedTasks.map((task) => `event/${task.id}`),
                 ])];
-                const staleSummary = `系统已放弃 ${abandonedTasks.length} 条过期事件线索。`;
+                const staleSummary = `系统已放弃 ${abandonedTasks.length} 条过期野望。`;
                 const outputText = String(completedRun.outputText || '').trim();
                 completedRun = await finalizeManagerRun(completedRun, {
                     outputText: outputText && outputText !== '已检查并回复。'
@@ -1669,6 +1697,7 @@ export async function runXbTavernManagerChat(input: XbTavernManagerChatInput): P
     const messages = await buildChatManagerMessages({
         sessionId,
         question,
+        agentConfig: input.agentConfig,
         assistantPreset: input.assistantPreset,
         history,
     });
