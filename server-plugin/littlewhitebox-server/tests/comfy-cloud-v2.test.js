@@ -116,6 +116,67 @@ test('Comfy Cloud API v2 submits with Bearer + Idempotency-Key + extra_data, pol
     assert.equal(gcsCall.headers.Authorization, undefined);
 });
 
+test('Comfy Cloud API v2 upgrades same-host http:// follow-up and output links to https:// so Bearer auth is preserved', async () => {
+    const requested = [];
+    global.fetch = async (url, options = {}) => {
+        const parsed = new URL(url);
+        requested.push({ href: parsed.href, auth: options.headers?.Authorization });
+        if (parsed.href === 'https://cloud.comfy.org/api/v2/jobs' && options.method === 'POST') {
+            return jsonResponse({
+                id: 'job-http-link',
+                status: 'queued',
+                outputs: [],
+                urls: {
+                    self: 'http://cloud.comfy.org/api/v2/jobs/job-http-link',
+                    cancel: 'http://cloud.comfy.org/api/v2/jobs/job-http-link/cancel',
+                },
+            }, 201);
+        }
+        if (parsed.href === 'https://cloud.comfy.org/api/v2/jobs/job-http-link') {
+            return jsonResponse({
+                id: 'job-http-link',
+                status: 'succeeded',
+                outputs: [{
+                    node_id: '9',
+                    type: 'image',
+                    content_type: 'image/png',
+                    id: 'asset-http',
+                    url: 'http://cloud.comfy.org/api/v2/assets/asset-http/content',
+                }],
+                urls: {
+                    self: 'http://cloud.comfy.org/api/v2/jobs/job-http-link',
+                    cancel: 'http://cloud.comfy.org/api/v2/jobs/job-http-link/cancel',
+                },
+            });
+        }
+        if (parsed.href === 'https://cloud.comfy.org/api/v2/assets/asset-http/content') {
+            return new Response(null, {
+                status: 302,
+                headers: { Location: 'https://storage.googleapis.com/signed/asset-http.png' },
+            });
+        }
+        if (parsed.href === 'https://storage.googleapis.com/signed/asset-http.png') {
+            return new Response(PNG, { status: 200 });
+        }
+        throw new Error(`Unexpected fetch: ${parsed.href}`);
+    };
+
+    const result = await cloudV2.execute({
+        context: { url: 'https://cloud.comfy.org', auth: 'comfyui-secret', connectionMode: 'cloud' },
+        item: { request: { workflow: makeWorkflow(), preferredSaveImageNodeId: '9' } },
+        signal: new AbortController().signal,
+        pollIntervalMs: 1,
+    });
+
+    assert.deepEqual(result, { buffer: PNG, mime: 'image/png' });
+    assert.deepEqual(requested, [
+        { href: 'https://cloud.comfy.org/api/v2/jobs', auth: 'Bearer comfyui-secret' },
+        { href: 'https://cloud.comfy.org/api/v2/jobs/job-http-link', auth: 'Bearer comfyui-secret' },
+        { href: 'https://cloud.comfy.org/api/v2/assets/asset-http/content', auth: 'Bearer comfyui-secret' },
+        { href: 'https://storage.googleapis.com/signed/asset-http.png', auth: undefined },
+    ]);
+});
+
 test('Comfy Cloud API v2 falls back from expired output.url to /api/v2/assets/{id}/content and supports resultMode=all', async () => {
     const requested = [];
     global.fetch = async (url, options = {}) => {

@@ -68,10 +68,21 @@ function parseRetryAfterMs(response, fallbackMs) {
     return fallbackMs;
 }
 
+function normalizeOriginProtocol(targetUrl, baseUrl) {
+    const base = new URL(baseUrl);
+    const target = targetUrl instanceof URL ? new URL(targetUrl.href) : new URL(targetUrl);
+    // Comfy Cloud behind TLS-terminating proxies emits http:// links for the same host.
+    // Upgrade same-host http:// links back to https:// so Cloudflare 301s never strip Bearer auth.
+    if (base.protocol === 'https:' && target.protocol === 'http:' && target.host === base.host) {
+        target.protocol = 'https:';
+    }
+    return target;
+}
+
 function resolveJobLink(baseUrl, link, fallbackPath) {
     const raw = String(link || '').trim();
     if (raw) {
-        if (/^https?:\/\//i.test(raw)) return new URL(raw);
+        if (/^https?:\/\//i.test(raw)) return normalizeOriginProtocol(raw, baseUrl);
         if (raw.startsWith('/')) return new URL(raw, new URL(baseUrl).origin);
     }
     return endpoint(baseUrl, fallbackPath, { appendPath: true });
@@ -228,7 +239,8 @@ async function downloadCloudOutput({ baseUrl, authHeaders, output, signal }) {
 
     if (directUrl && /^https?:\/\//i.test(directUrl)) {
         try {
-            return await fetchAssetBufferFollowingRedirects(directUrl, { baseOrigin, authHeaders, signal });
+            const normalizedUrl = normalizeOriginProtocol(directUrl, baseUrl);
+            return await fetchAssetBufferFollowingRedirects(normalizedUrl, { baseOrigin, authHeaders, signal });
         } catch (error) {
             if (error?.name === 'AbortError' || signal?.aborted || !assetId) throw error;
             // Signed output URLs can expire before download; fall back to /api/v2/assets/{id}/content.
@@ -414,7 +426,7 @@ async function testConnection({ url, key = '', signal }) {
     if (response.status === 401 || response.status === 402 || response.status === 403) {
         return { ok: false, status: response.status, error: formatCloudApiError(response.status, text) };
     }
-    if (response.status === 404 && (envelope?.code === 'not_found' || (contentType.includes('application/json') && envelope))) {
+    if (response.status === 404 && (envelope?.code === 'not_found' || envelope?.code === 'job_not_found' || (contentType.includes('application/json') && envelope))) {
         return { ok: true, status: 200 };
     }
     if (response.ok && contentType.includes('application/json')) {
