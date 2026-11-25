@@ -2,6 +2,9 @@
 const { pipeline } = require('node:stream/promises');
 const { generateImage, encodeVibe, openImageStream, testConnection } = require('./providers/novelai/client.js');
 const novelBackendTransport = require('../providers/novelai/backend-transport-contract.cjs');
+const comfyBackendTransport = require('../providers/comfyui/backend-transport-contract.cjs');
+const comfyCloud = require('./providers/comfyui/cloud-v2.js');
+const comfyAdapter = require('./providers/comfyui/adapter.js');
 const { parseTimeout } = require('./providers/upstream.js');
 const { createRequestAbortScope } = require('../../../server-plugin/littlewhitebox-server/request-abort.js');
 const LOG_PREFIX = '[littlewhitebox-server]';
@@ -28,21 +31,52 @@ function errorMessage(error) {
     return String(error?.message || error);
 }
 
-function sendRequestError(scope, res, error, label) {
+function sendRequestError(scope, res, error, label, providerLabel = 'NovelAI') {
     if (scope.cause === 'client') return;
     if (scope.cause === 'timeout') {
-        return res.status(200).send({ ok: false, code: 'timeout', error: 'NovelAI request timed out' });
+        return res.status(200).send({ ok: false, code: 'timeout', error: `${providerLabel} request timed out` });
     }
     console.error(`${LOG_PREFIX} ${label} error:`, error);
-    return res.status(200).send({ ok: false, error: errorMessage(error) });
+    return res.status(200).send({ ok: false, status: error?.status, error: errorMessage(error) });
 }
 
 function registerGenerateRoute(router, path) {
-    router.post(path, async (req, res) => {
+    router.post(path, asyncRoute(async (req, res) => {
         const scope = createRequestAbortScope(req, res);
+        let providerLabel = 'NovelAI';
         try {
             if (scope.signal.aborted) return;
             const body = req.body || {};
+            if (body.operation === comfyBackendTransport.generateOperation) {
+                providerLabel = 'Comfy Cloud';
+                const key = String(body.key || '').trim();
+                const url = parseUpstreamUrl(body.url);
+                const payload = body.payload;
+                const timeout = parseTimeout(body.timeout);
+                if (!url) return res.status(400).send({ ok: false, error: 'A complete HTTP(S) url is required' });
+                if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+                    return res.status(400).send({ ok: false, error: 'payload is required' });
+                }
+                if (timeout === null) return res.status(400).send({ ok: false, error: 'timeout must be a positive number' });
+                const normalized = comfyAdapter.normalize(
+                    { url, auth: key, connectionMode: 'cloud' },
+                    [{ request: payload, timeout }],
+                    { parseTimeout, parseUrl: parseUpstreamUrl },
+                );
+                if (normalized?.error) return res.status(400).send({ ok: false, error: normalized.error });
+                scope.setDeadline(timeout);
+
+                const result = await comfyCloud.execute({
+                    context: normalized.context,
+                    item: normalized.items[0],
+                    signal: scope.signal,
+                });
+                return res.status(200).send({
+                    ok: true,
+                    base64: result.buffer.toString('base64'),
+                    mime: result.mime,
+                });
+            }
             if (body.operation !== undefined && body.operation !== novelBackendTransport.encodeVibeOperation) {
                 return res.status(400).send({ ok: false, error: 'Unsupported NovelAI transport operation' });
             }
@@ -72,19 +106,36 @@ function registerGenerateRoute(router, path) {
             }
             return res.status(200).send(result);
         } catch (error) {
-            return sendRequestError(scope, res, error, path);
+            return sendRequestError(scope, res, error, path, providerLabel);
         } finally {
             scope.dispose();
         }
-    });
+    }));
 }
 
 function registerTestRoute(router, path) {
-    router.post(path, async (req, res) => {
+    router.post(path, asyncRoute(async (req, res) => {
         const scope = createRequestAbortScope(req, res);
+        let providerLabel = 'NovelAI';
         try {
             if (scope.signal.aborted) return;
             const body = req.body || {};
+            if (body.operation === comfyBackendTransport.testOperation) {
+                providerLabel = 'Comfy Cloud';
+                const key = String(body.key || '').trim();
+                const url = parseUpstreamUrl(body.url);
+                const timeout = parseTimeout(body.timeout);
+                if (!url) return res.status(400).send({ ok: false, error: 'A complete HTTP(S) url is required' });
+                if (timeout === null) return res.status(400).send({ ok: false, error: 'timeout must be a positive number' });
+                scope.setDeadline(timeout);
+
+                const result = await comfyCloud.testConnection({
+                    url,
+                    key,
+                    signal: scope.signal,
+                });
+                return res.status(200).send(result);
+            }
             const key = String(body.key || '').trim();
             const url = parseUpstreamUrl(body.url);
             const payload = body.payload;
@@ -107,11 +158,11 @@ function registerTestRoute(router, path) {
             });
             return res.status(200).send(result);
         } catch (error) {
-            return sendRequestError(scope, res, error, path);
+            return sendRequestError(scope, res, error, path, providerLabel);
         } finally {
             scope.dispose();
         }
-    });
+    }));
 }
 
 

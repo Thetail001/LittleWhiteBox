@@ -391,9 +391,14 @@ export function compile(scenePlan, generationRecipe) {
         promptData: compileComfyPromptForTask(task, recipe),
         tags: task?.scene || recipe.promptOverride || '',
     }));
+    const connectionMode = recipe.connectionMode === 'cloud' ? 'cloud' : '';
     return {
         provider: 'comfyui',
-        context: { url: String(recipe.host || '').trim(), auth: String(recipe.auth || '') },
+        context: {
+            url: String(recipe.host || '').trim(),
+            auth: String(recipe.auth || ''),
+            ...(connectionMode ? { connectionMode } : {}),
+        },
         delay: { min: delay, max: delay },
         items: artifacts.map(({ promptData }, index) => ({
             request: buildComfyImageRequest({

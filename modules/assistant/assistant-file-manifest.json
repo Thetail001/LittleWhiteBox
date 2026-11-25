@@ -216,7 +216,7 @@
       "publicPath": "scripts/extensions/third-party/LittleWhiteBox/docs/user/draw.md",
       "relativePath": "docs/user/draw.md",
       "extension": ".md",
-      "sizeBytes": 22333
+      "sizeBytes": 22795
     },
     {
       "source": "littlewhitebox",
@@ -2957,17 +2957,24 @@
     },
     {
       "source": "littlewhitebox",
+      "publicPath": "scripts/extensions/third-party/LittleWhiteBox/modules/draw/providers/comfyui/backend-transport-contract.cjs",
+      "relativePath": "modules/draw/providers/comfyui/backend-transport-contract.cjs",
+      "extension": ".cjs",
+      "sizeBytes": 416
+    },
+    {
+      "source": "littlewhitebox",
       "publicPath": "scripts/extensions/third-party/LittleWhiteBox/modules/draw/providers/comfyui/comfy-draw.html",
       "relativePath": "modules/draw/providers/comfyui/comfy-draw.html",
       "extension": ".html",
-      "sizeBytes": 61916
+      "sizeBytes": 62018
     },
     {
       "source": "littlewhitebox",
       "publicPath": "scripts/extensions/third-party/LittleWhiteBox/modules/draw/providers/comfyui/comfy-draw.js",
       "relativePath": "modules/draw/providers/comfyui/comfy-draw.js",
       "extension": ".js",
-      "sizeBytes": 220995
+      "sizeBytes": 230598
     },
     {
       "source": "littlewhitebox",
@@ -2981,7 +2988,7 @@
       "publicPath": "scripts/extensions/third-party/LittleWhiteBox/modules/draw/providers/comfyui/compiler.js",
       "relativePath": "modules/draw/providers/comfyui/compiler.js",
       "extension": ".js",
-      "sizeBytes": 16349
+      "sizeBytes": 16518
     },
     {
       "source": "littlewhitebox",
@@ -3359,7 +3366,7 @@
       "publicPath": "scripts/extensions/third-party/LittleWhiteBox/modules/draw/server/draw-runs/envelope.js",
       "relativePath": "modules/draw/server/draw-runs/envelope.js",
       "extension": ".js",
-      "sizeBytes": 22513
+      "sizeBytes": 22885
     },
     {
       "source": "littlewhitebox",
@@ -3387,7 +3394,14 @@
       "publicPath": "scripts/extensions/third-party/LittleWhiteBox/modules/draw/server/providers/comfyui/adapter.js",
       "relativePath": "modules/draw/server/providers/comfyui/adapter.js",
       "extension": ".js",
-      "sizeBytes": 10983
+      "sizeBytes": 11232
+    },
+    {
+      "source": "littlewhitebox",
+      "publicPath": "scripts/extensions/third-party/LittleWhiteBox/modules/draw/server/providers/comfyui/cloud-v2.js",
+      "relativePath": "modules/draw/server/providers/comfyui/cloud-v2.js",
+      "extension": ".js",
+      "sizeBytes": 18800
     },
     {
       "source": "littlewhitebox",
@@ -3471,7 +3485,7 @@
       "publicPath": "scripts/extensions/third-party/LittleWhiteBox/modules/draw/server/transport.js",
       "relativePath": "modules/draw/server/transport.js",
       "extension": ".js",
-      "sizeBytes": 10003
+      "sizeBytes": 12871
     },
     {
       "source": "littlewhitebox",
@@ -21658,6 +21672,13 @@
       "relativePath": "server-plugin/littlewhitebox-server/tests/cancellation.test.js",
       "extension": ".js",
       "sizeBytes": 11303
+    },
+    {
+      "source": "littlewhitebox",
+      "publicPath": "scripts/extensions/third-party/LittleWhiteBox/server-plugin/littlewhitebox-server/tests/comfy-cloud-v2.test.js",
+      "relativePath": "server-plugin/littlewhitebox-server/tests/comfy-cloud-v2.test.js",
+      "extension": ".js",
+      "sizeBytes": 18661
     },
     {
       "source": "littlewhitebox",

@@ -83,6 +83,7 @@ AI 画图让聊天自动或按需配上插图。小白X 先读 AI 的回复，�
 1. 打开 `API 配置`，选 `连接方式`：
    - `酒馆后端代理`：请求经酒馆转发，地址填**酒馆服务器**能访问到的。这种方式不填认证信息。
    - `浏览器直连`：从你当前的浏览器访问 ComfyUI，地址填**这台设备**能访问到的。ComfyUI 需要允许跨域。需要登录时在 `认证信息` 填 `用户名:密码`。
+   - `Comfy Cloud (API v2)`：使用官方 Comfy API v2（`Authorization: Bearer`），统一经[小白X 后端](server.md)（`littlewhitebox-server`）由酒馆服务器直连。地址默认填 `https://cloud.comfy.org`（同样兼容 Comfy Serverless Deployment 与 `comfy-api-proxy`），`API Key (Bearer)` 填在 `platform.comfy.org` 创建的 `comfyui-...` 密钥，并在 `工作流配置` 中使用 `自定义工作流` 导入 API 格式工作流 JSON。
 2. 填 `ComfyUI 地址`，例如 `http://127.0.0.1:8188`，点 `测试连接`，再点 `保存`。
 3. 打开 `工作流配置`，选 `出图模式`：
    - `简单模式`：点 `拉取模型`，选一个模型就能画。`高级参数` 里可以调采样器、调度器、Steps 和 CFG Scale。

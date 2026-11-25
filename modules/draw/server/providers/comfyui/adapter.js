@@ -9,6 +9,7 @@ const {
     readJsonResponse,
     readResponseBuffer,
 } = require('../upstream.js');
+const cloudV2 = require('./cloud-v2.js');
 
 const SUCCESS_WITHOUT_IMAGE_GRACE_MS = 15_000;
 const CANCEL_REQUEST_TIMEOUT_MS = 5_000;
@@ -98,6 +99,9 @@ function isFinishedHistoryItem(historyItem) {
 }
 
 async function execute({ context, item, signal }) {
+    if (context?.connectionMode === 'cloud') {
+        return await cloudV2.execute({ context, item, signal });
+    }
     const headers = context.auth ? { Authorization: basicAuthHeader(context.auth) } : {};
     // ComfyUI 始终保留地址里的反代基础路径，与浏览器直连链路 createComfyUrl 的行为一致。
     const endpointOptions = { appendPath: true };
@@ -232,6 +236,7 @@ function normalize(context, items, { parseTimeout, parseUrl }) {
         context: {
             url,
             auth: String(context?.auth || ''),
+            ...(context?.connectionMode === 'cloud' ? { connectionMode: 'cloud' } : {}),
         },
         items: normalized,
     };

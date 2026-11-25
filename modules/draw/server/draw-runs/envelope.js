@@ -356,14 +356,21 @@ function validateGenerationRecipe(provider, value, imageCount) {
         requireString(recipe.promptOverride, `${path}.promptOverride`, { allowEmpty: true });
         requireString(recipe.negativePromptOverride, `${path}.negativePromptOverride`, { allowEmpty: true });
     } else {
-        recipe = assertExactKeys(value, [
+        const requiredComfyKeys = [
             'host', 'auth', 'timeout', 'delayMs', 'workflowMode', 'customWorkflow', 'params',
             'positivePrefix', 'negativePrefix', 'knownCharacters', 'promptOverride',
             'negativePromptOverride', 'seeds',
-        ], path);
+        ];
+        recipe = assertExactKeys(value, [...requiredComfyKeys, 'connectionMode'], path, requiredComfyKeys);
         validateCommonRecipe(recipe, path);
         requireString(recipe.host, `${path}.host`);
         requireString(recipe.auth, `${path}.auth`, { allowEmpty: true });
+        if (Object.hasOwn(recipe, 'connectionMode')
+            && recipe.connectionMode !== 'proxy'
+            && recipe.connectionMode !== 'direct'
+            && recipe.connectionMode !== 'cloud') {
+            throw invalid(`${path}.connectionMode is invalid`);
+        }
         requireImageDelay(recipe.delayMs, `${path}.delayMs`);
         if (recipe.workflowMode !== 'simple' && recipe.workflowMode !== 'custom') {
             throw invalid(`${path}.workflowMode is invalid`);
