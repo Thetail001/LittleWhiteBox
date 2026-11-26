@@ -3401,7 +3401,7 @@
       "publicPath": "scripts/extensions/third-party/LittleWhiteBox/modules/draw/server/providers/comfyui/cloud-v2.js",
       "relativePath": "modules/draw/server/providers/comfyui/cloud-v2.js",
       "extension": ".js",
-      "sizeBytes": 18800
+      "sizeBytes": 19479
     },
     {
       "source": "littlewhitebox",
@@ -21678,7 +21678,7 @@
       "publicPath": "scripts/extensions/third-party/LittleWhiteBox/server-plugin/littlewhitebox-server/tests/comfy-cloud-v2.test.js",
       "relativePath": "server-plugin/littlewhitebox-server/tests/comfy-cloud-v2.test.js",
       "extension": ".js",
-      "sizeBytes": 18661
+      "sizeBytes": 21494
     },
     {
       "source": "littlewhitebox",
